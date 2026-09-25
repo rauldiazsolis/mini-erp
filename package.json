@@ -16,6 +16,7 @@
     "@tanstack/query-core": "^5.103.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "hardwired": "1.6.2",
     "preact": "^10.29.8",
     "zod": "^3.24.2"
   },
