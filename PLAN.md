@@ -109,3 +109,41 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 - Tests unitarios y de integración con Vitest para todo el flujo de sincronización y auth.
 - Configuración en vivo del POS web apuntando a `http://localhost:<PORT>/connector` con la API Key generada.
 - Verificación de ciclo completo: pull de catálogo $\rightarrow$ venta offline $\rightarrow$ push de lote $\rightarrow$ pull de confirmación $\rightarrow$ verificación de stock y saldos en SQLite del tenant.
+
+---
+
+## 4. Detalle de Etapas: FASE 2 (Admin Business Core)
+
+### Etapa 2.1: Catálogo, Precios y Sucursales
+- CRUD completo de sucursales (`/branches`) con validación de código único.
+- Inicialización automática de stock en 0 para todas las sucursales existentes al crear productos con control de stock.
+- CRUD de catálogo de productos (`/products`) con validación Zod estricta (`sku`, `barcodes`, `name`, `price`, `taxRate`, `category`, `tracksStock`, `blockedReason`).
+- Búsqueda en texto libre y filtrado por categoría y estado de bloqueo.
+- Bloqueo y soft-delete de productos con motivo auditado.
+- Listado de categorías únicas (`/categories`).
+- Garantía de sincronización con el POS vía actualización estricta de `updated_at`.
+
+### Etapa 2.2: Stock Multi-Sucursal y Kardex Auditado
+- Vista matricial consolidada de stock (`GET /stock`) con desglose por cada sucursal (`branches: { [branchId]: quantity }`) y total consolidado.
+- Ajustes de stock auditados (`POST /stock/adjust`) tanto absolutos (`type: 'set'`) como relativos (`type: 'delta'`), exigiendo motivo (`reason`) y notas opcionales (`notes`).
+- Registro histórico de auditoría Kardex (`GET /stock/kardex`) con filtros por producto, sucursal, motivo y rango temporal.
+- Integración bidireccional: ajustes de stock en ERP impactan en el pull del POS, y ventas offline con movimientos de stock en el POS se asientan automáticamente en el Kardex del ERP.
+
+### Etapa 2.3: Clientes, Cuentas Corrientes y Ajustes Transparentes
+- CRUD completo de clientes (`/customers`) con cálculo dinámico de `availableCredit` y flag `isDebtor`.
+- Soporte de saldo inicial (`initialBalance`) al registrar el cliente con asiento automático en el libro de cuenta corriente.
+- Cobranzas manuales (`POST /customers/:id/payments`) asentadas en `account_movements` (con importe contable negativo) y `customer_payments`.
+- Ajustes transparentes de saldo (`POST /customers/:id/adjustments`) con modalidades `credit`, `debit` y `set`, requiriendo motivo auditado.
+- Extracto cronológico de cuenta corriente (`GET /customers/:id/movements`) con saldo resultante (`balance_after`) en cada fila.
+- Integración en tiempo real con las reservas de saldo `/connector/account-holds` del POS.
+
+### Etapa 2.4: Operaciones Masivas (Precios e Intereses)
+- Actualizaciones masivas de precios (`POST /bulk/prices`) con acciones `percentage`, `fixed` e `items`, filtros por categoría y redondeos comerciales (`10`, `50`, `100`, `none`).
+- Cálculo y devengamiento masivo de intereses (`POST /bulk/interests`) sobre saldos deudores con soporte de umbral mínimo (`minimumBalance`).
+- Soporte de simulación segura `dryRun: true` para previsualizar el impacto económico y las filas afectadas antes de confirmar la persistencia.
+
+### Etapa 2.5: Importación / Exportación CSV y JSON + Semillas
+- Exportación en formatos CSV (RFC 4180) y JSON (`GET /export/:entity`) para `products`, `customers` y `stock`.
+- Importación masiva (`POST /import/:entity`) desde archivos/texto CSV o arrays JSON, con soporte de actualización por SKU/documento (`updateExisting`), reporte detallado de errores por fila y modo simulación `dryRun`.
+- Semillas de negocio preconfiguradas (`POST /seed-preset`) para los rubros `'kiosco'`, `'ferreteria'` y `'almacen'`.
+
