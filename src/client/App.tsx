@@ -10,6 +10,7 @@ import { AuthView } from './components/auth/AuthView.tsx';
 import { AppShell } from './components/shell/AppShell.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
 import { CatalogView } from './components/catalog/CatalogView.tsx';
+import { StockView } from './components/stock/StockView.tsx';
 import { Card, CardHeader } from './components/ui/Card.tsx';
 
 // Cargar perfil al inicializar si hay un token persistido
@@ -31,17 +32,7 @@ export function App() {
 
       {currentView === 'catalog' && <CatalogView />}
 
-      {currentView === 'stock' && (
-        <Card>
-          <CardHeader
-            title="Stock Multi-Sucursal & Kardex"
-            description="Control de existencias por sucursal, ajustes auditados e historial cronológico."
-          />
-          <div class="py-12 text-center text-xs text-slate-400">
-            Vista de stock y auditoría de Kardex.
-          </div>
-        </Card>
-      )}
+      {currentView === 'stock' && <StockView />}
 
       {currentView === 'customers' && (
         <Card>
