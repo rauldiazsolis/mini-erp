@@ -12,6 +12,7 @@ import { DashboardView } from './components/dashboard/DashboardView.tsx';
 import { CatalogView } from './components/catalog/CatalogView.tsx';
 import { StockView } from './components/stock/StockView.tsx';
 import { CustomerView } from './components/customers/CustomerView.tsx';
+import { BulkView } from './components/bulk/BulkView.tsx';
 import { Card, CardHeader } from './components/ui/Card.tsx';
 
 // Cargar perfil al inicializar si hay un token persistido
@@ -37,17 +38,7 @@ export function App() {
 
       {currentView === 'customers' && <CustomerView />}
 
-      {currentView === 'bulk' && (
-        <Card>
-          <CardHeader
-            title="Operaciones Masivas"
-            description="Actualización porcentual de precios, devengamiento de intereses e importación/exportación."
-          />
-          <div class="py-12 text-center text-xs text-slate-400">
-            Módulo de operaciones masivas y wizards.
-          </div>
-        </Card>
-      )}
+      {currentView === 'bulk' && <BulkView />}
 
       {currentView === 'settings' && (
         <Card>
