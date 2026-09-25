@@ -1,58 +1,118 @@
-import { signal, computed } from '@preact/signals';
+import {
+  isAuthenticatedSignal,
+  currentUserSignal,
+  activeTenantSignal,
+  userTenantsSignal,
+  isImpersonatingSignal,
+  logout,
+  stopImpersonation,
+  fetchProfile,
+  tokenSignal,
+} from './state/auth-state.ts';
+import { AuthView } from './components/auth/AuthView.tsx';
+import { Button } from './components/ui/Button.tsx';
+import { Card } from './components/ui/Card.tsx';
 
-export const appTitleSignal = signal('Mini-ERP Admin');
-export const counterSignal = signal(0);
-export const doubleCounterSignal = computed(() => counterSignal.value * 2);
+// Cargar perfil al inicializar si hay un token persistido
+if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.value) {
+  fetchProfile();
+}
 
 export function App() {
+  if (!isAuthenticatedSignal.value) {
+    return <AuthView />;
+  }
+
+  const user = currentUserSignal.value;
+  const activeTenant = activeTenantSignal.value;
+  const tenants = userTenantsSignal.value;
+
   return (
-    <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 selection:bg-indigo-500 selection:text-white">
-      <div class="max-w-md w-full bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-8 shadow-2xl text-center">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-500/10 text-indigo-400 mb-6 border border-indigo-500/20 shadow-inner">
-          <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+    <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+      {/* Banner de Impersonación Activa */}
+      {isImpersonatingSignal.value && (
+        <div class="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            <span>
+              Modo Impersonación Activo: Estás navegando como el comercio{' '}
+              <strong>{activeTenant?.name ?? 'Tenant'}</strong> ({activeTenant?.tenantId})
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={stopImpersonation}
+            class="text-amber-200 hover:text-white font-semibold underline underline-offset-2 cursor-pointer"
+          >
+            Salir de Impersonación
+          </button>
         </div>
+      )}
 
-        <h1 class="text-2xl font-bold tracking-tight text-white mb-2">{appTitleSignal}</h1>
-        <p class="text-sm text-slate-400 mb-6">
-          Preact + Signals + Tailwind CSS + TanStack Query
-        </p>
-
-        <div class="bg-slate-950/60 rounded-xl p-5 mb-6 border border-slate-800/80 space-y-3">
+      {/* Header temporal */}
+      <header class="h-16 border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
-              Contador Reactivo (Signal)
-            </span>
-            <span class="text-4xl font-extrabold text-indigo-400 tracking-tight">
-              {counterSignal}
-            </span>
-          </div>
-
-          <div class="pt-2 border-t border-slate-800/60">
-            <span class="text-xs text-slate-400">
-              Valor duplicado (Computed): <strong class="text-slate-200">{doubleCounterSignal}</strong>
-            </span>
+            <h1 class="text-sm font-bold text-white tracking-tight">Mini-ERP Admin</h1>
+            <span class="text-xs text-slate-400">{activeTenant?.name ?? 'Sin tenant activo'}</span>
           </div>
         </div>
 
-        <div class="flex gap-3 justify-center">
-          <button
-            type="button"
-            class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium rounded-xl text-sm transition-all duration-150 shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30"
-            onClick={() => counterSignal.value++}
-          >
-            Incrementar
-          </button>
-          <button
-            type="button"
-            class="px-4 py-2.5 bg-slate-800/80 hover:bg-slate-800 active:bg-slate-700 text-slate-300 font-medium rounded-xl text-sm transition-colors border border-slate-700/80"
-            onClick={() => (counterSignal.value = 0)}
-          >
-            Reset
-          </button>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <div class="text-xs font-medium text-slate-200">{user?.name}</div>
+            <div class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wider">
+              {user?.globalRole}
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={logout}>
+            Cerrar Sesión
+          </Button>
         </div>
-      </div>
+      </header>
+
+      {/* Contenido principal temporal */}
+      <main class="flex-1 p-6 max-w-5xl mx-auto w-full">
+        <Card class="mt-4">
+          <h2 class="text-lg font-bold text-white mb-2">¡Sesión Iniciada con Éxito!</h2>
+          <p class="text-xs text-slate-400 mb-4">
+            Estado de autenticación reactivo verificado con Preact Signals y TanStack Query Core.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+              <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">
+                Usuario
+              </span>
+              <div class="text-sm font-semibold text-white">{user?.name}</div>
+              <div class="text-xs text-slate-400">{user?.email}</div>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+              <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">
+                Rol Global
+              </span>
+              <div class="text-sm font-semibold text-indigo-400 uppercase">{user?.globalRole}</div>
+              <div class="text-xs text-slate-400">Permisos del sistema</div>
+            </div>
+
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+              <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">
+                Tenants Disponibles
+              </span>
+              <div class="text-sm font-semibold text-white">{tenants.length} comercios</div>
+              <div class="text-xs text-slate-400">
+                {activeTenant ? `Activo: ${activeTenant.name}` : 'Ninguno seleccionado'}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </main>
     </div>
   );
 }
