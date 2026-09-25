@@ -10,10 +10,11 @@ export async function setupClient(app: Express): Promise<void> {
 
   if (!isProd) {
     const { createServer } = await import('vite');
+    const viteConfigPath = resolve(import.meta.dirname, '../../vite.config.ts');
     const vite = await createServer({
+      configFile: viteConfigPath,
       server: { middlewareMode: true },
       appType: 'spa',
-      root: clientDir,
     });
     app.use(vite.middlewares);
   } else {

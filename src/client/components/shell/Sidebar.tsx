@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import {
   activeViewSignal,
   navigateTo,
@@ -10,7 +11,7 @@ type NavItem = {
   id: ActiveNavView;
   label: string;
   badge?: string;
-  icon: (active: boolean) => any;
+  icon: (active: boolean) => ComponentChildren;
 };
 
 const navItems: NavItem[] = [
