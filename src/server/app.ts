@@ -6,9 +6,11 @@ import { TenantManager } from './db/tenant-manager.ts';
 import { AuthService } from './auth/auth-service.ts';
 import { ApiKeyService } from './tenant/api-key-service.ts';
 import { createAdminAuthMiddleware, createPosAuthMiddleware } from './middleware/auth-middleware.ts';
+import { createTenantContextMiddleware } from './middleware/tenant-context-middleware.ts';
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
+import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 
 export type AppDependencies = {
@@ -41,9 +43,12 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp' });
   });
 
+  const requireTenantContext = createTenantContextMiddleware(authService, tenantManager);
+
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin));
   app.use('/api/tenants', createTenantRoutes(authService, tenantManager, apiKeyService, requireAdmin));
+  app.use('/api/tenants/:tenantId', requireAdmin, requireTenantContext, createCatalogRoutes());
 
   // Rutas para terminales POS (Connector API 4.0.0)
   app.use('/connector', createConnectorRoutes(requirePos));
