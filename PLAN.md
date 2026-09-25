@@ -147,3 +147,61 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 - Importación masiva (`POST /import/:entity`) desde archivos/texto CSV o arrays JSON, con soporte de actualización por SKU/documento (`updateExisting`), reporte detallado de errores por fila y modo simulación `dryRun`.
 - Semillas de negocio preconfiguradas (`POST /seed-preset`) para los rubros `'kiosco'`, `'ferreteria'` y `'almacen'`.
 
+---
+
+## 5. Detalle de Etapas: FASE 3 (Frontend Admin & Dashboard) [COMPLETADA]
+
+### Etapa 3.1: Scaffolding Frontend & Reactividad Base
+- Preact + Preact Signals puro (`@preact/signals`) integrado en Vite con Tailwind CSS v4.
+- Shell de la app: Navbar con selector de tenant, badge de impersonación (root/support), sidebar colapsable y breadcrumbs.
+- Gestión de sesión y autenticación en frontend con persistencia reactiva.
+
+### Etapa 3.2: Analytics & Dashboard Summary API
+- Endpoint `/dashboard/summary` con filtros de período (`today`, `week`, `month`) y por sucursal.
+- KPI Cards, ranking de productos más vendidos, métodos de cobro y distribución por categorías.
+
+### Etapa 3.3: Dashboard UI & Visualizaciones
+- Componentes KPI interactivos, gráficos de barras de ventas y medios de pago, tablas de top productos y alertas de stock bajo.
+
+### Etapa 3.4: Onboarding Wizard & Tenant Switcher
+- Modal/Wizard interactivo paso a paso para nuevos comercios (nombre, rubro, sucursal inicial, carga opcional de semilla).
+- Selector dinámico de sucursales y cambio de tenant en caliente.
+
+---
+
+## 6. Detalle de Etapas: FASE 4 (Grillas Interactivas de Gestión) [COMPLETADA]
+
+### Etapa 4.1: Catálogo & Precios (Grilla Sheets)
+- Búsqueda en vivo, filtro por categoría, badges de estado (activo/bloqueado), edición inline ágil de precios/costos.
+- Modal de alta/edición de producto y modal de bloqueo con motivo auditado.
+
+### Etapa 4.2: Stock Multi-Sucursal y Kardex
+- Grilla matricial de productos $\times$ sucursales con ajustes directos en celda (`set` absoluto y `delta` relativo).
+- Drawer lateral de auditoría Kardex con historial de movimientos y filtros.
+
+### Etapa 4.3: Clientes, Cuentas Corrientes y Cobranzas
+- Stats bar de deudores y morosidad, CRUD de clientes con límite de crédito y margen.
+- Registro de cobranzas/pagos manuales, ajustes contables de saldo con motivo y drawer de extracto de cuenta corriente.
+
+### Etapa 4.4: Operaciones Masivas (Precios, Intereses, Import/Export)
+- Aumento porcentual o fijo con redondeo comercial (`10`, `50`, `100`) y modo `dryRun` con preview.
+- Devengamiento masivo de intereses a deudores morosos.
+- Importación/exportación de CSV y JSON con reporte de errores por fila.
+
+### Etapa 4.5: Configuración, Sucursales y Terminales POS / API Keys
+- Generación de API Keys vinculadas a `(tenantId, branch, pointOfSale)` con visualización única de token copiable.
+- CRUD de sucursales operativas.
+- Guía interactiva de conexión para terminales POS con prueba de ping en vivo a `/connector/info`.
+
+---
+
+## 7. Detalle de Etapas: FASE 5 (Pruebas End-to-End y Sincronización en Vivo) [PRÓXIMA]
+
+### Objetivos:
+- Conexión real del frontend POS (`src/`) apuntando al Mini-ERP (`http://localhost:4100/connector`).
+- Validación de ciclo de vida completo:
+  1. Pull inicial de catálogo y clientes hacia el POS.
+  2. Ventas offline, ventas a cuenta corriente con `account-holds`.
+  3. Push de lotes desde el POS al Mini-ERP.
+  4. Impacto automático en stock de la sucursal, Kardex, cuenta corriente y dashboard del ERP.
+

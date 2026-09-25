@@ -6,8 +6,9 @@ Este documento define las reglas operativas, de proceso y de arquitectura que **
 
 ## 1. Confinamiento de Espacio de Trabajo (Aislamiento Total)
 
-- **Límite territorial estricto**: Toda la actividad de lectura, creación y modificación de código debe realizarse **exclusivamente dentro de la carpeta `mini-erp/`**.
-- **Prohibido tocar el resto del repositorio**: Está terminantemente prohibido modificar archivos en `src/`, `demo-backend/`, `docs/`, `e2e/`, `public/` o en la raíz del proyecto.
+- **Límite territorial estricto**: Toda la actividad de creación y modificación de código debe realizarse **exclusivamente dentro de la carpeta `mini-erp/`**.
+- **Prohibido modificar el resto del repositorio**: Está terminantemente prohibido alterar archivos en `src/`, `demo-backend/`, `docs/`, `e2e/`, `public/` o en la raíz del proyecto.
+  - *Excepción de lectura para Fase 5*: Se autoriza la **lectura exclusiva** de archivos en `src/` (POS offline) para consultar tipos, modelos de datos y validar la fidelidad del contrato de sincronización. Todo script, test de integración o harness de prueba debe residir dentro de `mini-erp/`.
 - **Rama de Git**: Todo el trabajo se realiza sobre la rama `mini-erp`.
 
 ---
@@ -16,7 +17,7 @@ Este documento define las reglas operativas, de proceso y de arquitectura que **
 
 - **El agente NUNCA ejecuta `git commit` ni `git push`**: Esta acción es exclusiva del desarrollador humano.
 - **Sugerencia de commits atómicos**: Al finalizar una etapa o hito verificado y con tests en verde, el agente debe detenerse y sugerir el commit indicando:
-  1. El comando exacto con el mensaje convencional **siempre en inglés** (ej. `feat(mini-erp): ...`, `fix(mini-erp): ...`, `docs(mini-erp): ...`).
+  1. El comando exacto con el mensaje convencional (`feat(...)`, `fix(...)`, `docs(...)`, etc.).
   2. La lista precisa de archivos modificados/creados.
 
 ---
@@ -54,7 +55,10 @@ El desarrollo se organiza en Fases divididas en Etapas atómicas (definidas en `
       }
     }
     ```
-  - **Imports con extensión `.ts`**: Dado que el proyecto usa `allowImportingTsExtensions: true` y `noEmit: true`, los imports relativos de TypeScript deben llevar extensión `.ts` (ej. `import { foo } from './foo.ts'`).
+  - **Imports relativos con extensión**: Dado que el proyecto usa `allowImportingTsExtensions: true` y `noEmit: true`, los imports relativos deben llevar su extensión explícita (`.ts` para TypeScript puro y `.tsx` para componentes Preact).
+  - **Aislamiento de recarga con `--watch`**: Siempre configurar `node --watch --watch-path=src/server` para el servidor de desarrollo. Dejar el `--watch` global provocará bucles infinitos de reinicio ante escrituras en SQLite (`data/`) o builds de Vite (`dist/`).
+- **Tipado estricto en UI (Preact)**:
+  - Usar `JSX.IntrinsicElements['button']`, `JSX.IntrinsicElements['input']` o `JSX.TargetedEvent` para tipar atributos y eventos sin recurrir a tipos laxos.
 - **Gestor de paquetes**: Usar siempre `pnpm` (usando `--ignore-workspace` al instalar paquetes dentro de `mini-erp` si es necesario).
 
 ---
@@ -75,9 +79,9 @@ El desarrollo se organiza en Fases divididas en Etapas atómicas (definidas en `
   - **Principio central: el backend nunca rechaza de forma síncrona el contenido de un lote de push**. Responde `200` y reporta inconsistencias diferidas como `issues` en el pull.
   - Validación de versión de contrato: `X-POS-Contract-Version: 4.x.x` (responder `409 IncompatibleContract` si el major difiere, excepto en `/info`).
 - **Frontend Admin**:
-  - Todo vivirá unificado en `mini-erp/src/client/`.
-  - Stack: Preact + `@preact/signals` + Tailwind CSS + TanStack Query.
-  - **Prohibido el uso de React hooks** (`useState`, `useEffect`, etc.).
+  - Todo unificado en `mini-erp/src/client/`.
+  - Stack: Preact + `@preact/signals` + Tailwind CSS v4 (vía `@tailwindcss/vite` integrado como middleware Express).
+  - **Arquitectura de Estado**: Signals puros (`signal`, `computed`, stores por dominio en `src/client/state/*`). **Prohibido el uso de React hooks** (`useState`, `useEffect`, etc.).
   - Componentes propios reutilizables estilo shadcn sin librerías de UI externas innecesarias.
 
 ---
