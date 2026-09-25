@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { applyPreset } from '../seeds/index.ts';
 
 export type EntityType = 'products' | 'customers' | 'stock';
 
@@ -423,73 +424,7 @@ export class ImportExportService {
   // --- SEMILLAS DE NEGOCIO ---
 
   applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): BusinessPresetResult {
-    const presetsData: Record<'kiosco' | 'ferreteria' | 'almacen', Array<{ sku: string; name: string; price: number; category: string; barcodes: string[]; stock: number }>> = {
-      kiosco: [
-        { sku: 'KIO-001', name: 'Alfajor Triple Dulce de Leche', price: 950, category: 'Golosinas', barcodes: ['779111001'], stock: 48 },
-        { sku: 'KIO-002', name: 'Chicles Menta Fuerte 5u', price: 500, category: 'Golosinas', barcodes: ['779111002'], stock: 60 },
-        { sku: 'KIO-003', name: 'Caramelos Surtidos 100g', price: 750, category: 'Golosinas', barcodes: ['779111003'], stock: 35 },
-        { sku: 'KIO-004', name: 'Gaseosa Cola 500ml', price: 1500, category: 'Bebidas', barcodes: ['779111004'], stock: 72 },
-        { sku: 'KIO-005', name: 'Agua Mineral sin gas 500ml', price: 1000, category: 'Bebidas', barcodes: ['779111005'], stock: 80 },
-        { sku: 'KIO-006', name: 'Papas Fritas Clásicas 85g', price: 1600, category: 'Snacks', barcodes: ['779111006'], stock: 25 },
-        { sku: 'KIO-007', name: 'Cigarrillos Rubios 20u', price: 3200, category: 'Tabaquería', barcodes: ['779111007'], stock: 40 },
-      ],
-      ferreteria: [
-        { sku: 'FER-001', name: 'Martillo Galponero 16oz', price: 12500, category: 'Herramientas', barcodes: ['779222001'], stock: 15 },
-        { sku: 'FER-002', name: 'Destornillador Phillips 6x100', price: 4200, category: 'Herramientas', barcodes: ['779222002'], stock: 20 },
-        { sku: 'FER-003', name: 'Cinta Aisladora Negra 20m', price: 1800, category: 'Electricidad', barcodes: ['779222003'], stock: 50 },
-        { sku: 'FER-004', name: 'Pinza Universal 8 pulgadas', price: 9500, category: 'Herramientas', barcodes: ['779222004'], stock: 12 },
-        { sku: 'FER-005', name: 'Tornillos Autoperforantes x100', price: 3800, category: 'Tornillería', barcodes: ['779222005'], stock: 30 },
-        { sku: 'FER-006', name: 'Pintura Látex Interior Blanca 4L', price: 24000, category: 'Pinturería', barcodes: ['779222006'], stock: 8 },
-      ],
-      almacen: [
-        { sku: 'ALM-001', name: 'Leche Entera Larga Vida 1L', price: 1400, category: 'Lácteos', barcodes: ['779333001'], stock: 60 },
-        { sku: 'ALM-002', name: 'Queso Cremoso Fraccionado 1kg', price: 7800, category: 'Fiambrería', barcodes: ['779333002'], stock: 20 },
-        { sku: 'ALM-003', name: 'Arroz Blanco Largo Fino 1kg', price: 1900, category: 'Almacén', barcodes: ['779333003'], stock: 45 },
-        { sku: 'ALM-004', name: 'Fideos Tallarines 500g', price: 1200, category: 'Almacén', barcodes: ['779333004'], stock: 50 },
-        { sku: 'ALM-005', name: 'Aceite de Girasol 900ml', price: 2300, category: 'Almacén', barcodes: ['779333005'], stock: 36 },
-        { sku: 'ALM-006', name: 'Lavandina Clásica 1L', price: 1100, category: 'Limpieza', barcodes: ['779333006'], stock: 40 },
-      ],
-    };
-
-    const items = presetsData[preset];
-    const now = new Date().toISOString();
-    const branches = this.db.prepare('SELECT id FROM branches').all() as unknown as { id: string }[];
-    const defaultBranchId = branches[0]?.id;
-
-    let productsCreated = 0;
-    let stockEntries = 0;
-
-    for (const item of items) {
-      const existing = this.db.prepare('SELECT id FROM products WHERE sku = ?').get(item.sku);
-      if (existing !== undefined) continue;
-
-      const prodId = `prod_${randomUUID()}`;
-      this.db
-        .prepare(
-          `INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, blocked_reason, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 0.21, ?, 1, NULL, ?, ?)`,
-        )
-        .run(prodId, item.sku, JSON.stringify(item.barcodes), item.name, item.price, item.category, now, now);
-
-      productsCreated++;
-
-      if (defaultBranchId !== undefined) {
-        this.db
-          .prepare(
-            `INSERT INTO stock (product_id, branch_id, quantity, updated_at)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(product_id, branch_id) DO UPDATE SET quantity = excluded.quantity, updated_at = excluded.updated_at`,
-          )
-          .run(prodId, defaultBranchId, item.stock, now);
-        stockEntries++;
-      }
-    }
-
-    return {
-      preset,
-      productsCreated,
-      stockEntries,
-    };
+    return applyPreset(this.db, preset);
   }
 
   // --- HELPERS CSV RFC 4180 ---

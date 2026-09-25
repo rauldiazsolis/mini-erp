@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { initTenantDb, openTenantDb } from './tenant-db.ts';
+import { seedDemoTenant } from '../seeds/index.ts';
 
 export type TenantRecord = {
   id: string;
@@ -83,7 +84,7 @@ export class TenantManager {
       .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', now);
 
     if (params.seedDemoData === true) {
-      this.seedDemoData(tenantDb, defaultBranchId, now);
+      seedDemoTenant(tenantDb, defaultBranchId);
     }
 
     return {
@@ -93,41 +94,6 @@ export class TenantManager {
       status,
       created_at: now,
     };
-  }
-
-  private seedDemoData(tenantDb: DatabaseSync, defaultBranchId: string, now: string): void {
-    const products = [
-      { id: 'prod-coca-500', sku: 'BEB-001', barcodes: ['779123456001'], name: 'Coca Cola 500ml', price: 1500, taxRate: 0.21, category: 'Bebidas', stock: 50 },
-      { id: 'prod-agua-500', sku: 'BEB-002', barcodes: ['779123456002'], name: 'Agua Mineral 500ml', price: 1000, taxRate: 0.21, category: 'Bebidas', stock: 80 },
-      { id: 'prod-yerba-1k', sku: 'ALM-001', barcodes: ['779123456003'], name: 'Yerba Mate 1kg', price: 3200, taxRate: 0.21, category: 'Almacén', stock: 25 },
-      { id: 'prod-galletitas', sku: 'ALM-002', barcodes: ['779123456004'], name: 'Galletitas de Chocolate', price: 1200, taxRate: 0.21, category: 'Almacén', stock: 40 },
-    ];
-
-    const insertProd = tenantDb.prepare(
-      'INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    );
-    const insertStock = tenantDb.prepare(
-      'INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)',
-    );
-
-    for (const p of products) {
-      insertProd.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate, p.category, 1, now, now);
-      insertStock.run(p.id, defaultBranchId, p.stock, now);
-    }
-
-    const customers = [
-      { id: 'cust-cf', name: 'Consumidor Final', document: null, phone: null, creditLimit: 0, margin: 0, balance: 0 },
-      { id: 'cust-juan', name: 'Juan Pérez', document: '20-12345678-9', phone: '11-4567-8901', creditLimit: 50000, margin: 10000, balance: 12500 },
-      { id: 'cust-maria', name: 'María Gómez', document: '27-98765432-1', phone: '11-9876-5432', creditLimit: 30000, margin: 5000, balance: 0 },
-    ];
-
-    const insertCust = tenantDb.prepare(
-      'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    );
-
-    for (const c of customers) {
-      insertCust.run(c.id, c.name, c.document, c.phone, c.creditLimit, c.margin, c.balance, 0, now, now);
-    }
   }
 
   getConsolidatedStock(tenantDb: DatabaseSync): ConsolidatedStockItem[] {

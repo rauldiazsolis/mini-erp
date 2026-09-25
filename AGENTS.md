@@ -79,3 +79,15 @@ El desarrollo se organiza en Fases divididas en Etapas atómicas (definidas en `
   - Stack: Preact + `@preact/signals` + Tailwind CSS + TanStack Query.
   - **Prohibido el uso de React hooks** (`useState`, `useEffect`, etc.).
   - Componentes propios reutilizables estilo shadcn sin librerías de UI externas innecesarias.
+
+---
+
+## 6. Datos Semilla, Fixtures y Fidelidad de Contratos
+
+- **Modularización de Datos Semilla**:
+  - Todo catálogo inicial, fixture de prueba o preset temático de negocio debe residir en `src/server/seeds/`, nunca hardcodeado dentro de la lógica de servicios o controladores.
+- **Fechas Dinámicas y Relativas en Transacciones de Prueba**:
+  - Al generar historial simulado (ventas, movimientos de caja, asientos de cuenta corriente, registros de Kardex), **está prohibido usar fechas estáticas**.
+  - Siempre deben generarse mediante offsets relativos a `new Date()` (ej. `now - N días/horas`) para que los dashboards, gráficos y analíticas muestren métricas vigentes y frescas sin importar cuándo se inicie el entorno.
+- **Fidelidad Estricta al Contrato OpenAPI**:
+  - No asumir estructuras de DTOs ni formatos de respuesta para los endpoints de sincronización. Siempre verificar `connector-api.openapi.yaml` (ej. `approved: boolean` y `reasonCode: string` en holds, respuesta `200` con `{}` en push de lotes, objeto `cursors` en pull).
