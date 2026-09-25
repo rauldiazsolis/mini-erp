@@ -2,16 +2,21 @@ import type { ComponentChildren } from 'preact';
 import { Sidebar } from './Sidebar.tsx';
 import { Header } from './Header.tsx';
 import { ImpersonationModal } from './ImpersonationModal.tsx';
+import { OnboardingModal } from './OnboardingModal.tsx';
 import { ToastContainer } from '../ui/ToastContainer.tsx';
 import {
   isImpersonatingSignal,
   activeTenantSignal,
+  userTenantsSignal,
   stopImpersonation,
 } from '../../state/auth-state.ts';
+import { openOnboardingModal } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
+import { Button } from '../ui/Button.tsx';
 
 export function AppShell(props: { children: ComponentChildren }) {
   const activeTenant = activeTenantSignal.value;
+  const tenants = userTenantsSignal.value;
 
   const handleStopImpersonating = () => {
     stopImpersonation();
@@ -55,12 +60,31 @@ export function AppShell(props: { children: ComponentChildren }) {
         {/* Header Superior */}
         <Header />
 
-        {/* Vista Inyectada */}
-        <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">{props.children}</main>
+        {/* Vista Inyectada o Empty State */}
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          {tenants.length === 0 ? (
+            <div class="py-20 text-center max-w-md mx-auto space-y-4">
+              <div class="w-16 h-16 mx-auto rounded-3xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-3xl shadow-lg shadow-indigo-500/10">
+                🏪
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-white">No tienes ningún comercio asociado</h3>
+                <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+                  Crea tu primer comercio para comenzar a gestionar tu catálogo, sincronizar cajas registradoras y ver
+                  tus métricas en tiempo real.
+                </p>
+              </div>
+              <Button onClick={openOnboardingModal}>Crear Primer Comercio 🚀</Button>
+            </div>
+          ) : (
+            props.children
+          )}
+        </main>
       </div>
 
-      {/* Modal de Impersonación */}
+      {/* Modales */}
       <ImpersonationModal />
+      <OnboardingModal />
 
       {/* Contenedor de Notificaciones Toast */}
       <ToastContainer />
