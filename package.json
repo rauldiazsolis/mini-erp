@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "node --watch src/server/server.ts",
+    "dev": "node --watch-path=src/server src/server/server.ts",
     "start": "node src/server/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
