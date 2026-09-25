@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build": "vite build",
     "dev": "node --watch src/server/server.ts",
     "start": "node src/server/server.ts",
     "test": "vitest run",
@@ -11,17 +12,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@preact/signals": "^2.11.2",
+    "@tanstack/query-core": "^5.103.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "preact": "^10.29.8",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.13.4",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "~5.7.3",
+    "vite": "^8.3.0",
     "vitest": "^3.0.5"
   }
 }

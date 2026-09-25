@@ -1,5 +1,6 @@
 import { createApp } from './app.ts';
 import { ensureDevData, DEV_BRANCH, DEV_POS } from './db/dev-seed.ts';
+import { setupClient } from './client-middleware.ts';
 
 const PORT = process.env['PORT'] ? Number(process.env['PORT']) : 4100;
 
@@ -10,6 +11,8 @@ const devInfo = ensureDevData({
   authService: bundle.authService,
   tenantManager: bundle.tenantManager,
 });
+
+await setupClient(bundle.app);
 
 bundle.app.listen(PORT, () => {
   console.log(`\n==================================================`);
