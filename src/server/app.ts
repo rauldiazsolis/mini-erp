@@ -12,6 +12,7 @@ import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
+import { createCustomerRoutes } from './routes/customer-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 
 export type AppDependencies = {
@@ -55,6 +56,7 @@ export function createApp(deps?: AppDependencies): {
     requireTenantContext,
     createCatalogRoutes(),
     createStockRoutes(),
+    createCustomerRoutes(),
   );
 
   // Rutas para terminales POS (Connector API 4.0.0)
