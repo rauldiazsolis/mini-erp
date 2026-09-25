@@ -11,6 +11,7 @@ import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
+import { createStockRoutes } from './routes/stock-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 
 export type AppDependencies = {
@@ -48,7 +49,13 @@ export function createApp(deps?: AppDependencies): {
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin));
   app.use('/api/tenants', createTenantRoutes(authService, tenantManager, apiKeyService, requireAdmin));
-  app.use('/api/tenants/:tenantId', requireAdmin, requireTenantContext, createCatalogRoutes());
+  app.use(
+    '/api/tenants/:tenantId',
+    requireAdmin,
+    requireTenantContext,
+    createCatalogRoutes(),
+    createStockRoutes(),
+  );
 
   // Rutas para terminales POS (Connector API 4.0.0)
   app.use('/connector', createConnectorRoutes(requirePos));

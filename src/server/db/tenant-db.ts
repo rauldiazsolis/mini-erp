@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   product_id TEXT NOT NULL,
   branch_id TEXT NOT NULL,
   delta REAL NOT NULL,
-  reason TEXT NOT NULL, -- 'sale', 'sale-void', 'adjustment', 'restock'
+  reason TEXT NOT NULL, -- 'sale', 'sale-void', 'adjustment', 'restock', 'purchase', 'damage', 'inventory_count'
+  notes TEXT,
   sale_id TEXT,
   device_id TEXT,
   branch TEXT,
@@ -147,6 +148,12 @@ export function initTenantDb(db: DatabaseSync): void {
     db.exec(`PRAGMA user_version = ${TENANT_SCHEMA_VERSION}`);
   }
   db.exec(TENANT_SCHEMA);
+
+  try {
+    db.exec('ALTER TABLE stock_movements ADD COLUMN notes TEXT');
+  } catch {
+    // Columna ya existente
+  }
 }
 
 export function openTenantDb(path: string): DatabaseSync {
