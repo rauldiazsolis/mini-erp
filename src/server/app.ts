@@ -9,6 +9,7 @@ import { createAdminAuthMiddleware, createPosAuthMiddleware } from './middleware
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
+import { requestLogger } from './middleware/logger.ts';
 
 export type AppDependencies = {
   systemDb?: DatabaseSync;
@@ -34,6 +35,7 @@ export function createApp(deps?: AppDependencies): {
 
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
+  app.use(requestLogger);
 
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', service: 'mini-erp' });

@@ -2,6 +2,7 @@ import { Router, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
 import { ConnectorService, type BatchEvent } from '../connector/connector-service.ts';
+import { posLog } from '../middleware/logger.ts';
 
 const CONTRACT_VERSION = '4.0.0';
 
@@ -37,14 +38,14 @@ const accountHoldSchema = z.object({
 });
 
 export function createConnectorRoutes(
-  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: () => void) => void,
+  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
 ): Router {
   const router = Router();
 
   router.use(requirePosAuth);
 
-  // GET /info (nunca responde 409, informa version y estado)
-  router.get('/info', (req: AuthenticatedPosRequest, res: Response) => {
+  // GET /info (nunca responde 409, informa versión y estado)
+  router.get('/info', (_req: AuthenticatedPosRequest, res: Response) => {
     res.status(200).json({
       contractVersion: CONTRACT_VERSION,
       status: 'ok',
@@ -72,14 +73,39 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { tenantDb, branch } = req.posContext!;
+    const { tenantDb, branch, pointOfSale } = req.posContext!;
     const connector = new ConnectorService(tenantDb);
 
-    connector.processPushLot({
+    const result = connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
       events: parseResult.data.events as BatchEvent[],
       defaultBranchId: branch,
+    });
+
+    // Logging detallado del lote recibido
+    const eventsForLog = (parseResult.data.events as BatchEvent[]).map((e) => {
+      let detail: string | undefined;
+      if (e.type === 'sale') {
+        const sale = e['sale'] as { total?: number } | undefined;
+        detail = sale?.total !== undefined ? `$${sale.total}` : undefined;
+      } else if (e.type === 'stock-movement') {
+        const mov = e['movement'] as { productId?: string; delta?: number } | undefined;
+        detail = mov ? `${mov.productId} (${mov.delta})` : undefined;
+      } else if (e.type === 'customer') {
+        const cust = e['customer'] as { name?: string } | undefined;
+        detail = cust?.name;
+      }
+      return { type: e.type, id: e.id, detail };
+    });
+
+    posLog.push({
+      lotId: idempotencyKey.trim(),
+      deviceId: parseResult.data.deviceId,
+      branch,
+      pos: pointOfSale,
+      events: eventsForLog,
+      status: result.status,
     });
 
     // Respuesta inmediata 200 (el backend nunca rechaza de forma síncrona)
@@ -94,12 +120,23 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { tenantDb } = req.posContext!;
+    const { tenantDb, branch, pointOfSale } = req.posContext!;
     const connector = new ConnectorService(tenantDb);
 
     const pullResult = connector.pullCatalog({
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
+    });
+
+    // Logging detallado del pull
+    posLog.pull({
+      branch,
+      pos: pointOfSale,
+      cursors: parseResult.data.cursors,
+      productsCount: pullResult.products.items.length,
+      customersCount: pullResult.customers.items.length,
+      stockCount: pullResult.stock.length,
+      pendingLotsQueried: parseResult.data.pendingLotIds.length,
     });
 
     res.status(200).json(pullResult);
@@ -125,6 +162,15 @@ export function createConnectorRoutes(
     const holdResult = connector.requestAccountHold({
       customerId: parseResult.data.customerId,
       amount: parseResult.data.amount,
+    });
+
+    // Logging detallado del hold
+    posLog.hold({
+      customerId: parseResult.data.customerId,
+      amount: parseResult.data.amount,
+      approved: holdResult.approved,
+      reasonCode: 'reasonCode' in holdResult ? holdResult.reasonCode : undefined,
+      holdId: 'holdId' in holdResult ? holdResult.holdId : undefined,
     });
 
     res.status(200).json(holdResult);
