@@ -9,6 +9,7 @@ import { activeViewSignal } from './state/navigation-state.ts';
 import { AuthView } from './components/auth/AuthView.tsx';
 import { AppShell } from './components/shell/AppShell.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
+import { CatalogView } from './components/catalog/CatalogView.tsx';
 import { Card, CardHeader } from './components/ui/Card.tsx';
 
 // Cargar perfil al inicializar si hay un token persistido
@@ -28,17 +29,7 @@ export function App() {
       {/* Vista de Navegación Activa */}
       {currentView === 'dashboard' && <DashboardView />}
 
-      {currentView === 'catalog' && (
-        <Card>
-          <CardHeader
-            title="Catálogo & Precios"
-            description="Gestión centralizada de productos, códigos de barras, listas de precios y categorías."
-          />
-          <div class="py-12 text-center text-xs text-slate-400">
-            Vista de catálogo (Grilla interactiva programada en la siguiente etapa).
-          </div>
-        </Card>
-      )}
+      {currentView === 'catalog' && <CatalogView />}
 
       {currentView === 'stock' && (
         <Card>
