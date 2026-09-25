@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS account_movements (
   id TEXT PRIMARY KEY,
   customer_id TEXT NOT NULL,
   type TEXT NOT NULL, -- 'sale', 'payment', 'adjustment', 'interest'
-  amount REAL NOT NULL, -- positivo aumenta deuda / saldo deudor, negativo acredita
+  amount REAL NOT NULL, -- positivo aumenta saldo deudor, negativo acredita
   balance_after REAL NOT NULL,
   description TEXT,
   sale_id TEXT,

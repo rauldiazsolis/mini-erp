@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb, SYSTEM_SCHEMA_VERSION } from '../src/db/system-db.js';
-import { initTenantDb, TENANT_SCHEMA_VERSION } from '../src/db/tenant-db.js';
+import { initSystemDb, SYSTEM_SCHEMA_VERSION } from '../src/server/db/system-db.ts';
+import { initTenantDb, TENANT_SCHEMA_VERSION } from '../src/server/db/tenant-db.ts';
 
 describe('Database Engine (DB-per-tenant)', () => {
   let systemDb: DatabaseSync;

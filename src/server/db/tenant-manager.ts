@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { initTenantDb, openTenantDb } from './tenant-db.js';
+import { initTenantDb, openTenantDb } from './tenant-db.ts';
 
 export type TenantRecord = {
   id: string;
@@ -25,14 +25,16 @@ export type CreateTenantParams = {
 };
 
 export class TenantManager {
+  private systemDb: DatabaseSync;
   private cache = new Map<string, DatabaseSync>();
   private baseDir: string;
   private inMemory: boolean;
 
   constructor(
-    private systemDb: DatabaseSync,
+    systemDb: DatabaseSync,
     options?: { baseDir?: string; inMemory?: boolean },
   ) {
+    this.systemDb = systemDb;
     this.baseDir = options?.baseDir ?? join(process.cwd(), 'data', 'tenants');
     this.inMemory = options?.inMemory ?? false;
   }

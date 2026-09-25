@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb } from '../src/db/system-db.js';
-import { TenantManager } from '../src/db/tenant-manager.js';
+import { initSystemDb } from '../src/server/db/system-db.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
 
 describe('TenantManager', () => {
   let systemDb: DatabaseSync;

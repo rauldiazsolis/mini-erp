@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SYSTEM_SCHEMA_VERSION = 1;
+export const SYSTEM_SCHEMA_VERSION = 2;
 
 const SYSTEM_SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -12,6 +12,14 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   global_role TEXT NOT NULL, -- 'root', 'support', 'user'
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tenants (
