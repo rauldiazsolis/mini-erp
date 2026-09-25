@@ -11,6 +11,7 @@ import { AppShell } from './components/shell/AppShell.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
 import { CatalogView } from './components/catalog/CatalogView.tsx';
 import { StockView } from './components/stock/StockView.tsx';
+import { CustomerView } from './components/customers/CustomerView.tsx';
 import { Card, CardHeader } from './components/ui/Card.tsx';
 
 // Cargar perfil al inicializar si hay un token persistido
@@ -34,17 +35,7 @@ export function App() {
 
       {currentView === 'stock' && <StockView />}
 
-      {currentView === 'customers' && (
-        <Card>
-          <CardHeader
-            title="Clientes & Cuentas Corrientes"
-            description="Gestión de saldos, límites de crédito, extractos y cobranzas."
-          />
-          <div class="py-12 text-center text-xs text-slate-400">
-            Vista de cuentas corrientes y clientes.
-          </div>
-        </Card>
-      )}
+      {currentView === 'customers' && <CustomerView />}
 
       {currentView === 'bulk' && (
         <Card>
