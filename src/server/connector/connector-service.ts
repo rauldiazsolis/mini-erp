@@ -94,7 +94,7 @@ export class ConnectorService {
     defaultBranchId: string,
     now: string,
   ): LotIssue | undefined {
-    const originBranch = event.origin?.branch ?? null;
+    const originBranch = event.origin?.branch ?? (defaultBranchId ? defaultBranchId : null);
     const originPos = event.origin?.pointOfSale ?? null;
 
     switch (event.type) {
@@ -339,6 +339,7 @@ export class ConnectorService {
   pullCatalog(params: {
     cursors: { products?: string; customers?: string };
     pendingLotIds: string[];
+    branchId?: string;
   }) {
     // 1. Productos
     const productRows = (
@@ -409,10 +410,18 @@ export class ConnectorService {
 
     const lastCustomer = customerRows.at(-1);
 
-    // 3. Stock completo consolidado
-    const stockRows = this.tenantDb
-      .prepare('SELECT product_id, SUM(quantity) as quantity, MAX(updated_at) as updated_at FROM stock GROUP BY product_id')
-      .all() as { product_id: string; quantity: number | null; updated_at: string }[];
+    // 3. Stock (filtrado por sucursal si se especifica, o consolidado por defecto)
+    let stockRows: { product_id: string; quantity: number | null; updated_at: string }[];
+    if (params.branchId !== undefined && params.branchId !== '') {
+      const resolvedBranchId = this.resolveBranchId(params.branchId);
+      stockRows = this.tenantDb
+        .prepare('SELECT product_id, quantity, updated_at FROM stock WHERE branch_id = ?')
+        .all(resolvedBranchId) as { product_id: string; quantity: number | null; updated_at: string }[];
+    } else {
+      stockRows = this.tenantDb
+        .prepare('SELECT product_id, SUM(quantity) as quantity, MAX(updated_at) as updated_at FROM stock GROUP BY product_id')
+        .all() as { product_id: string; quantity: number | null; updated_at: string }[];
+    }
 
     const stock = stockRows.map((r) => ({
       productId: r.product_id,

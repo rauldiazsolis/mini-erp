@@ -137,6 +137,7 @@ export function createConnectorRoutes(
     const pullResult = connector.pullCatalog({
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
+      branchId: branch,
     });
 
     // Logging detallado del pull

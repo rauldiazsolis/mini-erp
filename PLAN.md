@@ -75,7 +75,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 6: Pruebas End-to-End y Sincronización en Vivo con POS            │
+│ FASE 6: Pruebas End-to-End y Sincronización en Vivo [COMPLETADA]       │
 │   • Conexión real del POS (src/) con Mini-ERP (localhost:4100).        │
 │   • Ciclo de vida completo: pull, ventas offline, holds y push.        │
 │   • Auditoría bidireccional de stock, cuentas corrientes y dashboard.  │
@@ -252,13 +252,32 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 8. Detalle de Etapas: FASE 6 (Pruebas End-to-End y Sincronización en Vivo)
+## 8. Detalle de Etapas: FASE 6 (Pruebas End-to-End y Sincronización en Vivo) [COMPLETADA]
 
 ### Objetivos:
 - Conexión real del frontend POS (`src/`) apuntando al Mini-ERP (`http://localhost:4100/connector`).
 - Validación de ciclo de vida completo:
-  1. Pull inicial de catálogo y clientes hacia el POS.
+  1. Pull inicial de catálogo, stock y clientes hacia el POS.
   2. Ventas offline, ventas a cuenta corriente con `account-holds`.
-  3. Push de lotes desde el POS al Mini-ERP.
+  3. Push de lotes de sincronización desde el POS al Mini-ERP.
   4. Impacto automático en stock de la sucursal, Kardex, cuenta corriente y dashboard del ERP.
+
+### Etapa 6.1: Enriquecimiento del Conector & Acondicionamiento Multi-Sucursal [COMPLETADA]
+- Soporte de filtro por `branchId` en `pullCatalog` de `ConnectorService` con resolución automática a ID de sucursal.
+- Fallback automático de `originBranch` al `defaultBranchId` de la terminal POS en `applyEvent` si el evento no trae sucursal explícita.
+- Mapeo consistente de contexto de terminal (`req.posContext.branch`) en `createConnectorRoutes`.
+
+### Etapa 6.2: Suite Automatizada de Integración End-to-End (`test/e2e-pos-sync-lifecycle.test.ts`) [COMPLETADA]
+- Verificación de ciclo completo de sincronización bidireccional bajo contrato v4.0.0:
+  1. Handshake `GET /connector/info` y rechazo `409 IncompatibleContract` ante major no soportado.
+  2. Pull inicial de snapshot completo (`POST /connector/sync/pull`).
+  3. Reservas síncronas de crédito (`POST /connector/account-holds`): casos aprobado, denegado por insuficiencia de crédito, y denegado por falta de cuenta corriente.
+  4. Push de lote multievento (`POST /connector/sync/push`): ventas en efectivo, ventas a cuenta corriente con hold confirmado, ventas fiado offline sin hold, cobranza de clientes, movimientos de caja y ventas de anulación/devolución con reposición de stock.
+  5. Pull de confirmación con estado de lote `ok` e idempotencia verificada ante reenvíos idénticos.
+  6. Auditoría integral de negocio en APIs del ERP: stock matricial descontado/repuesto por sucursal, trazabilidad append-only en Kardex, extracto de cuenta corriente de clientes con `balanceAfter` consistente, y dashboard summary con KPIs en tiempo real.
+
+### Etapa 6.3: Verificación de Calidad y Entorno [COMPLETADA]
+- **152 tests pasando en verde** en 23 suites de prueba.
+- Verificación estricta de TypeScript: `tsc --noEmit` en 0 errores.
+- Build de producción Vite completado con éxito.
 
