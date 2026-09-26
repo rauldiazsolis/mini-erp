@@ -22,12 +22,20 @@ Este documento define las reglas operativas, de proceso y de arquitectura que **
 
 ---
 
-## 3. Metodología de Desarrollo: Ciclo de Fases y Etapas
+## 3. Metodología de Desarrollo: Ciclo de Fases, Brainstorming y Etapas
 
-El desarrollo se organiza en Fases divididas en Etapas atómicas (definidas en `PLAN.md`):
+1. **Requerimientos de Alto Nivel**:
+   - El desarrollador planteará necesidades a nivel conceptual/funcional (ej. *"Quiero implementar modo claro, modo oscuro y heredado"*).
+   - El agente asume todas las reglas técnicas, de estilo y de arquitectura establecidas en este documento sin necesidad de repetirlas en el prompt.
 
-1. **Apertura de Fase**: Brainstorming y diseño de la fase $\rightarrow$ definición de etapas verificables $\rightarrow$ aprobación del usuario.
-2. **Ejecución de Etapa (TDD Estricto)**:
+2. **Apertura de Fase / Tarea (Brainstorming & Diseño Obligatorio)**:
+   - Antes de escribir o modificar código, el agente abre un diálogo de **Brainstorming y Diseño**:
+     - Opciones funcionales, decisiones de UX y posibles casos de borde.
+     - Impacto arquitectónico (stores/signals, componentes, rutas, tablas, IoC).
+     - Definición de etapas verificables y criterios de aceptación.
+     - Espera de confirmación / acuerdo con el usuario.
+
+3. **Ejecución de Etapa (TDD Estricto)**:
    - Escribir o actualizar tests unitarios/integración con Vitest.
    - Implementar el código mínimo necesario.
    - Verificar obligatoriamente que pasen ambos comandos:
@@ -35,8 +43,13 @@ El desarrollo se organiza en Fases divididas en Etapas atómicas (definidas en `
      pnpm typecheck
      pnpm test
      ```
-   - Si aplica, proveer instrucciones o datos de prueba para verificar el comportamiento en vivo.
-   - Solicitar confirmación/commit antes de pasar a la siguiente etapa.
+   - Si se modificó la UI, validar también con `pnpm run build`.
+   - Proveer instrucciones o datos de prueba para verificar en vivo si aplica.
+   - Detenerse y sugerir el commit antes de avanzar a la siguiente etapa.
+
+4. **Mantenimiento del Documento Maestro**:
+   - Este archivo (`AGENTS.md`) es la **Única Fuente de Verdad**.
+   - Toda decisión arquitectónica nueva o cambio de librería/convención debe registrarse de inmediato aquí para mantener actualizados a todos los agentes.
 
 ---
 
