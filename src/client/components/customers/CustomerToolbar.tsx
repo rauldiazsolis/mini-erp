@@ -9,6 +9,7 @@ import {
   openNewCustomerModal,
 } from '../../state/customer-state.ts';
 import { Button } from '../ui/Button.tsx';
+import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 
 export function CustomerToolbar() {
   const search = customerSearchSignal.value;
@@ -19,12 +20,12 @@ export function CustomerToolbar() {
   const isLoading = customerLoadingSignal.value;
 
   return (
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-sm">
+    <FilterToolbar>
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Izquierda: Buscador */}
         <div class="relative flex-1 max-w-md">
           <svg
-            class="w-4 h-4 absolute left-3.5 top-3 text-slate-500"
+            class="w-4 h-4 absolute left-3.5 top-3 text-slate-400 dark:text-slate-500"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -41,13 +42,13 @@ export function CustomerToolbar() {
             placeholder="Buscar por nombre, DNI/CUIT o teléfono..."
             value={search}
             onInput={(e) => (customerSearchSignal.value = (e.target as HTMLInputElement).value)}
-            class="w-full pl-10 pr-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+            class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           />
           {search && (
             <button
               type="button"
               onClick={() => (customerSearchSignal.value = '')}
-              class="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 text-xs"
+              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
             >
               ✕
             </button>
@@ -61,10 +62,10 @@ export function CustomerToolbar() {
             onClick={fetchCustomers}
             disabled={isLoading}
             title="Recargar clientes"
-            class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+            class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50 border border-slate-200 dark:border-slate-700/80"
           >
             <svg
-              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-400' : ''}`}
+              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-500 dark:text-indigo-400' : ''}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -88,7 +89,7 @@ export function CustomerToolbar() {
       </div>
 
       {/* Filtros secundarios: Solo Deudores, Estado y Conteo */}
-      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
         <div class="flex flex-wrap items-center gap-3">
           {/* Toggle Solo Deudores */}
           <button
@@ -96,8 +97,8 @@ export function CustomerToolbar() {
             onClick={() => (customerDebtorsOnlySignal.value = !debtorsOnly)}
             class={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
               debtorsOnly
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
-                : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700'
+                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
             }`}
           >
             <span>⚠️ Solo Deudores</span>
@@ -105,13 +106,15 @@ export function CustomerToolbar() {
 
           {/* Selector de Estado */}
           <div class="flex items-center gap-1.5">
-            <span class="text-slate-500">Estado:</span>
-            <div class="inline-flex rounded-lg p-0.5 bg-slate-950 border border-slate-800">
+            <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
+            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => (customerBlockedFilterSignal.value = 'all')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  blockedFilter === 'all'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Todos
@@ -120,7 +123,9 @@ export function CustomerToolbar() {
                 type="button"
                 onClick={() => (customerBlockedFilterSignal.value = 'active')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'active' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  blockedFilter === 'active'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Habilitados
@@ -129,7 +134,9 @@ export function CustomerToolbar() {
                 type="button"
                 onClick={() => (customerBlockedFilterSignal.value = 'blocked')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'blocked' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  blockedFilter === 'blocked'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Bloqueados
@@ -139,10 +146,10 @@ export function CustomerToolbar() {
         </div>
 
         {/* Conteo */}
-        <div class="text-slate-500 font-mono text-[11px]">
-          Mostrando <strong class="text-slate-200">{filteredCount}</strong> de {totalCount} clientes
+        <div class="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+          Mostrando <strong class="text-slate-800 dark:text-slate-200">{filteredCount}</strong> de {totalCount} clientes
         </div>
       </div>
-    </div>
+    </FilterToolbar>
   );
 }

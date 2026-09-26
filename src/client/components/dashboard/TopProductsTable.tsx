@@ -36,32 +36,32 @@ export function TopProductsTable() {
                       <span
                         class={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
                           idx === 0
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30'
                             : idx === 1
-                            ? 'bg-slate-300/20 text-slate-200 border border-slate-300/30'
+                            ? 'bg-slate-200 dark:bg-slate-300/20 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-300/30'
                             : idx === 2
-                            ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-                            : 'bg-slate-800 text-slate-400'
+                            ? 'bg-orange-500/15 text-orange-600 dark:text-orange-300 border border-orange-500/30'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         #{idx + 1}
                       </span>
-                      <span class="font-medium text-slate-200 truncate">{item.name}</span>
+                      <span class="font-medium text-slate-800 dark:text-slate-200 truncate">{item.name}</span>
                     </div>
 
                     <div class="text-right shrink-0">
-                      <span class="font-semibold text-white">{formatCurrency(item.totalRevenue)}</span>
-                      <span class="text-[10px] text-slate-400 block font-mono">
+                      <span class="font-semibold text-slate-900 dark:text-white">{formatCurrency(item.totalRevenue)}</span>
+                      <span class="text-[10px] text-slate-500 dark:text-slate-400 block font-mono">
                         {formatNumber(item.unitsSold)} un.
                       </span>
                     </div>
                   </div>
 
                   {/* Barra de progreso visual */}
-                  <div class="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                  <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-950 rounded-full overflow-hidden">
                     <div
                       class={`h-full rounded-full transition-all duration-300 ${
-                        isTop3 ? 'bg-indigo-500' : 'bg-slate-600'
+                        isTop3 ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                       style={{ width: `${ratio}%` }}
                     ></div>
@@ -73,9 +73,9 @@ export function TopProductsTable() {
         )}
       </div>
 
-      <div class="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between text-[11px] text-slate-400">
+      <div class="pt-4 border-t border-slate-200 dark:border-slate-800/80 mt-4 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
         <span>Datos auditados del TPV</span>
-        <span class="text-indigo-400 font-medium">Connector v4.0.0</span>
+        <span class="text-indigo-600 dark:text-indigo-400 font-medium">Connector v4.0.0</span>
       </div>
     </Card>
   );

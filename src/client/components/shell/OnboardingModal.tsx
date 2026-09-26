@@ -89,17 +89,17 @@ export function OnboardingModal() {
   };
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div class="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div class="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header Modal */}
-        <div class="p-6 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
+        <div class="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-500/25">
               🚀
             </div>
             <div>
-              <h2 class="text-lg font-bold text-white tracking-tight">Nuevo Comercio en Mini-ERP</h2>
-              <p class="text-xs text-slate-400">Asistente de configuración y aprovisionamiento en 3 pasos</p>
+              <h2 class="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Nuevo Comercio en Mini-ERP</h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Asistente de configuración y aprovisionamiento en 3 pasos</p>
             </div>
           </div>
           {step < 4 && (
@@ -107,7 +107,7 @@ export function OnboardingModal() {
               type="button"
               onClick={closeOnboardingModal}
               disabled={isSubmitting}
-              class="text-slate-400 hover:text-white transition-colors cursor-pointer p-1.5 rounded-xl hover:bg-slate-800"
+              class="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -117,7 +117,7 @@ export function OnboardingModal() {
         </div>
 
         {/* Stepper Wizard Bar */}
-        <div class="px-6 py-3 border-b border-slate-800/80 bg-slate-900/60 flex items-center justify-between text-xs">
+        <div class="px-6 py-3 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-900/60 flex items-center justify-between text-xs">
           {[
             { num: 1, label: 'Identidad' },
             { num: 2, label: 'Rubro & Preset' },
@@ -130,7 +130,7 @@ export function OnboardingModal() {
               <div
                 key={s.num}
                 class={`flex items-center gap-2 ${
-                  isActive ? 'text-indigo-400 font-bold' : isDone ? 'text-emerald-400 font-medium' : 'text-slate-500'
+                  isActive ? 'text-indigo-600 dark:text-indigo-400 font-bold' : isDone ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-slate-400 dark:text-slate-500'
                 }`}
               >
                 <div
@@ -138,8 +138,8 @@ export function OnboardingModal() {
                     isActive
                       ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/40 ring-2 ring-indigo-400/30'
                       : isDone
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
                   }`}
                 >
                   {isDone ? '✓' : s.num}
@@ -153,8 +153,8 @@ export function OnboardingModal() {
         {/* Body Container */}
         <div class="p-6 overflow-y-auto flex-1 space-y-6">
           {error && (
-            <div class="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-3 text-xs text-rose-300">
-              <svg class="w-5 h-5 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-3 text-xs text-rose-700 dark:text-rose-300">
+              <svg class="w-5 h-5 text-rose-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -169,7 +169,7 @@ export function OnboardingModal() {
           {/* STEP 1: IDENTIDAD */}
           {step === 1 && (
             <div class="space-y-4 animate-in fade-in duration-150">
-              <div class="bg-indigo-500/10 border border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-300 leading-relaxed">
+              <div class="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
                 Ingresa los datos comerciales básicos. Se generará un slug amigable y un identificador aislado para la
                 base de datos SQLite del tenant.
               </div>
@@ -206,8 +206,8 @@ export function OnboardingModal() {
           {step === 2 && (
             <div class="space-y-4 animate-in fade-in duration-150">
               <div>
-                <h3 class="text-sm font-bold text-white">Selecciona una plantilla o rubro inicial</h3>
-                <p class="text-xs text-slate-400 mt-0.5">
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Selecciona una plantilla o rubro inicial</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Puedes precargar categorías, marcas y artículos modelo listos para vender o comenzar en blanco.
                 </p>
               </div>
@@ -222,7 +222,7 @@ export function OnboardingModal() {
                       class={`p-4 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
                         isSelected
                           ? 'bg-indigo-600/15 border-indigo-500 shadow-lg shadow-indigo-600/10 ring-2 ring-indigo-500/40'
-                          : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'
+                          : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/40'
                       }`}
                     >
                       <div class="flex items-start justify-between mb-2">
@@ -230,15 +230,15 @@ export function OnboardingModal() {
                         <span
                           class={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                             isSelected
-                              ? 'bg-indigo-500 text-white'
-                              : 'bg-slate-800 text-slate-400 border border-slate-700'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
                           }`}
                         >
                           {p.badge}
                         </span>
                       </div>
-                      <div class="font-bold text-sm text-white mb-1">{p.title}</div>
-                      <div class="text-xs text-slate-400 leading-relaxed">{p.description}</div>
+                      <div class="font-bold text-sm text-slate-900 dark:text-white mb-1">{p.title}</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{p.description}</div>
                     </div>
                   );
                 })}
@@ -249,7 +249,7 @@ export function OnboardingModal() {
           {/* STEP 3: SUCURSAL & TERMINAL POS */}
           {step === 3 && (
             <div class="space-y-4 animate-in fade-in duration-150">
-              <div class="bg-indigo-500/10 border border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-300 leading-relaxed">
+              <div class="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
                 Configura la primera sucursal física y la terminal POS donde operará tu caja registradora. Se emitirá
                 una API Key segura lista para sincronizar.
               </div>
@@ -289,17 +289,17 @@ export function OnboardingModal() {
                   ✓
                 </div>
                 <div>
-                  <h4 class="text-sm font-bold text-white">¡Comercio "{result.name}" Creado con Éxito!</h4>
-                  <p class="text-xs text-emerald-300 mt-0.5">
+                  <h4 class="text-sm font-bold text-slate-900 dark:text-white">¡Comercio "{result.name}" Creado con Éxito!</h4>
+                  <p class="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
                     La base de datos SQLite fue creada y poblada. Conecta tu Offline POS con las siguientes credenciales:
                   </p>
                 </div>
               </div>
 
               {/* Credenciales Card */}
-              <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3.5">
+              <div class="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3.5">
                 <div>
-                  <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                     Connector Sync URL
                   </div>
                   <div class="flex items-center gap-2">
@@ -307,7 +307,7 @@ export function OnboardingModal() {
                       type="text"
                       readOnly
                       value={result.connectorUrl}
-                      class="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-indigo-300 focus:outline-none"
+                      class="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-indigo-600 dark:text-indigo-300 focus:outline-none"
                     />
                     <Button
                       variant="secondary"
@@ -320,7 +320,7 @@ export function OnboardingModal() {
                 </div>
 
                 <div>
-                  <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                     API Key del POS (v4.0.0)
                   </div>
                   <div class="flex items-center gap-2">
@@ -328,7 +328,7 @@ export function OnboardingModal() {
                       type="text"
                       readOnly
                       value={result.apiKey}
-                      class="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-emerald-300 focus:outline-none"
+                      class="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-emerald-600 dark:text-emerald-300 focus:outline-none"
                     />
                     <Button
                       variant="secondary"
@@ -340,17 +340,17 @@ export function OnboardingModal() {
                   </div>
                 </div>
 
-                <div class="flex items-center gap-4 text-xs text-slate-400 pt-1">
+                <div class="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
                   <div>
-                    <span class="text-slate-500">Sucursal:</span> <strong class="text-white">{result.branch}</strong>
+                    <span class="text-slate-400 dark:text-slate-500">Sucursal:</span> <strong class="text-slate-900 dark:text-white">{result.branch}</strong>
                   </div>
                   <div>
-                    <span class="text-slate-500">Terminal:</span>{' '}
-                    <strong class="text-white">{result.pointOfSale}</strong>
+                    <span class="text-slate-400 dark:text-slate-500">Terminal:</span>{' '}
+                    <strong class="text-slate-900 dark:text-white">{result.pointOfSale}</strong>
                   </div>
                   <div>
-                    <span class="text-slate-500">Tenant ID:</span>{' '}
-                    <strong class="text-white font-mono">{result.tenantId}</strong>
+                    <span class="text-slate-400 dark:text-slate-500">Tenant ID:</span>{' '}
+                    <strong class="text-slate-900 dark:text-white font-mono">{result.tenantId}</strong>
                   </div>
                 </div>
               </div>
@@ -359,7 +359,7 @@ export function OnboardingModal() {
         </div>
 
         {/* Footer Modal Actions */}
-        <div class="p-5 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
+        <div class="p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between">
           {step < 4 ? (
             <>
               <div>

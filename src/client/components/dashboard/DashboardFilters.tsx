@@ -21,9 +21,9 @@ export function DashboardFilters() {
   const isLoading = dashboardLoadingSignal.value;
 
   return (
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 backdrop-blur shadow-sm dark:shadow-none transition-colors">
       {/* Selector de Período (Pills) */}
-      <div class="flex items-center gap-1.5 p-1 bg-slate-950/80 rounded-xl border border-slate-800">
+      <div class="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-950/80 rounded-xl border border-slate-200 dark:border-slate-800">
         {periods.map((p) => {
           const isActive = currentPeriod === p.id;
           return (
@@ -34,7 +34,7 @@ export function DashboardFilters() {
               class={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 isActive
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-800/60'
               }`}
             >
               {p.label}
@@ -50,7 +50,7 @@ export function DashboardFilters() {
             <select
               value={currentBranch}
               onChange={(e) => (selectedBranchSignal.value = (e.target as HTMLSelectElement).value)}
-              class="w-full appearance-none px-3.5 py-1.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8 cursor-pointer"
+              class="w-full appearance-none px-3.5 py-1.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8 cursor-pointer"
             >
               <option value="">Todas las sucursales</option>
               {branches.map((b) => (

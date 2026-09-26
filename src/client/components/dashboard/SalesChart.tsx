@@ -71,7 +71,7 @@ export function SalesChart() {
         description="Facturación y volumen de operaciones a lo largo del tiempo"
       >
         {activePoint && (
-          <div class="text-xs bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-xl text-indigo-300 font-medium">
+          <div class="text-xs bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-3 py-1 rounded-xl text-indigo-700 dark:text-indigo-300 font-medium">
             <strong>{activePoint.item.label}:</strong> {formatCurrency(activePoint.item.total)} (
             {formatNumber(activePoint.item.count)} tickets)
           </div>
@@ -100,14 +100,14 @@ export function SalesChart() {
                 y1={tick.y}
                 x2={width - paddingRight}
                 y2={tick.y}
-                stroke="rgb(51 65 85 / 0.4)"
+                stroke="currentColor"
+                class="text-slate-200 dark:text-slate-800"
                 stroke-dasharray={i === 0 ? 'none' : '4 4'}
               />
               <text
                 x={paddingLeft - 10}
                 y={tick.y + 4}
-                fill="rgb(148 163 184)"
-                font-size="10"
+                class="fill-slate-400 dark:fill-slate-500 text-[10px]"
                 text-anchor="end"
                 font-family="monospace"
               >
@@ -162,8 +162,8 @@ export function SalesChart() {
                   cx={p.x}
                   cy={p.y}
                   r={isHovered ? 6 : 4}
-                  fill={isHovered ? '#ffffff' : 'rgb(99 102 241)'}
-                  stroke="rgb(30 27 75)"
+                  fill={isHovered ? '#6366f1' : '#ffffff'}
+                  stroke="#6366f1"
                   stroke-width="2"
                   class="transition-all duration-150"
                 />
@@ -172,9 +172,11 @@ export function SalesChart() {
                 <text
                   x={p.x}
                   y={height - 12}
-                  fill={isHovered ? 'rgb(248 250 252)' : 'rgb(148 163 184)'}
-                  font-size="10"
-                  font-weight={isHovered ? '700' : '500'}
+                  class={`text-[10px] transition-colors ${
+                    isHovered
+                      ? 'fill-slate-900 dark:fill-slate-100 font-bold'
+                      : 'fill-slate-500 dark:fill-slate-400 font-medium'
+                  }`}
                   text-anchor="middle"
                 >
                   {p.item.label}

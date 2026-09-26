@@ -11,6 +11,7 @@ import { SalesChart } from './SalesChart.tsx';
 import { TopProductsTable } from './TopProductsTable.tsx';
 import { StockAlertsCard } from './StockAlertsCard.tsx';
 import { Button } from '../ui/Button.tsx';
+import { PageHeader } from '../ui/PageHeader.tsx';
 
 export function DashboardView() {
   const activeTenant = activeTenantSignal.value;
@@ -20,16 +21,17 @@ export function DashboardView() {
 
   return (
     <div class="space-y-6">
-      {/* Título de la página y bienvenida */}
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h2 class="text-2xl font-black tracking-tight text-white">Dashboard Analítico</h2>
-          <p class="text-xs text-slate-400 mt-0.5">
+      {/* Encabezado de la página */}
+      <PageHeader
+        title="Dashboard Analítico"
+        badge="Métricas en Vivo"
+        subtitle={
+          <span>
             Métricas de ventas, transacciones y cuentas corrientes en vivo para{' '}
-            <strong class="text-indigo-400">{activeTenant?.name ?? 'el comercio'}</strong>.
-          </p>
-        </div>
-      </div>
+            <strong class="text-indigo-600 dark:text-indigo-400">{activeTenant?.name ?? 'el comercio'}</strong>.
+          </span>
+        }
+      />
 
       {/* Barra de Filtros */}
       <DashboardFilters />

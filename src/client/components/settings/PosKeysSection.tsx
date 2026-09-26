@@ -17,6 +17,10 @@ import {
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Card } from '../ui/Card.tsx';
+import { Modal } from '../ui/Modal.tsx';
+import { Select } from '../ui/Select.tsx';
+import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
 
 function formatDate(dateStr: string): string {
   try {
@@ -58,12 +62,12 @@ export function PosKeysSection() {
   return (
     <div class="space-y-6">
       {/* Header y Acciones */}
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <Card class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <span>📡 Terminales POS y Llaves de Acceso (API Keys)</span>
           </h3>
-          <p class="text-xs text-slate-400 mt-0.5">
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Cada caja registradora u operadora offline se autentica con una API Key criptográfica vinculada a su sucursal
           </p>
         </div>
@@ -73,11 +77,11 @@ export function PosKeysSection() {
             type="button"
             onClick={fetchApiKeys}
             disabled={isLoading}
-            class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer"
+            class="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors cursor-pointer"
             title="Recargar llaves"
           >
             <svg
-              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-400' : ''}`}
+              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-500 dark:text-indigo-400' : ''}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -98,20 +102,20 @@ export function PosKeysSection() {
             Nueva API Key
           </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Lista de API Keys */}
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+      <TableContainer>
         {isLoading && keys.length === 0 ? (
-          <div class="p-8 text-center text-xs text-slate-400 space-y-3">
+          <div class="p-8 text-center text-xs text-slate-500 dark:text-slate-400 space-y-3">
             <div class="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
             <div>Cargando terminales autorizadas...</div>
           </div>
         ) : keys.length === 0 ? (
-          <div class="p-12 text-center text-slate-400 space-y-3">
+          <div class="p-12 text-center text-slate-500 dark:text-slate-400 space-y-3">
             <div class="text-3xl">🔑</div>
-            <div class="text-sm font-bold text-white">No hay API Keys generadas</div>
-            <p class="text-xs text-slate-500 max-w-sm mx-auto">
+            <div class="text-sm font-bold text-slate-900 dark:text-white">No hay API Keys generadas</div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
               Crea tu primera llave para vincular tu caja registradora o terminal de venta con el Mini-ERP.
             </p>
             <Button size="sm" onClick={openCreateKeyModal}>
@@ -120,50 +124,50 @@ export function PosKeysSection() {
           </div>
         ) : (
           <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="bg-slate-950/80 border-b border-slate-800 text-[10px] uppercase font-bold tracking-wider text-slate-400 select-none">
-                  <th class="py-3 px-4">Terminal / Nombre</th>
-                  <th class="py-3 px-4 w-32">Sucursal</th>
-                  <th class="py-3 px-4 w-32">Punto de Venta</th>
-                  <th class="py-3 px-4 w-40">Prefijo de Clave</th>
-                  <th class="py-3 px-4 w-28 text-center">Estado</th>
-                  <th class="py-3 px-4 w-28 text-center">Creada</th>
-                  <th class="py-3 px-4 w-20 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/60 font-sans">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Terminal / Nombre</Th>
+                  <Th class="w-32">Sucursal</Th>
+                  <Th class="w-32">Punto de Venta</Th>
+                  <Th class="w-40">Prefijo de Clave</Th>
+                  <Th class="w-28 text-center">Estado</Th>
+                  <Th class="w-28 text-center">Creada</Th>
+                  <Th class="w-20 text-right">Acción</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {keys.map((k) => (
-                  <tr key={k.id} class="hover:bg-slate-800/30 transition-colors">
-                    <td class="py-3 px-4 font-semibold text-white">{k.name}</td>
-                    <td class="py-3 px-4">
-                      <span class="px-2 py-0.5 rounded-md bg-slate-800 text-indigo-300 font-mono text-[11px] font-bold border border-slate-700/50">
+                  <Tr key={k.id}>
+                    <Td class="font-semibold text-slate-900 dark:text-white">{k.name}</Td>
+                    <Td>
+                      <span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-bold border border-slate-200 dark:border-slate-700/50">
                         {k.branch}
                       </span>
-                    </td>
-                    <td class="py-3 px-4 text-slate-300">{k.pointOfSale}</td>
-                    <td class="py-3 px-4 font-mono text-slate-400">{k.keyPrefix}••••••••</td>
-                    <td class="py-3 px-4 text-center">
+                    </Td>
+                    <Td class="text-slate-600 dark:text-slate-300">{k.pointOfSale}</Td>
+                    <Td class="font-mono text-slate-500 dark:text-slate-400">{k.keyPrefix}••••••••</Td>
+                    <Td class="text-center">
                       <span
                         class={`inline-block px-2 py-0.5 rounded-full font-medium text-[10px] ${
                           k.active
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                         }`}
                       >
                         {k.active ? 'Activa' : 'Revocada'}
                       </span>
-                    </td>
-                    <td class="py-3 px-4 text-center text-slate-400 font-mono text-[11px]">
+                    </Td>
+                    <Td class="text-center text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       {formatDate(k.createdAt)}
-                    </td>
-                    <td class="py-3 px-4 text-right">
+                    </Td>
+                    <Td class="text-right">
                       {k.active && (
                         <button
                           type="button"
                           onClick={() => revokeApiKey(k.id, k.name)}
                           title="Revocar acceso a esta terminal"
-                          class="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                         >
                           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path
@@ -175,149 +179,125 @@ export function PosKeysSection() {
                           </svg>
                         </button>
                       )}
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </Tbody>
+            </Table>
           </div>
         )}
-      </div>
+      </TableContainer>
 
       {/* Modal: Crear Nueva API Key */}
-      {isCreateOpen && (
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div class="p-5 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center font-bold">
-                  🔑
-                </div>
-                <div>
-                  <h3 class="text-base font-bold text-white">Nueva API Key de POS</h3>
-                  <p class="text-xs text-slate-400">Emite una credencial segura para sincronizar</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closeCreateKeyModal}
-                class="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
-              >
-                ✕
-              </button>
+      <Modal
+        isOpen={isCreateOpen}
+        onClose={closeCreateKeyModal}
+        title="Nueva API Key de POS"
+        subtitle="Emite una credencial segura para sincronizar"
+        icon="🔑"
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={closeCreateKeyModal} disabled={isCreating}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={submitCreateApiKey} disabled={isCreating}>
+              {isCreating ? 'Generando...' : 'Generar Clave 🔑'}
+            </Button>
+          </>
+        }
+      >
+        <div class="space-y-4">
+          {createError && (
+            <div class="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-700 dark:text-rose-300">
+              {createError}
             </div>
+          )}
 
-            <div class="p-6 space-y-4">
-              {createError && (
-                <div class="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
-                  {createError}
-                </div>
-              )}
+          <Input
+            label="Nombre identificador *"
+            placeholder="Ej: Caja Mostrador 1"
+            value={form.name}
+            onInput={(e) =>
+              (createKeyFormSignal.value = {
+                ...createKeyFormSignal.value,
+                name: (e.target as HTMLInputElement).value,
+              })
+            }
+            autoFocus
+          />
 
-              <Input
-                label="Nombre identificador *"
-                placeholder="Ej: Caja Mostrador 1"
-                value={form.name}
-                onInput={(e) =>
-                  (createKeyFormSignal.value = {
-                    ...createKeyFormSignal.value,
-                    name: (e.target as HTMLInputElement).value,
-                  })
-                }
-                autoFocus
-              />
-
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Sucursal *</label>
-                <select
-                  value={form.branch}
-                  onChange={(e) =>
-                    (createKeyFormSignal.value = {
-                      ...createKeyFormSignal.value,
-                      branch: (e.target as HTMLSelectElement).value,
-                    })
-                  }
-                  class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.code}>
-                      {b.name} ({b.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Input
-                label="Nombre de Punto de Venta / Terminal *"
-                placeholder="Caja 1"
-                value={form.pointOfSale}
-                onInput={(e) =>
-                  (createKeyFormSignal.value = {
-                    ...createKeyFormSignal.value,
-                    pointOfSale: (e.target as HTMLInputElement).value,
-                  })
-                }
-              />
-            </div>
-
-            <div class="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2.5">
-              <Button variant="outline" size="sm" onClick={closeCreateKeyModal} disabled={isCreating}>
-                Cancelar
-              </Button>
-              <Button size="sm" onClick={submitCreateApiKey} disabled={isCreating}>
-                {isCreating ? 'Generando...' : 'Generar Clave 🔑'}
-              </Button>
-            </div>
+          <div>
+            <Select
+              label="Sucursal *"
+              value={form.branch}
+              onChange={(e) =>
+                (createKeyFormSignal.value = {
+                  ...createKeyFormSignal.value,
+                  branch: (e.target as HTMLSelectElement).value,
+                })
+              }
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.code}>
+                  {b.name} ({b.code})
+                </option>
+              ))}
+            </Select>
           </div>
+
+          <Input
+            label="Nombre de Punto de Venta / Terminal *"
+            placeholder="Caja 1"
+            value={form.pointOfSale}
+            onInput={(e) =>
+              (createKeyFormSignal.value = {
+                ...createKeyFormSignal.value,
+                pointOfSale: (e.target as HTMLInputElement).value,
+              })
+            }
+          />
         </div>
-      )}
+      </Modal>
 
       {/* Modal: Clave Secreta Generada (Solo visible una vez) */}
-      {secretKey && (
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
-          <div class="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div class="p-6 border-b border-slate-800 bg-slate-950/40 flex items-center gap-3">
-              <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-xl font-bold">
-                ✓
-              </div>
-              <div>
-                <h3 class="text-base font-bold text-white">¡API Key Generada con Éxito!</h3>
-                <p class="text-xs text-slate-400">Asignada a "{secretKey.name}" ({secretKey.branch} / {secretKey.pointOfSale})</p>
-              </div>
+      <Modal
+        isOpen={Boolean(secretKey)}
+        onClose={dismissSecretKeyModal}
+        title="¡API Key Generada con Éxito!"
+        subtitle={secretKey ? `Asignada a "${secretKey.name}" (${secretKey.branch} / ${secretKey.pointOfSale})` : undefined}
+        icon="✓"
+        footer={
+          <Button size="sm" onClick={dismissSecretKeyModal}>
+            Entendido y Guardado
+          </Button>
+        }
+      >
+        {secretKey && (
+          <div class="space-y-4">
+            <div class="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-700 dark:text-amber-300 leading-relaxed flex items-start gap-2.5">
+              <span class="text-lg">⚠️</span>
+              <span>
+                <strong>Copia esta clave ahora:</strong> Por seguridad, esta es la única vez que se mostrará la clave completa. No se almacenará en texto plano en la base de datos.
+              </span>
             </div>
 
-            <div class="p-6 space-y-4">
-              <div class="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 leading-relaxed flex items-start gap-2.5">
-                <span class="text-lg">⚠️</span>
-                <span>
-                  <strong>Copia esta clave ahora:</strong> Por seguridad, esta es la única vez que se mostrará la clave completa. No se almacenará en texto plano en la base de datos.
-                </span>
+            <div>
+              <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Clave Secreta de Conexión</label>
+              <div class="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={secretKey.rawKey}
+                  class="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-xs text-emerald-600 dark:text-emerald-400 focus:outline-none"
+                />
+                <Button size="sm" onClick={() => copyToClipboard(secretKey.rawKey)}>
+                  Copiar
+                </Button>
               </div>
-
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Clave Secreta de Conexión</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={secretKey.rawKey}
-                    class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs text-emerald-400 focus:outline-none"
-                  />
-                  <Button size="sm" onClick={() => copyToClipboard(secretKey.rawKey)}>
-                    Copiar
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div class="p-4 border-t border-slate-800 bg-slate-950/40 flex justify-end">
-              <Button size="sm" onClick={dismissSecretKeyModal}>
-                Entendido y Guardado
-              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   openNewProductModal,
 } from '../../state/catalog-state.ts';
 import { Button } from '../ui/Button.tsx';
+import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 
 export function CatalogToolbar() {
   const search = catalogSearchSignal.value;
@@ -21,12 +22,12 @@ export function CatalogToolbar() {
   const isLoading = catalogLoadingSignal.value;
 
   return (
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-sm">
+    <FilterToolbar>
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Izquierda: Búsqueda rápida */}
         <div class="relative flex-1 max-w-md">
           <svg
-            class="w-4 h-4 absolute left-3.5 top-3 text-slate-500"
+            class="w-4 h-4 absolute left-3.5 top-3 text-slate-400 dark:text-slate-500"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -43,13 +44,13 @@ export function CatalogToolbar() {
             placeholder="Buscar por nombre, SKU o código de barra..."
             value={search}
             onInput={(e) => (catalogSearchSignal.value = (e.target as HTMLInputElement).value)}
-            class="w-full pl-10 pr-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+            class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           />
           {search && (
             <button
               type="button"
               onClick={() => (catalogSearchSignal.value = '')}
-              class="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 text-xs"
+              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
             >
               ✕
             </button>
@@ -63,10 +64,10 @@ export function CatalogToolbar() {
             onClick={fetchCatalog}
             disabled={isLoading}
             title="Recargar catálogo"
-            class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+            class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50 border border-slate-200 dark:border-slate-700/80"
           >
             <svg
-              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-400' : ''}`}
+              class={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-500 dark:text-indigo-400' : ''}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -90,15 +91,15 @@ export function CatalogToolbar() {
       </div>
 
       {/* Barra de Filtros secundarios: Categoría, Estado y Conteo */}
-      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
         <div class="flex flex-wrap items-center gap-2.5">
           {/* Selector de Categorías */}
           <div class="flex items-center gap-1.5">
-            <span class="text-slate-500">Categoría:</span>
+            <span class="text-slate-500 dark:text-slate-400 font-medium">Categoría:</span>
             <select
               value={selectedCategory}
               onChange={(e) => (catalogCategoryFilterSignal.value = (e.target as HTMLSelectElement).value)}
-              class="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="all">Todas ({totalCount})</option>
               {categories.map((c) => (
@@ -111,13 +112,15 @@ export function CatalogToolbar() {
 
           {/* Selector de Estado */}
           <div class="flex items-center gap-1.5">
-            <span class="text-slate-500">Estado:</span>
-            <div class="inline-flex rounded-lg p-0.5 bg-slate-950 border border-slate-800">
+            <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
+            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => (catalogBlockedFilterSignal.value = 'all')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  selectedBlocked === 'all'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Todos
@@ -126,7 +129,9 @@ export function CatalogToolbar() {
                 type="button"
                 onClick={() => (catalogBlockedFilterSignal.value = 'active')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'active' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  selectedBlocked === 'active'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Activos
@@ -135,7 +140,9 @@ export function CatalogToolbar() {
                 type="button"
                 onClick={() => (catalogBlockedFilterSignal.value = 'blocked')}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'blocked' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  selectedBlocked === 'blocked'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 Bloqueados
@@ -145,10 +152,10 @@ export function CatalogToolbar() {
         </div>
 
         {/* Contador */}
-        <div class="text-slate-500 font-mono text-[11px]">
-          Mostrando <strong class="text-slate-200">{filteredCount}</strong> de {totalCount} productos
+        <div class="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+          Mostrando <strong class="text-slate-800 dark:text-slate-200">{filteredCount}</strong> de {totalCount} productos
         </div>
       </div>
-    </div>
+    </FilterToolbar>
   );
 }
