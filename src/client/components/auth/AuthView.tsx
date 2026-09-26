@@ -3,6 +3,7 @@ import { LoginForm } from './LoginForm.tsx';
 import { RegisterForm } from './RegisterForm.tsx';
 import { Card } from '../ui/Card.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
+import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 
 export const authViewModeSignal = signal<'login' | 'register'>('login');
 
@@ -48,7 +49,22 @@ export function AuthView() {
           )}
         </Card>
 
-        <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-8">
+        {/* Acceso directo a Onboarding Express para comerciantes */}
+        <div class="mt-4 p-4 rounded-3xl bg-gradient-to-tr from-indigo-500/10 via-purple-500/10 to-violet-500/10 border border-indigo-500/20 text-center backdrop-blur-sm">
+          <p class="text-xs font-semibold text-slate-800 dark:text-slate-200">
+            ¿Nuevo comerciante o quieres conectar tu POS?
+          </p>
+          <button
+            type="button"
+            onClick={() => openMerchantOnboarding()}
+            class="mt-2.5 w-full py-2.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>🚀</span>
+            <span>Comenzar Onboarding Express (1 minuto)</span>
+          </button>
+        </div>
+
+        <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
           offline-pos • Mini-ERP Multitenant v4.0.0
         </p>
       </div>

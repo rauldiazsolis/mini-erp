@@ -169,11 +169,12 @@ export async function submitOnboarding(): Promise<void> {
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4100';
     const connectorUrl = `${origin}/connector`;
+    const apiKey = keyRes.key || (keyRes as unknown as { rawKey?: string }).rawKey || '';
 
     provisionResultSignal.value = {
       tenantId: id,
       name,
-      apiKey: keyRes.key,
+      apiKey,
       branch: branchCode,
       pointOfSale: posName,
       connectorUrl,

@@ -107,7 +107,10 @@ export function createTenantRoutes(
       pointOfSale: parseResult.data.pointOfSale,
     });
 
-    res.status(201).json(key);
+    res.status(201).json({
+      ...key,
+      key: key.rawKey,
+    });
   });
 
   // Revocar API Key

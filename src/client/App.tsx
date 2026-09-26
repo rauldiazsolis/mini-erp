@@ -16,12 +16,27 @@ import { BulkView } from './components/bulk/BulkView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { Card, CardHeader } from './components/ui/Card.tsx';
 
+import {
+  merchantOnboardingActiveSignal,
+  initMerchantOnboardingFromUrl,
+} from './state/merchant-onboarding-state.ts';
+import { MerchantOnboardingView } from './components/onboarding/MerchantOnboardingView.tsx';
+
+// Inicializar detector de onboarding desde URL/query params
+if (typeof window !== 'undefined') {
+  initMerchantOnboardingFromUrl();
+}
+
 // Cargar perfil al inicializar si hay un token persistido
 if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.value) {
   fetchProfile();
 }
 
 export function App() {
+  if (merchantOnboardingActiveSignal.value) {
+    return <MerchantOnboardingView />;
+  }
+
   if (!isAuthenticatedSignal.value) {
     return <AuthView />;
   }
