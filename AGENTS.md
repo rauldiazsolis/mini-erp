@@ -95,6 +95,11 @@ Este documento define las reglas operativas, de proceso y de arquitectura que **
   - Todo unificado en `mini-erp/src/client/`.
   - Stack: Preact + `@preact/signals` + Tailwind CSS v4 (vía `@tailwindcss/vite` integrado como middleware Express).
   - **Arquitectura de Estado**: Signals puros (`signal`, `computed`, stores por dominio en `src/client/state/*`). **Prohibido el uso de React hooks** (`useState`, `useEffect`, etc.).
+  - **Sistema de Temas (Claro / Oscuro / Heredado)**:
+    - Control reactivo centralizado en `src/client/state/theme-state.ts` (`themeModeSignal`, `resolvedThemeSignal`, `systemPrefersDarkSignal`).
+    - Estrategia class-based con `@custom-variant dark (&:where(.dark, .dark *))` en `index.css`.
+    - Script inline anti-FOUC en `index.html` para sincronizar `document.documentElement` antes del render.
+    - Selector accesible `ThemeToggle.tsx` disponible en `Header.tsx`, `AuthView.tsx` y `SettingsView.tsx` (solapa Apariencia).
   - Componentes propios reutilizables estilo shadcn sin librerías de UI externas innecesarias.
 
 ---

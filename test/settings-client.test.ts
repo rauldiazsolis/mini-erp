@@ -70,6 +70,9 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
 
       activeSettingsTabSignal.value = 'connection';
       expect(activeSettingsTabSignal.value).toBe('connection');
+
+      activeSettingsTabSignal.value = 'appearance';
+      expect(activeSettingsTabSignal.value).toBe('appearance');
     });
   });
 

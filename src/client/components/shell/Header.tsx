@@ -14,6 +14,7 @@ import {
   openOnboardingModal,
 } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
+import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 
 export const tenantDropdownOpenSignal = signal(false);
 
@@ -34,14 +35,14 @@ export function Header() {
   };
 
   return (
-    <header class="h-16 border-b border-slate-800 bg-slate-900/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0">
+    <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0 transition-colors">
       {/* Izquierda: Botón Móvil & Selector de Tenant */}
       <div class="flex items-center gap-3">
         {/* Toggle Móvil */}
         <button
           type="button"
           onClick={toggleMobileMenu}
-          class="lg:hidden p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -53,14 +54,14 @@ export function Header() {
           <button
             type="button"
             onClick={() => (tenantDropdownOpenSignal.value = !tenantDropdownOpenSignal.value)}
-            class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 transition-all text-left cursor-pointer group"
+            class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700/80 transition-all text-left cursor-pointer group"
           >
             <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse"></div>
             <div>
-              <div class="text-xs font-bold text-white tracking-tight leading-none group-hover:text-indigo-300 transition-colors">
+              <div class="text-xs font-bold text-slate-800 dark:text-white tracking-tight leading-none group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                 {activeTenant?.name ?? 'Seleccionar Comercio'}
               </div>
-              <div class="text-[10px] text-slate-400 font-mono mt-0.5 leading-none">
+              <div class="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 leading-none">
                 {activeTenant ? activeTenant.tenantId : 'Sin selección'}
               </div>
             </div>
@@ -71,8 +72,8 @@ export function Header() {
 
           {/* Menú Desplegable */}
           {isDropdownOpen && (
-            <div class="absolute left-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div class="px-3 py-2 border-b border-slate-800 text-[10px] uppercase font-bold tracking-wider text-slate-500">
+            <div class="absolute left-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase font-bold tracking-wider text-slate-500">
                 Tus Comercios ({tenants.length})
               </div>
 
@@ -84,16 +85,18 @@ export function Header() {
                       key={t.tenantId}
                       type="button"
                       onClick={() => handleSelectTenant(t.tenantId)}
-                      class={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors hover:bg-slate-800 cursor-pointer ${
-                        isCurrent ? 'bg-indigo-600/10 text-indigo-300 font-semibold' : 'text-slate-300'
+                      class={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer ${
+                        isCurrent
+                          ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-300 font-semibold'
+                          : 'text-slate-700 dark:text-slate-300'
                       }`}
                     >
                       <div class="truncate pr-2">
-                        <div class="truncate text-white">{t.name}</div>
-                        <div class="text-[10px] text-slate-500 font-mono">{t.tenantId}</div>
+                        <div class="truncate text-slate-900 dark:text-white font-medium">{t.name}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{t.tenantId}</div>
                       </div>
                       {isCurrent && (
-                        <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
                       )}
@@ -102,7 +105,7 @@ export function Header() {
                 })}
               </div>
 
-              <div class="p-1.5 border-t border-slate-800 bg-slate-950/40 space-y-1">
+              <div class="p-1.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-1">
                 {isRootOrSupportSignal.value && (
                   <button
                     type="button"
@@ -110,7 +113,7 @@ export function Header() {
                       tenantDropdownOpenSignal.value = false;
                       openImpersonationModal();
                     }}
-                    class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
+                    class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
                   >
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
@@ -130,7 +133,7 @@ export function Header() {
                     tenantDropdownOpenSignal.value = false;
                     openOnboardingModal();
                   }}
-                  class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
+                  class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -143,18 +146,22 @@ export function Header() {
         </div>
       </div>
 
-      {/* Derecha: Usuario y Logout */}
-      <div class="flex items-center gap-3">
+      {/* Derecha: Selector de Tema, Usuario y Logout */}
+      <div class="flex items-center gap-3 sm:gap-4">
+        {/* Toggle de Tema Compacto */}
+        <ThemeToggle compact />
+
+        {/* Info Usuario */}
         <div class="hidden sm:block text-right">
-          <div class="text-xs font-semibold text-slate-200">{user?.name}</div>
+          <div class="text-xs font-semibold text-slate-800 dark:text-slate-200">{user?.name}</div>
           <div class="flex items-center justify-end gap-1 mt-0.5">
             <span
               class={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
                 user?.globalRole === 'root'
-                  ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                   : user?.globalRole === 'support'
-                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                  : 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30'
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                  : 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
               }`}
             >
               {user?.globalRole}
@@ -167,7 +174,7 @@ export function Header() {
           type="button"
           onClick={logout}
           title="Cerrar sesión"
-          class="p-2 text-slate-400 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+          class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path

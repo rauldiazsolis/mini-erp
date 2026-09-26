@@ -4,7 +4,7 @@ export function Card(props: JSX.HTMLAttributes<HTMLDivElement> & { children: Com
   const { class: className = '', children, ...rest } = props;
   return (
     <div
-      class={`bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl shadow-xl p-6 ${className}`}
+      class={`bg-white dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl p-6 transition-colors ${className}`}
       {...rest}
     >
       {children}
@@ -16,10 +16,10 @@ export function CardHeader(props: { title: string; description?: string; childre
   return (
     <div class="mb-5">
       <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold text-slate-100 tracking-tight">{props.title}</h3>
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100 tracking-tight">{props.title}</h3>
         {props.children}
       </div>
-      {props.description && <p class="text-xs text-slate-400 mt-1">{props.description}</p>}
+      {props.description && <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{props.description}</p>}
     </div>
   );
 }

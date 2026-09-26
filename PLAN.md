@@ -281,3 +281,44 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 - Verificación estricta de TypeScript: `tsc --noEmit` en 0 errores.
 - Build de producción Vite completado con éxito.
 
+---
+
+## 9. Detalle de Etapas: FASE 7 (Sistema de Temas UI: Modo Claro, Oscuro y Heredado) [COMPLETADA]
+
+### Objetivos:
+- Soporte para tres modos de visualización:
+  1. `light` (Modo Claro para ambientes iluminados con fondo nítido y alto contraste).
+  2. `dark` (Modo Oscuro para menor fatiga visual con fondos slate oscuros y acentos índigo).
+  3. `system` (Modo Heredado que se sincroniza reactivamente con las preferencias del sistema operativo mediante `matchMedia`).
+- Persistencia en `localStorage` bajo `mini_erp_theme_mode`.
+- Eliminación de FOUC (Flash of Unstyled Content) en carga inicial.
+- Componentes accesibles con conmutación en un clic y previsualización.
+
+### Etapa 7.1: Estado Reactivo con Signals y TDD (`theme-state.ts`) [COMPLETADA]
+- Implementación de `src/client/state/theme-state.ts`:
+  - Tipos `ThemeMode` ('light' | 'dark' | 'system') y `ResolvedTheme` ('light' | 'dark').
+  - Signals puros de Preact: `themeModeSignal`, `systemPrefersDarkSignal`, `resolvedThemeSignal`.
+  - Funciones de persistencia y aplicación al DOM: `setThemeMode`, `initThemeState`, `applyThemeToDocument`.
+  - Listener reactivo ante eventos `change` de `prefers-color-scheme`.
+- Suite de pruebas unitarias en `test/theme-client.test.ts` (5 tests verdes).
+
+### Etapa 7.2: Configuración de Tailwind CSS v4 & Anti-FOUC [COMPLETADA]
+- Configuración en `src/client/index.css` de `@custom-variant dark (&:where(.dark, .dark *))` para estrategia class-based.
+- Inyección de script inline anti-FOUC en `<head>` de `src/client/index.html` para sincronizar `document.documentElement` (`class="dark"` vs `class="light"` y `style.colorScheme`).
+
+### Etapa 7.3: Componentes UI y Puntos de Acceso [COMPLETADA]
+- Creación de `ThemeToggle.tsx` en `src/client/components/ui/`:
+  - Modo compacto: segmented control de 3 botones con iconos SVG (Sol, Monitor, Luna).
+  - Modo expandido: tarjetas de selección con descripción y badge de estado activo.
+- Integración en:
+  - `Header.tsx`: acceso global inmediato junto a la información de usuario y logout.
+  - `AuthView.tsx`: acceso en la pantalla de login/registro.
+  - `SettingsView.tsx`: nueva solapa `appearance` ("Apariencia & Tema") con `AppearanceSection.tsx` y visualizador de estados en tiempo real.
+
+### Etapa 7.4: Adaptación de Superficies Base y Verificación [COMPLETADA]
+- Adaptación de clases para contraste dual en `AppShell`, `Sidebar`, `Header`, `Card`, `Input`, `Button`, tablas y modales.
+- **157 tests pasando en verde** en 24 suites de prueba.
+- Verificación estricta de TypeScript: `tsc --noEmit` en 0 errores.
+- Build de producción Vite completado con éxito (`dist/client/assets/`).
+
+

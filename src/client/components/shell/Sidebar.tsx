@@ -19,7 +19,12 @@ const navItems: NavItem[] = [
     id: 'dashboard',
     label: 'Dashboard',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -33,7 +38,12 @@ const navItems: NavItem[] = [
     id: 'catalog',
     label: 'Catálogo & Precios',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -47,7 +57,12 @@ const navItems: NavItem[] = [
     id: 'stock',
     label: 'Stock & Kardex',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -61,7 +76,12 @@ const navItems: NavItem[] = [
     id: 'customers',
     label: 'Clientes & CC',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -75,13 +95,13 @@ const navItems: NavItem[] = [
     id: 'bulk',
     label: 'Operaciones Masivas',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M13 10V3L4 14h7v7l9-11h-7z"
-        />
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
     ),
   },
@@ -89,7 +109,12 @@ const navItems: NavItem[] = [
     id: 'settings',
     label: 'Configuración & POS',
     icon: (active) => (
-      <svg class={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         <path
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -107,7 +132,7 @@ export function Sidebar() {
   const isMobileOpen = mobileMenuOpenSignal.value;
 
   const content = (
-    <div class="h-full flex flex-col justify-between p-4 bg-slate-900 border-r border-slate-800">
+    <div class="h-full flex flex-col justify-between p-4 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-colors">
       <div class="space-y-6">
         {/* App Logo */}
         <div class="flex items-center gap-3 px-2 py-1">
@@ -117,8 +142,8 @@ export function Sidebar() {
             </svg>
           </div>
           <div>
-            <span class="text-sm font-black tracking-tight text-white block">mini-erp</span>
-            <span class="text-[10px] text-slate-400 font-medium">Connector v4.0.0</span>
+            <span class="text-sm font-black tracking-tight text-slate-900 dark:text-white block">mini-erp</span>
+            <span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Connector v4.0.0</span>
           </div>
         </div>
 
@@ -133,8 +158,8 @@ export function Sidebar() {
                 onClick={() => navigateTo(item.id)}
                 class={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-indigo-600/15 text-indigo-400 border border-indigo-500/20 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    ? 'bg-indigo-50 dark:bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                 }`}
               >
                 <div class="flex items-center gap-3">
@@ -142,7 +167,7 @@ export function Sidebar() {
                   <span>{item.label}</span>
                 </div>
                 {item.badge && (
-                  <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold">
+                  <span class="text-[10px] bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
                     {item.badge}
                   </span>
                 )}
@@ -153,15 +178,15 @@ export function Sidebar() {
       </div>
 
       {/* Footer Info */}
-      <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
+      <div class="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
         <div class="flex items-center justify-between">
           <span class="text-slate-500">Offline-POS</span>
-          <span class="text-emerald-400 font-semibold flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             Online
           </span>
         </div>
-        <div class="text-[10px] text-slate-500 font-mono">Puerto: 4100 • Express</div>
+        <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">Puerto: 4100 • Express</div>
       </div>
     </div>
   );

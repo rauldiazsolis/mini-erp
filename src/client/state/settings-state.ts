@@ -4,7 +4,8 @@ import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
 import type { BranchItem } from './stock-state.ts';
 
-export type SettingsTab = 'pos' | 'branches' | 'connection';
+export type SettingsTab = 'pos' | 'branches' | 'connection' | 'appearance';
+
 
 export type PosApiKeyItem = {
   id: string;
