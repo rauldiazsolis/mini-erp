@@ -99,7 +99,33 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       expect(errorMessageSignal.value).toContain('6 caracteres');
     });
 
-    it('avanza al Paso 2 si los datos de cuenta son válidos', async () => {
+    it('avanza al Paso 2 si los datos de cuenta son válidos y registra al usuario', async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes('/auth/register')) {
+          return {
+            ok: true,
+            status: 201,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: async () => ({
+              token: 'mock-jwt-step1',
+              user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez' },
+            }),
+          };
+        }
+        if (String(url).includes('/auth/me')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: async () => ({
+              user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez', globalRole: 'user' },
+              tenants: [],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      });
+
       merchantStepSignal.value = 1;
       userNameSignal.value = 'Martín Gómez';
       userEmailSignal.value = 'martin@gmail.com';
@@ -108,6 +134,25 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       await advanceMerchantStep();
       expect(merchantStepSignal.value).toBe(2);
       expect(errorMessageSignal.value).toBeNull();
+      expect(tokenSignal.value).toBe('mock-jwt-step1');
+    });
+
+    it('detiene y advierte en el Paso 1 si el correo ya está registrado', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ error: 'El correo electrónico ya está registrado' }),
+      });
+
+      merchantStepSignal.value = 1;
+      userNameSignal.value = 'Martín Gómez';
+      userEmailSignal.value = 'existente@gmail.com';
+      userPasswordSignal.value = 'segura123';
+
+      await advanceMerchantStep();
+      expect(merchantStepSignal.value).toBe(1);
+      expect(errorMessageSignal.value).toContain('ya está registrado');
     });
 
     it('goBackMerchantStep permite volver del Paso 2 al 1 si no está autenticado', () => {

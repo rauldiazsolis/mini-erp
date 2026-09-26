@@ -73,4 +73,44 @@ describe('TenantManager', () => {
     expect(typeof stockItems[0]?.productId).toBe('string');
     expect(typeof stockItems[0]?.quantity).toBe('number');
   });
+
+  it('desambigua silenciosamente el slug agregando -2, -3 sólo si ya existe uno anterior', () => {
+    systemDb
+      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('user-dup', 'dup@example.com', 'hash', 'Dup Owner', 'user', new Date().toISOString());
+
+    // Primer tenant con slug "mi-tienda"
+    const t1 = manager.createTenant({
+      id: 'mi-tienda',
+      slug: 'mi-tienda',
+      name: 'Mi Tienda',
+      ownerUserId: 'user-dup',
+      seedDemoData: false,
+    });
+    expect(t1.slug).toBe('mi-tienda');
+    expect(t1.id).toBe('mi-tienda');
+
+    // Segundo tenant con mismo slug "mi-tienda" -> debe resolver a "mi-tienda-2"
+    const t2 = manager.createTenant({
+      id: 'mi-tienda',
+      slug: 'mi-tienda',
+      name: 'Mi Tienda',
+      ownerUserId: 'user-dup',
+      seedDemoData: false,
+    });
+    expect(t2.slug).toBe('mi-tienda-2');
+    expect(t2.id).toBe('mi-tienda-2');
+
+    // Tercer tenant con mismo slug "mi-tienda" -> debe resolver a "mi-tienda-3"
+    const t3 = manager.createTenant({
+      id: 'mi-tienda',
+      slug: 'mi-tienda',
+      name: 'Mi Tienda',
+      ownerUserId: 'user-dup',
+      seedDemoData: false,
+    });
+    expect(t3.slug).toBe('mi-tienda-3');
+    expect(t3.id).toBe('mi-tienda-3');
+  });
 });
+

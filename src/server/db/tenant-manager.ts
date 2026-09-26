@@ -59,23 +59,48 @@ export class TenantManager {
     return db;
   }
 
+  tenantExists(id: string): boolean {
+    const row = this.systemDb
+      .prepare('SELECT id FROM tenants WHERE id = ? OR slug = ?')
+      .get(id, id);
+    return row !== undefined;
+  }
+
+  resolveAvailableSlug(baseSlug: string): string {
+    let candidate = baseSlug;
+    let counter = 2;
+    while (this.tenantExists(candidate)) {
+      candidate = `${baseSlug}-${counter}`;
+      counter++;
+    }
+    return candidate;
+  }
+
   createTenant(params: CreateTenantParams): TenantRecord {
     const now = new Date().toISOString();
     const status: TenantRecord['status'] = 'active';
+
+    // Desambiguar silenciosamente sólo si ya existe uno anterior
+    let finalId = params.id;
+    let finalSlug = params.slug;
+    if (this.tenantExists(finalId) || this.tenantExists(finalSlug)) {
+      finalId = this.resolveAvailableSlug(params.id);
+      finalSlug = finalId;
+    }
 
     this.systemDb
       .prepare(
         'INSERT INTO tenants (id, slug, name, status, created_at) VALUES (?, ?, ?, ?, ?)',
       )
-      .run(params.id, params.slug, params.name, status, now);
+      .run(finalId, finalSlug, params.name, status, now);
 
     this.systemDb
       .prepare(
         'INSERT INTO memberships (user_id, tenant_id, role, created_at) VALUES (?, ?, ?, ?)',
       )
-      .run(params.ownerUserId, params.id, 'owner', now);
+      .run(params.ownerUserId, finalId, 'owner', now);
 
-    const tenantDb = this.getTenantDb(params.id);
+    const tenantDb = this.getTenantDb(finalId);
 
     // Sucursal por defecto
     const defaultBranchId = 'branch-central';
@@ -88,8 +113,8 @@ export class TenantManager {
     }
 
     return {
-      id: params.id,
-      slug: params.slug,
+      id: finalId,
+      slug: finalSlug,
       name: params.name,
       status,
       created_at: now,

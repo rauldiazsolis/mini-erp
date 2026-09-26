@@ -358,6 +358,20 @@ export function MerchantOnboardingView() {
                           Ir al Panel Mini-ERP →
                         </Button>
                       </div>
+
+                      <div class="pt-2 border-t border-indigo-200/50 dark:border-indigo-800/40 flex justify-center">
+                        <a
+                          href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                            `¡Hola! Configura la terminal de caja Offline POS para "${result.name}" abriendo este enlace:\n\n${result.returnWithParamsUrl}`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-all"
+                        >
+                          <span>💬</span>
+                          <span>Compartir configuración por WhatsApp</span>
+                        </a>
+                      </div>
                     </>
                   ) : (
                     <>

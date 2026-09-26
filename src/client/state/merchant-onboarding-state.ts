@@ -29,6 +29,7 @@ export const merchantOnboardingActiveSignal = signal<boolean>(false);
 
 // Parámetros de URL capturados (ej: desde POS demo o Landing)
 export const returnUrlSignal = signal<string | null>(null);
+export const wipeKeySignal = signal<string | null>(null);
 
 // Estado de pasos: 1: Cuenta, 2: Negocio/Rubro, 3: Aprovisionando, 4: Éxito
 export const merchantStepSignal = signal<number>(1);
@@ -89,6 +90,12 @@ export function initMerchantOnboardingFromUrl(): void {
     returnUrlSignal.value = ret;
   }
 
+  // Capturar wipe_key para handshake seguro de wipe con el POS
+  const wipeKey = searchParams.get('wipe_key') || searchParams.get('wipeKey');
+  if (wipeKey) {
+    wipeKeySignal.value = wipeKey;
+  }
+
   // Capturar preset sugerido si viniera del demo
   const presetParam = searchParams.get('preset') as BusinessPreset | null;
   if (presetParam && ['kiosco', 'ferreteria', 'almacen', 'empty'].includes(presetParam)) {
@@ -116,6 +123,7 @@ export function resetMerchantOnboarding(): void {
   progressStepMessageSignal.value = '';
   errorMessageSignal.value = null;
   merchantResultSignal.value = null;
+  wipeKeySignal.value = null;
 }
 
 export function openMerchantOnboarding(customReturnUrl?: string): void {
@@ -149,13 +157,18 @@ export async function advanceMerchantStep(): Promise<void> {
           errorMessageSignal.value = 'Ingresa tu correo y contraseña para continuar';
           return;
         }
-        const ok = await login({
-          email: userEmailSignal.value.trim(),
-          password: userPasswordSignal.value,
-        });
-        if (!ok) {
-          errorMessageSignal.value = 'Credenciales inválidas o correo no registrado';
-          return;
+        isSubmittingSignal.value = true;
+        try {
+          const ok = await login({
+            email: userEmailSignal.value.trim(),
+            password: userPasswordSignal.value,
+          });
+          if (!ok) {
+            errorMessageSignal.value = 'Credenciales inválidas o correo no registrado';
+            return;
+          }
+        } finally {
+          isSubmittingSignal.value = false;
         }
       } else {
         // Registro de nueva cuenta
@@ -171,9 +184,44 @@ export async function advanceMerchantStep(): Promise<void> {
           errorMessageSignal.value = 'La contraseña debe tener al menos 6 caracteres';
           return;
         }
+
+        // Validar y registrar de inmediato en el servidor
+        isSubmittingSignal.value = true;
+        try {
+          const registerRes = await apiFetch<{
+            user: { id: string; email: string; name: string };
+            token: string;
+          }>('auth/register', {
+            method: 'POST',
+            body: {
+              name: userNameSignal.value.trim(),
+              email: userEmailSignal.value.trim(),
+              password: userPasswordSignal.value,
+            },
+          });
+
+          tokenSignal.value = registerRes.token;
+          currentUserSignal.value = {
+            id: registerRes.user.id,
+            email: registerRes.user.email,
+            name: registerRes.user.name,
+            globalRole: 'user',
+          };
+          await fetchProfile();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Error al registrar usuario';
+          if (msg.includes('ya está registrado')) {
+            errorMessageSignal.value = `${msg}. ¿Ya tienes cuenta? Haz clic en "Iniciar sesión" arriba.`;
+          } else {
+            errorMessageSignal.value = msg;
+          }
+          return;
+        } finally {
+          isSubmittingSignal.value = false;
+        }
       }
     }
-    // Pasa a datos del negocio
+    // Pasa a datos del negocio habiendo validado/autenticado con éxito
     merchantStepSignal.value = 2;
     return;
   }
@@ -209,55 +257,54 @@ export async function executeMerchantProvisioning(): Promise<void> {
 
     let token = tokenSignal.value;
 
-    // 1. Si el usuario no estaba autenticado, registrarlo ahora
     if (!token && !isAuthenticatedSignal.value) {
-      progressStepMessageSignal.value = 'Creando tu cuenta de usuario...';
-      const registerRes = await apiFetch<{
-        user: { id: string; email: string; name: string };
-        token: string;
-      }>('auth/register', {
-        method: 'POST',
-        body: {
-          name: userNameSignal.value.trim(),
-          email: userEmailSignal.value.trim(),
-          password: userPasswordSignal.value,
-        },
-      });
-
-      token = registerRes.token;
-      tokenSignal.value = registerRes.token;
-      currentUserSignal.value = {
-        id: registerRes.user.id,
-        email: registerRes.user.email,
-        name: registerRes.user.name,
-        globalRole: 'user',
-      };
-      await fetchProfile();
+      if (userEmailSignal.value && userPasswordSignal.value) {
+        const registerRes = await apiFetch<{
+          user: { id: string; email: string; name: string };
+          token: string;
+        }>('auth/register', {
+          method: 'POST',
+          body: {
+            name: userNameSignal.value.trim() || 'Comerciante',
+            email: userEmailSignal.value.trim(),
+            password: userPasswordSignal.value,
+          },
+        });
+        token = registerRes.token;
+        tokenSignal.value = token;
+        currentUserSignal.value = {
+          id: registerRes.user.id,
+          email: registerRes.user.email,
+          name: registerRes.user.name,
+          globalRole: 'user',
+        };
+      } else {
+        throw new Error('Debes estar autenticado para crear el comercio');
+      }
     }
 
-    if (!token) {
-      throw new Error('No se pudo establecer la sesión para crear el comercio');
-    }
-
-    // 2. Generar slug e ID limpio para SQLite
+    // 2. Generar slug e ID limpio (el backend desambigua automáticamente con -2, -3 sólo si ya existe)
     progressStepMessageSignal.value = 'Aprovisionando base de datos segura y aislada...';
     const businessName = businessNameSignal.value.trim();
     const baseSlug = sanitizeToSlug(businessName);
-    const uniqueSuffix = Math.random().toString(36).substring(2, 6);
-    const tenantId = `${baseSlug}-${uniqueSuffix}`;
-    const slug = tenantId;
 
     // Crear Tenant
-    await apiFetch('tenants', {
+    const tenantRes = await apiFetch<{
+      id: string;
+      slug: string;
+      name: string;
+    }>('tenants', {
       method: 'POST',
       body: {
-        id: tenantId,
-        slug,
+        id: baseSlug,
+        slug: baseSlug,
         name: businessName,
         seedDemoData: false,
       },
       token,
     });
+
+    const tenantId = tenantRes.id;
 
     // 3. Poblar preset si corresponde
     const preset = selectedMerchantPresetSignal.value;
@@ -317,6 +364,9 @@ export async function executeMerchantProvisioning(): Promise<void> {
         u.searchParams.set('pos_terminal', posTerminalName);
         u.searchParams.set('business_name', businessName);
         u.searchParams.set('preset', preset);
+        if (wipeKeySignal.value) {
+          u.searchParams.set('wipe_key', wipeKeySignal.value);
+        }
         returnWithParamsUrl = u.toString();
       } catch {
         returnWithParamsUrl = rawReturnUrl;
