@@ -1,7 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from './db/system-db.ts';
 import { TenantManager } from './db/tenant-manager.ts';
 import { AuthService } from './auth/auth-service.ts';
 import { ApiKeyService } from './tenant/api-key-service.ts';

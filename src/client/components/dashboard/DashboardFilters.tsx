@@ -71,7 +71,7 @@ export function DashboardFilters() {
           variant="outline"
           size="sm"
           loading={isLoading}
-          onClick={() => fetchDashboardData()}
+          onClick={() => { void fetchDashboardData(); }}
           title="Refrescar métricas"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

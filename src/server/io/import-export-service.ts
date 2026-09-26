@@ -96,7 +96,7 @@ export class ImportExportService {
   exportProducts(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
     const rows = this.db.prepare('SELECT * FROM products ORDER BY name ASC').all() as unknown as RawProductRecord[];
     const items = rows.map((r) => {
-      let barcodes: string[] = [];
+      let barcodes: string[];
       try {
         barcodes = JSON.parse(r.barcodes) as string[];
       } catch {
@@ -382,7 +382,7 @@ export class ImportExportService {
           errors.push({
             row: rowNum,
             identifier: document ?? undefined,
-            message: `El cliente con documento '${document}' ya existe`,
+            message: `El cliente con documento '${document ?? ''}' ya existe`,
           });
         }
       } else {
@@ -432,7 +432,14 @@ export class ImportExportService {
   private serializeCsv(headers: string[], rows: Record<string, unknown>[]): string {
     const escapeCell = (val: unknown): string => {
       if (val === null || val === undefined) return '';
-      const str = String(val);
+      let str: string;
+      if (typeof val === 'string') {
+        str = val;
+      } else if (typeof val === 'number' || typeof val === 'boolean' || typeof val === 'bigint') {
+        str = String(val);
+      } else {
+        str = JSON.stringify(val);
+      }
       if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
         return `"${str.replace(/"/g, '""')}"`;
       }
@@ -456,6 +463,7 @@ export class ImportExportService {
 
       for (let i = 0; i < line.length; i++) {
         const char = line[i];
+        if (char === undefined) break;
         if (char === '"') {
           if (inQuotes && line[i + 1] === '"') {
             current += '"';

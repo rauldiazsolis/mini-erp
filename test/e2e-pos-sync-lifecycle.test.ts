@@ -5,6 +5,58 @@ import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 
+interface ConnectorInfoResponse {
+  contractVersion: string;
+  status: string;
+  backend: { name: string };
+}
+
+interface PullProductItem {
+  id: string;
+  sku: string;
+  price: number;
+  tracksStock?: boolean;
+}
+
+interface PullCustomerItem {
+  id: string;
+  creditLimit: number;
+  margin: number;
+  balance: number;
+}
+
+interface PullStockItem {
+  productId: string;
+  quantity: number;
+}
+
+interface SyncPullResponse {
+  products: { items: PullProductItem[] };
+  customers: { items: PullCustomerItem[] };
+  stock: PullStockItem[];
+  lots: Record<string, { status: string }>;
+}
+
+interface HoldResponse {
+  approved: boolean;
+  holdId?: string;
+  reasonCode?: string;
+}
+
+interface StockMatrixItem {
+  productId: string;
+  totalStock: number;
+}
+
+interface DashboardSummaryResponse {
+  summary: {
+    salesCount: number;
+    totalSales: number;
+    totalReceivables: number;
+  };
+  topProducts: Array<{ name: string; unitsSold: number }>;
+}
+
 describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
@@ -26,7 +78,8 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     const regRes = await request(app)
       .post('/api/auth/register')
       .send({ email: 'owner@e2e.test', password: 'password123', name: 'Owner E2E' });
-    adminToken = regRes.body.token as string;
+    const regBody = regRes.body as unknown as { token: string };
+    adminToken = regBody.token;
 
     // 2. Crear tenant con datos iniciales (preset kiosco)
     await request(app)
@@ -40,7 +93,8 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: posName, branch: branchName, pointOfSale: posName });
 
-    rawApiKey = keyRes.body.rawKey as string;
+    const keyBody = keyRes.body as unknown as { rawKey: string };
+    rawApiKey = keyBody.rawKey;
   });
 
   it('ejecuta el ciclo de vida completo: handshake, pull inicial, holds, push multievento, auditoría y dashboard', async () => {
@@ -52,9 +106,10 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('Authorization', `Bearer ${rawApiKey}`);
 
     expect(infoRes.status).toBe(200);
-    expect(infoRes.body.contractVersion).toBe('4.0.0');
-    expect(infoRes.body.status).toBe('ok');
-    expect(infoRes.body.backend.name).toBe('mini-erp');
+    const infoBody = infoRes.body as unknown as ConnectorInfoResponse;
+    expect(infoBody.contractVersion).toBe('4.0.0');
+    expect(infoBody.status).toBe('ok');
+    expect(infoBody.backend.name).toBe('mini-erp');
 
     // Validación de incompatibilidad de contrato (409 ante major distinto)
     const incompatibleRes = await request(app)
@@ -64,8 +119,9 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ cursors: {}, pendingLotIds: [] });
 
     expect(incompatibleRes.status).toBe(409);
-    expect(incompatibleRes.body.code).toBe('incompatible-contract');
-    expect(incompatibleRes.body.contractVersion).toBe('4.0.0');
+    const incompBody = incompatibleRes.body as unknown as { code: string; contractVersion: string };
+    expect(incompBody.code).toBe('incompatible-contract');
+    expect(incompBody.contractVersion).toBe('4.0.0');
 
     // =========================================================================
     // PASO 2: Pull Inicial de Catálogo, Clientes y Stock de la Sucursal
@@ -77,7 +133,8 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ cursors: {}, pendingLotIds: [] });
 
     expect(initialPullRes.status).toBe(200);
-    const { products, customers, stock, lots } = initialPullRes.body;
+    const initialPull = initialPullRes.body as unknown as SyncPullResponse;
+    const { products, customers, stock, lots } = initialPull;
 
     expect(products.items.length).toBeGreaterThan(0);
     expect(customers.items.length).toBeGreaterThan(0);
@@ -85,34 +142,34 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     expect(Object.keys(lots)).toHaveLength(0);
 
     // Verificar productos esperados
-    const coca = products.items.find((p: { id: string }) => p.id === 'prod-coca-500');
+    const coca = products.items.find((p) => p.id === 'prod-coca-500');
     expect(coca).toBeDefined();
-    expect(coca.sku).toBe('BEB-001');
-    expect(coca.price).toBe(1500);
-    expect(coca.tracksStock).toBe(true);
+    expect(coca?.sku).toBe('BEB-001');
+    expect(coca?.price).toBe(1500);
+    expect(coca?.tracksStock).toBe(true);
 
-    const yerba = products.items.find((p: { id: string }) => p.id === 'prod-yerba-1k');
+    const yerba = products.items.find((p) => p.id === 'prod-yerba-1k');
     expect(yerba).toBeDefined();
-    expect(yerba.price).toBe(3200);
+    expect(yerba?.price).toBe(3200);
 
     // Verificar stock inicial en CENTRAL
-    const cocaStock = stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
+    const cocaStock = stock.find((s) => s.productId === 'prod-coca-500');
     expect(cocaStock).toBeDefined();
-    expect(cocaStock.quantity).toBeGreaterThan(0);
-    const initialCocaQty = cocaStock.quantity as number;
+    expect(cocaStock?.quantity).toBeGreaterThan(0);
+    const initialCocaQty = cocaStock?.quantity ?? 0;
 
-    const yerbaStock = stock.find((s: { productId: string }) => s.productId === 'prod-yerba-1k');
+    const yerbaStock = stock.find((s) => s.productId === 'prod-yerba-1k');
     expect(yerbaStock).toBeDefined();
-    expect(yerbaStock.quantity).toBeGreaterThan(0);
-    const initialYerbaQty = yerbaStock.quantity as number;
+    expect(yerbaStock?.quantity).toBeGreaterThan(0);
+    const initialYerbaQty = yerbaStock?.quantity ?? 0;
 
     // Verificar cliente Juan Pérez (límite: 50000, margen: 10000)
-    const juan = customers.items.find((c: { id: string }) => c.id === 'cust-juan');
+    const juan = customers.items.find((c) => c.id === 'cust-juan');
     expect(juan).toBeDefined();
-    expect(juan.creditLimit).toBe(50000);
-    expect(juan.margin).toBe(10000);
-    expect(typeof juan.balance).toBe('number');
-    const initialJuanBalance = juan.balance as number;
+    expect(juan?.creditLimit).toBe(50000);
+    expect(juan?.margin).toBe(10000);
+    expect(typeof juan?.balance).toBe('number');
+    const initialJuanBalance = juan?.balance ?? 0;
 
     // =========================================================================
     // PASO 3: Reservas Síncronas de Crédito (/connector/account-holds)
@@ -125,9 +182,10 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ customerId: 'cust-juan', amount: 5000 });
 
     expect(holdRes1.status).toBe(200);
-    expect(holdRes1.body.approved).toBe(true);
-    expect(typeof holdRes1.body.holdId).toBe('string');
-    const approvedHoldId = holdRes1.body.holdId as string;
+    const hold1Body = holdRes1.body as unknown as HoldResponse;
+    expect(hold1Body.approved).toBe(true);
+    expect(typeof hold1Body.holdId).toBe('string');
+    const approvedHoldId = hold1Body.holdId ?? '';
 
     // 3.2 Juan solicita un monto excesivo ($999,999) -> Denegado por crédito insuficiente
     const holdRes2 = await request(app)
@@ -137,8 +195,9 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ customerId: 'cust-juan', amount: 999999 });
 
     expect(holdRes2.status).toBe(200);
-    expect(holdRes2.body.approved).toBe(false);
-    expect(holdRes2.body.reasonCode).toBe('insufficient-credit');
+    const hold2Body = holdRes2.body as unknown as HoldResponse;
+    expect(hold2Body.approved).toBe(false);
+    expect(hold2Body.reasonCode).toBe('insufficient-credit');
 
     // 3.3 Cliente inexistente o sin cuenta -> Denegado con 'no-account'
     const holdRes3 = await request(app)
@@ -148,8 +207,9 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ customerId: 'cust-inexistente', amount: 1000 });
 
     expect(holdRes3.status).toBe(200);
-    expect(holdRes3.body.approved).toBe(false);
-    expect(holdRes3.body.reasonCode).toBe('no-account');
+    const hold3Body = holdRes3.body as unknown as HoldResponse;
+    expect(hold3Body.approved).toBe(false);
+    expect(hold3Body.reasonCode).toBe('no-account');
 
     // =========================================================================
     // PASO 4: Push de Lote Multievento desde el POS (/connector/sync/push)
@@ -337,21 +397,22 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .send({ cursors: {}, pendingLotIds: [lotId] });
 
     expect(confirmPullRes.status).toBe(200);
-    expect(confirmPullRes.body.lots[lotId]?.status).toBe('ok');
+    const confirmPull = confirmPullRes.body as unknown as SyncPullResponse;
+    expect(confirmPull.lots[lotId]?.status).toBe('ok');
 
     // Validar nuevo stock en la respuesta del pull:
     // Coca inicial: -2 (venta 1) -1 (venta 2) +1 (anulación) = -2
-    const updatedCoca = confirmPullRes.body.stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
-    expect(updatedCoca.quantity).toBe(initialCocaQty - 2);
+    const updatedCoca = confirmPull.stock.find((s) => s.productId === 'prod-coca-500');
+    expect(updatedCoca?.quantity).toBe(initialCocaQty - 2);
 
     // Yerba inicial: -1 (venta 2) = -1
-    const updatedYerba = confirmPullRes.body.stock.find((s: { productId: string }) => s.productId === 'prod-yerba-1k');
-    expect(updatedYerba.quantity).toBe(initialYerbaQty - 1);
+    const updatedYerba = confirmPull.stock.find((s) => s.productId === 'prod-yerba-1k');
+    expect(updatedYerba?.quantity).toBe(initialYerbaQty - 1);
 
     // Validar nuevo saldo de cliente Juan Pérez en la respuesta del pull:
     // Saldo inicial + 5000 (hold confirmado) + 1000 (fiado offline) - 2000 (cobranza) = +4000
-    const updatedJuan = confirmPullRes.body.customers.items.find((c: { id: string }) => c.id === 'cust-juan');
-    expect(updatedJuan.balance).toBe(initialJuanBalance + 4000);
+    const updatedJuan = confirmPull.customers.items.find((c) => c.id === 'cust-juan');
+    expect(updatedJuan?.balance).toBe(initialJuanBalance + 4000);
 
     // =========================================================================
     // PASO 6: Idempotencia - Reenviar el mismo lote no debe duplicar efectos
@@ -371,11 +432,12 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('X-POS-Contract-Version', '4.0.0')
       .send({ cursors: {}, pendingLotIds: [lotId] });
 
-    const cocaAfterReplay = replayPullRes.body.stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
-    expect(cocaAfterReplay.quantity).toBe(initialCocaQty - 2);
+    const replayPull = replayPullRes.body as unknown as SyncPullResponse;
+    const cocaAfterReplay = replayPull.stock.find((s) => s.productId === 'prod-coca-500');
+    expect(cocaAfterReplay?.quantity).toBe(initialCocaQty - 2);
 
-    const juanAfterReplay = replayPullRes.body.customers.items.find((c: { id: string }) => c.id === 'cust-juan');
-    expect(juanAfterReplay.balance).toBe(initialJuanBalance + 4000);
+    const juanAfterReplay = replayPull.customers.items.find((c) => c.id === 'cust-juan');
+    expect(juanAfterReplay?.balance).toBe(initialJuanBalance + 4000);
 
     // =========================================================================
     // PASO 7: Impacto y Auditoría en APIs del Mini-ERP (Stock, Kardex, Cuentas y Dashboard)
@@ -386,13 +448,14 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(adminStockRes.status).toBe(200);
-    const adminCoca = adminStockRes.body.find((p: { productId: string }) => p.productId === 'prod-coca-500');
+    const adminStockList = adminStockRes.body as unknown as StockMatrixItem[];
+    const adminCoca = adminStockList.find((p) => p.productId === 'prod-coca-500');
     expect(adminCoca).toBeDefined();
-    expect(adminCoca.totalStock).toBe(initialCocaQty - 2);
+    expect(adminCoca?.totalStock).toBe(initialCocaQty - 2);
 
-    const adminYerba = adminStockRes.body.find((p: { productId: string }) => p.productId === 'prod-yerba-1k');
+    const adminYerba = adminStockList.find((p) => p.productId === 'prod-yerba-1k');
     expect(adminYerba).toBeDefined();
-    expect(adminYerba.totalStock).toBe(initialYerbaQty - 1);
+    expect(adminYerba?.totalStock).toBe(initialYerbaQty - 1);
 
     // 7.2 Kardex de Auditoría
     const kardexRes = await request(app)
@@ -433,7 +496,8 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(adminJuanRes.status).toBe(200);
-    expect(adminJuanRes.body.balance).toBe(initialJuanBalance + 4000);
+    const adminJuan = adminJuanRes.body as unknown as { balance: number };
+    expect(adminJuan.balance).toBe(initialJuanBalance + 4000);
 
     // 7.4 Dashboard Summary y Métricas en Tiempo Real
     const dashRes = await request(app)
@@ -441,10 +505,11 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(dashRes.status).toBe(200);
-    expect(dashRes.body.summary).toBeDefined();
-    expect(dashRes.body.summary.salesCount).toBeGreaterThan(0);
-    expect(dashRes.body.summary.totalSales).toBeGreaterThan(0);
-    expect(dashRes.body.summary.totalReceivables).toBeGreaterThan(0);
-    expect(dashRes.body.topProducts.length).toBeGreaterThan(0);
+    const dashBody = dashRes.body as unknown as DashboardSummaryResponse;
+    expect(dashBody.summary).toBeDefined();
+    expect(dashBody.summary.salesCount).toBeGreaterThan(0);
+    expect(dashBody.summary.totalSales).toBeGreaterThan(0);
+    expect(dashBody.summary.totalReceivables).toBeGreaterThan(0);
+    expect(dashBody.topProducts.length).toBeGreaterThan(0);
   });
 });

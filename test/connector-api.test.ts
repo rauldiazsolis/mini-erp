@@ -23,7 +23,8 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
     const regRes = await request(app)
       .post('/api/auth/register')
       .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
-    const token = regRes.body.token;
+    const regBody = regRes.body as unknown as { token: string };
+    const token = regBody.token;
 
     await request(app)
       .post('/api/tenants')
@@ -36,7 +37,8 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
 
-    rawApiKey = keyRes.body.rawKey;
+    const keyBody = keyRes.body as unknown as { rawKey: string };
+    rawApiKey = keyBody.rawKey;
   });
 
   describe('GET /connector/info', () => {
@@ -51,9 +53,10 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         .set('Authorization', `Bearer ${rawApiKey}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.contractVersion).toBe('4.0.0');
-      expect(res.body.status).toBe('ok');
-      expect(res.body.backend.name).toBe('mini-erp');
+      const body = res.body as unknown as { contractVersion: string; status: string; backend: { name: string } };
+      expect(body.contractVersion).toBe('4.0.0');
+      expect(body.status).toBe('ok');
+      expect(body.backend.name).toBe('mini-erp');
     });
   });
 
@@ -83,6 +86,13 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
     });
   });
 
+  interface PullResponse {
+    products: { items: Array<{ sku?: string; barcodes?: string[]; tracksStock?: boolean }> };
+    customers: { items: Array<unknown> };
+    stock: Array<{ productId: string; quantity: number }>;
+    lots?: Record<string, { status: string }>;
+  }
+
   describe('POST /connector/sync/pull', () => {
     it('devuelve foto completa inicial de catálogo, clientes y stock', async () => {
       const res = await request(app)
@@ -91,14 +101,15 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         .send({ cursors: {}, pendingLotIds: [] });
 
       expect(res.status).toBe(200);
-      expect(res.body.products.items.length).toBeGreaterThan(0);
-      expect(res.body.customers.items.length).toBeGreaterThan(0);
-      expect(res.body.stock.length).toBeGreaterThan(0);
+      const body = res.body as unknown as PullResponse;
+      expect(body.products.items.length).toBeGreaterThan(0);
+      expect(body.customers.items.length).toBeGreaterThan(0);
+      expect(body.stock.length).toBeGreaterThan(0);
 
-      const prod = res.body.products.items[0];
-      expect(prod.sku).toBeDefined();
-      expect(Array.isArray(prod.barcodes)).toBe(true);
-      expect(prod.tracksStock).toBe(true);
+      const prod = body.products.items[0];
+      expect(prod?.sku).toBeDefined();
+      expect(Array.isArray(prod?.barcodes)).toBe(true);
+      expect(prod?.tracksStock).toBe(true);
     });
   });
 
@@ -110,8 +121,9 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         .set('Authorization', `Bearer ${rawApiKey}`)
         .send({ cursors: {}, pendingLotIds: [] });
 
-      const initialCoca = initialPull.body.stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
-      const initialQty = initialCoca.quantity;
+      const initialBody = initialPull.body as unknown as PullResponse;
+      const initialCoca = initialBody.stock.find((s) => s.productId === 'prod-coca-500');
+      const initialQty = initialCoca?.quantity ?? 0;
 
       // 2. Enviar lote de push con venta y descuento de 2 unidades
       const lotId = 'lot_01J8YXYZ';
@@ -159,10 +171,11 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         .set('Authorization', `Bearer ${rawApiKey}`)
         .send({ cursors: {}, pendingLotIds: [lotId] });
 
-      expect(verifyPull.body.lots[lotId]?.status).toBe('ok');
+      const verifyBody = verifyPull.body as unknown as PullResponse;
+      expect(verifyBody.lots?.[lotId]?.status).toBe('ok');
 
-      const updatedCoca = verifyPull.body.stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
-      expect(updatedCoca.quantity).toBe(initialQty - 2);
+      const updatedCoca = verifyBody.stock.find((s) => s.productId === 'prod-coca-500');
+      expect(updatedCoca?.quantity).toBe(initialQty - 2);
 
       // 4. Idempotencia: reenviar el mismo lote con mismo Idempotency-Key no debe descontar de nuevo
       const replayRes = await request(app)
@@ -181,8 +194,9 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         .set('Authorization', `Bearer ${rawApiKey}`)
         .send({ cursors: {}, pendingLotIds: [lotId] });
 
-      const cocaAfterReplay = afterReplayPull.body.stock.find((s: { productId: string }) => s.productId === 'prod-coca-500');
-      expect(cocaAfterReplay.quantity).toBe(initialQty - 2);
+      const afterReplayBody = afterReplayPull.body as unknown as PullResponse;
+      const cocaAfterReplay = afterReplayBody.stock.find((s) => s.productId === 'prod-coca-500');
+      expect(cocaAfterReplay?.quantity).toBe(initialQty - 2);
     });
   });
 
@@ -199,8 +213,9 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         });
 
       expect(holdRes.status).toBe(200);
-      expect(holdRes.body.approved).toBe(true);
-      expect(typeof holdRes.body.holdId).toBe('string');
+      const holdBody = holdRes.body as unknown as { approved: boolean; holdId?: string; reasonCode?: string };
+      expect(holdBody.approved).toBe(true);
+      expect(typeof holdBody.holdId).toBe('string');
 
       // Intentar pedir un monto desmedido
       const excessiveRes = await request(app)
@@ -213,8 +228,9 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
         });
 
       expect(excessiveRes.status).toBe(200);
-      expect(excessiveRes.body.approved).toBe(false);
-      expect(excessiveRes.body.reasonCode).toBe('insufficient-credit');
+      const excessiveBody = excessiveRes.body as unknown as { approved: boolean; holdId?: string; reasonCode?: string };
+      expect(excessiveBody.approved).toBe(false);
+      expect(excessiveBody.reasonCode).toBe('insufficient-credit');
     });
   });
 });

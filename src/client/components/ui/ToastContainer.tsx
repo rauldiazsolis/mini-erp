@@ -80,7 +80,7 @@ export function ToastContainer() {
 
             <button
               type="button"
-              onClick={() => dismissToast(toast.id)}
+              onClick={() => { dismissToast(toast.id); }}
               class="text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

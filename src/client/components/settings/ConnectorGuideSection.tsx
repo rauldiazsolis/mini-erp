@@ -16,7 +16,7 @@ export function ConnectorGuideSection() {
 
   const copyUrl = async () => {
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      if (typeof navigator !== 'undefined') {
         await navigator.clipboard.writeText(connectorUrl);
         showToast({
           type: 'success',
@@ -49,7 +49,7 @@ export function ConnectorGuideSection() {
           <Button
             size="sm"
             variant="outline"
-            onClick={checkConnectorStatus}
+            onClick={() => { void checkConnectorStatus(); }}
             disabled={isChecking}
           >
             {isChecking ? 'Verificando...' : 'Probar Endpoint (/connector/info) ⚡'}
@@ -68,7 +68,7 @@ export function ConnectorGuideSection() {
               value={connectorUrl}
               class="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-xs text-indigo-600 dark:text-indigo-300 focus:outline-none"
             />
-            <Button size="sm" onClick={copyUrl}>
+            <Button size="sm" onClick={() => { void copyUrl(); }}>
               Copiar
             </Button>
           </div>

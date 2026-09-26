@@ -18,7 +18,6 @@ import {
   kardexMovementsSignal,
   openKardex,
   closeKardex,
-  loadKardexMovements,
   type StockMatrixItem,
   type BranchItem,
 } from '../src/client/state/stock-state.ts';
@@ -169,9 +168,9 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
       const originalFetch = globalThis.fetch;
       let sentBody: unknown = null;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             productId: 'prod-1',
             branchId: 'branch-1',
@@ -181,8 +180,8 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
             movementId: 'mov-123',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitStockAdjustment();
@@ -222,9 +221,9 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
     it('openKardex consulta los movimientos del producto y los almacena en kardexMovementsSignal', async () => {
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (String(url).includes('/kardex')) {
-          return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/kardex')) {
+          return Promise.resolve(new Response(
             JSON.stringify([
               {
                 id: 'mov-1',
@@ -260,10 +259,10 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
               },
             ]),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
-        return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
-      }) as unknown as typeof fetch;
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
+      });
 
       try {
         await openKardex(mockStockProductA);

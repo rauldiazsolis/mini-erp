@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
 export function initSystemDb(db: DatabaseSync): void {
   const versionRow = db.prepare('PRAGMA user_version').get() as { user_version: number };
   if (versionRow.user_version !== SYSTEM_SCHEMA_VERSION) {
-    db.exec(`PRAGMA user_version = ${SYSTEM_SCHEMA_VERSION}`);
+    db.exec(`PRAGMA user_version = ${String(SYSTEM_SCHEMA_VERSION)}`);
   }
   db.exec(SYSTEM_SCHEMA);
 }

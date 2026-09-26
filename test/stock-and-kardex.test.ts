@@ -5,6 +5,33 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 
+interface StockMatrixItem {
+  productId: string;
+  sku: string;
+  totalStock: number;
+  branches: Record<string, number>;
+}
+
+interface StockAdjustResponse {
+  productId: string;
+  branchId: string;
+  previousQuantity: number;
+  delta: number;
+  newQuantity: number;
+  movementId: string;
+}
+
+interface KardexMovementItem {
+  productId: string;
+  productName: string;
+  branchId: string;
+  branchName: string;
+  delta: number;
+  reason: string;
+  notes?: string;
+  saleId?: string;
+}
+
 describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
@@ -42,14 +69,16 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     const branchesRes = await request(app)
       .get(`/api/tenants/${tenantId}/branches`)
       .set('Authorization', `Bearer ${adminToken}`);
-    defaultBranchId = branchesRes.body[0]?.id as string;
+    const branches = branchesRes.body as unknown as Array<{ id: string }>;
+    defaultBranchId = branches[0]?.id ?? '';
 
     // 4. Crear una segunda sucursal
     const branch2Res = await request(app)
       .post(`/api/tenants/${tenantId}/branches`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Sucursal Depósito', code: 'DEPOSITO' });
-    secondBranchId = branch2Res.body.id as string;
+    const branch2 = branch2Res.body as unknown as { id: string };
+    secondBranchId = branch2.id;
 
     // 5. Crear un producto de prueba
     const prodRes = await request(app)
@@ -62,7 +91,8 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         category: 'Golosinas',
         tracksStock: true,
       });
-    testProductId = prodRes.body.id as string;
+    const prod = prodRes.body as unknown as { id: string };
+    testProductId = prod.id;
   });
 
   describe('Matriz de Stock (/stock)', () => {
@@ -72,15 +102,16 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(1);
+      const items = res.body as unknown as StockMatrixItem[];
+      expect(Array.isArray(items)).toBe(true);
+      expect(items.length).toBe(1);
 
-      const item = res.body[0];
-      expect(item.productId).toBe(testProductId);
-      expect(item.sku).toBe('CHOCO-01');
-      expect(item.totalStock).toBe(0);
-      expect(item.branches).toHaveProperty(defaultBranchId, 0);
-      expect(item.branches).toHaveProperty(secondBranchId, 0);
+      const item = items[0];
+      expect(item?.productId).toBe(testProductId);
+      expect(item?.sku).toBe('CHOCO-01');
+      expect(item?.totalStock).toBe(0);
+      expect(item?.branches).toHaveProperty(defaultBranchId, 0);
+      expect(item?.branches).toHaveProperty(secondBranchId, 0);
     });
 
     it('permite filtrar la matriz de stock por término de búsqueda y categoría', async () => {
@@ -102,8 +133,9 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(catRes.status).toBe(200);
-      expect(catRes.body.length).toBe(1);
-      expect(catRes.body[0].sku).toBe('JUICE-01');
+      const catItems = catRes.body as unknown as StockMatrixItem[];
+      expect(catItems.length).toBe(1);
+      expect(catItems[0]?.sku).toBe('JUICE-01');
 
       // Filtrar por búsqueda
       const searchRes = await request(app)
@@ -111,8 +143,9 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(searchRes.status).toBe(200);
-      expect(searchRes.body.length).toBe(1);
-      expect(searchRes.body[0].sku).toBe('CHOCO-01');
+      const searchItems = searchRes.body as unknown as StockMatrixItem[];
+      expect(searchItems.length).toBe(1);
+      expect(searchItems[0]?.sku).toBe('CHOCO-01');
     });
   });
 
@@ -131,22 +164,24 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         });
 
       expect(adjustRes.status).toBe(200);
-      expect(adjustRes.body.productId).toBe(testProductId);
-      expect(adjustRes.body.branchId).toBe(defaultBranchId);
-      expect(adjustRes.body.previousQuantity).toBe(0);
-      expect(adjustRes.body.delta).toBe(25);
-      expect(adjustRes.body.newQuantity).toBe(25);
-      expect(adjustRes.body.movementId).toBeDefined();
+      const adjustBody = adjustRes.body as unknown as StockAdjustResponse;
+      expect(adjustBody.productId).toBe(testProductId);
+      expect(adjustBody.branchId).toBe(defaultBranchId);
+      expect(adjustBody.previousQuantity).toBe(0);
+      expect(adjustBody.delta).toBe(25);
+      expect(adjustBody.newQuantity).toBe(25);
+      expect(adjustBody.movementId).toBeDefined();
 
       // Verificar que la matriz refleja el nuevo stock en la sucursal central
       const matrixRes = await request(app)
         .get(`/api/tenants/${tenantId}/stock`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      const item = matrixRes.body.find((p: { productId: string }) => p.productId === testProductId);
-      expect(item.branches[defaultBranchId]).toBe(25);
-      expect(item.branches[secondBranchId]).toBe(0);
-      expect(item.totalStock).toBe(25);
+      const matrixItems = matrixRes.body as unknown as StockMatrixItem[];
+      const item = matrixItems.find((p) => p.productId === testProductId);
+      expect(item?.branches[defaultBranchId]).toBe(25);
+      expect(item?.branches[secondBranchId]).toBe(0);
+      expect(item?.totalStock).toBe(25);
     });
 
     it('ajusta el stock aplicando un delta relativo (+ o -)', async () => {
@@ -176,9 +211,10 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         });
 
       expect(deltaRes.status).toBe(200);
-      expect(deltaRes.body.previousQuantity).toBe(50);
-      expect(deltaRes.body.delta).toBe(-5);
-      expect(deltaRes.body.newQuantity).toBe(45);
+      const deltaBody = deltaRes.body as unknown as StockAdjustResponse;
+      expect(deltaBody.previousQuantity).toBe(50);
+      expect(deltaBody.delta).toBe(-5);
+      expect(deltaBody.newQuantity).toBe(45);
 
       // 3. Aplicar un ajuste delta positivo de +10
       const restockRes = await request(app)
@@ -193,9 +229,10 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         });
 
       expect(restockRes.status).toBe(200);
-      expect(restockRes.body.previousQuantity).toBe(45);
-      expect(restockRes.body.delta).toBe(10);
-      expect(restockRes.body.newQuantity).toBe(55);
+      const restockBody = restockRes.body as unknown as StockAdjustResponse;
+      expect(restockBody.previousQuantity).toBe(45);
+      expect(restockBody.delta).toBe(10);
+      expect(restockBody.newQuantity).toBe(55);
     });
 
     it('rechaza ajustes con datos inválidos o sucursal/producto inexistente', async () => {
@@ -275,18 +312,19 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(kardexRes.status).toBe(200);
-      expect(Array.isArray(kardexRes.body)).toBe(true);
-      expect(kardexRes.body.length).toBe(2);
+      const movements = kardexRes.body as unknown as KardexMovementItem[];
+      expect(Array.isArray(movements)).toBe(true);
+      expect(movements.length).toBe(2);
 
       // Orden descendente (el más reciente primero)
-      expect(kardexRes.body[0]?.delta).toBe(-2);
-      expect(kardexRes.body[0]?.reason).toBe('damage');
-      expect(kardexRes.body[0]?.notes).toBe('Vencido');
-      expect(kardexRes.body[0]?.productName).toBe('Chocolate con Maní 100g');
-      expect(kardexRes.body[0]?.branchName).toBe('Sucursal Central');
+      expect(movements[0]?.delta).toBe(-2);
+      expect(movements[0]?.reason).toBe('damage');
+      expect(movements[0]?.notes).toBe('Vencido');
+      expect(movements[0]?.productName).toBe('Chocolate con Maní 100g');
+      expect(movements[0]?.branchName).toBe('Sucursal Central');
 
-      expect(kardexRes.body[1]?.delta).toBe(30);
-      expect(kardexRes.body[1]?.reason).toBe('inventory_count');
+      expect(movements[1]?.delta).toBe(30);
+      expect(movements[1]?.reason).toBe('inventory_count');
 
       // Filtrar por motivo (damage)
       const filterRes = await request(app)
@@ -294,8 +332,9 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(filterRes.status).toBe(200);
-      expect(filterRes.body.length).toBe(1);
-      expect(filterRes.body[0]?.delta).toBe(-2);
+      const filterMovements = filterRes.body as unknown as KardexMovementItem[];
+      expect(filterMovements.length).toBe(1);
+      expect(filterMovements[0]?.delta).toBe(-2);
     });
   });
 
@@ -310,7 +349,8 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
           branch: 'CENTRAL',
           pointOfSale: 'Caja 1',
         });
-      const posRawKey = keyRes.body.rawKey as string;
+      const keyBody = keyRes.body as unknown as { rawKey: string };
+      const posRawKey = keyBody.rawKey;
 
       // 2. Admin ajusta stock a 100 unidades en sucursal CENTRAL
       await request(app)
@@ -335,7 +375,8 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         });
 
       expect(pullRes.status).toBe(200);
-      const stockItem = (pullRes.body.stock as Array<{ productId: string; quantity: number }>).find(
+      const pullBody = pullRes.body as unknown as { stock: Array<{ productId: string; quantity: number }> };
+      const stockItem = pullBody.stock.find(
         (s) => s.productId === testProductId,
       );
       expect(stockItem).toBeDefined();
@@ -382,9 +423,10 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
         .get(`/api/tenants/${tenantId}/stock`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      const chocoStock = matrixAfterSale.body.find((p: { productId: string }) => p.productId === testProductId);
-      expect(chocoStock.branches[defaultBranchId]).toBe(97);
-      expect(chocoStock.totalStock).toBe(97);
+      const matrixList = matrixAfterSale.body as unknown as StockMatrixItem[];
+      const chocoStock = matrixList.find((p) => p.productId === testProductId);
+      expect(chocoStock?.branches[defaultBranchId]).toBe(97);
+      expect(chocoStock?.totalStock).toBe(97);
 
       // 6. Admin consulta Kardex: debe registrarse la venta con delta -3 y saleId sale_001
       const kardexRes = await request(app)

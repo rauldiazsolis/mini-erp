@@ -90,7 +90,7 @@ export function ThemeToggle(props: { compact?: boolean }) {
             <button
               key={m.id}
               type="button"
-              onClick={() => setThemeMode(m.id)}
+              onClick={() => { setThemeMode(m.id); }}
               title={`Modo ${m.label} (${m.description})`}
               aria-pressed={isActive}
               class={`p-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
@@ -117,7 +117,7 @@ export function ThemeToggle(props: { compact?: boolean }) {
           <button
             key={m.id}
             type="button"
-            onClick={() => setThemeMode(m.id)}
+            onClick={() => { setThemeMode(m.id); }}
             class={`flex flex-col text-left p-4 rounded-2xl border transition-all cursor-pointer ${
               isActive
                 ? 'bg-indigo-50/80 dark:bg-indigo-950/30 border-indigo-500/60 dark:border-indigo-500/50 shadow-md ring-1 ring-indigo-500/30'

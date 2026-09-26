@@ -3,7 +3,6 @@ import {
   dashboardDataSignal,
   formatCurrency,
   formatNumber,
-  type TimelinePoint,
 } from '../../state/dashboard-state.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
 
@@ -47,12 +46,13 @@ export function SalesChart() {
 
   // Generar path SVG para la línea y el área con gradiente
   const linePath = points.reduce((acc, curr, idx) => {
-    return idx === 0 ? `M ${curr.x} ${curr.y}` : `${acc} L ${curr.x} ${curr.y}`;
+    return idx === 0 ? `M ${String(curr.x)} ${String(curr.y)}` : `${acc} L ${String(curr.x)} ${String(curr.y)}`;
   }, '');
 
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
-  const areaPath = `${linePath} L ${lastPoint?.x ?? 0} ${paddingTop + chartHeight} L ${firstPoint?.x ?? 0} ${paddingTop + chartHeight} Z`;
+  const bottomY = String(paddingTop + chartHeight);
+  const areaPath = `${linePath} L ${String(lastPoint?.x ?? 0)} ${bottomY} L ${String(firstPoint?.x ?? 0)} ${bottomY} Z`;
 
   // Marcas en eje Y (4 niveles)
   const yTicks = [0, 0.33, 0.66, 1].map((ratio) => {
@@ -80,9 +80,9 @@ export function SalesChart() {
 
       <div class="w-full overflow-x-auto">
         <svg
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox="0 0 800 260"
           class="w-full h-auto min-w-[500px] select-none"
-          onMouseLeave={() => (hoveredIndexSignal.value = null)}
+          onMouseLeave={() => { hoveredIndexSignal.value = null; }}
         >
           <defs>
             {/* Gradiente vertical para el área de ventas */}

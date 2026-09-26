@@ -63,7 +63,7 @@ export function TopProductsTable() {
                       class={`h-full rounded-full transition-all duration-300 ${
                         isTop3 ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
-                      style={{ width: `${ratio}%` }}
+                      style={{ width: `${String(ratio)}%` }}
                     ></div>
                   </div>
                 </div>

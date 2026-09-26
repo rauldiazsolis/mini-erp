@@ -26,8 +26,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .send({ email: 'admin@sistema.com', password: 'password123', name: 'Super Admin' });
 
     expect(res1.status).toBe(201);
-    expect(res1.body.user.globalRole).toBe('root');
-    expect(typeof res1.body.token).toBe('string');
+    const body1 = res1.body as unknown as { user: { globalRole: string }; token: string };
+    expect(body1.user.globalRole).toBe('root');
+    expect(typeof body1.token).toBe('string');
 
     // 2. Segundo usuario
     const res2 = await request(app)
@@ -35,7 +36,8 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .send({ email: 'empleado@tienda.com', password: 'password123', name: 'Empleado 1' });
 
     expect(res2.status).toBe(201);
-    expect(res2.body.user.globalRole).toBe('user');
+    const body2 = res2.body as unknown as { user: { globalRole: string } };
+    expect(body2.user.globalRole).toBe('user');
   });
 
   it('permite login y consulta de perfil con /api/auth/me', async () => {
@@ -48,21 +50,24 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .send({ email: 'juan@tienda.com', password: 'mypassword' });
 
     expect(loginRes.status).toBe(200);
-    const token = loginRes.body.token;
+    const loginBody = loginRes.body as unknown as { token: string };
+    const token = loginBody.token;
 
     const meRes = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${token}`);
 
     expect(meRes.status).toBe(200);
-    expect(meRes.body.user.email).toBe('juan@tienda.com');
+    const meBody = meRes.body as unknown as { user: { email: string } };
+    expect(meBody.user.email).toBe('juan@tienda.com');
   });
 
   it('permite crear un tenant y generar API Keys para el POS', async () => {
     const regRes = await request(app)
       .post('/api/auth/register')
       .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Dueño Kiosco' });
-    const token = regRes.body.token;
+    const regBody = regRes.body as unknown as { token: string };
+    const token = regBody.token;
 
     // Crear tenant
     const createTenantRes = await request(app)
@@ -71,7 +76,8 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .send({ id: 'kiosco-san-martin', slug: 'kiosco-san-martin', name: 'Kiosco San Martín', seedDemoData: true });
 
     expect(createTenantRes.status).toBe(201);
-    expect(createTenantRes.body.id).toBe('kiosco-san-martin');
+    const tenantBody = createTenantRes.body as unknown as { id: string };
+    expect(tenantBody.id).toBe('kiosco-san-martin');
 
     // Generar API Key para terminal POS
     const keyRes = await request(app)
@@ -80,8 +86,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .send({ name: 'Caja 1 Central', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
 
     expect(keyRes.status).toBe(201);
-    expect(keyRes.body.rawKey).toMatch(/^mpos_/);
-    expect(keyRes.body.keyPrefix).toBeDefined();
+    const keyBody = keyRes.body as unknown as { id: string; rawKey: string; keyPrefix: string };
+    expect(keyBody.rawKey).toMatch(/^mpos_/);
+    expect(keyBody.keyPrefix).toBeDefined();
 
     // Listar keys
     const listRes = await request(app)
@@ -89,12 +96,13 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(listRes.status).toBe(200);
-    expect(listRes.body.length).toBe(1);
-    expect(listRes.body[0].active).toBe(true);
+    const listBody = listRes.body as unknown as Array<{ active: boolean }>;
+    expect(listBody.length).toBe(1);
+    expect(listBody[0]?.active).toBe(true);
 
     // Revocar key
     const revokeRes = await request(app)
-      .delete(`/api/tenants/kiosco-san-martin/api-keys/${keyRes.body.id}`)
+      .delete(`/api/tenants/kiosco-san-martin/api-keys/${keyBody.id}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(revokeRes.status).toBe(200);
@@ -103,7 +111,8 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .get('/api/tenants/kiosco-san-martin/api-keys')
       .set('Authorization', `Bearer ${token}`);
 
-    expect(listAfterRes.body[0].active).toBe(false);
+    const listAfterBody = listAfterRes.body as unknown as Array<{ active: boolean }>;
+    expect(listAfterBody[0]?.active).toBe(false);
   });
 
   it('el usuario root puede ver y acceder a todos los tenants (impersonación)', async () => {
@@ -111,13 +120,15 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     const rootRes = await request(app)
       .post('/api/auth/register')
       .send({ email: 'root@sistema.com', password: 'password123', name: 'Root' });
-    const rootToken = rootRes.body.token;
+    const rootBody = rootRes.body as unknown as { token: string };
+    const rootToken = rootBody.token;
 
     // 2. Registrar usuario común y que cree un tenant
     const userRes = await request(app)
       .post('/api/auth/register')
       .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante' });
-    const userToken = userRes.body.token;
+    const userBody = userRes.body as unknown as { token: string };
+    const userToken = userBody.token;
 
     await request(app)
       .post('/api/tenants')
@@ -130,8 +141,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .set('Authorization', `Bearer ${rootToken}`);
 
     expect(rootTenantsRes.status).toBe(200);
-    expect(rootTenantsRes.body.length).toBe(1);
-    expect(rootTenantsRes.body[0].tenantId).toBe('zapateria-real');
-    expect(rootTenantsRes.body[0].role).toBe('root_impersonator');
+    const rootTenantsBody = rootTenantsRes.body as unknown as Array<{ tenantId: string; role: string }>;
+    expect(rootTenantsBody.length).toBe(1);
+    expect(rootTenantsBody[0]?.tenantId).toBe('zapateria-real');
+    expect(rootTenantsBody[0]?.role).toBe('root_impersonator');
   });
 });

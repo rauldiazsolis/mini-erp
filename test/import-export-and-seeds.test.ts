@@ -5,6 +5,37 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 
+interface ProductItem {
+  id?: string;
+  sku: string;
+  name: string;
+  price: number;
+  category?: string;
+  barcodes?: string[];
+}
+
+interface CustomerItem {
+  id?: string;
+  name: string;
+  document?: string;
+  phone?: string;
+  creditLimit?: number;
+}
+
+interface ImportResult {
+  dryRun: boolean;
+  totalRows?: number;
+  importedCount: number;
+  failedCount?: number;
+  updatedCount?: number;
+  errors?: Array<{ row: number; error: string }>;
+}
+
+interface PresetResult {
+  preset: string;
+  productsCreated: number;
+}
+
 describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
@@ -12,7 +43,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-io-test';
 
-  beforeEach(async () => {
+  beforeEach(() => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
@@ -62,10 +93,11 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body).toHaveLength(2);
-      expect(res.body[0]?.sku).toBe('ALM-100');
-      expect(res.body[0]?.name).toBe('Arroz Blanco 1kg');
+      const items = res.body as unknown as ProductItem[];
+      expect(Array.isArray(items)).toBe(true);
+      expect(items).toHaveLength(2);
+      expect(items[0]?.sku).toBe('ALM-100');
+      expect(items[0]?.name).toBe('Arroz Blanco 1kg');
     });
 
     it('exporta el catálogo de productos en formato CSV con cabecera y delimitador estándar', async () => {
@@ -87,8 +119,9 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(jsonRes.status).toBe(200);
-      expect(jsonRes.body).toHaveLength(1);
-      expect(jsonRes.body[0]?.name).toBe('Juana Manso');
+      const customers = jsonRes.body as unknown as CustomerItem[];
+      expect(customers).toHaveLength(1);
+      expect(customers[0]?.name).toBe('Juana Manso');
 
       // CSV
       const csvRes = await request(app)
@@ -118,18 +151,20 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .send(payload);
 
       expect(res.status).toBe(200);
-      expect(res.body.dryRun).toBe(true);
-      expect(res.body.totalRows).toBe(3);
-      expect(res.body.importedCount).toBe(2);
-      expect(res.body.failedCount).toBe(1);
-      expect(res.body.errors).toHaveLength(1);
-      expect(res.body.errors[0]?.row).toBe(3);
+      const body = res.body as unknown as ImportResult;
+      expect(body.dryRun).toBe(true);
+      expect(body.totalRows).toBe(3);
+      expect(body.importedCount).toBe(2);
+      expect(body.failedCount).toBe(1);
+      expect(body.errors).toHaveLength(1);
+      expect(body.errors?.[0]?.row).toBe(3);
 
       // Comprobar que no se insertaron por ser dryRun
       const getRes = await request(app)
         .get(`/api/tenants/${tenantId}/products`)
         .set('Authorization', `Bearer ${adminToken}`);
-      expect(getRes.body).toHaveLength(0);
+      const list = getRes.body as unknown as ProductItem[];
+      expect(list).toHaveLength(0);
     });
 
     it('importa productos desde un archivo/texto CSV real persistiendo en la base', async () => {
@@ -148,19 +183,21 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.dryRun).toBe(false);
-      expect(res.body.importedCount).toBe(2);
-      expect(res.body.failedCount).toBe(0);
+      const body = res.body as unknown as ImportResult;
+      expect(body.dryRun).toBe(false);
+      expect(body.importedCount).toBe(2);
+      expect(body.failedCount).toBe(0);
 
       // Verificar en base de datos
       const listRes = await request(app)
         .get(`/api/tenants/${tenantId}/products`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(listRes.body).toHaveLength(2);
-      const mermelada = listRes.body.find((p: { sku: string }) => p.sku === 'CSV-02');
-      expect(mermelada.price).toBe(1800);
-      expect(mermelada.barcodes).toEqual(['779002', '779003']);
+      const list = listRes.body as unknown as ProductItem[];
+      expect(list).toHaveLength(2);
+      const mermelada = list.find((p) => p.sku === 'CSV-02');
+      expect(mermelada?.price).toBe(1800);
+      expect(mermelada?.barcodes).toEqual(['779002', '779003']);
     });
 
     it('actualiza productos existentes por SKU si updateExisting es true', async () => {
@@ -181,16 +218,18 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.updatedCount).toBe(1);
-      expect(res.body.importedCount).toBe(0);
+      const body = res.body as unknown as ImportResult;
+      expect(body.updatedCount).toBe(1);
+      expect(body.importedCount).toBe(0);
 
       const checkRes = await request(app)
         .get(`/api/tenants/${tenantId}/products`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      const prod = checkRes.body.find((p: { sku: string }) => p.sku === 'UPD-01');
-      expect(prod.name).toBe('Nombre Renovado');
-      expect(prod.price).toBe(650);
+      const list = checkRes.body as unknown as ProductItem[];
+      const prod = list.find((p) => p.sku === 'UPD-01');
+      expect(prod?.name).toBe('Nombre Renovado');
+      expect(prod?.price).toBe(650);
     });
 
     it('importa clientes desde CSV con documentos y límites de crédito', async () => {
@@ -209,14 +248,16 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.importedCount).toBe(2);
+      const body = res.body as unknown as ImportResult;
+      expect(body.importedCount).toBe(2);
 
       const listRes = await request(app)
         .get(`/api/tenants/${tenantId}/customers`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(listRes.body).toHaveLength(2);
-      expect(listRes.body[0]?.creditLimit).toBeGreaterThanOrEqual(25000);
+      const list = listRes.body as unknown as CustomerItem[];
+      expect(list).toHaveLength(2);
+      expect((list[0]?.creditLimit ?? 0)).toBeGreaterThanOrEqual(25000);
     });
   });
 
@@ -228,16 +269,18 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .send({ preset: 'kiosco' });
 
       expect(res.status).toBe(200);
-      expect(res.body.preset).toBe('kiosco');
-      expect(res.body.productsCreated).toBeGreaterThanOrEqual(6);
+      const body = res.body as unknown as PresetResult;
+      expect(body.preset).toBe('kiosco');
+      expect(body.productsCreated).toBeGreaterThanOrEqual(6);
 
       // Verificar que los productos existen y tienen categorías propias de kiosco
       const prodRes = await request(app)
         .get(`/api/tenants/${tenantId}/products`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(prodRes.body.length).toBeGreaterThanOrEqual(6);
-      const categories = prodRes.body.map((p: { category: string }) => p.category);
+      const products = prodRes.body as unknown as ProductItem[];
+      expect(products.length).toBeGreaterThanOrEqual(6);
+      const categories = products.map((p) => p.category);
       expect(categories).toContain('Golosinas');
       expect(categories).toContain('Bebidas');
 
@@ -246,8 +289,9 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .get(`/api/tenants/${tenantId}/stock`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(stockRes.body.length).toBeGreaterThanOrEqual(6);
-      expect(stockRes.body.every((s: { totalStock: number }) => s.totalStock > 0)).toBe(true);
+      const stockList = stockRes.body as unknown as Array<{ totalStock: number }>;
+      expect(stockList.length).toBeGreaterThanOrEqual(6);
+      expect(stockList.every((s) => s.totalStock > 0)).toBe(true);
     });
 
     it('aplica el preset de "ferreteria" con productos y stock inicial correspondientes', async () => {
@@ -257,14 +301,16 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
         .send({ preset: 'ferreteria' });
 
       expect(res.status).toBe(200);
-      expect(res.body.preset).toBe('ferreteria');
+      const body = res.body as unknown as PresetResult;
+      expect(body.preset).toBe('ferreteria');
 
       const prodRes = await request(app)
         .get(`/api/tenants/${tenantId}/products`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      const names = prodRes.body.map((p: { name: string }) => p.name.toLowerCase());
-      expect(names.some((n: string) => n.includes('martillo') || n.includes('destornillador') || n.includes('cinta'))).toBe(true);
+      const products = prodRes.body as unknown as ProductItem[];
+      const names = products.map((p) => p.name.toLowerCase());
+      expect(names.some((n) => n.includes('martillo') || n.includes('destornillador') || n.includes('cinta'))).toBe(true);
     });
   });
 });

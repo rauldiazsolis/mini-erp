@@ -8,7 +8,7 @@ export const registerEmailSignal = signal('');
 export const registerPasswordSignal = signal('');
 
 export function RegisterForm(props: { onSwitchToLogin: () => void }) {
-  const handleSubmit = async (e: Event) => {
+  const handleSubmit = (e: Event) => {
     e.preventDefault();
     if (!registerNameSignal.value.trim() || !registerEmailSignal.value.trim() || !registerPasswordSignal.value.trim()) {
       authErrorSignal.value = 'Completa todos los campos requeridos';
@@ -20,7 +20,7 @@ export function RegisterForm(props: { onSwitchToLogin: () => void }) {
       return;
     }
 
-    await register({
+    void register({
       name: registerNameSignal.value.trim(),
       email: registerEmailSignal.value.trim(),
       password: registerPasswordSignal.value,

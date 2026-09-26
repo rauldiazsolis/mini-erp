@@ -76,7 +76,7 @@ export function PaymentModal() {
             {target.balance > 0 && (
               <button
                 type="button"
-                onClick={() => updateField('amount', target.balance)}
+                onClick={() => { updateField('amount', target.balance); }}
                 class="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
               >
                 Cobrar saldo total
@@ -88,7 +88,7 @@ export function PaymentModal() {
             step="100"
             min="1"
             value={form.amount || ''}
-            onInput={(e) => updateField('amount', parseFloat((e.target as HTMLInputElement).value) || 0)}
+            onInput={(e) => { updateField('amount', parseFloat((e.target as HTMLInputElement).value) || 0); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             autoFocus
           />
@@ -99,7 +99,7 @@ export function PaymentModal() {
           <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Medio de Pago</label>
           <select
             value={form.method}
-            onChange={(e) => updateField('method', (e.target as HTMLSelectElement).value)}
+            onChange={(e) => { updateField('method', (e.target as HTMLSelectElement).value); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
           >
             {PAYMENT_METHODS.map((m) => (
@@ -115,7 +115,7 @@ export function PaymentModal() {
           label="Comprobante / Referencia (opcional)"
           placeholder="Ej: Transferencia #884920, Recibo 0001-0023"
           value={form.reference}
-          onInput={(e) => updateField('reference', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('reference', (e.target as HTMLInputElement).value); }}
         />
 
         {/* Descripción / Concepto */}
@@ -123,7 +123,7 @@ export function PaymentModal() {
           label="Concepto"
           placeholder="Cobranza en cuenta corriente"
           value={form.description}
-          onInput={(e) => updateField('description', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('description', (e.target as HTMLInputElement).value); }}
         />
 
         {/* Footer */}
@@ -133,7 +133,7 @@ export function PaymentModal() {
           </Button>
           <Button
             size="sm"
-            onClick={submitPayment}
+            onClick={() => { void submitPayment(); }}
             disabled={isSubmitting}
             class="bg-emerald-600 hover:bg-emerald-500 text-white"
           >

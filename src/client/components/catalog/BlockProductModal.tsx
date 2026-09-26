@@ -59,7 +59,7 @@ export function BlockProductModal() {
           </Button>
           <Button
             size="sm"
-            onClick={confirmToggleBlock}
+            onClick={() => { void confirmToggleBlock(); }}
             class={isCurrentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-amber-600 hover:bg-amber-500'}
           >
             {isCurrentlyBlocked ? 'Confirmar Desbloqueo' : 'Confirmar Bloqueo'}

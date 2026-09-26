@@ -5,7 +5,6 @@ import express from 'express';
 
 export async function setupClient(app: Express): Promise<void> {
   const isProd = process.env['NODE_ENV'] === 'production';
-  const clientDir = resolve(import.meta.dirname, '../client');
   const distDir = resolve(import.meta.dirname, '../../dist/client');
 
   if (!isProd) {

@@ -21,7 +21,7 @@ export function CustomerStatsBar() {
       <StatCard
         title="Clientes Deudores"
         value={formatNumber(stats.totalDebtors)}
-        subtitle={`${debtorPercentage}% de la cartera activa`}
+        subtitle={`${String(debtorPercentage)}% de la cartera activa`}
         icon={<span>⚠️</span>}
         variant="warning"
       />

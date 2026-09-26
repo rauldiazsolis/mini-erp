@@ -16,16 +16,13 @@ import {
   productFormDataSignal,
   openNewProductModal,
   openEditProductModal,
-  closeProductModal,
   submitProductForm,
   blockModalOpenSignal,
   targetProductToBlockSignal,
   blockReasonSignal,
   openBlockModal,
-  closeBlockModal,
   confirmToggleBlock,
   deleteProduct,
-  fetchCatalog,
   type ProductItem,
 } from '../src/client/state/catalog-state.ts';
 import {
@@ -152,16 +149,16 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
       const originalFetch = globalThis.fetch;
       let requestedBody: unknown = null;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        requestedBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        requestedBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             ...mockProductA,
             price: 1850,
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await saveInlineEdit('prod-1', 'price', '1850');
@@ -184,12 +181,12 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
 
     it('reinvierte el cambio optimista si la API falla', async () => {
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(JSON.stringify({ error: 'Falla del servidor' }), {
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(JSON.stringify({ error: 'Falla del servidor' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },
-        });
-      }) as unknown as typeof fetch;
+        }));
+      });
 
       try {
         await saveInlineEdit('prod-1', 'name', 'Nuevo Nombre');
@@ -231,8 +228,8 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
         tracksStock: true,
       };
 
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             id: 'prod-4',
             sku: 'GAL-OREO',
@@ -247,8 +244,8 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
             updatedAt: '2026-09-25T11:00:00Z',
           }),
           { status: 201, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitProductForm();
@@ -272,15 +269,15 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
       blockReasonSignal.value = 'Suspendido por inspección';
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             ...mockProductA,
             blockedReason: 'Suspendido por inspección',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await confirmToggleBlock();
@@ -294,12 +291,12 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
 
     it('deleteProduct elimina el producto de la lista', async () => {
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(JSON.stringify({ success: true, softDeleted: true }), {
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, softDeleted: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
-        });
-      }) as unknown as typeof fetch;
+        }));
+      });
 
       try {
         await deleteProduct(mockProductB);

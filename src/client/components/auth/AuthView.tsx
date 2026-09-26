@@ -56,7 +56,7 @@ export function AuthView() {
           </p>
           <button
             type="button"
-            onClick={() => openMerchantOnboarding()}
+            onClick={() => { openMerchantOnboarding(); }}
             class="mt-2.5 w-full py-2.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>🚀</span>

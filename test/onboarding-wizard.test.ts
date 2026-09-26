@@ -147,36 +147,36 @@ describe('Wizard de Onboarding para Nuevos Comercios (Etapa 3.6)', () => {
       const originalFetch = globalThis.fetch;
       const fetchCalls: Array<{ url: string; method?: string; body?: unknown }> = [];
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         fetchCalls.push({
-          url: String(url),
+          url,
           method: init?.method,
-          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
         });
 
-        if (String(url).endsWith('/api/tenants')) {
-          return new Response(
+        if (url.endsWith('/api/tenants')) {
+          return Promise.resolve(new Response(
             JSON.stringify({
               id: 'kiosco-avenida',
               name: 'Kiosco Avenida',
               slug: 'kiosco-avenida',
             }),
             { status: 201, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
 
-        if (String(url).includes('/seed-preset')) {
-          return new Response(
+        if (url.includes('/seed-preset')) {
+          return Promise.resolve(new Response(
             JSON.stringify({
               preset: 'kiosco',
               productsImported: 15,
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
 
-        if (String(url).includes('/api-keys')) {
-          return new Response(
+        if (url.includes('/api-keys')) {
+          return Promise.resolve(new Response(
             JSON.stringify({
               id: 'key-123',
               name: 'Caja 1',
@@ -185,11 +185,11 @@ describe('Wizard de Onboarding para Nuevos Comercios (Etapa 3.6)', () => {
               pointOfSale: 'Caja 1',
             }),
             { status: 201, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
 
-        if (String(url).endsWith('/api/auth/me')) {
-          return new Response(
+        if (url.endsWith('/api/auth/me')) {
+          return Promise.resolve(new Response(
             JSON.stringify({
               user: { id: 'usr-1', email: 'admin@pos.local', globalRole: 'admin', name: 'Admin' },
               tenants: [
@@ -203,14 +203,14 @@ describe('Wizard de Onboarding para Nuevos Comercios (Etapa 3.6)', () => {
               ],
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
 
-        return new Response(JSON.stringify({}), {
+        return Promise.resolve(new Response(JSON.stringify({}), {
           status: 200,
           headers: { 'content-type': 'application/json' },
-        });
-      }) as unknown as typeof fetch;
+        }));
+      });
 
       try {
         await submitOnboarding();

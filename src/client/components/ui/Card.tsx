@@ -1,10 +1,17 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, HTMLAttributes } from 'preact';
 
-export function Card(props: JSX.HTMLAttributes<HTMLDivElement> & { children: ComponentChildren }) {
+export type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'className'> & {
+  class?: string;
+  className?: string;
+  children: ComponentChildren;
+};
+
+export function Card(props: CardProps) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
     <div
-      class={`bg-white dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl p-6 transition-colors ${className}`}
+      class={`bg-white dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl p-6 transition-colors${extraClass}`}
       {...rest}
     >
       {children}

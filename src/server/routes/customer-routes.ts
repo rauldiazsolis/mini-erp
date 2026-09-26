@@ -176,7 +176,7 @@ export function createCustomerRoutes(): Router {
       const result = service.deleteCustomer(customerId, { hard, blockedReason: reason });
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
       const msg = err instanceof Error ? err.message : 'Error al eliminar/bloquear cliente';
       res.status(statusCode).json({ error: msg });
     }
@@ -201,7 +201,7 @@ export function createCustomerRoutes(): Router {
       const result = service.registerPayment(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
       const msg = err instanceof Error ? err.message : 'Error al registrar cobranza';
       res.status(statusCode).json({ error: msg });
     }
@@ -226,7 +226,7 @@ export function createCustomerRoutes(): Router {
       const result = service.adjustBalance(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
       const msg = err instanceof Error ? err.message : 'Error al ajustar saldo';
       res.status(statusCode).json({ error: msg });
     }

@@ -46,7 +46,7 @@ export function PosKeysSection() {
 
   const copyToClipboard = async (text: string) => {
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      if (typeof navigator !== 'undefined') {
         await navigator.clipboard.writeText(text);
         showToast({
           type: 'success',
@@ -75,7 +75,7 @@ export function PosKeysSection() {
         <div class="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchApiKeys}
+            onClick={() => { void fetchApiKeys(); }}
             disabled={isLoading}
             class="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors cursor-pointer"
             title="Recargar llaves"
@@ -165,7 +165,7 @@ export function PosKeysSection() {
                       {k.active && (
                         <button
                           type="button"
-                          onClick={() => revokeApiKey(k.id, k.name)}
+                          onClick={() => { void revokeApiKey(k.id, k.name); }}
                           title="Revocar acceso a esta terminal"
                           class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                         >
@@ -200,7 +200,7 @@ export function PosKeysSection() {
             <Button variant="outline" size="sm" onClick={closeCreateKeyModal} disabled={isCreating}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={submitCreateApiKey} disabled={isCreating}>
+            <Button size="sm" onClick={() => { void submitCreateApiKey(); }} disabled={isCreating}>
               {isCreating ? 'Generando...' : 'Generar Clave 🔑'}
             </Button>
           </>
@@ -290,7 +290,7 @@ export function PosKeysSection() {
                   value={secretKey.rawKey}
                   class="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-xs text-emerald-600 dark:text-emerald-400 focus:outline-none"
                 />
-                <Button size="sm" onClick={() => copyToClipboard(secretKey.rawKey)}>
+                <Button size="sm" onClick={() => { void copyToClipboard(secretKey.rawKey); }}>
                   Copiar
                 </Button>
               </div>

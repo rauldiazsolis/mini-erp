@@ -77,7 +77,7 @@ export function StockAlertsCard() {
         <span class="text-[11px] text-slate-500 dark:text-slate-400">Control multi-sucursal</span>
         <button
           type="button"
-          onClick={() => navigateTo('stock')}
+          onClick={() => { navigateTo('stock'); }}
           class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold cursor-pointer underline-offset-2 hover:underline"
         >
           Ir a Kardex de Stock →

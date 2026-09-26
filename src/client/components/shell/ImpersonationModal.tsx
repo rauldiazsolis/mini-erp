@@ -135,7 +135,7 @@ export function ImpersonationModal() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleSelect(t)}
+                        onClick={() => { handleSelect(t); }}
                         class="hover:bg-amber-600 hover:text-white"
                       >
                         Impersonar

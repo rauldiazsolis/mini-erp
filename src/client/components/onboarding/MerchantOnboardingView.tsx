@@ -74,7 +74,7 @@ export function MerchantOnboardingView() {
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      if (typeof navigator !== 'undefined') {
         await navigator.clipboard.writeText(text);
         showToast({
           type: 'success',
@@ -410,7 +410,7 @@ export function MerchantOnboardingView() {
                         value={result.connectorUrl}
                         class="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-indigo-600 dark:text-indigo-300"
                       />
-                      <Button size="sm" variant="secondary" onClick={() => copyToClipboard(result.connectorUrl, 'URL')}>
+                      <Button size="sm" variant="secondary" onClick={() => { void copyToClipboard(result.connectorUrl, 'URL'); }}>
                         Copiar
                       </Button>
                     </div>
@@ -425,7 +425,7 @@ export function MerchantOnboardingView() {
                         value={result.apiKey}
                         class="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-emerald-600 dark:text-emerald-300"
                       />
-                      <Button size="sm" variant="secondary" onClick={() => copyToClipboard(result.apiKey, 'API Key')}>
+                      <Button size="sm" variant="secondary" onClick={() => { void copyToClipboard(result.apiKey, 'API Key'); }}>
                         Copiar
                       </Button>
                     </div>
@@ -462,7 +462,7 @@ export function MerchantOnboardingView() {
                 <Button
                   variant="primary"
                   size="md"
-                  onClick={advanceMerchantStep}
+                  onClick={() => { void advanceMerchantStep(); }}
                   loading={isSubmitting}
                 >
                   {step === 1 ? 'Continuar a Datos del Negocio →' : 'Aprovisionar Mi Comercio 🚀'}

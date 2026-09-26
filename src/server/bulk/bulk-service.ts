@@ -168,13 +168,14 @@ export class BulkService {
     const isDryRun = input.dryRun ?? false;
     const now = new Date().toISOString();
 
-    let sql = 'SELECT id, name, balance FROM customers WHERE balance > ?';
+    const sql = 'SELECT id, name, balance FROM customers WHERE balance > ?';
     const params: (number | string)[] = [minBalance];
 
     const rows = this.db.prepare(sql).all(...params) as unknown as RawCustomerRow[];
 
-    const filteredRows = input.customerIds && input.customerIds.length > 0
-      ? rows.filter((c) => input.customerIds!.includes(c.id))
+    const targetCustomerIds = input.customerIds;
+    const filteredRows = targetCustomerIds && targetCustomerIds.length > 0
+      ? rows.filter((c) => targetCustomerIds.includes(c.id))
       : rows;
 
     const items: BulkInterestPreviewItem[] = [];

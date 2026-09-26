@@ -71,7 +71,7 @@ export function OnboardingModal() {
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      if (typeof navigator !== 'undefined') {
         await navigator.clipboard.writeText(text);
         showToast({
           type: 'success',
@@ -178,7 +178,7 @@ export function OnboardingModal() {
                 label="Nombre del Comercio / Empresa"
                 placeholder="Ej: Kiosco San Martín, Ferretería El Candado..."
                 value={nameSignal.value}
-                onInput={(e) => setName((e.target as HTMLInputElement).value)}
+                onInput={(e) => { setName((e.target as HTMLInputElement).value); }}
                 autoFocus
               />
 
@@ -312,7 +312,7 @@ export function OnboardingModal() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => copyToClipboard(result.connectorUrl, 'URL')}
+                      onClick={() => { void copyToClipboard(result.connectorUrl, 'URL'); }}
                     >
                       Copiar
                     </Button>
@@ -333,7 +333,7 @@ export function OnboardingModal() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => copyToClipboard(result.apiKey, 'API Key')}
+                      onClick={() => { void copyToClipboard(result.apiKey, 'API Key'); }}
                     >
                       Copiar
                     </Button>

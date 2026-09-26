@@ -71,9 +71,9 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: true,
             affectedCount: 2,
@@ -99,8 +99,8 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
             ],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await previewBulkPrices();
@@ -125,17 +125,17 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: false,
             affectedCount: 2,
             items: [],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await applyBulkPrices();
@@ -159,9 +159,9 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: true,
             affectedCount: 1,
@@ -177,8 +177,8 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
             ],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await previewBulkInterests();
@@ -201,9 +201,9 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: false,
             affectedCount: 1,
@@ -211,8 +211,8 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
             items: [],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await applyBulkInterests();
@@ -237,9 +237,9 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: true,
             importedCount: 1,
@@ -248,8 +248,8 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
             errors: [],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await previewImport();
@@ -272,9 +272,9 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
       let sentBody: unknown = null;
       const originalFetch = globalThis.fetch;
 
-      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+        return Promise.resolve(new Response(
           JSON.stringify({
             dryRun: false,
             importedCount: 1,
@@ -283,8 +283,8 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
             errors: [],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await applyImport();

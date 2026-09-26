@@ -37,7 +37,7 @@ export class ConnectorService {
 
     if (existing !== undefined && (existing.status === 'ok' || existing.status === 'issues')) {
       return {
-        status: existing.status as 'ok' | 'issues',
+        status: existing.status,
         issues: existing.issues ? (JSON.parse(existing.issues) as LotIssue[]) : undefined,
       };
     }
@@ -485,7 +485,7 @@ export class ConnectorService {
       .prepare("SELECT COALESCE(SUM(amount), 0) as total FROM account_holds WHERE customer_id = ? AND status = 'pending'")
       .get(params.customerId) as { total: number };
 
-    const creditLimit = cust.credit_limit ?? 0;
+    const creditLimit = cust.credit_limit;
     const margin = cust.margin ?? 0;
     const balance = cust.balance ?? 0;
     const pendingHeld = pendingRow.total;

@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals';
-import { apiFetch, setOnUnauthorized, type ApiError } from '../api/client.ts';
+import { apiFetch, setOnUnauthorized } from '../api/client.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
 
@@ -23,7 +23,7 @@ const TENANT_KEY = 'mini_erp_tenant_id';
 
 function getStorage(): Storage | null {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
+    if (typeof window !== 'undefined') {
       return window.localStorage;
     }
   } catch {

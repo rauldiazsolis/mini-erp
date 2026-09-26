@@ -45,9 +45,9 @@ describe('Frontend Client Scaffolding & Signal Reactivity', () => {
 
     const fetchData = async () => {
       loadingSignal.value = true;
-      const res = await queryClient.fetchQuery({
+      const res = await queryClient.query({
         queryKey: ['test-key'],
-        queryFn: async () => 'test-payload',
+        queryFn: () => Promise.resolve('test-payload'),
       });
       dataSignal.value = res;
       loadingSignal.value = false;

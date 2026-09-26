@@ -6,6 +6,27 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 
+interface DashboardSummaryResponse {
+  period: string;
+  summary: {
+    totalSales: number;
+    salesCount: number;
+    averageTicket: number;
+    totalReceivables: number;
+    debtorCount: number;
+  };
+  timeline: Array<{ date: string; salesCount: number; totalSales: number }>;
+  topProducts: Array<{
+    productId: string;
+    name: string;
+    unitsSold: number;
+    totalRevenue: number;
+  }>;
+  stockAlerts: {
+    lowStockProducts: unknown[];
+  };
+}
+
 describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
@@ -57,34 +78,35 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('period', 'week');
-    expect(res.body).toHaveProperty('summary');
-    expect(res.body.summary).toHaveProperty('totalSales');
-    expect(res.body.summary).toHaveProperty('salesCount');
-    expect(res.body.summary).toHaveProperty('averageTicket');
-    expect(res.body.summary).toHaveProperty('totalReceivables');
-    expect(res.body.summary).toHaveProperty('debtorCount');
+    const body = res.body as unknown as DashboardSummaryResponse;
+    expect(body).toHaveProperty('period', 'week');
+    expect(body).toHaveProperty('summary');
+    expect(body.summary).toHaveProperty('totalSales');
+    expect(body.summary).toHaveProperty('salesCount');
+    expect(body.summary).toHaveProperty('averageTicket');
+    expect(body.summary).toHaveProperty('totalReceivables');
+    expect(body.summary).toHaveProperty('debtorCount');
 
     // Dado que se ejecutó generateHistoricalDemoActivity (últimos 7 días)
-    expect(res.body.summary.salesCount).toBeGreaterThan(0);
-    expect(res.body.summary.totalSales).toBeGreaterThan(0);
-    expect(res.body.summary.averageTicket).toBeGreaterThan(0);
+    expect(body.summary.salesCount).toBeGreaterThan(0);
+    expect(body.summary.totalSales).toBeGreaterThan(0);
+    expect(body.summary.averageTicket).toBeGreaterThan(0);
 
     // Debe incluir timeline con 7 días
-    expect(Array.isArray(res.body.timeline)).toBe(true);
-    expect(res.body.timeline.length).toBe(7);
+    expect(Array.isArray(body.timeline)).toBe(true);
+    expect(body.timeline.length).toBe(7);
 
     // Debe incluir top products
-    expect(Array.isArray(res.body.topProducts)).toBe(true);
-    expect(res.body.topProducts.length).toBeGreaterThan(0);
-    expect(res.body.topProducts[0]).toHaveProperty('productId');
-    expect(res.body.topProducts[0]).toHaveProperty('name');
-    expect(res.body.topProducts[0]).toHaveProperty('unitsSold');
-    expect(res.body.topProducts[0]).toHaveProperty('totalRevenue');
+    expect(Array.isArray(body.topProducts)).toBe(true);
+    expect(body.topProducts.length).toBeGreaterThan(0);
+    expect(body.topProducts[0]).toHaveProperty('productId');
+    expect(body.topProducts[0]).toHaveProperty('name');
+    expect(body.topProducts[0]).toHaveProperty('unitsSold');
+    expect(body.topProducts[0]).toHaveProperty('totalRevenue');
 
     // Debe incluir alertas de stock
-    expect(res.body).toHaveProperty('stockAlerts');
-    expect(Array.isArray(res.body.stockAlerts.lowStockProducts)).toBe(true);
+    expect(body).toHaveProperty('stockAlerts');
+    expect(Array.isArray(body.stockAlerts.lowStockProducts)).toBe(true);
   });
 
   it('devuelve métricas para período today', async () => {
@@ -93,9 +115,10 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.period).toBe('today');
-    expect(res.body.summary.salesCount).toBeGreaterThanOrEqual(0);
-    expect(Array.isArray(res.body.timeline)).toBe(true);
+    const body = res.body as unknown as DashboardSummaryResponse;
+    expect(body.period).toBe('today');
+    expect(body.summary.salesCount).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(body.timeline)).toBe(true);
   });
 
   it('permite filtrar métricas por sucursal', async () => {
@@ -104,7 +127,8 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.summary.salesCount).toBeGreaterThan(0);
+    const body = res.body as unknown as DashboardSummaryResponse;
+    expect(body.summary.salesCount).toBeGreaterThan(0);
 
     // Filtrar por sucursal inexistente debe devolver 0 ventas
     const emptyRes = await request(app)
@@ -112,8 +136,9 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(emptyRes.status).toBe(200);
-    expect(emptyRes.body.summary.salesCount).toBe(0);
-    expect(emptyRes.body.summary.totalSales).toBe(0);
+    const emptyBody = emptyRes.body as unknown as DashboardSummaryResponse;
+    expect(emptyBody.summary.salesCount).toBe(0);
+    expect(emptyBody.summary.totalSales).toBe(0);
   });
 
   it('excluye ventas anuladas de los totales y del ranking de más vendidos', async () => {
@@ -144,8 +169,9 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+    const body = res.body as unknown as DashboardSummaryResponse;
     // La venta de 50000 no debe estar en totalSales ni en topProducts
-    const topProdNames = res.body.topProducts.map((p: { name: string }) => p.name);
+    const topProdNames = body.topProducts.map((p) => p.name);
     expect(topProdNames).not.toContain('Super Producto');
   });
 });

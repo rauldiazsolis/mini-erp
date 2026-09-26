@@ -68,7 +68,7 @@ export function StockAdjustModal() {
           <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Sucursal a impactar *</label>
           <select
             value={form.branchId}
-            onChange={(e) => updateField('branchId', (e.target as HTMLSelectElement).value)}
+            onChange={(e) => { updateField('branchId', (e.target as HTMLSelectElement).value); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             {branches.map((b) => (
@@ -85,7 +85,7 @@ export function StockAdjustModal() {
           <div class="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => updateField('type', 'set')}
+              onClick={() => { updateField('type', 'set'); }}
               class={`p-3 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer ${
                 form.type === 'set'
                   ? 'bg-indigo-50 dark:bg-indigo-600/15 border-indigo-500 text-indigo-900 dark:text-white shadow-xs ring-1 ring-indigo-500/30'
@@ -98,7 +98,7 @@ export function StockAdjustModal() {
 
             <button
               type="button"
-              onClick={() => updateField('type', 'delta')}
+              onClick={() => { updateField('type', 'delta'); }}
               class={`p-3 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer ${
                 form.type === 'delta'
                   ? 'bg-indigo-50 dark:bg-indigo-600/15 border-indigo-500 text-indigo-900 dark:text-white shadow-xs ring-1 ring-indigo-500/30'
@@ -120,7 +120,7 @@ export function StockAdjustModal() {
             type="number"
             step="1"
             value={form.quantity}
-            onInput={(e) => updateField('quantity', parseFloat((e.target as HTMLInputElement).value) || 0)}
+            onInput={(e) => { updateField('quantity', parseFloat((e.target as HTMLInputElement).value) || 0); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-indigo-600 dark:text-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             autoFocus
           />
@@ -133,7 +133,7 @@ export function StockAdjustModal() {
           </label>
           <select
             value={form.reason}
-            onChange={(e) => updateField('reason', (e.target as HTMLSelectElement).value)}
+            onChange={(e) => { updateField('reason', (e.target as HTMLSelectElement).value); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             {REASON_OPTIONS.map((r) => (
@@ -149,7 +149,7 @@ export function StockAdjustModal() {
           label="Notas / Observaciones del ajuste (opcional)"
           placeholder="Ej: Conteo físico mensual de estantería 3..."
           value={form.notes}
-          onInput={(e) => updateField('notes', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('notes', (e.target as HTMLInputElement).value); }}
         />
 
         {/* Footer */}
@@ -157,7 +157,7 @@ export function StockAdjustModal() {
           <Button variant="outline" size="sm" onClick={closeAdjustModal} disabled={isAdjusting}>
             Cancelar
           </Button>
-          <Button size="sm" onClick={submitStockAdjustment} disabled={isAdjusting}>
+          <Button size="sm" onClick={() => { void submitStockAdjustment(); }} disabled={isAdjusting}>
             {isAdjusting ? 'Asentando...' : 'Confirmar Asiento en Kardex'}
           </Button>
         </div>

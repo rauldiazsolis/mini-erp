@@ -84,7 +84,11 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { branch, pointOfSale } = req.posContext!;
+    if (!req.posContext) {
+      res.status(401).json({ error: 'No autorizado' });
+      return;
+    }
+    const { branch, pointOfSale } = req.posContext;
     const connector = getConnectorService(req);
 
     const result = connector.processPushLot({
@@ -99,10 +103,10 @@ export function createConnectorRoutes(
       let detail: string | undefined;
       if (e.type === 'sale') {
         const sale = e['sale'] as { total?: number } | undefined;
-        detail = sale?.total !== undefined ? `$${sale.total}` : undefined;
+        detail = sale?.total !== undefined ? `$${String(sale.total)}` : undefined;
       } else if (e.type === 'stock-movement') {
         const mov = e['movement'] as { productId?: string; delta?: number } | undefined;
-        detail = mov ? `${mov.productId} (${mov.delta})` : undefined;
+        detail = mov?.productId !== undefined && mov.delta !== undefined ? `${mov.productId} (${String(mov.delta)})` : undefined;
       } else if (e.type === 'customer') {
         const cust = e['customer'] as { name?: string } | undefined;
         detail = cust?.name;
@@ -131,7 +135,11 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { branch, pointOfSale } = req.posContext!;
+    if (!req.posContext) {
+      res.status(401).json({ error: 'No autorizado' });
+      return;
+    }
+    const { branch, pointOfSale } = req.posContext;
     const connector = getConnectorService(req);
 
     const pullResult = connector.pullCatalog({

@@ -34,7 +34,7 @@ export function CustomerModal() {
       title={isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}
       subtitle={
         isEdit
-          ? `Modificando datos de "${editingCustomerSignal.value?.name}"`
+          ? `Modificando datos de "${editingCustomerSignal.value?.name ?? ''}"`
           : 'Ficha comercial y límites de cuenta corriente'
       }
       icon={<span>{isEdit ? '✏️' : '👤'}</span>}
@@ -55,7 +55,7 @@ export function CustomerModal() {
           label="Nombre Completo o Razón Social *"
           placeholder="Ej: Juan Pérez, Distribuidora San Juan S.A."
           value={data.name}
-          onInput={(e) => updateField('name', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('name', (e.target as HTMLInputElement).value); }}
           autoFocus
         />
 
@@ -65,14 +65,14 @@ export function CustomerModal() {
             label="DNI / CUIT / Identificación"
             placeholder="20-30444555-8"
             value={data.document}
-            onInput={(e) => updateField('document', (e.target as HTMLInputElement).value)}
+            onInput={(e) => { updateField('document', (e.target as HTMLInputElement).value); }}
           />
 
           <Input
             label="Teléfono de Contacto"
             placeholder="+54 9 11 4455-6677"
             value={data.phone}
-            onInput={(e) => updateField('phone', (e.target as HTMLInputElement).value)}
+            onInput={(e) => { updateField('phone', (e.target as HTMLInputElement).value); }}
           />
         </div>
 
@@ -84,7 +84,7 @@ export function CustomerModal() {
               <input
                 type="checkbox"
                 checked={data.unrestricted}
-                onChange={(e) => updateField('unrestricted', (e.target as HTMLInputElement).checked)}
+                onChange={(e) => { updateField('unrestricted', (e.target as HTMLInputElement).checked); }}
                 class="w-4 h-4 rounded text-indigo-600 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 focus:ring-indigo-500"
               />
               <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Sin límite de crédito</span>
@@ -100,7 +100,7 @@ export function CustomerModal() {
                   step="1000"
                   min="0"
                   value={data.creditLimit}
-                  onInput={(e) => updateField('creditLimit', parseFloat((e.target as HTMLInputElement).value) || 0)}
+                  onInput={(e) => { updateField('creditLimit', parseFloat((e.target as HTMLInputElement).value) || 0); }}
                   class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -112,7 +112,7 @@ export function CustomerModal() {
                   step="500"
                   min="0"
                   value={data.margin}
-                  onInput={(e) => updateField('margin', parseFloat((e.target as HTMLInputElement).value) || 0)}
+                  onInput={(e) => { updateField('margin', parseFloat((e.target as HTMLInputElement).value) || 0); }}
                   class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -129,7 +129,7 @@ export function CustomerModal() {
                 step="100"
                 value={data.initialBalance || ''}
                 placeholder="0.00 (Positivo: Deudor, Negativo: Saldo a Favor)"
-                onInput={(e) => updateField('initialBalance', parseFloat((e.target as HTMLInputElement).value) || 0)}
+                onInput={(e) => { updateField('initialBalance', parseFloat((e.target as HTMLInputElement).value) || 0); }}
                 class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -141,7 +141,7 @@ export function CustomerModal() {
           <Button variant="outline" size="sm" onClick={closeCustomerModal} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button size="sm" onClick={submitCustomerForm} disabled={isSaving}>
+          <Button size="sm" onClick={() => { void submitCustomerForm(); }} disabled={isSaving}>
             {isSaving ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Cliente'}
           </Button>
         </div>

@@ -18,7 +18,7 @@ import {
   type TenantMembershipItem,
 } from '../src/client/state/auth-state.ts';
 import { createSignalQuery } from '../src/client/api/query-client.ts';
-import { apiFetch, ApiError, setOnUnauthorized } from '../src/client/api/client.ts';
+import { apiFetch, setOnUnauthorized } from '../src/client/api/client.ts';
 
 describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
   beforeEach(() => {
@@ -97,7 +97,7 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
         globalRole: 'user',
       };
 
-      expect(() => impersonateTenant('otro-tenant')).toThrow(
+      expect(() => { impersonateTenant('otro-tenant'); }).toThrow(
         'Solo usuarios root o support pueden impersonar comercios',
       );
     });
@@ -151,8 +151,8 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
         status: 401,
         statusText: 'Unauthorized',
         headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({ error: 'Token inválido o expirado' }),
-      } as unknown as Response);
+        json: () => Promise.resolve({ error: 'Token inválido o expirado' }),
+      });
 
       await expect(apiFetch('/api/test-401')).rejects.toThrow('Token inválido o expirado');
       expect(onUnauthMock).toHaveBeenCalled();
@@ -164,13 +164,13 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
       const originalFetch = globalThis.fetch;
       let capturedHeaders: Record<string, string> = {};
 
-      globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
-        capturedHeaders = init?.headers as Record<string, string>;
+      globalThis.fetch = vi.fn().mockImplementation((_url, init?: RequestInit) => {
+        capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
         return Promise.resolve({
           ok: true,
           status: 200,
           headers: new Headers({ 'content-type': 'application/json' }),
-          json: async () => ({ ok: true }),
+          json: () => Promise.resolve({ ok: true }),
         } as unknown as Response);
       });
 

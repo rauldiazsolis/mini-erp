@@ -16,9 +16,9 @@ await setupClient(bundle.app);
 
 bundle.app.listen(PORT, () => {
   console.log(`\n==================================================`);
-  console.log(`🚀 [mini-erp] Servidor iniciado en http://localhost:${PORT}`);
-  console.log(`📡 Connector API POS: http://localhost:${PORT}/connector`);
-  console.log(`🔧 Admin API:         http://localhost:${PORT}/api`);
+  console.log(`🚀 [mini-erp] Servidor iniciado en http://localhost:${String(PORT)}`);
+  console.log(`📡 Connector API POS: http://localhost:${String(PORT)}/connector`);
+  console.log(`🔧 Admin API:         http://localhost:${String(PORT)}/api`);
   console.log(`\n✨ Credenciales de desarrollo:`);
   console.log(`   - Admin:    ${devInfo.email} (password: admin123)`);
   console.log(`   - POS Key:  ${devInfo.rawKey}`);

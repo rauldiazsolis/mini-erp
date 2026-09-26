@@ -5,6 +5,46 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 
+interface CustomerResponse {
+  id: string;
+  name: string;
+  document?: string;
+  phone?: string;
+  creditLimit: number;
+  margin: number;
+  balance: number;
+  availableCredit: number;
+  isDebtor: boolean;
+  blockedReason?: string | null;
+}
+
+interface AccountMovement {
+  id: string;
+  type: string;
+  amount: number;
+  balanceAfter: number;
+  description: string;
+}
+
+interface PaymentResponse {
+  previousBalance: number;
+  amount: number;
+  newBalance: number;
+  movementId: string;
+}
+
+interface AdjustmentResponse {
+  previousBalance: number;
+  delta: number;
+  newBalance: number;
+}
+
+interface HoldResponse {
+  approved: boolean;
+  holdId?: string;
+  reasonCode?: string;
+}
+
 describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
@@ -12,7 +52,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-customers-test';
 
-  beforeEach(async () => {
+  beforeEach(() => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
@@ -50,14 +90,15 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(createRes.status).toBe(201);
-      expect(createRes.body.id).toBeDefined();
-      expect(createRes.body.name).toBe('Roberto Gómez');
-      expect(createRes.body.document).toBe('20-33445566-7');
-      expect(createRes.body.creditLimit).toBe(50000);
-      expect(createRes.body.margin).toBe(10000);
-      expect(createRes.body.balance).toBe(0);
-      expect(createRes.body.availableCredit).toBe(60000); // 50000 + 10000 - 0
-      expect(createRes.body.isDebtor).toBe(false);
+      const customer = createRes.body as unknown as CustomerResponse;
+      expect(customer.id).toBeDefined();
+      expect(customer.name).toBe('Roberto Gómez');
+      expect(customer.document).toBe('20-33445566-7');
+      expect(customer.creditLimit).toBe(50000);
+      expect(customer.margin).toBe(10000);
+      expect(customer.balance).toBe(0);
+      expect(customer.availableCredit).toBe(60000); // 50000 + 10000 - 0
+      expect(customer.isDebtor).toBe(false);
     });
 
     it('permite crear un cliente con saldo inicial y registra el movimiento de cuenta corriente', async () => {
@@ -72,10 +113,11 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(createRes.status).toBe(201);
-      const customerId = createRes.body.id as string;
-      expect(createRes.body.balance).toBe(7500);
-      expect(createRes.body.availableCredit).toBe(27500); // 35000 - 7500
-      expect(createRes.body.isDebtor).toBe(true);
+      const createBody = createRes.body as unknown as CustomerResponse;
+      const customerId = createBody.id;
+      expect(createBody.balance).toBe(7500);
+      expect(createBody.availableCredit).toBe(27500); // 35000 - 7500
+      expect(createBody.isDebtor).toBe(true);
 
       // Comprobar que en su extracto existe el movimiento inicial
       const movRes = await request(app)
@@ -83,11 +125,12 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(movRes.status).toBe(200);
-      expect(movRes.body.length).toBe(1);
-      expect(movRes.body[0]?.type).toBe('adjustment');
-      expect(movRes.body[0]?.amount).toBe(7500);
-      expect(movRes.body[0]?.balanceAfter).toBe(7500);
-      expect(movRes.body[0]?.description).toMatch(/saldo inicial/i);
+      const movements = movRes.body as unknown as AccountMovement[];
+      expect(movements.length).toBe(1);
+      expect(movements[0]?.type).toBe('adjustment');
+      expect(movements[0]?.amount).toBe(7500);
+      expect(movements[0]?.balanceAfter).toBe(7500);
+      expect(movements[0]?.description).toMatch(/saldo inicial/i);
     });
 
     it('permite listar clientes con filtro por búsqueda y estado deudor', async () => {
@@ -109,8 +152,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(debtorsRes.status).toBe(200);
-      expect(debtorsRes.body.length).toBe(1);
-      expect(debtorsRes.body[0]?.name).toBe('Esteban Quito');
+      const debtors = debtorsRes.body as unknown as CustomerResponse[];
+      expect(debtors.length).toBe(1);
+      expect(debtors[0]?.name).toBe('Esteban Quito');
 
       // 2. Búsqueda por documento
       const searchRes = await request(app)
@@ -118,8 +162,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(searchRes.status).toBe(200);
-      expect(searchRes.body.length).toBe(1);
-      expect(searchRes.body[0]?.name).toBe('Carlos Paz');
+      const searchResults = searchRes.body as unknown as CustomerResponse[];
+      expect(searchResults.length).toBe(1);
+      expect(searchResults[0]?.name).toBe('Carlos Paz');
     });
 
     it('permite actualizar datos del cliente y bloquearlo (soft delete/bloqueo)', async () => {
@@ -128,7 +173,8 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'Lucas Moyano', creditLimit: 10000 });
 
-      const customerId = createRes.body.id as string;
+      const createBody = createRes.body as unknown as CustomerResponse;
+      const customerId = createBody.id;
 
       // Actualizar datos
       const updateRes = await request(app)
@@ -140,8 +186,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(updateRes.status).toBe(200);
-      expect(updateRes.body.name).toBe('Lucas Moyano Jr.');
-      expect(updateRes.body.creditLimit).toBe(15000);
+      const updateBody = updateRes.body as unknown as CustomerResponse;
+      expect(updateBody.name).toBe('Lucas Moyano Jr.');
+      expect(updateBody.creditLimit).toBe(15000);
 
       // Bloquear / archivar
       const deleteRes = await request(app)
@@ -150,7 +197,8 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .send({ reason: 'Exceso de morosidad reiterada' });
 
       expect(deleteRes.status).toBe(200);
-      expect(deleteRes.body.blockedReason).toBe('Exceso de morosidad reiterada');
+      const deleteBody = deleteRes.body as unknown as CustomerResponse;
+      expect(deleteBody.blockedReason).toBe('Exceso de morosidad reiterada');
     });
   });
 
@@ -167,7 +215,8 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
           margin: 5000,
           initialBalance: 12000,
         });
-      customerId = createRes.body.id as string;
+      const customer = createRes.body as unknown as CustomerResponse;
+      customerId = customer.id;
     });
 
     it('registra una cobranza manual y acredita el saldo del cliente', async () => {
@@ -182,18 +231,20 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(payRes.status).toBe(200);
-      expect(payRes.body.previousBalance).toBe(12000);
-      expect(payRes.body.amount).toBe(5000);
-      expect(payRes.body.newBalance).toBe(7000);
-      expect(payRes.body.movementId).toBeDefined();
+      const payBody = payRes.body as unknown as PaymentResponse;
+      expect(payBody.previousBalance).toBe(12000);
+      expect(payBody.amount).toBe(5000);
+      expect(payBody.newBalance).toBe(7000);
+      expect(payBody.movementId).toBeDefined();
 
       // Comprobar cliente actualizado
       const custRes = await request(app)
         .get(`/api/tenants/${tenantId}/customers/${customerId}`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(custRes.body.balance).toBe(7000);
-      expect(custRes.body.availableCredit).toBe(38000); // 45000 - 7000
+      const custBody = custRes.body as unknown as CustomerResponse;
+      expect(custBody.balance).toBe(7000);
+      expect(custBody.availableCredit).toBe(38000); // 45000 - 7000
     });
 
     it('aplica un ajuste manual de saldo auditado (débito, crédito y set)', async () => {
@@ -208,9 +259,10 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(creditRes.status).toBe(200);
-      expect(creditRes.body.previousBalance).toBe(12000);
-      expect(creditRes.body.delta).toBe(-2000);
-      expect(creditRes.body.newBalance).toBe(10000);
+      const creditBody = creditRes.body as unknown as AdjustmentResponse;
+      expect(creditBody.previousBalance).toBe(12000);
+      expect(creditBody.delta).toBe(-2000);
+      expect(creditBody.newBalance).toBe(10000);
 
       // 2. Ajuste tipo débito (+1500) por recargo administrativo
       const debitRes = await request(app)
@@ -223,9 +275,10 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(debitRes.status).toBe(200);
-      expect(debitRes.body.previousBalance).toBe(10000);
-      expect(debitRes.body.delta).toBe(1500);
-      expect(debitRes.body.newBalance).toBe(11500);
+      const debitBody = debitRes.body as unknown as AdjustmentResponse;
+      expect(debitBody.previousBalance).toBe(10000);
+      expect(debitBody.delta).toBe(1500);
+      expect(debitBody.newBalance).toBe(11500);
 
       // 3. Ajuste tipo set (fijar saldo a 0) por condonación total
       const setRes = await request(app)
@@ -238,9 +291,10 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(setRes.status).toBe(200);
-      expect(setRes.body.previousBalance).toBe(11500);
-      expect(setRes.body.delta).toBe(-11500);
-      expect(setRes.body.newBalance).toBe(0);
+      const setBody = setRes.body as unknown as AdjustmentResponse;
+      expect(setBody.previousBalance).toBe(11500);
+      expect(setBody.delta).toBe(-11500);
+      expect(setBody.newBalance).toBe(0);
 
       // 4. Verificar extracto histórico completo
       const ledgerRes = await request(app)
@@ -248,8 +302,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(ledgerRes.status).toBe(200);
-      expect(ledgerRes.body.length).toBe(4); // initial (12000), credit (-2000), debit (+1500), set (-11500)
-      expect(ledgerRes.body[0]?.balanceAfter).toBe(0); // El más reciente
+      const ledger = ledgerRes.body as unknown as AccountMovement[];
+      expect(ledger.length).toBe(4); // initial (12000), credit (-2000), debit (+1500), set (-11500)
+      expect(ledger[0]?.balanceAfter).toBe(0); // El más reciente
     });
 
     it('rechaza ajustes sin motivo especificado o con montos negativos', async () => {
@@ -283,7 +338,8 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         .post(`/api/tenants/${tenantId}/api-keys`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
-      const posRawKey = keyRes.body.rawKey as string;
+      const keyBody = keyRes.body as unknown as { rawKey: string };
+      const posRawKey = keyBody.rawKey;
 
       // 2. Crear cliente con límite $10,000 y margen $2,000 (total disponible $12,000)
       const custRes = await request(app)
@@ -295,7 +351,8 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
           margin: 2000,
           initialBalance: 0,
         });
-      const customerId = custRes.body.id as string;
+      const custBody = custRes.body as unknown as CustomerResponse;
+      const customerId = custBody.id;
 
       // 3. POS solicita hold por $11,000 -> Debe ser APROBADO (12000 >= 11000)
       const hold1Res = await request(app)
@@ -309,8 +366,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(hold1Res.status).toBe(200);
-      expect(hold1Res.body.approved).toBe(true);
-      expect(typeof hold1Res.body.holdId).toBe('string');
+      const hold1Body = hold1Res.body as unknown as HoldResponse;
+      expect(hold1Body.approved).toBe(true);
+      expect(typeof hold1Body.holdId).toBe('string');
 
       // 4. Admin registra un cargo/ajuste de débito en cuenta de $5,000
       await request(app)
@@ -335,8 +393,9 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
         });
 
       expect(hold2Res.status).toBe(200);
-      expect(hold2Res.body.approved).toBe(false);
-      expect(hold2Res.body.reasonCode).toBe('insufficient-credit');
+      const hold2Body = hold2Res.body as unknown as HoldResponse;
+      expect(hold2Body.approved).toBe(false);
+      expect(hold2Body.reasonCode).toBe('insufficient-credit');
     });
   });
 });

@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
 export function initTenantDb(db: DatabaseSync): void {
   const versionRow = db.prepare('PRAGMA user_version').get() as { user_version: number };
   if (versionRow.user_version !== TENANT_SCHEMA_VERSION) {
-    db.exec(`PRAGMA user_version = ${TENANT_SCHEMA_VERSION}`);
+    db.exec(`PRAGMA user_version = ${String(TENANT_SCHEMA_VERSION)}`);
   }
   db.exec(TENANT_SCHEMA);
 

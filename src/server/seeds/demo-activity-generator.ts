@@ -1,5 +1,4 @@
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
 
 export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: string): {
   salesCreated: number;
@@ -27,7 +26,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
     const openTime = new Date(dayBaseTime);
     openTime.setHours(9, 0, 0, 0);
     const openIso = openTime.toISOString();
-    const openCashId = `csh_open_d${d}`;
+    const openCashId = `csh_open_d${String(d)}`;
 
     db.prepare(
       `INSERT INTO cash_movements (id, payload, device_id, branch, point_of_sale, created_at)
@@ -55,10 +54,11 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
       const saleTime = new Date(dayBaseTime);
       saleTime.setHours(hours[s] ?? 14, Math.floor(Math.random() * 50), 0, 0);
       const saleIso = saleTime.toISOString();
-      const saleId = `sale_demo_d${d}_s${s}`;
+      const saleId = `sale_demo_d${String(d)}_s${String(s)}`;
 
       // Elegir 1 o 2 productos
-      const prod1 = products[(d + s) % products.length]!;
+      const prod1 = products[(d + s) % products.length];
+      if (!prod1) continue;
       const qty1 = 1 + (s % 2);
       const line1Total = prod1.price * qty1;
 
@@ -79,7 +79,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
         `INSERT INTO stock_movements (id, product_id, branch_id, delta, reason, sale_id, device_id, branch, point_of_sale, created_at)
          VALUES (?, ?, ?, ?, 'sale', ?, 'pos_caja_1', 'CENTRAL', 'Caja 1', ?)
          ON CONFLICT(id) DO NOTHING`,
-      ).run(`stk_mov_d${d}_s${s}_1`, prod1.id, branchId, -qty1, saleId, saleIso);
+      ).run(`stk_mov_d${String(d)}_s${String(s)}_1`, prod1.id, branchId, -qty1, saleId, saleIso);
 
       db.prepare(
         `UPDATE stock SET quantity = MAX(0, quantity - ?), updated_at = ? WHERE product_id = ? AND branch_id = ?`,
@@ -87,7 +87,8 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
 
       // Si s == 1, agregar un segundo producto
       if (s === 1 && products.length > 1) {
-        const prod2 = products[(d + s + 1) % products.length]!;
+        const prod2 = products[(d + s + 1) % products.length];
+        if (!prod2) continue;
         const qty2 = 1;
         const line2Total = prod2.price * qty2;
         saleTotal += line2Total;
@@ -104,7 +105,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
           `INSERT INTO stock_movements (id, product_id, branch_id, delta, reason, sale_id, device_id, branch, point_of_sale, created_at)
            VALUES (?, ?, ?, ?, 'sale', ?, 'pos_caja_1', 'CENTRAL', 'Caja 1', ?)
            ON CONFLICT(id) DO NOTHING`,
-        ).run(`stk_mov_d${d}_s${s}_2`, prod2.id, branchId, -qty2, saleId, saleIso);
+        ).run(`stk_mov_d${String(d)}_s${String(s)}_2`, prod2.id, branchId, -qty2, saleId, saleIso);
 
         db.prepare(
           `UPDATE stock SET quantity = MAX(0, quantity - ?), updated_at = ? WHERE product_id = ? AND branch_id = ?`,
@@ -146,7 +147,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
           `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
            VALUES (?, ?, 'sale', ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO NOTHING`,
-        ).run(`mov_act_d${d}_s${s}`, customerId, saleTotal, newBal, `Venta en cuenta corriente ${saleId}`, saleId, saleIso);
+        ).run(`mov_act_d${String(d)}_s${String(s)}`, customerId, saleTotal, newBal, `Venta en cuenta corriente ${saleId}`, saleId, saleIso);
 
         db.prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?').run(newBal, saleIso, customerId);
       }
@@ -157,7 +158,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
       const dropTime = new Date(dayBaseTime);
       dropTime.setHours(16, 0, 0, 0);
       const dropIso = dropTime.toISOString();
-      const dropId = `csh_drop_d${d}`;
+      const dropId = `csh_drop_d${String(d)}`;
 
       db.prepare(
         `INSERT INTO cash_movements (id, payload, device_id, branch, point_of_sale, created_at)

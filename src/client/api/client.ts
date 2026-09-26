@@ -49,7 +49,7 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
   }
 
   const contentType = res.headers.get('content-type') ?? '';
-  let responseData: unknown = null;
+  let responseData: unknown;
   if (contentType.includes('application/json')) {
     responseData = await res.json();
   } else {
@@ -57,9 +57,9 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
   }
 
   if (!res.ok) {
-    let errorMessage = `HTTP ${res.status}: ${res.statusText}`;
+    let errorMessage = `HTTP ${String(res.status)}: ${res.statusText}`;
     if (responseData && typeof responseData === 'object' && 'error' in responseData) {
-      const errObj = responseData as { error: unknown };
+      const errObj = responseData;
       if (typeof errObj.error === 'string') {
         errorMessage = errObj.error;
       }

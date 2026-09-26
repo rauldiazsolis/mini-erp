@@ -55,7 +55,7 @@ export function BranchesSection() {
         <div class="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchSettingsBranches}
+            onClick={() => { void fetchSettingsBranches(); }}
             disabled={isLoading}
             class="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors cursor-pointer"
             title="Recargar sucursales"
@@ -121,7 +121,7 @@ export function BranchesSection() {
                     <Td class="text-right">
                       <button
                         type="button"
-                        onClick={() => openEditBranchModal(b)}
+                        onClick={() => { openEditBranchModal(b); }}
                         title="Modificar sucursal"
                         class="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                       >
@@ -155,7 +155,7 @@ export function BranchesSection() {
             <Button variant="outline" size="sm" onClick={closeBranchModal} disabled={isSaving}>
               Cancelar
             </Button>
-            <Button size="sm" onClick={submitBranchForm} disabled={isSaving}>
+            <Button size="sm" onClick={() => { void submitBranchForm(); }} disabled={isSaving}>
               {isSaving ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Sucursal'}
             </Button>
           </>

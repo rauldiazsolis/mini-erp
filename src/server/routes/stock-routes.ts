@@ -69,7 +69,7 @@ export function createStockRoutes(): Router {
       const result = service.adjustStock(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
       const msg = err instanceof Error ? err.message : 'Error al ajustar stock';
       res.status(statusCode).json({ error: msg });
     }

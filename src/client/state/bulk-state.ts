@@ -2,7 +2,6 @@ import { signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
-import { categoriesSignal } from './catalog-state.ts';
 
 export type BulkTab = 'prices' | 'interests' | 'io';
 export type RoundingStrategy = 'none' | '10' | '50' | '100';
@@ -123,7 +122,7 @@ export async function applyBulkPrices(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Precios Actualizados',
-      message: `Se actualizaron ${res.affectedCount} productos en catálogo`,
+      message: `Se actualizaron ${String(res.affectedCount)} productos en catálogo`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al aplicar aumento de precios';
@@ -182,7 +181,7 @@ export async function applyBulkInterests(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Intereses Devengados',
-      message: `Asentados $${res.totalInterestAmount} en ${res.affectedCount} cuentas deudoras`,
+      message: `Asentados $${String(res.totalInterestAmount)} en ${String(res.affectedCount)} cuentas deudoras`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al devengar intereses';
@@ -208,7 +207,7 @@ export async function downloadExport(entity: 'products' | 'customers' | 'stock',
     });
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      throw new Error(`HTTP ${String(res.status)}: ${res.statusText}`);
     }
 
     const blob = await res.blob();
@@ -288,7 +287,7 @@ export async function applyImport(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Importación Completada',
-      message: `Importados: ${res.importedCount}, Actualizados: ${res.updatedCount}, Omitidos: ${res.skippedCount}`,
+      message: `Importados: ${String(res.importedCount)}, Actualizados: ${String(res.updatedCount)}, Omitidos: ${String(res.skippedCount)}`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al aplicar importación';

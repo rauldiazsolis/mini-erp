@@ -1,10 +1,17 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, HTMLAttributes } from 'preact';
 
-export function TableContainer(props: JSX.HTMLAttributes<HTMLDivElement> & { children: ComponentChildren }) {
+type BaseProps<T extends HTMLElement> = Omit<HTMLAttributes<T>, 'class' | 'className'> & {
+  class?: string;
+  className?: string;
+  children?: ComponentChildren;
+};
+
+export function TableContainer(props: BaseProps<HTMLDivElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
     <div
-      class={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl overflow-hidden transition-colors ${className}`}
+      class={`w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm dark:shadow-xl overflow-hidden transition-colors${extraClass}`}
       {...rest}
     >
       {children}
@@ -12,22 +19,24 @@ export function TableContainer(props: JSX.HTMLAttributes<HTMLDivElement> & { chi
   );
 }
 
-export function Table(props: JSX.HTMLAttributes<HTMLTableElement> & { children: ComponentChildren }) {
+export function Table(props: BaseProps<HTMLTableElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
     <div class="overflow-x-auto">
-      <table class={`w-full text-left border-collapse ${className}`} {...rest}>
+      <table class={`w-full text-left border-collapse${extraClass}`} {...rest}>
         {children}
       </table>
     </div>
   );
 }
 
-export function Thead(props: JSX.HTMLAttributes<HTMLTableSectionElement> & { children: ComponentChildren }) {
+export function Thead(props: BaseProps<HTMLTableSectionElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
     <thead
-      class={`bg-slate-50 dark:bg-slate-950/80 text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800 ${className}`}
+      class={`bg-slate-50 dark:bg-slate-950/80 text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800${extraClass}`}
       {...rest}
     >
       {children}
@@ -35,37 +44,41 @@ export function Thead(props: JSX.HTMLAttributes<HTMLTableSectionElement> & { chi
   );
 }
 
-export function Tbody(props: JSX.HTMLAttributes<HTMLTableSectionElement> & { children: ComponentChildren }) {
+export function Tbody(props: BaseProps<HTMLTableSectionElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
-    <tbody class={`divide-y divide-slate-200 dark:divide-slate-800/60 ${className}`} {...rest}>
+    <tbody class={`divide-y divide-slate-200 dark:divide-slate-800/60${extraClass}`} {...rest}>
       {children}
     </tbody>
   );
 }
 
-export function Tr(props: JSX.HTMLAttributes<HTMLTableRowElement> & { children: ComponentChildren }) {
+export function Tr(props: BaseProps<HTMLTableRowElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
-    <tr class={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${className}`} {...rest}>
+    <tr class={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors${extraClass}`} {...rest}>
       {children}
     </tr>
   );
 }
 
-export function Th(props: JSX.HTMLAttributes<HTMLTableCellElement> & { children?: ComponentChildren }) {
+export function Th(props: BaseProps<HTMLTableCellElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
-    <th class={`px-4 py-3 font-semibold ${className}`} {...rest}>
+    <th class={`px-4 py-3 font-semibold${extraClass}`} {...rest}>
       {children}
     </th>
   );
 }
 
-export function Td(props: JSX.HTMLAttributes<HTMLTableCellElement> & { children?: ComponentChildren }) {
+export function Td(props: BaseProps<HTMLTableCellElement>) {
   const { class: className = '', children, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
   return (
-    <td class={`px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300 ${className}`} {...rest}>
+    <td class={`px-4 py-3.5 text-xs text-slate-700 dark:text-slate-300${extraClass}`} {...rest}>
       {children}
     </td>
   );

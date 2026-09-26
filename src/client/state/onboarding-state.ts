@@ -94,7 +94,7 @@ export function nextStep(): void {
       errorMessageSignal.value = 'Completa los datos de la sucursal inicial y terminal';
       return;
     }
-    submitOnboarding();
+    void submitOnboarding();
   }
 }
 

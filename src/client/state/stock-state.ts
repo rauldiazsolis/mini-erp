@@ -1,4 +1,4 @@
-import { signal, computed } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
@@ -230,14 +230,14 @@ export async function submitStockAdjustment(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Ajuste de Stock Asentado',
-      message: `${form.productName}: nuevo stock de ${res.newQuantity} un. en sucursal (delta: ${res.delta > 0 ? '+' : ''}${res.delta})`,
+      message: `${form.productName}: nuevo stock de ${String(res.newQuantity)} un. en sucursal (delta: ${res.delta > 0 ? '+' : ''}${String(res.delta)})`,
     });
 
     closeAdjustModal();
 
     // Si el drawer de Kardex está abierto para este producto, refrescar movimientos
     if (kardexDrawerOpenSignal.value && kardexTargetProductSignal.value?.productId === form.productId) {
-      loadKardexMovements(form.productId);
+      void loadKardexMovements(form.productId);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al registrar ajuste de stock';
@@ -278,4 +278,13 @@ export async function loadKardexMovements(productId: string): Promise<void> {
   } finally {
     kardexLoadingSignal.value = false;
   }
+}
+
+if (typeof window !== 'undefined') {
+  effect(() => {
+    const tenantId = effectiveTenantIdSignal.value;
+    if (tenantId && tokenSignal.value) {
+      void fetchStockData();
+    }
+  });
 }

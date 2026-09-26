@@ -3,7 +3,6 @@ import {
   tokenSignal,
   currentUserSignal,
   fetchProfile,
-  activeTenantSignal,
 } from './state/auth-state.ts';
 import { activeViewSignal } from './state/navigation-state.ts';
 import { AuthView } from './components/auth/AuthView.tsx';
@@ -14,7 +13,6 @@ import { StockView } from './components/stock/StockView.tsx';
 import { CustomerView } from './components/customers/CustomerView.tsx';
 import { BulkView } from './components/bulk/BulkView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
-import { Card, CardHeader } from './components/ui/Card.tsx';
 
 import {
   merchantOnboardingActiveSignal,
@@ -29,7 +27,7 @@ if (typeof window !== 'undefined') {
 
 // Cargar perfil al inicializar si hay un token persistido
 if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.value) {
-  fetchProfile();
+  void fetchProfile();
 }
 
 export function App() {

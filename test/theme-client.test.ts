@@ -7,7 +7,6 @@ import {
   initThemeState,
   getStoredThemeMode,
   setStoredThemeMode,
-  type ThemeMode,
 } from '../src/client/state/theme-state.ts';
 
 describe('Tema UI (Claro / Oscuro / Heredado) - Client State & Signals', () => {
@@ -29,7 +28,11 @@ describe('Tema UI (Claro / Oscuro / Heredado) - Client State & Signals', () => {
         mockStorage[key] = val;
       },
       removeItem: (key: string) => {
-        delete mockStorage[key];
+        const next: Record<string, string> = {};
+        for (const [k, v] of Object.entries(mockStorage)) {
+          if (k !== key) next[k] = v;
+        }
+        mockStorage = next;
       },
       clear: () => {
         mockStorage = {};
@@ -132,7 +135,7 @@ describe('Tema UI (Claro / Oscuro / Heredado) - Client State & Signals', () => {
     expect(mockClassList.has('dark')).toBe(true);
 
     // Simular que el sistema operativo cambia a modo claro
-    mediaQueryListeners.forEach((fn) => fn({ matches: false }));
+    mediaQueryListeners.forEach((fn) => { fn({ matches: false }); });
     expect(systemPrefersDarkSignal.value).toBe(false);
     expect(resolvedThemeSignal.value).toBe('light');
     expect(mockClassList.has('dark')).toBe(false);

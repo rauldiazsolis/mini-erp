@@ -157,7 +157,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
         .post('/api/auth/register')
         .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema' });
       expect(regRes.status).toBe(201);
-      const token = regRes.body.token as string;
+      const token = (regRes.body as unknown as { token: string }).token;
 
       // 2. Crear dos comercios (tenants) sin datos demo automáticos
       const t1Res = await request(app)
@@ -183,7 +183,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
           category: 'Golosinas',
         });
       expect(prodRes.status).toBe(201);
-      expect(prodRes.body.sku).toBe('ALF-CHOCO');
+      expect((prodRes.body as unknown as { sku: string }).sku).toBe('ALF-CHOCO');
 
       // 4. Consultar catálogo de Kiosco Beta vía API HTTP -> DEBE ESTAR VACÍO (aislamiento total)
       const betaCatalogRes = await request(app)
@@ -198,7 +198,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
         .set('Authorization', `Bearer ${token}`);
       expect(alfaCatalogRes.status).toBe(200);
       expect(alfaCatalogRes.body).toHaveLength(1);
-      expect(alfaCatalogRes.body[0].sku).toBe('ALF-CHOCO');
+      expect((alfaCatalogRes.body as unknown as Array<{ sku: string }>)[0]?.sku).toBe('ALF-CHOCO');
     });
   });
 });

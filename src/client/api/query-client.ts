@@ -38,10 +38,10 @@ export function createSignalQuery<T>(options: SignalQueryOptions<T>): SignalQuer
   });
 
   const unsubscribe = observer.subscribe((result) => {
-    data.value = result.data as T | undefined;
+    data.value = result.data;
     isLoading.value = result.isLoading;
     isError.value = result.isError;
-    error.value = (result.error as Error) ?? null;
+    error.value = (result.error) ?? null;
   });
 
   const refetch = async (): Promise<void> => {

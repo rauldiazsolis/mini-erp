@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
@@ -93,9 +93,9 @@ export function openCreateKeyModal(): void {
   const defaultBranchCode = branches[0]?.code ?? 'CENTRAL';
 
   createKeyFormSignal.value = {
-    name: `Caja ${apiKeysSignal.value.length + 1}`,
+    name: `Caja ${String(apiKeysSignal.value.length + 1)}`,
     branch: defaultBranchCode,
-    pointOfSale: `Caja ${apiKeysSignal.value.length + 1}`,
+    pointOfSale: `Caja ${String(apiKeysSignal.value.length + 1)}`,
   };
   createKeyErrorSignal.value = null;
   createKeyModalOpenSignal.value = true;
@@ -251,9 +251,10 @@ export async function submitBranchForm(): Promise<void> {
     isSavingBranchSignal.value = true;
     branchFormErrorSignal.value = null;
 
-    const isEdit = Boolean(editingBranchSignal.value);
-    const endpoint = isEdit
-      ? `tenants/${tenantId}/branches/${editingBranchSignal.value!.id}`
+    const currentBranch = editingBranchSignal.value;
+    const isEdit = Boolean(currentBranch);
+    const endpoint = isEdit && currentBranch
+      ? `tenants/${tenantId}/branches/${currentBranch.id}`
       : `tenants/${tenantId}/branches`;
 
     const saved = await apiFetch<BranchItem>(endpoint, {
@@ -296,7 +297,7 @@ export async function checkConnectorStatus(): Promise<void> {
   try {
     connectorCheckingSignal.value = true;
     const res = await fetch('/connector/info');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${String(res.status)}`);
     const data = (await res.json()) as { version: string; status: string };
 
     connectorInfoSignal.value = {
@@ -315,4 +316,16 @@ export async function checkConnectorStatus(): Promise<void> {
   } finally {
     connectorCheckingSignal.value = false;
   }
+}
+
+// Auto-cargar configuración de sucursales y llaves al cambiar tenant
+if (typeof window !== 'undefined') {
+  effect(() => {
+    const tenantId = effectiveTenantIdSignal.value;
+    const token = tokenSignal.value;
+    if (tenantId && token) {
+      void fetchApiKeys();
+      void fetchSettingsBranches();
+    }
+  });
 }

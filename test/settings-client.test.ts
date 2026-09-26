@@ -10,7 +10,6 @@ import {
   submitCreateApiKey,
   dismissSecretKeyModal,
   revokeApiKey,
-  fetchApiKeys,
   settingsBranchesSignal,
   branchModalOpenSignal,
   editingBranchSignal,
@@ -95,20 +94,20 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
       };
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         if (init?.method === 'POST') {
-          return new Response(
+          return Promise.resolve(new Response(
             JSON.stringify({
               id: 'key-2',
               rawKey: 'mpos_live_secret_full_key_998877',
               keyPrefix: 'mpos_live_se99',
             }),
             { status: 201, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
 
-        if (String(url).includes('/api-keys')) {
-          return new Response(
+        if (url.includes('/api-keys')) {
+          return Promise.resolve(new Response(
             JSON.stringify([
               ...apiKeysSignal.value,
               {
@@ -123,11 +122,10 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
               },
             ]),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
-
-        return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
-      }) as unknown as typeof fetch;
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
+      });
 
       try {
         await submitCreateApiKey();
@@ -146,12 +144,12 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
 
     it('revokeApiKey desactiva la llave seleccionada', async () => {
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(JSON.stringify({ success: true }), {
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
-        });
-      }) as unknown as typeof fetch;
+        }));
+      });
 
       try {
         await revokeApiKey('key-1', 'Caja Mostrador 1');
@@ -171,7 +169,9 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
       closeBranchModal();
       expect(branchModalOpenSignal.value).toBe(false);
 
-      openEditBranchModal(settingsBranchesSignal.value[0]!);
+      const branchItem = settingsBranchesSignal.value[0];
+      if (!branchItem) throw new Error('Branch should exist');
+      openEditBranchModal(branchItem);
       expect(branchModalOpenSignal.value).toBe(true);
       expect(editingBranchSignal.value?.id).toBe('b-1');
       expect(branchFormSignal.value.code).toBe('CENTRAL');
@@ -185,8 +185,8 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
       };
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             id: 'b-2',
             code: 'SUC-SUR',
@@ -195,8 +195,8 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
             updatedAt: '2026-09-25T13:00:00Z',
           }),
           { status: 201, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitBranchForm();
@@ -213,18 +213,18 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
   describe('Verificación del Connector POS', () => {
     it('checkConnectorStatus consulta el endpoint /connector/info con éxito', async () => {
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (String(url).includes('/connector/info')) {
-          return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/connector/info')) {
+          return Promise.resolve(new Response(
             JSON.stringify({
               version: '4.0.0',
               status: 'ok',
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
-        return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
-      }) as unknown as typeof fetch;
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
+      });
 
       try {
         await checkConnectorStatus();

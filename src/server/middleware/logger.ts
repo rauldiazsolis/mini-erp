@@ -15,10 +15,10 @@ const c = {
 };
 
 function formatStatus(status: number): string {
-  if (status >= 500) return `${c.red}${c.bold}${status}${c.reset}`;
-  if (status >= 400) return `${c.yellow}${c.bold}${status}${c.reset}`;
-  if (status >= 300) return `${c.cyan}${status}${c.reset}`;
-  return `${c.green}${status}${c.reset}`;
+  if (status >= 500) return `${c.red}${c.bold}${String(status)}${c.reset}`;
+  if (status >= 400) return `${c.yellow}${c.bold}${String(status)}${c.reset}`;
+  if (status >= 300) return `${c.cyan}${String(status)}${c.reset}`;
+  return `${c.green}${String(status)}${c.reset}`;
 }
 
 function timeStamp(): string {
@@ -41,12 +41,12 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     // Diferenciar entre tráfico POS vs Admin
     if (url.startsWith('/connector')) {
       const tag = `${c.cyan}[POS]${c.reset}`;
-      console.log(`${timeStamp()} ${tag} ${method} ${url} ${statusFormatted} ${c.dim}(${elapsed}ms)${c.reset}`);
+      console.log(`${timeStamp()} ${tag} ${method} ${url} ${statusFormatted} ${c.dim}(${String(elapsed)}ms)${c.reset}`);
     } else if (url.startsWith('/api')) {
       const tag = `${c.magenta}[ADMIN]${c.reset}`;
-      console.log(`${timeStamp()} ${tag} ${method} ${url} ${statusFormatted} ${c.dim}(${elapsed}ms)${c.reset}`);
+      console.log(`${timeStamp()} ${tag} ${method} ${url} ${statusFormatted} ${c.dim}(${String(elapsed)}ms)${c.reset}`);
     } else {
-      console.log(`${timeStamp()} ${method} ${url} ${statusFormatted} ${c.dim}(${elapsed}ms)${c.reset}`);
+      console.log(`${timeStamp()} ${method} ${url} ${statusFormatted} ${c.dim}(${String(elapsed)}ms)${c.reset}`);
     }
   });
 
@@ -73,7 +73,7 @@ export const posLog = {
 
     console.log(
       `   ${c.cyan}└─📦 Lote Push:${c.reset} ${c.dim}id=${c.reset}${info.lotId} ${c.dim}[${info.branch}/${info.pos}]${c.reset}\n` +
-      `      ${c.dim}Eventos (${info.events.length}):${c.reset} ${eventsSummary}\n` +
+      `      ${c.dim}Eventos (${String(info.events.length)}):${c.reset} ${eventsSummary}\n` +
       `      ${c.dim}Resultado:${c.reset} ${statusBadge}`,
     );
   },
@@ -90,10 +90,10 @@ export const posLog = {
     const mode = info.cursors.products || info.cursors.customers ? 'Delta' : 'Foto Completa';
     console.log(
       `   ${c.cyan}└─📥 Pull (${mode}):${c.reset} ` +
-      `${c.bold}${info.productsCount}${c.reset} prod, ` +
-      `${c.bold}${info.customersCount}${c.reset} cust, ` +
-      `${c.bold}${info.stockCount}${c.reset} stock` +
-      (info.pendingLotsQueried > 0 ? ` ${c.dim}(${info.pendingLotsQueried} lotes consultados)${c.reset}` : ''),
+      `${c.bold}${String(info.productsCount)}${c.reset} prod, ` +
+      `${c.bold}${String(info.customersCount)}${c.reset} cust, ` +
+      `${c.bold}${String(info.stockCount)}${c.reset} stock` +
+      (info.pendingLotsQueried > 0 ? ` ${c.dim}(${String(info.pendingLotsQueried)} lotes consultados)${c.reset}` : ''),
     );
   },
 
@@ -105,11 +105,11 @@ export const posLog = {
     holdId?: string;
   }) => {
     const outcome = info.approved
-      ? `${c.green}✔ APROBADO${c.reset} ${c.dim}(hold=${info.holdId})${c.reset}`
-      : `${c.red}✖ RECHAZADO${c.reset} ${c.dim}(motivo=${info.reasonCode})${c.reset}`;
+      ? `${c.green}✔ APROBADO${c.reset} ${c.dim}(hold=${info.holdId ?? ''})${c.reset}`
+      : `${c.red}✖ RECHAZADO${c.reset} ${c.dim}(motivo=${info.reasonCode ?? ''})${c.reset}`;
 
     console.log(
-      `   ${c.cyan}└─💳 Hold Crédito:${c.reset} Cliente=${c.bold}${info.customerId}${c.reset} Monto=${c.bold}$${info.amount}${c.reset} -> ${outcome}`,
+      `   ${c.cyan}└─💳 Hold Crédito:${c.reset} Cliente=${c.bold}${info.customerId}${c.reset} Monto=${c.bold}$${String(info.amount)}${c.reset} -> ${outcome}`,
     );
   },
 };

@@ -1,4 +1,4 @@
-import { signal, computed } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
@@ -197,7 +197,7 @@ export async function saveInlineEdit(productId: string, field: 'name' | 'price' 
       return;
     }
     updatePayload = { category: trimmed };
-  } else if (field === 'sku') {
+  } else {
     const trimmed = rawValue.trim();
     if (!trimmed) {
       showToast({ type: 'error', title: 'Valor inválido', message: 'El SKU no puede estar vacío' });
@@ -299,9 +299,10 @@ export async function submitProductForm(): Promise<void> {
     isSavingProductSignal.value = true;
     productFormErrorSignal.value = null;
 
-    const isEdit = Boolean(editingProductSignal.value?.id);
-    const endpoint = isEdit
-      ? `tenants/${tenantId}/products/${editingProductSignal.value!.id}`
+    const currentEditing = editingProductSignal.value;
+    const isEdit = Boolean(currentEditing?.id);
+    const endpoint = isEdit && currentEditing
+      ? `tenants/${tenantId}/products/${currentEditing.id}`
       : `tenants/${tenantId}/products`;
 
     const saved = await apiFetch<ProductItem>(endpoint, {
@@ -408,4 +409,13 @@ export async function deleteProduct(product: ProductItem): Promise<void> {
     const msg = err instanceof Error ? err.message : 'Error al eliminar producto';
     showToast({ type: 'error', title: 'Error', message: msg });
   }
+}
+
+if (typeof window !== 'undefined') {
+  effect(() => {
+    const tenantId = effectiveTenantIdSignal.value;
+    if (tenantId && tokenSignal.value) {
+      void fetchCatalog();
+    }
+  });
 }

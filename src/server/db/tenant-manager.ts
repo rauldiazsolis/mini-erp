@@ -70,7 +70,7 @@ export class TenantManager {
     let candidate = baseSlug;
     let counter = 2;
     while (this.tenantExists(candidate)) {
-      candidate = `${baseSlug}-${counter}`;
+      candidate = `${baseSlug}-${String(counter)}`;
       counter++;
     }
     return candidate;

@@ -1,4 +1,4 @@
-import { signal, computed, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
@@ -7,7 +7,7 @@ export const THEME_STORAGE_KEY = 'mini_erp_theme_mode';
 
 function getStorage(): Storage | null {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
+    if (typeof window !== 'undefined') {
       return window.localStorage;
     }
   } catch {
@@ -55,7 +55,7 @@ export const resolvedThemeSignal = computed<ResolvedTheme>(() => {
 });
 
 export function applyThemeToDocument(theme: ResolvedTheme): void {
-  if (typeof document === 'undefined' || !document.documentElement) {
+  if (typeof document === 'undefined') {
     return;
   }
 
@@ -77,8 +77,6 @@ export function setThemeMode(mode: ThemeMode): void {
   applyThemeToDocument(resolvedThemeSignal.value);
 }
 
-let isInitialized = false;
-
 export function initThemeState(): () => void {
   // Aplicar tema inicial inmediatamente
   applyThemeToDocument(resolvedThemeSignal.value);
@@ -97,23 +95,14 @@ export function initThemeState(): () => void {
     }
   };
 
-  if (typeof mediaQuery.addEventListener === 'function') {
-    mediaQuery.addEventListener('change', handleChange);
-  } else if (typeof mediaQuery.addListener === 'function') {
-    mediaQuery.addListener(handleChange);
-  }
+  mediaQuery.addEventListener('change', handleChange);
 
   return () => {
-    if (typeof mediaQuery.removeEventListener === 'function') {
-      mediaQuery.removeEventListener('change', handleChange);
-    } else if (typeof mediaQuery.removeListener === 'function') {
-      mediaQuery.removeListener(handleChange);
-    }
+    mediaQuery.removeEventListener('change', handleChange);
   };
 }
 
 // Auto-inicializar si estamos en entorno navegador
-if (typeof window !== 'undefined' && !isInitialized) {
-  isInitialized = true;
+if (typeof window !== 'undefined') {
   initThemeState();
 }

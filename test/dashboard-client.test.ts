@@ -95,11 +95,11 @@ describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', ()
     it('almacena y distribuye las métricas en las señales reactivas', () => {
       dashboardDataSignal.value = mockDashboardData;
 
-      expect(dashboardDataSignal.value?.summary.totalSales).toBe(125000);
-      expect(dashboardDataSignal.value?.summary.salesCount).toBe(45);
-      expect(dashboardDataSignal.value?.timeline).toHaveLength(7);
-      expect(dashboardDataSignal.value?.topProducts[0]?.name).toBe('Gaseosa Cola 2L');
-      expect(dashboardDataSignal.value?.stockAlerts.criticalCount).toBe(1);
+      expect(dashboardDataSignal.value.summary.totalSales).toBe(125000);
+      expect(dashboardDataSignal.value.summary.salesCount).toBe(45);
+      expect(dashboardDataSignal.value.timeline).toHaveLength(7);
+      expect(dashboardDataSignal.value.topProducts[0]?.name).toBe('Gaseosa Cola 2L');
+      expect(dashboardDataSignal.value.stockAlerts.criticalCount).toBe(1);
     });
 
     it('controla la interacción hover del gráfico de evolución de ventas', () => {

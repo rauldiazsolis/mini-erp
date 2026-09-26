@@ -18,6 +18,14 @@ import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 
 export const tenantDropdownOpenSignal = signal(false);
 
+export function toggleTenantDropdown(): void {
+  tenantDropdownOpenSignal.value = !tenantDropdownOpenSignal.value;
+}
+
+export function closeTenantDropdown(): void {
+  tenantDropdownOpenSignal.value = false;
+}
+
 export function Header() {
   const user = currentUserSignal.value;
   const activeTenant = activeTenantSignal.value;
@@ -26,7 +34,7 @@ export function Header() {
 
   const handleSelectTenant = (tenantId: string) => {
     setActiveTenant(tenantId);
-    tenantDropdownOpenSignal.value = false;
+    closeTenantDropdown();
     showToast({
       type: 'info',
       title: 'Comercio seleccionado',
@@ -53,7 +61,7 @@ export function Header() {
         <div class="relative">
           <button
             type="button"
-            onClick={() => (tenantDropdownOpenSignal.value = !tenantDropdownOpenSignal.value)}
+            onClick={toggleTenantDropdown}
             class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700/80 transition-all text-left cursor-pointer group"
           >
             <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse"></div>
@@ -84,7 +92,7 @@ export function Header() {
                     <button
                       key={t.tenantId}
                       type="button"
-                      onClick={() => handleSelectTenant(t.tenantId)}
+                      onClick={() => { handleSelectTenant(t.tenantId); }}
                       class={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer ${
                         isCurrent
                           ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-300 font-semibold'
@@ -110,7 +118,7 @@ export function Header() {
                   <button
                     type="button"
                     onClick={() => {
-                      tenantDropdownOpenSignal.value = false;
+                      closeTenantDropdown();
                       openImpersonationModal();
                     }}
                     class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
@@ -130,7 +138,7 @@ export function Header() {
                 <button
                   type="button"
                   onClick={() => {
-                    tenantDropdownOpenSignal.value = false;
+                    closeTenantDropdown();
                     openOnboardingModal();
                   }}
                   class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"

@@ -61,7 +61,7 @@ export function CatalogToolbar() {
         <div class="flex items-center gap-2">
           <button
             type="button"
-            onClick={fetchCatalog}
+            onClick={() => { void fetchCatalog(); }}
             disabled={isLoading}
             title="Recargar catálogo"
             class="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50 border border-slate-200 dark:border-slate-700/80"

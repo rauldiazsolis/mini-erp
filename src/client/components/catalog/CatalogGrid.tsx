@@ -36,7 +36,7 @@ export function CatalogGrid() {
   ) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      saveInlineEdit(productId, field, val);
+      void saveInlineEdit(productId, field, val);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       cancelInlineEdit();
@@ -97,10 +97,11 @@ export function CatalogGrid() {
             const stock = stockMap[p.id];
             const isBlocked = Boolean(p.blockedReason);
 
-            const isEditingName = inlineEdit?.productId === p.id && inlineEdit?.field === 'name';
-            const isEditingPrice = inlineEdit?.productId === p.id && inlineEdit?.field === 'price';
-            const isEditingCategory = inlineEdit?.productId === p.id && inlineEdit?.field === 'category';
-            const isEditingSku = inlineEdit?.productId === p.id && inlineEdit?.field === 'sku';
+            const isEditingCurrent = inlineEdit?.productId === p.id;
+            const isEditingName = isEditingCurrent && inlineEdit.field === 'name';
+            const isEditingPrice = isEditingCurrent && inlineEdit.field === 'price';
+            const isEditingCategory = isEditingCurrent && inlineEdit.field === 'category';
+            const isEditingSku = isEditingCurrent && inlineEdit.field === 'sku';
 
             return (
               <Tr
@@ -112,7 +113,7 @@ export function CatalogGrid() {
                 {/* SKU */}
                 <Td
                   class="font-mono text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer"
-                  onDblClick={() => startInlineEdit(p.id, 'sku', p.sku)}
+                  onDblClick={() => { startInlineEdit(p.id, 'sku', p.sku); }}
                   title="Doble clic para editar SKU"
                 >
                   {isEditingSku ? (
@@ -126,8 +127,8 @@ export function CatalogGrid() {
                           value: (e.target as HTMLInputElement).value,
                         };
                       }}
-                      onBlur={() => saveInlineEdit(p.id, 'sku', inlineEdit.value)}
-                      onKeyDown={(e) => handleKeyDown(e, p.id, 'sku', inlineEdit.value)}
+                      onBlur={() => { void saveInlineEdit(p.id, 'sku', inlineEdit.value); }}
+                      onKeyDown={(e) => { handleKeyDown(e, p.id, 'sku', inlineEdit.value); }}
                       class="w-full px-2 py-0.5 bg-white dark:bg-slate-950 border border-indigo-500 rounded font-mono text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   ) : (
@@ -138,7 +139,7 @@ export function CatalogGrid() {
                 {/* Nombre */}
                 <Td
                   class="font-semibold text-slate-900 dark:text-white cursor-pointer"
-                  onDblClick={() => startInlineEdit(p.id, 'name', p.name)}
+                  onDblClick={() => { startInlineEdit(p.id, 'name', p.name); }}
                   title="Doble clic para editar nombre"
                 >
                   {isEditingName ? (
@@ -152,8 +153,8 @@ export function CatalogGrid() {
                           value: (e.target as HTMLInputElement).value,
                         };
                       }}
-                      onBlur={() => saveInlineEdit(p.id, 'name', inlineEdit.value)}
-                      onKeyDown={(e) => handleKeyDown(e, p.id, 'name', inlineEdit.value)}
+                      onBlur={() => { void saveInlineEdit(p.id, 'name', inlineEdit.value); }}
+                      onKeyDown={(e) => { handleKeyDown(e, p.id, 'name', inlineEdit.value); }}
                       class="w-full px-2 py-0.5 bg-white dark:bg-slate-950 border border-indigo-500 rounded text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   ) : (
@@ -171,7 +172,7 @@ export function CatalogGrid() {
                 {/* Categoría */}
                 <Td
                   class="text-slate-600 dark:text-slate-300 cursor-pointer"
-                  onDblClick={() => startInlineEdit(p.id, 'category', p.category)}
+                  onDblClick={() => { startInlineEdit(p.id, 'category', p.category); }}
                   title="Doble clic para editar categoría"
                 >
                   {isEditingCategory ? (
@@ -185,8 +186,8 @@ export function CatalogGrid() {
                           value: (e.target as HTMLInputElement).value,
                         };
                       }}
-                      onBlur={() => saveInlineEdit(p.id, 'category', inlineEdit.value)}
-                      onKeyDown={(e) => handleKeyDown(e, p.id, 'category', inlineEdit.value)}
+                      onBlur={() => { void saveInlineEdit(p.id, 'category', inlineEdit.value); }}
+                      onKeyDown={(e) => { handleKeyDown(e, p.id, 'category', inlineEdit.value); }}
                       class="w-full px-2 py-0.5 bg-white dark:bg-slate-950 border border-indigo-500 rounded text-xs text-slate-900 dark:text-white focus:outline-none"
                     />
                   ) : (
@@ -199,7 +200,7 @@ export function CatalogGrid() {
                 {/* Precio Venta */}
                 <Td
                   class="text-right font-mono font-bold text-slate-900 dark:text-white cursor-pointer"
-                  onDblClick={() => startInlineEdit(p.id, 'price', p.price.toString())}
+                  onDblClick={() => { startInlineEdit(p.id, 'price', p.price.toString()); }}
                   title="Doble clic para editar precio"
                 >
                   {isEditingPrice ? (
@@ -213,8 +214,8 @@ export function CatalogGrid() {
                           value: (e.target as HTMLInputElement).value,
                         };
                       }}
-                      onBlur={() => saveInlineEdit(p.id, 'price', inlineEdit.value)}
-                      onKeyDown={(e) => handleKeyDown(e, p.id, 'price', inlineEdit.value)}
+                      onBlur={() => { void saveInlineEdit(p.id, 'price', inlineEdit.value); }}
+                      onKeyDown={(e) => { handleKeyDown(e, p.id, 'price', inlineEdit.value); }}
                       class="w-24 px-2 py-0.5 bg-white dark:bg-slate-950 border border-indigo-500 rounded font-mono text-xs text-right text-emerald-600 dark:text-emerald-400 focus:outline-none"
                     />
                   ) : (
@@ -271,7 +272,7 @@ export function CatalogGrid() {
                   <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
-                      onClick={() => openEditProductModal(p)}
+                      onClick={() => { openEditProductModal(p); }}
                       title="Editar detalles completos"
                       class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                     >
@@ -287,7 +288,7 @@ export function CatalogGrid() {
 
                     <button
                       type="button"
-                      onClick={() => openBlockModal(p)}
+                      onClick={() => { openBlockModal(p); }}
                       title={isBlocked ? 'Desbloquear para venta' : 'Bloquear producto'}
                       class={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                         isBlocked
@@ -316,7 +317,7 @@ export function CatalogGrid() {
 
                     <button
                       type="button"
-                      onClick={() => deleteProduct(p)}
+                      onClick={() => { void deleteProduct(p); }}
                       title="Eliminar producto"
                       class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                     >

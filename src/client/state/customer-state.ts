@@ -1,4 +1,4 @@
-import { signal, computed } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
@@ -232,9 +232,10 @@ export async function submitCustomerForm(): Promise<void> {
     isSavingCustomerSignal.value = true;
     customerFormErrorSignal.value = null;
 
-    const isEdit = Boolean(editingCustomerSignal.value);
-    const endpoint = isEdit
-      ? `tenants/${tenantId}/customers/${editingCustomerSignal.value!.id}`
+    const currentEditing = editingCustomerSignal.value;
+    const isEdit = Boolean(currentEditing);
+    const endpoint = isEdit && currentEditing
+      ? `tenants/${tenantId}/customers/${currentEditing.id}`
       : `tenants/${tenantId}/customers`;
 
     const payload = {
@@ -348,13 +349,13 @@ export async function submitPayment(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Cobranza Registrada',
-      message: `Pago de $${form.amount} aplicado a ${target.name}. Nuevo saldo: $${res.newBalance}`,
+      message: `Pago de $${String(form.amount)} aplicado a ${target.name}. Nuevo saldo: $${String(res.newBalance)}`,
     });
 
     closePaymentModal();
 
     if (accountDrawerOpenSignal.value && accountTargetCustomerSignal.value?.id === target.id) {
-      loadCustomerMovements(target.id);
+      void loadCustomerMovements(target.id);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al registrar cobranza';
@@ -436,13 +437,13 @@ export async function submitBalanceAdjustment(): Promise<void> {
     showToast({
       type: 'success',
       title: 'Ajuste de Saldo Aplicado',
-      message: `Nuevo saldo de ${target.name}: $${res.newBalance} (variación: ${res.delta >= 0 ? '+' : ''}$${res.delta})`,
+      message: `Nuevo saldo de ${target.name}: $${String(res.newBalance)} (variación: ${res.delta >= 0 ? '+' : ''}$${String(res.delta)})`,
     });
 
     closeBalanceAdjustModal();
 
     if (accountDrawerOpenSignal.value && accountTargetCustomerSignal.value?.id === target.id) {
-      loadCustomerMovements(target.id);
+      void loadCustomerMovements(target.id);
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al ajustar saldo';
@@ -482,4 +483,13 @@ export async function loadCustomerMovements(customerId: string): Promise<void> {
   } finally {
     accountLoadingSignal.value = false;
   }
+}
+
+if (typeof window !== 'undefined') {
+  effect(() => {
+    const tenantId = effectiveTenantIdSignal.value;
+    if (tenantId && tokenSignal.value) {
+      void fetchCustomers();
+    }
+  });
 }

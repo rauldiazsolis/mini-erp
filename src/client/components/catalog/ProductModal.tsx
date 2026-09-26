@@ -36,7 +36,7 @@ export function ProductModal() {
   };
 
   const generateRandomSku = () => {
-    const randomSku = `ART-${Math.floor(100000 + Math.random() * 900000)}`;
+    const randomSku = `ART-${String(Math.floor(100000 + Math.random() * 900000))}`;
     updateField('sku', randomSku);
   };
 
@@ -47,7 +47,7 @@ export function ProductModal() {
       title={isEdit ? 'Editar Producto' : 'Nuevo Producto en Catálogo'}
       subtitle={
         isEdit
-          ? `Modificando "${editingProductSignal.value?.name}"`
+          ? `Modificando "${editingProductSignal.value?.name ?? ''}"`
           : 'Completa los datos comerciales y de stock del artículo'
       }
       icon={<span>{isEdit ? '✏️' : '✨'}</span>}
@@ -68,7 +68,7 @@ export function ProductModal() {
           label="Nombre del Producto / Denominación Comercial *"
           placeholder="Ej: Coca Cola 500ml, Tornillo Autoperforante..."
           value={data.name}
-          onInput={(e) => updateField('name', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('name', (e.target as HTMLInputElement).value); }}
           autoFocus
         />
 
@@ -90,7 +90,7 @@ export function ProductModal() {
             <input
               type="text"
               value={data.sku}
-              onInput={(e) => updateField('sku', (e.target as HTMLInputElement).value)}
+              onInput={(e) => { updateField('sku', (e.target as HTMLInputElement).value); }}
               placeholder="SKU-1002"
               class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -103,7 +103,7 @@ export function ProductModal() {
             <input
               type="text"
               value={data.barcodes.join(', ')}
-              onInput={(e) => handleBarcodesChange((e.target as HTMLInputElement).value)}
+              onInput={(e) => { handleBarcodesChange((e.target as HTMLInputElement).value); }}
               placeholder="7791234567890, 7799876543210"
               class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -118,7 +118,7 @@ export function ProductModal() {
               list="category-options"
               type="text"
               value={data.category}
-              onInput={(e) => updateField('category', (e.target as HTMLInputElement).value)}
+              onInput={(e) => { updateField('category', (e.target as HTMLInputElement).value); }}
               placeholder="Selecciona o escribe..."
               class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -136,7 +136,7 @@ export function ProductModal() {
               step="0.01"
               min="0"
               value={data.price || ''}
-              onInput={(e) => updateField('price', parseFloat((e.target as HTMLInputElement).value) || 0)}
+              onInput={(e) => { updateField('price', parseFloat((e.target as HTMLInputElement).value) || 0); }}
               placeholder="0.00"
               class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -149,7 +149,7 @@ export function ProductModal() {
             <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Alícuota IVA</label>
             <select
               value={data.taxRate.toString()}
-              onChange={(e) => updateField('taxRate', parseFloat((e.target as HTMLSelectElement).value))}
+              onChange={(e) => { updateField('taxRate', parseFloat((e.target as HTMLSelectElement).value)); }}
               class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="0.21">21.0% (Tasa Estándar)</option>
@@ -163,7 +163,7 @@ export function ProductModal() {
               <input
                 type="checkbox"
                 checked={data.tracksStock}
-                onChange={(e) => updateField('tracksStock', (e.target as HTMLInputElement).checked)}
+                onChange={(e) => { updateField('tracksStock', (e.target as HTMLInputElement).checked); }}
                 class="w-4 h-4 rounded text-indigo-600 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 focus:ring-indigo-500"
               />
               <span class="text-xs text-slate-700 dark:text-slate-300 font-medium">Controlar stock por sucursal</span>
@@ -179,7 +179,7 @@ export function ProductModal() {
           <Button variant="outline" size="sm" onClick={closeProductModal} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button size="sm" onClick={submitProductForm} disabled={isSaving}>
+          <Button size="sm" onClick={() => { void submitProductForm(); }} disabled={isSaving}>
             {isSaving ? 'Guardando...' : isEdit ? 'Guardar Cambios' : 'Crear Producto'}
           </Button>
         </div>

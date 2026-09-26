@@ -125,14 +125,14 @@ export function BulkPricesCard() {
         <div class="pt-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
           <div class="text-xs text-slate-500 dark:text-slate-400">
             {action === 'percentage'
-              ? `Aplicará un incremento del +${val}% sobre el precio base actual.`
-              : `Sumará +$${val} a cada artículo seleccionado.`}
+              ? `Aplicará un incremento del +${String(val)}% sobre el precio base actual.`
+              : `Sumará +$${String(val)} a cada artículo seleccionado.`}
           </div>
           <div class="flex items-center gap-2.5">
             <Button
               variant="outline"
               size="sm"
-              onClick={previewBulkPrices}
+              onClick={() => { void previewBulkPrices(); }}
               disabled={isLoading}
             >
               {isLoading && preview?.dryRun ? 'Simulando...' : '🔍 Simular Impacto (Preview)'}
@@ -141,7 +141,7 @@ export function BulkPricesCard() {
             {preview && preview.items.length > 0 && (
               <Button
                 size="sm"
-                onClick={applyBulkPrices}
+                onClick={() => { void applyBulkPrices(); }}
                 disabled={isLoading}
                 class="bg-emerald-600 hover:bg-emerald-500 text-white"
               >

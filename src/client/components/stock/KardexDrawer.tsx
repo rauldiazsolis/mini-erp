@@ -117,7 +117,7 @@ export function KardexDrawer() {
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
-                        {isPositive ? `+${m.delta}` : m.delta} un.
+                        {isPositive ? `+${String(m.delta)}` : m.delta} un.
                       </span>
 
                       <span class="text-xs font-semibold text-slate-900 dark:text-white">

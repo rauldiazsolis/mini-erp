@@ -5,6 +5,32 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 
+interface BranchItem {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface ProductItem {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  category?: string;
+  barcodes?: string[];
+  tracksStock?: boolean;
+  blockedReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ConnectorPullProductsResponse {
+  products: {
+    items: Array<{ id: string; sku: string; price: number; name: string }>;
+    nextCursor?: string;
+  };
+}
+
 describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
@@ -44,9 +70,10 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(listRes.status).toBe(200);
-      expect(Array.isArray(listRes.body)).toBe(true);
-      expect(listRes.body.length).toBe(1);
-      expect(listRes.body[0]?.code).toBe('CENTRAL');
+      const branches = listRes.body as unknown as BranchItem[];
+      expect(Array.isArray(branches)).toBe(true);
+      expect(branches.length).toBe(1);
+      expect(branches[0]?.code).toBe('CENTRAL');
 
       // 2. Crear nueva sucursal
       const createRes = await request(app)
@@ -58,16 +85,18 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(createRes.status).toBe(201);
-      expect(createRes.body.code).toBe('NORTE');
-      expect(createRes.body.name).toBe('Sucursal Norte');
-      expect(createRes.body.id).toBeDefined();
+      const createdBranch = createRes.body as unknown as BranchItem;
+      expect(createdBranch.code).toBe('NORTE');
+      expect(createdBranch.name).toBe('Sucursal Norte');
+      expect(createdBranch.id).toBeDefined();
 
       // 3. Verificar que ahora hay 2 sucursales
       const listAfterRes = await request(app)
         .get(`/api/tenants/${tenantId}/branches`)
         .set('Authorization', `Bearer ${adminToken}`);
 
-      expect(listAfterRes.body.length).toBe(2);
+      const branchesAfter = listAfterRes.body as unknown as BranchItem[];
+      expect(branchesAfter.length).toBe(2);
     });
 
     it('rechaza crear sucursal con código duplicado o datos inválidos', async () => {
@@ -81,7 +110,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(duplicateRes.status).toBe(400);
-      expect(duplicateRes.body.error).toMatch(/código/i);
+      const duplicateBody = duplicateRes.body as unknown as { error?: string };
+      expect(duplicateBody.error).toMatch(/código/i);
 
       // Nombre vacío
       const invalidRes = await request(app)
@@ -112,16 +142,17 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(createRes.status).toBe(201);
-      expect(createRes.body.id).toBeDefined();
-      expect(createRes.body.sku).toBe('ALM-001');
-      expect(createRes.body.name).toBe('Alfajor Triple Chocolate');
-      expect(createRes.body.price).toBe(950.5);
-      expect(createRes.body.category).toBe('Golosinas');
-      expect(createRes.body.barcodes).toEqual(['7791234567890']);
-      expect(createRes.body.tracksStock).toBe(true);
-      expect(createRes.body.blockedReason).toBeNull();
-      expect(createRes.body.createdAt).toBeDefined();
-      expect(createRes.body.updatedAt).toBeDefined();
+      const product = createRes.body as unknown as ProductItem;
+      expect(product.id).toBeDefined();
+      expect(product.sku).toBe('ALM-001');
+      expect(product.name).toBe('Alfajor Triple Chocolate');
+      expect(product.price).toBe(950.5);
+      expect(product.category).toBe('Golosinas');
+      expect(product.barcodes).toEqual(['7791234567890']);
+      expect(product.tracksStock).toBe(true);
+      expect(product.blockedReason).toBeNull();
+      expect(product.createdAt).toBeDefined();
+      expect(product.updatedAt).toBeDefined();
     });
 
     it('rechaza crear producto con SKU duplicado o precio negativo', async () => {
@@ -146,7 +177,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(duplicateRes.status).toBe(400);
-      expect(duplicateRes.body.error).toMatch(/SKU/i);
+      const duplicateBody = duplicateRes.body as unknown as { error?: string };
+      expect(duplicateBody.error).toMatch(/SKU/i);
 
       // Precio negativo
       const negativeRes = await request(app)
@@ -202,7 +234,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(catRes.status).toBe(200);
-      expect(catRes.body.length).toBe(2);
+      const catProducts = catRes.body as unknown as ProductItem[];
+      expect(catProducts.length).toBe(2);
 
       // 2. Filtrar por término de búsqueda (ej. 'sprite')
       const searchRes = await request(app)
@@ -210,8 +243,9 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(searchRes.status).toBe(200);
-      expect(searchRes.body.length).toBe(1);
-      expect(searchRes.body[0]?.name).toBe('Sprite 1.5L');
+      const searchProducts = searchRes.body as unknown as ProductItem[];
+      expect(searchProducts.length).toBe(1);
+      expect(searchProducts[0]?.name).toBe('Sprite 1.5L');
 
       // 3. Filtrar por código de barras
       const barcodeRes = await request(app)
@@ -219,8 +253,9 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(barcodeRes.status).toBe(200);
-      expect(barcodeRes.body.length).toBe(1);
-      expect(barcodeRes.body[0]?.sku).toBe('SNK-201');
+      const barcodeProducts = barcodeRes.body as unknown as ProductItem[];
+      expect(barcodeProducts.length).toBe(1);
+      expect(barcodeProducts[0]?.sku).toBe('SNK-201');
     });
 
     it('permite actualizar un producto y modifica updatedAt', async () => {
@@ -234,8 +269,9 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
           category: 'Almacén',
         });
 
-      const prodId = createRes.body.id as string;
-      const originalUpdatedAt = createRes.body.updatedAt as string;
+      const createBody = createRes.body as unknown as ProductItem;
+      const prodId = createBody.id;
+      const originalUpdatedAt = createBody.updatedAt;
 
       // Esperar breve tick para asegurar que timestamp ISO difiera si corre rápido
       await new Promise((r) => setTimeout(r, 10));
@@ -249,9 +285,10 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(updateRes.status).toBe(200);
-      expect(updateRes.body.price).toBe(4500);
-      expect(updateRes.body.name).toBe('Café Molido Premium 250g');
-      expect(updateRes.body.updatedAt).not.toBe(originalUpdatedAt);
+      const updateBody = updateRes.body as unknown as ProductItem;
+      expect(updateBody.price).toBe(4500);
+      expect(updateBody.name).toBe('Café Molido Premium 250g');
+      expect(updateBody.updatedAt).not.toBe(originalUpdatedAt);
     });
 
     it('permite archivar/bloquear un producto (soft delete)', async () => {
@@ -264,7 +301,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
           price: 100,
         });
 
-      const prodId = createRes.body.id as string;
+      const createBody = createRes.body as unknown as ProductItem;
+      const prodId = createBody.id;
 
       // Bloquear
       const deleteRes = await request(app)
@@ -273,7 +311,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .send({ reason: 'Discontinuado por proveedor' });
 
       expect(deleteRes.status).toBe(200);
-      expect(deleteRes.body.blockedReason).toBe('Discontinuado por proveedor');
+      const deleteBody = deleteRes.body as unknown as { blockedReason?: string };
+      expect(deleteBody.blockedReason).toBe('Discontinuado por proveedor');
 
       // Consultar detalle
       const getRes = await request(app)
@@ -281,7 +320,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(getRes.status).toBe(200);
-      expect(getRes.body.blockedReason).toBe('Discontinuado por proveedor');
+      const getBody = getRes.body as unknown as { blockedReason?: string };
+      expect(getBody.blockedReason).toBe('Discontinuado por proveedor');
     });
 
     it('devuelve las categorías únicas ordenadas', async () => {
@@ -320,7 +360,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
           branch: 'CENTRAL',
           pointOfSale: 'POS-01',
         });
-      const posRawKey = keyRes.body.rawKey as string;
+      const keyBody = keyRes.body as unknown as { rawKey: string };
+      const posRawKey = keyBody.rawKey;
 
       // 2. Crear producto desde el ERP Admin
       const createRes = await request(app)
@@ -335,7 +376,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
           tracksStock: true,
         });
       expect(createRes.status).toBe(201);
-      const prodId = createRes.body.id as string;
+      const createBody = createRes.body as unknown as ProductItem;
+      const prodId = createBody.id;
 
       // 3. El POS realiza sync pull
       const pullRes = await request(app)
@@ -348,7 +390,8 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         });
 
       expect(pullRes.status).toBe(200);
-      const posProducts = pullRes.body.products.items as Array<{ id: string; sku: string; price: number; name: string }>;
+      const pullBody = pullRes.body as unknown as ConnectorPullProductsResponse;
+      const posProducts = pullBody.products.items;
       const syncedProd = posProducts.find((p) => p.id === prodId);
       expect(syncedProd).toBeDefined();
       expect(syncedProd?.name).toBe('Alfajor Marplatense');
@@ -369,13 +412,14 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
         .set('X-POS-Contract-Version', '4.0.0')
         .send({
           cursors: {
-            products: pullRes.body.products.nextCursor,
+            products: pullBody.products.nextCursor,
           },
           pendingLotIds: [],
         });
 
       expect(pullDeltaRes.status).toBe(200);
-      const deltaProducts = pullDeltaRes.body.products.items as Array<{ id: string; price: number }>;
+      const pullDeltaBody = pullDeltaRes.body as unknown as ConnectorPullProductsResponse;
+      const deltaProducts = pullDeltaBody.products.items;
       const deltaProd = deltaProducts.find((p) => p.id === prodId);
       expect(deltaProd).toBeDefined();
       expect(deltaProd?.price).toBe(1500);

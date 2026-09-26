@@ -78,7 +78,7 @@ export function BulkInterestsCard() {
             <Button
               variant="outline"
               size="sm"
-              onClick={previewBulkInterests}
+              onClick={() => { void previewBulkInterests(); }}
               disabled={isLoading}
             >
               {isLoading && preview?.dryRun ? 'Calculando...' : '🔍 Simular Devengamiento'}
@@ -87,7 +87,7 @@ export function BulkInterestsCard() {
             {preview && preview.items.length > 0 && (
               <Button
                 size="sm"
-                onClick={applyBulkInterests}
+                onClick={() => { void applyBulkInterests(); }}
                 disabled={isLoading}
                 class="bg-amber-600 hover:bg-amber-500 text-white"
               >

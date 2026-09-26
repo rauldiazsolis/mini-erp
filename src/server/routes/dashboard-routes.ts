@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { DashboardService, type DashboardPeriod } from '../dashboard/dashboard-service.ts';
+import { DashboardService } from '../dashboard/dashboard-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { dashboardSummaryServiceDef } from '../di/container.ts';
 
@@ -32,7 +32,7 @@ export function createDashboardRoutes(): Router {
     try {
       const service = getDashboardService(req);
       const summary = service.getSummary({
-        period: parseResult.data.period as DashboardPeriod,
+        period: parseResult.data.period,
         branchId: parseResult.data.branchId,
       });
 

@@ -67,7 +67,7 @@ export function BalanceAdjustModal() {
           <div class="grid grid-cols-3 gap-2">
             <button
               type="button"
-              onClick={() => updateField('type', 'credit')}
+              onClick={() => { updateField('type', 'credit'); }}
               class={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 form.type === 'credit'
                   ? 'bg-emerald-50 dark:bg-emerald-600/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 font-bold ring-1 ring-emerald-500/30'
@@ -80,7 +80,7 @@ export function BalanceAdjustModal() {
 
             <button
               type="button"
-              onClick={() => updateField('type', 'debit')}
+              onClick={() => { updateField('type', 'debit'); }}
               class={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 form.type === 'debit'
                   ? 'bg-rose-50 dark:bg-rose-600/15 border-rose-500 text-rose-700 dark:text-rose-300 font-bold ring-1 ring-rose-500/30'
@@ -93,7 +93,7 @@ export function BalanceAdjustModal() {
 
             <button
               type="button"
-              onClick={() => updateField('type', 'set')}
+              onClick={() => { updateField('type', 'set'); }}
               class={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 form.type === 'set'
                   ? 'bg-indigo-50 dark:bg-indigo-600/15 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-bold ring-1 ring-indigo-500/30'
@@ -116,7 +116,7 @@ export function BalanceAdjustModal() {
             step="100"
             min="0"
             value={form.amount || ''}
-            onInput={(e) => updateField('amount', parseFloat((e.target as HTMLInputElement).value) || 0)}
+            onInput={(e) => { updateField('amount', parseFloat((e.target as HTMLInputElement).value) || 0); }}
             class="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-amber-600 dark:text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
             autoFocus
           />
@@ -127,7 +127,7 @@ export function BalanceAdjustModal() {
           label="Motivo del Ajuste (Auditoría Contable) *"
           placeholder="Ej: Bonificación por pronto pago, Descuento especial, Corrección saldo inicial..."
           value={form.reason}
-          onInput={(e) => updateField('reason', (e.target as HTMLInputElement).value)}
+          onInput={(e) => { updateField('reason', (e.target as HTMLInputElement).value); }}
         />
 
         {/* Footer */}
@@ -137,7 +137,7 @@ export function BalanceAdjustModal() {
           </Button>
           <Button
             size="sm"
-            onClick={submitBalanceAdjustment}
+            onClick={() => { void submitBalanceAdjustment(); }}
             disabled={isSubmitting}
             class="bg-amber-600 hover:bg-amber-500 text-white"
           >

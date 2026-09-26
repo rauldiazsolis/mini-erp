@@ -3,15 +3,18 @@ import type { ComponentChildren, JSX } from 'preact';
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
-export type ButtonProps = JSX.IntrinsicElements['button'] & {
+export type ButtonProps = Omit<JSX.IntrinsicElements['button'], 'class' | 'className'> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  class?: string;
+  className?: string;
   children: ComponentChildren;
 };
 
 export function Button(props: ButtonProps) {
   const { variant = 'primary', size = 'md', loading = false, children, class: className = '', disabled, ...rest } = props;
+  const extraClass = className ? ` ${className}` : '';
 
   const baseStyles =
     'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-950 disabled:opacity-50 disabled:cursor-not-allowed select-none';
@@ -37,7 +40,7 @@ export function Button(props: ButtonProps) {
 
   return (
     <button
-      class={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${className}`}
+      class={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]}${extraClass}`}
       disabled={disabled || loading}
       {...rest}
     >

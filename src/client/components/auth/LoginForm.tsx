@@ -7,14 +7,14 @@ export const loginEmailSignal = signal('admin@local.test');
 export const loginPasswordSignal = signal('admin123');
 
 export function LoginForm(props: { onSwitchToRegister: () => void }) {
-  const handleSubmit = async (e: Event) => {
+  const handleSubmit = (e: Event) => {
     e.preventDefault();
     if (!loginEmailSignal.value.trim() || !loginPasswordSignal.value.trim()) {
       authErrorSignal.value = 'Completa tu email y contraseña';
       return;
     }
 
-    await login({
+    void login({
       email: loginEmailSignal.value.trim(),
       password: loginPasswordSignal.value,
     });

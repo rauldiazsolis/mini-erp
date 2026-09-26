@@ -126,8 +126,8 @@ if (typeof window !== 'undefined') {
   effect(() => {
     const tenantId = effectiveTenantIdSignal.value;
     if (tenantId && tokenSignal.value) {
-      fetchBranches();
-      fetchDashboardData();
+      void fetchBranches();
+      void fetchDashboardData();
     }
   });
 
@@ -137,7 +137,7 @@ if (typeof window !== 'undefined') {
     const _b = selectedBranchSignal.value;
     const tenantId = effectiveTenantIdSignal.value;
     if (tenantId && tokenSignal.value) {
-      fetchDashboardData();
+      void fetchDashboardData();
     }
   });
 }

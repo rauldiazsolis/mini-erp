@@ -40,7 +40,7 @@ export function DashboardView() {
       {error && (
         <div class="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between">
           <div class="text-xs text-rose-300 font-medium">{error}</div>
-          <Button size="sm" variant="danger" onClick={() => fetchDashboardData()}>
+          <Button size="sm" variant="danger" onClick={() => { void fetchDashboardData(); }}>
             Reintentar
           </Button>
         </div>

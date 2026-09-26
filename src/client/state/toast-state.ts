@@ -13,7 +13,7 @@ export type ToastItem = {
 export const toastsSignal = signal<ToastItem[]>([]);
 
 export function showToast(toast: Omit<ToastItem, 'id'>): string {
-  const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const id = `toast_${String(Date.now())}_${Math.random().toString(36).substring(2, 7)}`;
   const item: ToastItem = {
     ...toast,
     id,

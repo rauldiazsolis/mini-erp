@@ -22,7 +22,6 @@ import {
   balanceAdjustTargetSignal,
   balanceAdjustFormSignal,
   openBalanceAdjustModal,
-  closeBalanceAdjustModal,
   submitBalanceAdjustment,
   accountDrawerOpenSignal,
   accountTargetCustomerSignal,
@@ -176,8 +175,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       };
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             id: 'cust-4',
             name: 'Roberto Carlos',
@@ -194,8 +193,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
             updatedAt: '2026-09-25T11:00:00Z',
           }),
           { status: 201, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitCustomerForm();
@@ -230,8 +229,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       };
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             customerId: 'cust-1',
             previousBalance: 15000,
@@ -240,8 +239,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
             movementId: 'mov-pay-1',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitPayment();
@@ -269,8 +268,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       };
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async () => {
-        return new Response(
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        return Promise.resolve(new Response(
           JSON.stringify({
             customerId: 'cust-1',
             previousBalance: 15000,
@@ -279,8 +278,8 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
             movementId: 'adj-1',
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }) as unknown as typeof fetch;
+        ));
+      });
 
       try {
         await submitBalanceAdjustment();
@@ -295,9 +294,9 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
 
     it('openAccountStatement consulta y almacena los movimientos cronológicos', async () => {
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (String(url).includes('/movements')) {
-          return new Response(
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/movements')) {
+          return Promise.resolve(new Response(
             JSON.stringify([
               {
                 id: 'mov-1',
@@ -311,10 +310,10 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
               },
             ]),
             { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          ));
         }
-        return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
-      }) as unknown as typeof fetch;
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
+      });
 
       try {
         await openAccountStatement(mockCustomerA);

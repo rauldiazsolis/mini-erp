@@ -363,7 +363,7 @@ export class CatalogService {
   }
 
   private mapProductRow(r: RawProductRow): ProductRecord {
-    let parsedBarcodes: string[] = [];
+    let parsedBarcodes: string[];
     try {
       parsedBarcodes = JSON.parse(r.barcodes) as string[];
     } catch {

@@ -5,7 +5,6 @@ import {
   userNameSignal,
   userEmailSignal,
   userPasswordSignal,
-  isExistingAccountSignal,
   businessNameSignal,
   selectedMerchantPresetSignal,
   returnUrlSignal,
@@ -100,30 +99,21 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
     });
 
     it('avanza al Paso 2 si los datos de cuenta son válidos y registra al usuario', async () => {
-      global.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (String(url).includes('/auth/register')) {
-          return {
-            ok: true,
-            status: 201,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              token: 'mock-jwt-step1',
-              user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez' },
-            }),
-          };
+      global.fetch = vi.fn().mockImplementation((url: string | URL | Request) => {
+        const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+        if (urlStr.includes('/auth/register')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            token: 'mock-jwt-step1',
+            user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez' },
+          }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
-        if (String(url).includes('/auth/me')) {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez', globalRole: 'user' },
-              tenants: [],
-            }),
-          };
+        if (urlStr.includes('/auth/me')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez', globalRole: 'user' },
+            tenants: [],
+          }), { status: 200, headers: { 'content-type': 'application/json' } }));
         }
-        return { ok: true, status: 200, json: async () => ({}) };
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
       });
 
       merchantStepSignal.value = 1;
@@ -138,12 +128,12 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
     });
 
     it('detiene y advierte en el Paso 1 si el correo ya está registrado', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({ error: 'El correo electrónico ya está registrado' }),
-      });
+      global.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'El correo electrónico ya está registrado' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
 
       merchantStepSignal.value = 1;
       userNameSignal.value = 'Martín Gómez';
@@ -175,83 +165,59 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
     it('registra usuario, crea tenant, siembra preset, genera API Key y arma URL de retorno para el POS', async () => {
       const fetchCalls: Array<{ url: string; method?: string; body?: unknown }> = [];
 
-      global.fetch = vi.fn().mockImplementation(async (url: string, opts?: RequestInit) => {
-        const urlStr = String(url);
+      global.fetch = vi.fn().mockImplementation((url: string | URL | Request, opts?: RequestInit) => {
+        const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
         const method = opts?.method ?? 'GET';
-        const body = opts?.body ? JSON.parse(opts.body as string) : undefined;
-        fetchCalls.push({ url: urlStr, method, body });
+        const parsedBody = typeof opts?.body === 'string' ? (JSON.parse(opts.body) as Record<string, unknown>) : undefined;
+        fetchCalls.push({ url: urlStr, method, body: parsedBody });
 
         // 1. Registro
         if (urlStr.includes('/auth/register')) {
-          return {
-            ok: true,
-            status: 201,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              token: 'mock-jwt-merchant',
-              user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe' },
-            }),
-          };
+          return Promise.resolve(new Response(JSON.stringify({
+            token: 'mock-jwt-merchant',
+            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe' },
+          }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
 
         // 2. Auth me
         if (urlStr.includes('/auth/me')) {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe', globalRole: 'user' },
-              tenants: [{ tenantId: 'kiosco-pepe-1234', slug: 'kiosco-pepe-1234', name: 'Kiosco Pepe', status: 'active', role: 'owner' }],
-            }),
-          };
+          return Promise.resolve(new Response(JSON.stringify({
+            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe', globalRole: 'user' },
+            tenants: [{ tenantId: 'kiosco-pepe-1234', slug: 'kiosco-pepe-1234', name: 'Kiosco Pepe', status: 'active', role: 'owner' }],
+          }), { status: 200, headers: { 'content-type': 'application/json' } }));
         }
 
         // 3. Crear tenant
         if (urlStr.endsWith('/tenants') && method === 'POST') {
-          return {
-            ok: true,
-            status: 201,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              id: body.id,
-              slug: body.slug,
-              name: body.name,
-            }),
-          };
+          return Promise.resolve(new Response(JSON.stringify({
+            id: typeof parsedBody?.['id'] === 'string' ? parsedBody['id'] : 'tenant-id',
+            slug: typeof parsedBody?.['slug'] === 'string' ? parsedBody['slug'] : 'slug',
+            name: typeof parsedBody?.['name'] === 'string' ? parsedBody['name'] : 'name',
+          }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
 
         // 4. Sembrar preset
         if (urlStr.includes('/seed-preset') && method === 'POST') {
-          return {
-            ok: true,
+          return Promise.resolve(new Response(JSON.stringify({ success: true, count: 15 }), {
             status: 200,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({ success: true, count: 15 }),
-          };
+            headers: { 'content-type': 'application/json' },
+          }));
         }
 
         // 5. Crear API Key
         if (urlStr.includes('/api-keys') && method === 'POST') {
-          return {
-            ok: true,
-            status: 201,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            json: async () => ({
-              id: 'key_123',
-              key: 'pos_live_merchant_xyz',
-              branch: 'CENTRAL',
-              pointOfSale: 'Caja 1',
-            }),
-          };
+          return Promise.resolve(new Response(JSON.stringify({
+            id: 'key_123',
+            key: 'pos_live_merchant_xyz',
+            branch: 'CENTRAL',
+            pointOfSale: 'Caja 1',
+          }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
 
-        return {
-          ok: false,
+        return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          json: async () => ({ error: 'Not found' }),
-        };
+          headers: { 'content-type': 'application/json' },
+        }));
       });
 
       // Configurar inputs

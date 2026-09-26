@@ -56,7 +56,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('products', 'csv')}
+                onClick={() => { void downloadExport('products', 'csv'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -65,7 +65,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('products', 'json')}
+                onClick={() => { void downloadExport('products', 'json'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -84,7 +84,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('customers', 'csv')}
+                onClick={() => { void downloadExport('customers', 'csv'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -93,7 +93,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('customers', 'json')}
+                onClick={() => { void downloadExport('customers', 'json'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -112,7 +112,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('stock', 'csv')}
+                onClick={() => { void downloadExport('stock', 'csv'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -121,7 +121,7 @@ export function ImportExportCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadExport('stock', 'json')}
+                onClick={() => { void downloadExport('stock', 'json'); }}
                 disabled={isLoading}
                 class="flex-1 text-[11px]"
               >
@@ -218,7 +218,7 @@ export function ImportExportCard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={previewImport}
+            onClick={() => { void previewImport(); }}
             disabled={isLoading || !csvContent.trim()}
           >
             {isLoading && preview?.dryRun ? 'Simulando...' : '🔍 Simular Importación (Preview)'}
@@ -227,7 +227,7 @@ export function ImportExportCard() {
           {preview && preview.errors.length === 0 && (preview.importedCount > 0 || preview.updatedCount > 0) && (
             <Button
               size="sm"
-              onClick={applyImport}
+              onClick={() => { void applyImport(); }}
               disabled={isLoading || !csvContent.trim()}
               class="bg-emerald-600 hover:bg-emerald-500 text-white"
             >
