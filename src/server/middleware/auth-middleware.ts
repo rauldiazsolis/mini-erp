@@ -1,19 +1,23 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
+import type { IContainer, Container } from 'hardwired';
 import type { AuthService, UserSession } from '../auth/auth-service.ts';
 import type { ApiKeyService, ValidatedPosKey } from '../tenant/api-key-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
+import { createTenantScope } from '../di/container.ts';
 
 export interface AuthenticatedAdminRequest extends Request {
   user?: UserSession;
   activeTenantId?: string;
   activeTenantDb?: DatabaseSync;
+  tenantScope?: IContainer;
 }
 
 export interface AuthenticatedPosRequest extends Request {
   posContext?: ValidatedPosKey & {
     tenantDb: DatabaseSync;
   };
+  tenantScope?: IContainer;
 }
 
 export function createAdminAuthMiddleware(
@@ -59,6 +63,7 @@ export function createAdminAuthMiddleware(
 export function createPosAuthMiddleware(
   apiKeyService: ApiKeyService,
   tenantManager: TenantManager,
+  rootContainer?: Container,
 ) {
   return (req: AuthenticatedPosRequest, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization;
@@ -80,6 +85,10 @@ export function createPosAuthMiddleware(
       ...validated,
       tenantDb,
     };
+
+    if (rootContainer !== undefined) {
+      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+    }
 
     next();
   };

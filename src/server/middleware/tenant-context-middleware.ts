@@ -1,11 +1,14 @@
 import type { Response, NextFunction } from 'express';
+import type { Container } from 'hardwired';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
+import { createTenantScope } from '../di/container.ts';
 
 export function createTenantContextMiddleware(
   authService: AuthService,
   tenantManager: TenantManager,
+  rootContainer?: Container,
 ) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
     if (req.user === undefined) {
@@ -28,8 +31,14 @@ export function createTenantContextMiddleware(
       return;
     }
 
+    const tenantDb = tenantManager.getTenantDb(tenantId);
     req.activeTenantId = tenantId;
-    req.activeTenantDb = tenantManager.getTenantDb(tenantId);
+    req.activeTenantDb = tenantDb;
+
+    if (rootContainer !== undefined) {
+      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+    }
+
     next();
   };
 }

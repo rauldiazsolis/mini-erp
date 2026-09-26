@@ -18,9 +18,19 @@ import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 
+import type { Container } from 'hardwired';
+import {
+  createRootContainer,
+  systemDbDef,
+  tenantManagerDef,
+  authServiceDef,
+  apiKeyServiceDef,
+} from './di/container.ts';
+
 export type AppDependencies = {
   systemDb?: DatabaseSync;
   tenantManager?: TenantManager;
+  rootContainer?: Container;
 };
 
 export function createApp(deps?: AppDependencies): {
@@ -29,16 +39,22 @@ export function createApp(deps?: AppDependencies): {
   tenantManager: TenantManager;
   authService: AuthService;
   apiKeyService: ApiKeyService;
+  rootContainer: Container;
 } {
   const app = express();
 
-  const systemDb = deps?.systemDb ?? openSystemDb(process.env['SYSTEM_DB_PATH'] ?? 'data/system.sqlite');
-  const tenantManager = deps?.tenantManager ?? new TenantManager(systemDb);
-  const authService = new AuthService(systemDb);
-  const apiKeyService = new ApiKeyService(systemDb);
+  const rootContainer = deps?.rootContainer ?? createRootContainer({
+    systemDb: deps?.systemDb,
+    tenantManager: deps?.tenantManager,
+  });
+
+  const systemDb = rootContainer.use(systemDbDef);
+  const tenantManager = rootContainer.use(tenantManagerDef);
+  const authService = rootContainer.use(authServiceDef);
+  const apiKeyService = rootContainer.use(apiKeyServiceDef);
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager);
+  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer);
 
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
@@ -48,7 +64,7 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp' });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(authService, tenantManager);
+  const requireTenantContext = createTenantContextMiddleware(authService, tenantManager, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin));
@@ -81,5 +97,6 @@ export function createApp(deps?: AppDependencies): {
     tenantManager,
     authService,
     apiKeyService,
+    rootContainer,
   };
 }

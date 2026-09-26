@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CustomerService } from '../customer/customer-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { customerServiceDef } from '../di/container.ts';
 
 const createCustomerSchema = z.object({
   id: z.string().optional(),
@@ -46,10 +47,13 @@ const deleteCustomerSchema = z.object({
 });
 
 function getCustomerService(req: AuthenticatedAdminRequest): CustomerService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(customerServiceDef);
   }
-  return new CustomerService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new CustomerService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createCustomerRoutes(): Router {

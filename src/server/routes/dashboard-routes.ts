@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { DashboardService, type DashboardPeriod } from '../dashboard/dashboard-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { dashboardSummaryServiceDef } from '../di/container.ts';
 
 const summaryQuerySchema = z.object({
   period: z.enum(['today', 'week', 'month']).default('today'),
@@ -9,10 +10,13 @@ const summaryQuerySchema = z.object({
 });
 
 function getDashboardService(req: AuthenticatedAdminRequest): DashboardService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(dashboardSummaryServiceDef);
   }
-  return new DashboardService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new DashboardService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createDashboardRoutes(): Router {

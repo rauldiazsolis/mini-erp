@@ -2,9 +2,20 @@ import { Router, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
 import { ConnectorService, type BatchEvent } from '../connector/connector-service.ts';
+import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 
 const CONTRACT_VERSION = '4.0.0';
+
+function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(connectorServiceDef);
+  }
+  if (req.posContext?.tenantDb !== undefined) {
+    return new ConnectorService(req.posContext.tenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado para POS');
+}
 
 function checkContractVersion(req: AuthenticatedPosRequest, res: Response, next: NextFunction): void {
   const version = req.headers['x-pos-contract-version'];
@@ -73,8 +84,8 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { tenantDb, branch, pointOfSale } = req.posContext!;
-    const connector = new ConnectorService(tenantDb);
+    const { branch, pointOfSale } = req.posContext!;
+    const connector = getConnectorService(req);
 
     const result = connector.processPushLot({
       lotId: idempotencyKey.trim(),
@@ -120,8 +131,8 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { tenantDb, branch, pointOfSale } = req.posContext!;
-    const connector = new ConnectorService(tenantDb);
+    const { branch, pointOfSale } = req.posContext!;
+    const connector = getConnectorService(req);
 
     const pullResult = connector.pullCatalog({
       cursors: parseResult.data.cursors,
@@ -156,8 +167,7 @@ export function createConnectorRoutes(
       return;
     }
 
-    const { tenantDb } = req.posContext!;
-    const connector = new ConnectorService(tenantDb);
+    const connector = getConnectorService(req);
 
     const holdResult = connector.requestAccountHold({
       customerId: parseResult.data.customerId,

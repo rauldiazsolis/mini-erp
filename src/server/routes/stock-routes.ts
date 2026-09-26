@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { StockService } from '../stock/stock-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { stockServiceDef } from '../di/container.ts';
 
 const adjustStockSchema = z.object({
   productId: z.string().min(1, 'El ID de producto es requerido'),
@@ -15,10 +16,13 @@ const adjustStockSchema = z.object({
 });
 
 function getStockService(req: AuthenticatedAdminRequest): StockService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(stockServiceDef);
   }
-  return new StockService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new StockService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createStockRoutes(): Router {

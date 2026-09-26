@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CatalogService } from '../catalog/catalog-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { catalogServiceDef } from '../di/container.ts';
 
 const createBranchSchema = z.object({
   id: z.string().optional(),
@@ -43,10 +44,13 @@ const deleteProductSchema = z.object({
 });
 
 function getCatalogService(req: AuthenticatedAdminRequest): CatalogService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(catalogServiceDef);
   }
-  return new CatalogService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new CatalogService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createCatalogRoutes(): Router {

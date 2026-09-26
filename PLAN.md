@@ -211,40 +211,44 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 7. Detalle de Etapas: FASE 5 (Refactoring Backend IoC con Hardwired) [PRÓXIMA]
+## 7. Detalle de Etapas: FASE 5 (Refactoring Backend IoC con Hardwired) [COMPLETADA]
 
 ### Objetivos:
-- Blindar el aislamiento multitenant y erradicar cualquier posibilidad de fuga de datos (*tenant isolation leakage*) entre tenants mediante Inversión de Control funcional y tipado estricto.
+- Blindar el aislamiento multitenant y erradicar cualquier posibilidad de fuga de datos (*tenant isolation leakage*) entre tenants mediante Inversión de Control funcional y tipado estricto con Hardwired 1.6.2.
 - Sustituir la instanciación manual ad-hoc en rutas por un ciclo de vida gestionado por request scope sin añadir decoradores ni `reflect-metadata`.
 
-### Etapa 5.1: Dependencia y Fijación de Versión
-- Instalación de `hardwired` fijando versión exacta `1.6.2` en `mini-erp/package.json` (sin `^` ni `~`) para prevenir breaking changes de versiones dev o futuras.
-- Validación de compatibilidad nativa con Node 22 (`--experimental-strip-types`) y Vitest.
+### Etapa 5.1: Dependencia y Fijación de Versión [COMPLETADA]
+- Instalación de `hardwired` fijando versión exacta `1.6.2` en `mini-erp/package.json` (sin `^` ni `~`).
+- Validación de compatibilidad nativa con Node 22 (`--experimental-strip-types`), ESM y Vitest.
 
-### Etapa 5.2: Definiciones del Contenedor de Dependencias
+### Etapa 5.2: Definiciones del Contenedor de Dependencias [COMPLETADA]
 - Creación del módulo central de inyección (`src/server/di/container.ts`):
-  - Definición no enlazada para la base de datos del tenant: `export const tenantDbDef = fn.unbound<TenantDatabase>('tenantDb')`.
-  - Definición de dependencias singleton de aplicación (`masterDbDef`, `systemConfigDef`).
+  - Definición no enlazada para la base de datos del tenant: `export const tenantDbDef = unbound<DatabaseSync>('tenantDb')`.
+  - Definición de dependencias singleton de aplicación (`systemDbDef` / `masterDbDef`, `tenantManagerDef`, `authServiceDef`, `apiKeyServiceDef`).
   - Definición de servicios de negocio como `fn.scoped()` dependientes de `tenantDbDef`:
     - `catalogServiceDef` -> `CatalogService`
     - `stockServiceDef` -> `StockService`
     - `customerServiceDef` -> `CustomerService`
     - `bulkServiceDef` -> `BulkService`
     - `importExportServiceDef` -> `ImportExportService`
-    - `dashboardSummaryServiceDef` -> `DashboardSummaryService`
+    - `dashboardSummaryServiceDef` / `dashboardServiceDef` -> `DashboardService`
+    - `connectorServiceDef` -> `ConnectorService`
   - Preservación de las clases de servicio puras (constructores estándar, cero decoradores).
 
-### Etapa 5.3: Integración de Scopes en Middleware y Rutas
-- Actualización de `src/server/middleware/tenant-context.ts`:
-  - Al resolver el tenant desde los parámetros de ruta (`:tenantId`), abrir un scope por request:
-    `req.tenantScope = rootContainer.checkoutScope({ bindings: [tenantDbDef.bind(value(tenantDb))] })`.
-- Actualización de routers de Express (`catalog-routes.ts`, `stock-routes.ts`, `customer-routes.ts`, `bulk-routes.ts`, `io-routes.ts`, `dashboard-routes.ts`):
-  - Reemplazo de instanciaciones manuales `new Service(req.activeTenantDb)` por resolución declarativa `req.tenantScope.use(serviceDef)`.
+### Etapa 5.3: Integración de Scopes en Middleware y Rutas [COMPLETADA]
+- Actualización de `src/server/middleware/tenant-context-middleware.ts`:
+  - Al resolver el tenant en `/api/tenants/:tenantId/*`, apertura de scope por request:
+    `req.tenantScope = createTenantScope(rootContainer, tenantDb)`.
+- Soporte de `rootContainer` y `req.tenantScope` en `createPosAuthMiddleware` para terminales POS.
+- Actualización de routers de Express (`catalog-routes.ts`, `stock-routes.ts`, `customer-routes.ts`, `bulk-routes.ts`, `io-routes.ts`, `dashboard-routes.ts`, `connector-routes.ts`):
+  - Reemplazo de instanciaciones manuales `new Service(...)` por resolución declarativa `req.tenantScope.use(serviceDef)`.
 
-### Etapa 5.4: Verificación Integral de Tests y Tipado
-- Ejecución completa de la suite de tests de integración con `pnpm test` (garantizando los 144 tests pasando en verde).
-- Validación de tipado con `pnpm typecheck`.
-- Verificación de que intentar resolver servicios dependientes de `tenantDbDef` en el contenedor raíz arroje error en runtime garantizando aislamiento total.
+### Etapa 5.4: Verificación Integral de Tests y Tipado [COMPLETADA]
+- Suite dedicada en `test/ioc-container.test.ts` con 7 tests unitarios y de integración HTTP (supertest).
+- Ejecución completa de la suite: **151 tests pasando en verde** en 22 suites.
+- Validación de tipado: `tsc --noEmit` con 0 errores.
+- Build de producción: `pnpm run build` exitoso.
+- Garantía verificada: intentar resolver servicios dependientes de `tenantDbDef` en el contenedor raíz arroja error en runtime previniendo cualquier fuga entre tenants.
 
 ---
 

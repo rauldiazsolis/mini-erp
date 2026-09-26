@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
+import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import {
@@ -142,4 +144,62 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(prodsTenant2).toHaveLength(0);
     });
   });
+
+  describe('Integración HTTP con Express y Scopes de Request IoC', () => {
+    it('aisla las peticiones HTTP entre tenants a través del middleware y req.tenantScope', async () => {
+      const tenantManager = new TenantManager(systemDb, { inMemory: true });
+      const { app, rootContainer } = createApp({ systemDb, tenantManager });
+
+      expect(rootContainer).toBeDefined();
+
+      // 1. Crear usuario root y obtener token
+      const regRes = await request(app)
+        .post('/api/auth/register')
+        .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema' });
+      expect(regRes.status).toBe(201);
+      const token = regRes.body.token as string;
+
+      // 2. Crear dos comercios (tenants) sin datos demo automáticos
+      const t1Res = await request(app)
+        .post('/api/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 'kiosco-alfa', slug: 'kiosco-alfa', name: 'Kiosco Alfa', seedDemoData: false });
+      expect(t1Res.status).toBe(201);
+
+      const t2Res = await request(app)
+        .post('/api/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 'kiosco-beta', slug: 'kiosco-beta', name: 'Kiosco Beta', seedDemoData: false });
+      expect(t2Res.status).toBe(201);
+
+      // 3. Crear producto en Kiosco Alfa vía API HTTP
+      const prodRes = await request(app)
+        .post('/api/tenants/kiosco-alfa/products')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          sku: 'ALF-CHOCO',
+          name: 'Alfajor de Chocolate',
+          price: 1200,
+          category: 'Golosinas',
+        });
+      expect(prodRes.status).toBe(201);
+      expect(prodRes.body.sku).toBe('ALF-CHOCO');
+
+      // 4. Consultar catálogo de Kiosco Beta vía API HTTP -> DEBE ESTAR VACÍO (aislamiento total)
+      const betaCatalogRes = await request(app)
+        .get('/api/tenants/kiosco-beta/products')
+        .set('Authorization', `Bearer ${token}`);
+      expect(betaCatalogRes.status).toBe(200);
+      expect(betaCatalogRes.body).toHaveLength(0);
+
+      // 5. Consultar catálogo de Kiosco Alfa vía API HTTP -> DEBE CONTENER EL PRODUCTO
+      const alfaCatalogRes = await request(app)
+        .get('/api/tenants/kiosco-alfa/products')
+        .set('Authorization', `Bearer ${token}`);
+      expect(alfaCatalogRes.status).toBe(200);
+      expect(alfaCatalogRes.body).toHaveLength(1);
+      expect(alfaCatalogRes.body[0].sku).toBe('ALF-CHOCO');
+    });
+  });
 });
+

@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { importExportServiceDef } from '../di/container.ts';
 
 const importBodySchema = z.object({
   items: z.array(z.record(z.unknown())).optional(),
@@ -17,10 +18,13 @@ const seedPresetSchema = z.object({
 });
 
 function getImportExportService(req: AuthenticatedAdminRequest): ImportExportService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(importExportServiceDef);
   }
-  return new ImportExportService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new ImportExportService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createIoRoutes(): Router {

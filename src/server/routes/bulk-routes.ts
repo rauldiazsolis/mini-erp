@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { BulkService } from '../bulk/bulk-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { bulkServiceDef } from '../di/container.ts';
 
 const bulkPriceSchema = z.object({
   action: z.enum(['percentage', 'fixed', 'items'], {
@@ -30,10 +31,13 @@ const bulkInterestSchema = z.object({
 });
 
 function getBulkService(req: AuthenticatedAdminRequest): BulkService {
-  if (req.activeTenantDb === undefined) {
-    throw new Error('Tenant DB no inicializada en la petición');
+  if (req.tenantScope !== undefined) {
+    return req.tenantScope.use(bulkServiceDef);
   }
-  return new BulkService(req.activeTenantDb);
+  if (req.activeTenantDb !== undefined) {
+    return new BulkService(req.activeTenantDb);
+  }
+  throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
 export function createBulkRoutes(): Router {
