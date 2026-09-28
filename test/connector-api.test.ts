@@ -5,7 +5,7 @@ import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 
-describe('Connector API v4.1.0 (Etapa 1.4)', () => {
+describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let rawApiKey: string;
@@ -47,14 +47,14 @@ describe('Connector API v4.1.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('responde 200 con la versión 4.1.0 del contrato y estado ok', async () => {
+    it('responde 200 con la versión 4.2.0 del contrato y estado ok', async () => {
       const res = await request(app)
         .get('/connector/info')
         .set('Authorization', `Bearer ${rawApiKey}`);
 
       expect(res.status).toBe(200);
       const body = res.body as unknown as { contractVersion: string; status: string; backend: { name: string } };
-      expect(body.contractVersion).toBe('4.1.0');
+      expect(body.contractVersion).toBe('4.2.0');
       expect(body.status).toBe('ok');
       expect(body.backend.name).toBe('mini-erp');
     });
@@ -71,7 +71,7 @@ describe('Connector API v4.1.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(409);
       expect(res.body).toEqual({
         code: 'incompatible-contract',
-        contractVersion: '4.1.0',
+        contractVersion: '4.2.0',
       });
     });
 
@@ -79,7 +79,7 @@ describe('Connector API v4.1.0 (Etapa 1.4)', () => {
       const res = await request(app)
         .post('/connector/sync/pull')
         .set('Authorization', `Bearer ${rawApiKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .send({ cursors: {}, pendingLotIds: [] });
 
       expect(res.status).toBe(200);
@@ -222,7 +222,7 @@ describe('Connector API v4.1.0 (Etapa 1.4)', () => {
       const pushRes = await request(app)
         .post('/connector/sync/push')
         .set('Authorization', `Bearer ${rawApiKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .set('Idempotency-Key', lotId)
         .send({ deviceId: 'device-pos-01', events });
       expect(pushRes.status).toBe(200);
@@ -306,6 +306,64 @@ describe('Connector API v4.1.0 (Etapa 1.4)', () => {
       const excessiveBody = excessiveRes.body as unknown as { approved: boolean; holdId?: string; reasonCode?: string };
       expect(excessiveBody.approved).toBe(false);
       expect(excessiveBody.reasonCode).toBe('insufficient-credit');
+    });
+  });
+
+  describe('cobranza con recibo y saldo sin crédito (4.2.0, #101)', () => {
+    it('guarda el recibo y el pull trae al cliente con su saldo, sin crédito', async () => {
+      const now = new Date().toISOString();
+      const pushRes = await request(app)
+        .post('/connector/sync/push')
+        .set('Authorization', `Bearer ${rawApiKey}`)
+        .set('X-POS-Contract-Version', '4.2.0')
+        .set('Idempotency-Key', 'lot-cobranza-1')
+        .send({
+          deviceId: 'device-pos-01',
+          events: [
+            {
+              id: 'cust-sin-credito',
+              type: 'customer',
+              createdAt: now,
+              origin: { branch: 'CENTRAL', pointOfSale: 'POS-01' },
+              customer: { id: 'cust-sin-credito', name: 'Sin Crédito', createdAt: now },
+            },
+            {
+              id: 'cp-1',
+              type: 'customer-payment',
+              createdAt: now,
+              origin: { branch: 'CENTRAL', pointOfSale: 'POS-01' },
+              payment: {
+                id: 'cp-1',
+                customerId: 'cust-sin-credito',
+                payments: [{ method: 'cash', amount: 300 }],
+                total: 300,
+                createdAt: now,
+                receipt: { date: '2026-09-27', number: 3 },
+              },
+            },
+          ],
+        });
+      expect(pushRes.status).toBe(200);
+
+      const row = tenantManager
+        .getTenantDb(tenantId)
+        .prepare('SELECT payload FROM customer_payments WHERE id = ?')
+        .get('cp-1') as { payload: string } | undefined;
+      expect(JSON.parse(row?.payload ?? '{}')).toMatchObject({
+        receipt: { date: '2026-09-27', number: 3 },
+      });
+
+      const pullRes = await request(app)
+        .post('/connector/sync/pull')
+        .set('Authorization', `Bearer ${rawApiKey}`)
+        .set('X-POS-Contract-Version', '4.2.0')
+        .send({ cursors: {}, pendingLotIds: [] });
+      const customers = (pullRes.body as unknown as {
+        customers: { items: Array<{ id: string; balance?: number; creditLimit?: number }> };
+      }).customers.items;
+      const customer = customers.find((item) => item.id === 'cust-sin-credito');
+      expect(customer?.balance).toBe(-300);
+      expect(customer?.creditLimit).toBeUndefined();
     });
   });
 });

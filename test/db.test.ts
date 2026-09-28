@@ -49,7 +49,7 @@ describe('Database Engine (DB-per-tenant)', () => {
   });
 
   describe('Tenant DB', () => {
-    it('inicializa correctamente las tablas requeridas por Connector API 4.1.0 y el ERP', () => {
+    it('inicializa correctamente las tablas requeridas por Connector API 4.2.0 y el ERP', () => {
       const versionRow = tenantDb.prepare('PRAGMA user_version').get() as { user_version: number };
       expect(versionRow.user_version).toBe(TENANT_SCHEMA_VERSION);
 

@@ -383,7 +383,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
       const pullRes = await request(app)
         .post('/connector/sync/pull')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .send({
           cursors: {},
           pendingLotIds: [],
@@ -409,7 +409,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
       const pullDeltaRes = await request(app)
         .post('/connector/sync/pull')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .send({
           cursors: {
             products: pullBody.products.nextCursor,

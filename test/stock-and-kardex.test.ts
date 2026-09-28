@@ -368,7 +368,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       const pullRes = await request(app)
         .post('/connector/sync/pull')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .send({
           cursors: {},
           pendingLotIds: [],
@@ -386,7 +386,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       const pushRes = await request(app)
         .post('/connector/sync/push')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.1.0')
+        .set('X-POS-Contract-Version', '4.2.0')
         .set('Idempotency-Key', 'lot_pos_sale_choco_1')
         .send({
           deviceId: 'pos_dev_01',

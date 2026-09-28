@@ -23,7 +23,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
   - `data/tenants/<tenantId>.sqlite`: Catálogo de productos, stock por sucursales, clientes, movimientos de cuenta corriente, ventas, lotes de sincronización e idempotencia.
   - Soporte de estado `maintenance` en `GET /info` durante migraciones.
 - **Contrato POS**:
-  - Cumplimiento 100% de la especificación **Connector API 4.1.0** (desde la Etapa 5 del epic #94 del POS; antes 4.0.0) (`connector-api.openapi.yaml`).
+  - Cumplimiento 100% de la especificación **Connector API 4.2.0** (desde la Etapa 6 del epic #94 del POS; 4.1.0 desde la Etapa 5, antes 4.0.0) (`connector-api.openapi.yaml`).
   - Terminales autenticadas con `Authorization: Bearer <tenant_api_key>` que resuelven el `tenantId`, `branch` y `pointOfSale`.
   - El backend nunca rechaza de forma síncrona el contenido de un lote de push (ack de recepción con lote encolado y procesamiento posterior).
 

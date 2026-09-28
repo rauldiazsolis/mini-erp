@@ -12,7 +12,7 @@ export type BatchEvent = {
 } & Record<string, unknown>;
 
 /**
- * Venta del Connector API 4.1.0: se valida lo que el mini-erp usa (total, cliente, anulación, pagos
+ * Venta del Connector API 4.2.0: se valida lo que el mini-erp usa (total, cliente, anulación, pagos
  * y el número de ticket de #120); el resto viaja tal cual al payload (`passthrough`), así el ERP
  * guarda la venta completa aunque el contrato sume campos. El resto de los eventos todavía se
  * castea sin validar (#122).

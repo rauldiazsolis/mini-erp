@@ -143,7 +143,7 @@ export function Sidebar() {
           </div>
           <div>
             <span class="text-sm font-black tracking-tight text-slate-900 dark:text-white block">mini-erp</span>
-            <span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Connector v4.1.0</span>
+            <span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Connector v4.2.0</span>
           </div>
         </div>
 
