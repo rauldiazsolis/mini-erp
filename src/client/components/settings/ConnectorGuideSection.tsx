@@ -38,7 +38,7 @@ export function ConnectorGuideSection() {
             <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span>🔌 Estado de la API de Sincronización POS</span>
               <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold">
-                Contrato v4.0.0
+                Contrato v4.1.0
               </span>
             </h3>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

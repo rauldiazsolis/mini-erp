@@ -80,7 +80,7 @@ export function createApp(deps?: AppDependencies): {
     createDashboardRoutes(),
   );
 
-  // Rutas para terminales POS (Connector API 4.0.0)
+  // Rutas para terminales POS (Connector API 4.1.0)
   app.use('/connector', createConnectorRoutes(requirePos));
 
   // Manejador centralizado de errores

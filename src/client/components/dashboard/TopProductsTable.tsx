@@ -75,7 +75,7 @@ export function TopProductsTable() {
 
       <div class="pt-4 border-t border-slate-200 dark:border-slate-800/80 mt-4 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
         <span>Datos auditados del TPV</span>
-        <span class="text-indigo-600 dark:text-indigo-400 font-medium">Connector v4.0.0</span>
+        <span class="text-indigo-600 dark:text-indigo-400 font-medium">Connector v4.1.0</span>
       </div>
     </Card>
   );

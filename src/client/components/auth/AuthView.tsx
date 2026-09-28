@@ -65,7 +65,7 @@ export function AuthView() {
         </div>
 
         <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          offline-pos • Mini-ERP Multitenant v4.0.0
+          offline-pos • Mini-ERP Multitenant v4.1.0
         </p>
       </div>
     </div>

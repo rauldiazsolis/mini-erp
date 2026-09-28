@@ -5,7 +5,7 @@ import { ConnectorService, type BatchEvent } from '../connector/connector-servic
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 
-const CONTRACT_VERSION = '4.0.0';
+const CONTRACT_VERSION = '4.1.0';
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   if (req.tenantScope !== undefined) {

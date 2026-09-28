@@ -20,6 +20,9 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.22.3
+      hardwired:
+        specifier: 1.6.2
+        version: 1.6.2
       preact:
         specifier: ^10.29.8
         version: 10.29.8
@@ -1106,6 +1109,9 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  hardwired@1.6.2:
+    resolution: {integrity: sha512-J+8azVQ/de3/tzA6seSJ05X+mmZNCsjTLYcfYV7bKcqLv8otDQo/J66vkW2sf3e52V7WAP8zaC5CYBwsaoRXJw==}
+
   has-symbols@1.1.0:
     resolution: {integrity: sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==}
     engines: {node: '>= 0.4'}
@@ -1390,6 +1396,10 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
+  parse-ms@4.0.0:
+    resolution: {integrity: sha512-TXfryirbmq34y8QBwgqCVLi+8oA3oWx2eAnSn62ITyEhEYaWRlVZ2DvMM9eZbMs/RfxPu/PK/aBLyGj4IrqMHw==}
+    engines: {node: '>=18'}
+
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
@@ -1426,6 +1436,10 @@ packages:
     peerDependenciesMeta:
       preact-render-to-string:
         optional: true
+
+  pretty-ms@9.3.1:
+    resolution: {integrity: sha512-HzMy3Geq23nVALD/M2LliU+F+M+gVNsvkQWWqeBZ8HDiCgzo6YPJ/Omrmtq24EFrIsk0a3EkQGEd7bDOo+IhGA==}
+    engines: {node: '>=18'}
 
   proxy-addr@2.0.8:
     resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
@@ -1587,6 +1601,11 @@ packages:
   utils-merge@1.0.1:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
     engines: {node: '>= 0.4.0'}
+
+  uuid@10.0.0:
+    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+    hasBin: true
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -2673,6 +2692,11 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
+  hardwired@1.6.2:
+    dependencies:
+      pretty-ms: 9.3.1
+      uuid: 10.0.0
+
   has-symbols@1.1.0: {}
 
   has-tostringtag@1.0.2:
@@ -2870,6 +2894,8 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
+  parse-ms@4.0.0: {}
+
   parseurl@1.3.3: {}
 
   path-to-regexp@0.1.13: {}
@@ -2891,6 +2917,10 @@ snapshots:
       source-map-js: 1.2.1
 
   preact@10.29.8: {}
+
+  pretty-ms@9.3.1:
+    dependencies:
+      parse-ms: 4.0.0
 
   proxy-addr@2.0.8:
     dependencies:
@@ -3110,6 +3140,8 @@ snapshots:
       picocolors: 1.1.1
 
   utils-merge@1.0.1: {}
+
+  uuid@10.0.0: {}
 
   vary@1.1.2: {}
 

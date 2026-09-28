@@ -5,7 +5,7 @@ import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 
-describe('Connector API v4.0.0 (Etapa 1.4)', () => {
+describe('Connector API v4.1.0 (Etapa 1.4)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let rawApiKey: string;
@@ -47,14 +47,14 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('responde 200 con la versión 4.0.0 del contrato y estado ok', async () => {
+    it('responde 200 con la versión 4.1.0 del contrato y estado ok', async () => {
       const res = await request(app)
         .get('/connector/info')
         .set('Authorization', `Bearer ${rawApiKey}`);
 
       expect(res.status).toBe(200);
       const body = res.body as unknown as { contractVersion: string; status: string; backend: { name: string } };
-      expect(body.contractVersion).toBe('4.0.0');
+      expect(body.contractVersion).toBe('4.1.0');
       expect(body.status).toBe('ok');
       expect(body.backend.name).toBe('mini-erp');
     });
@@ -71,7 +71,7 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(409);
       expect(res.body).toEqual({
         code: 'incompatible-contract',
-        contractVersion: '4.0.0',
+        contractVersion: '4.1.0',
       });
     });
 
@@ -79,7 +79,7 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
       const res = await request(app)
         .post('/connector/sync/pull')
         .set('Authorization', `Bearer ${rawApiKey}`)
-        .set('X-POS-Contract-Version', '4.0.0')
+        .set('X-POS-Contract-Version', '4.1.0')
         .send({ cursors: {}, pendingLotIds: [] });
 
       expect(res.status).toBe(200);
@@ -197,6 +197,81 @@ describe('Connector API v4.0.0 (Etapa 1.4)', () => {
       const afterReplayBody = afterReplayPull.body as unknown as PullResponse;
       const cocaAfterReplay = afterReplayBody.stock.find((s) => s.productId === 'prod-coca-500');
       expect(cocaAfterReplay?.quantity).toBe(initialQty - 2);
+    });
+  });
+
+  describe('venta con número de ticket (4.1.0, #120)', () => {
+    function saleEvent(id: string, sale: Record<string, unknown>) {
+      return {
+        id,
+        type: 'sale',
+        createdAt: new Date().toISOString(),
+        origin: { branch: 'CENTRAL', pointOfSale: 'POS-01' },
+        sale: {
+          id,
+          total: 100,
+          status: 'closed',
+          lines: [{ kind: 'freeform', description: 'x', qty: 1, unitPrice: 100 }],
+          payments: [{ method: 'cash', amount: 100 }],
+          ...sale,
+        },
+      };
+    }
+
+    async function pushAndPull(lotId: string, events: unknown[]) {
+      const pushRes = await request(app)
+        .post('/connector/sync/push')
+        .set('Authorization', `Bearer ${rawApiKey}`)
+        .set('X-POS-Contract-Version', '4.1.0')
+        .set('Idempotency-Key', lotId)
+        .send({ deviceId: 'device-pos-01', events });
+      expect(pushRes.status).toBe(200);
+      const pullRes = await request(app)
+        .post('/connector/sync/pull')
+        .set('Authorization', `Bearer ${rawApiKey}`)
+        .send({ cursors: {}, pendingLotIds: [lotId] });
+      return (pullRes.body as unknown as {
+        lots?: Record<string, { status: string; issues?: { message: string; eventId?: string }[] }>;
+      }).lots?.[lotId];
+    }
+
+    function storedSale(id: string): Record<string, unknown> | undefined {
+      const row = tenantManager
+        .getTenantDb(tenantId)
+        .prepare('SELECT payload FROM sales WHERE id = ?')
+        .get(id) as { payload: string } | undefined;
+      return row === undefined ? undefined : (JSON.parse(row.payload) as Record<string, unknown>);
+    }
+
+    it('guarda la venta completa con su ticket', async () => {
+      const lot = await pushAndPull('lot-ticket-1', [
+        saleEvent('sale-t1', { ticket: { date: '2026-09-24', number: 12 } }),
+      ]);
+
+      expect(lot?.status).toBe('ok');
+      expect(storedSale('sale-t1')).toMatchObject({
+        ticket: { date: '2026-09-24', number: 12 },
+        lines: [{ kind: 'freeform', description: 'x', qty: 1, unitPrice: 100 }],
+      });
+    });
+
+    it('una venta sin ticket (POS anterior) se sigue aceptando', async () => {
+      const lot = await pushAndPull('lot-ticket-2', [saleEvent('sale-t2', {})]);
+
+      expect(lot?.status).toBe('ok');
+      expect(storedSale('sale-t2')).toBeDefined();
+    });
+
+    it('un ticket inválido es un aviso del lote para ese evento; el resto se aplica', async () => {
+      const lot = await pushAndPull('lot-ticket-3', [
+        saleEvent('sale-bad', { ticket: { date: 'hoy', number: 0 } }),
+        saleEvent('sale-good', { ticket: { date: '2026-09-24', number: 13 } }),
+      ]);
+
+      expect(lot?.status).toBe('issues');
+      expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['sale-bad']);
+      expect(storedSale('sale-bad')).toBeUndefined();
+      expect(storedSale('sale-good')).toBeDefined();
     });
   });
 

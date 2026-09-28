@@ -358,7 +358,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
       const hold1Res = await request(app)
         .post('/connector/account-holds')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.0.0')
+        .set('X-POS-Contract-Version', '4.1.0')
         .set('Idempotency-Key', 'hold_pos_1')
         .send({
           customerId,
@@ -385,7 +385,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
       const hold2Res = await request(app)
         .post('/connector/account-holds')
         .set('Authorization', `Bearer ${posRawKey}`)
-        .set('X-POS-Contract-Version', '4.0.0')
+        .set('X-POS-Contract-Version', '4.1.0')
         .set('Idempotency-Key', 'hold_pos_2')
         .send({
           customerId,

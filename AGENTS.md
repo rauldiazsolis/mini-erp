@@ -87,8 +87,9 @@ Este documento define las reglas operativas, de proceso y de arquitectura que **
   - Criptografía con `node:crypto` (`scryptSync` y timing-safe comparison).
   - El primer usuario registrado es automáticamente promovido a `root`.
   - Roles `root` y `support` cuentan con capacidad de impersonación sobre cualquier tenant.
-- **Contrato Connector API 4.0.0**:
+- **Contrato Connector API 4.1.0** (4.1.0 suma `Sale.ticket`, el número del ticket en su día — #120):
   - Cumplimiento riguroso de `connector-api.openapi.yaml`.
+  - Los eventos del push se validan con Zod al aplicarse; uno inválido queda como `issue` del lote con su `eventId`, sin tumbar el resto. Hoy solo `sale` (con `passthrough`, para guardar la venta completa); el resto de los tipos queda pendiente en #122.
   - **Principio central: el backend nunca rechaza de forma síncrona el contenido de un lote de push**. Responde `200` y reporta inconsistencias diferidas como `issues` en el pull.
   - Validación de versión de contrato: `X-POS-Contract-Version: 4.x.x` (responder `409 IncompatibleContract` si el major difiere, excepto en `/info`).
 - **Frontend Admin**:

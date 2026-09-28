@@ -107,7 +107,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
 
     expect(infoRes.status).toBe(200);
     const infoBody = infoRes.body as unknown as ConnectorInfoResponse;
-    expect(infoBody.contractVersion).toBe('4.0.0');
+    expect(infoBody.contractVersion).toBe('4.1.0');
     expect(infoBody.status).toBe('ok');
     expect(infoBody.backend.name).toBe('mini-erp');
 
@@ -121,7 +121,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     expect(incompatibleRes.status).toBe(409);
     const incompBody = incompatibleRes.body as unknown as { code: string; contractVersion: string };
     expect(incompBody.code).toBe('incompatible-contract');
-    expect(incompBody.contractVersion).toBe('4.0.0');
+    expect(incompBody.contractVersion).toBe('4.1.0');
 
     // =========================================================================
     // PASO 2: Pull Inicial de Catálogo, Clientes y Stock de la Sucursal
@@ -129,7 +129,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     const initialPullRes = await request(app)
       .post('/connector/sync/pull')
       .set('Authorization', `Bearer ${rawApiKey}`)
-      .set('X-POS-Contract-Version', '4.0.0')
+      .set('X-POS-Contract-Version', '4.1.0')
       .send({ cursors: {}, pendingLotIds: [] });
 
     expect(initialPullRes.status).toBe(200);
@@ -381,7 +381,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .post('/connector/sync/push')
       .set('Authorization', `Bearer ${rawApiKey}`)
       .set('Idempotency-Key', lotId)
-      .set('X-POS-Contract-Version', '4.0.0')
+      .set('X-POS-Contract-Version', '4.1.0')
       .send(pushPayload);
 
     expect(pushRes.status).toBe(200);
@@ -393,7 +393,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     const confirmPullRes = await request(app)
       .post('/connector/sync/pull')
       .set('Authorization', `Bearer ${rawApiKey}`)
-      .set('X-POS-Contract-Version', '4.0.0')
+      .set('X-POS-Contract-Version', '4.1.0')
       .send({ cursors: {}, pendingLotIds: [lotId] });
 
     expect(confirmPullRes.status).toBe(200);
@@ -421,7 +421,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
       .post('/connector/sync/push')
       .set('Authorization', `Bearer ${rawApiKey}`)
       .set('Idempotency-Key', lotId)
-      .set('X-POS-Contract-Version', '4.0.0')
+      .set('X-POS-Contract-Version', '4.1.0')
       .send(pushPayload);
 
     expect(replayPushRes.status).toBe(200);
@@ -429,7 +429,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     const replayPullRes = await request(app)
       .post('/connector/sync/pull')
       .set('Authorization', `Bearer ${rawApiKey}`)
-      .set('X-POS-Contract-Version', '4.0.0')
+      .set('X-POS-Contract-Version', '4.1.0')
       .send({ cursors: {}, pendingLotIds: [lotId] });
 
     const replayPull = replayPullRes.body as unknown as SyncPullResponse;

@@ -217,7 +217,7 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
         if (url.includes('/connector/info')) {
           return Promise.resolve(new Response(
             JSON.stringify({
-              version: '4.0.0',
+              version: '4.1.0',
               status: 'ok',
             }),
             { status: 200, headers: { 'content-type': 'application/json' } },
@@ -230,7 +230,7 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
         await checkConnectorStatus();
 
         expect(connectorInfoSignal.value).not.toBeNull();
-        expect(connectorInfoSignal.value?.version).toBe('4.0.0');
+        expect(connectorInfoSignal.value?.version).toBe('4.1.0');
         expect(connectorInfoSignal.value?.status).toBe('ok');
       } finally {
         globalThis.fetch = originalFetch;

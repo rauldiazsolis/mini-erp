@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 
 export type LotIssue = { message: string; eventId?: string };
 
@@ -9,6 +10,27 @@ export type BatchEvent = {
   createdAt?: string;
   origin?: { branch?: string; pointOfSale?: string };
 } & Record<string, unknown>;
+
+/**
+ * Venta del Connector API 4.1.0: se valida lo que el mini-erp usa (total, cliente, anulación, pagos
+ * y el número de ticket de #120); el resto viaja tal cual al payload (`passthrough`), así el ERP
+ * guarda la venta completa aunque el contrato sume campos. El resto de los eventos todavía se
+ * castea sin validar (#122).
+ */
+const saleEventSchema = z
+  .object({
+    id: z.string().min(1),
+    total: z.number(),
+    customerId: z.string().optional(),
+    voidsSaleId: z.string().optional(),
+    payments: z.array(
+      z.object({ method: z.string(), amount: z.number(), reference: z.string().optional() }),
+    ),
+    ticket: z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) })
+      .optional(),
+  })
+  .passthrough();
 
 export type PushLotResult = {
   status: 'ok' | 'issues';
@@ -99,13 +121,16 @@ export class ConnectorService {
 
     switch (event.type) {
       case 'sale': {
-        const sale = event['sale'] as {
-          id: string;
-          total: number;
-          customerId?: string;
-          voidsSaleId?: string;
-          payments?: { method: string; amount: number; reference?: string }[];
-        };
+        const parsed = saleEventSchema.safeParse(event['sale']);
+        if (!parsed.success) {
+          return {
+            message: `Venta inválida: ${parsed.error.issues
+              .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+              .join('; ')}`,
+            eventId: event.id,
+          };
+        }
+        const sale = parsed.data;
 
         this.tenantDb
           .prepare(
@@ -126,7 +151,7 @@ export class ConnectorService {
 
         // Si fue a cuenta corriente sin hold (fiado offline o acreditación por anulación)
         if (sale.customerId !== undefined) {
-          for (const payment of sale.payments ?? []) {
+          for (const payment of sale.payments) {
             if (payment.method === 'account' && payment.reference === undefined) {
               this.adjustCustomerBalance(
                 sale.customerId,
