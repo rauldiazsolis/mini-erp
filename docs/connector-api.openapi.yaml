@@ -1,0 +1,999 @@
+openapi: 3.1.0
+info:
+  title: offline-pos Connector API
+  version: '4.4.0'
+  description: |
+    Contrato que cualquier sistema externo (ERP, e-commerce, facturación,
+    inventario) implementa para conectarse al POS. La guía para integradores
+    (`guia.md`, publicada junto a este archivo) explica cómo probarlo y por
+    dónde empezar.
+
+    **4.4.0 respecto de 4.3.0** (aditivo) — la última versión antes del
+    MVP: desde acá el contrato casi no cambia de forma y lo nuevo entra como
+    capacidad opcional.
+      - **Compatibilidad por piso**: el POS acepta cualquier backend 4.x con
+        minor ≥ 0 (piso 4.0.0), no ya el mismo minor que él. Ver
+        "Compatibilidad" más abajo.
+      - `GET /info` suma `capabilities` (lista de strings, ausente = ninguna):
+        `demo-sessions` y `customer-payment-void`.
+      - `POST /demo-sessions` (opcional, capacidad `demo-sessions`): arranca
+        una demo sin autenticación. Ver "Vuelta del onboarding" más abajo.
+      - `POST /sync/pull` suma `notices`: la lista vigente y completa de
+        avisos del backend para esta terminal.
+      - Sección "Reglas de evolución" y aclaraciones de significado (evento
+        `customer`, stock vacío, numeración sin contigüidad), sin cambios de
+        forma.
+
+    **4.3.0 respecto de 4.2.0** (aditivo):
+      - `CustomerPayment.voidsPaymentId` opcional: la anulación de una
+        cobranza es otra cobranza, con los mismos medios en negativo, `total`
+        negativo, el mismo `customerId`, su propio `receipt` y
+        `voidsPaymentId` apuntando a la que anula. Viaja como un evento
+        `customer-payment` más. La original nunca se modifica. El backend la
+        trata como cualquier cobranza (el saldo se mueve por `-total`, así que
+        sube) y puede usar `voidsPaymentId` para auditoría o para marcar la
+        original.
+      - Un POS 4.3.0 considera incompatible a un backend 4.2: podría rechazar
+        o malinterpretar una cobranza negativa.
+
+    **4.2.0 respecto de 4.1.0** (aditivo):
+      - `CustomerPayment.receipt` opcional (`{ date, number }`): el número de
+        recibo en su día local de la terminal, con la misma forma que
+        `Sale.ticket` y un contador propio. Una cobranza anterior a 4.2.0 no
+        lo trae.
+      - `balance` de un cliente en el pull es **su saldo, tenga o no cuenta
+        corriente** (positivo debe, negativo a favor). Un `balance` sin
+        `creditLimit`/`margin` es válido: saldo sin crédito. El backend mueve
+        el saldo de cualquier cliente con cobranzas, ventas a cuenta y
+        acreditaciones. Un backend que no lleva saldo lo omite y el POS
+        conserva el local.
+      - Se elimina `GET /account-balance/{customerId}` (nunca implementado):
+        el saldo viaja en el pull.
+      - Un POS 4.2.0 considera incompatible a un backend 4.1: podría no llevar
+        el saldo de los clientes sin crédito ni guardar el recibo.
+
+    **4.1.0 respecto de 4.0.0** (aditivo):
+      - `Sale.ticket` opcional (`{ date, number }`): el número del ticket en
+        su día local de la terminal. Lo comparten ventas y anulaciones. Una
+        venta anterior a 4.1.0 no lo trae.
+      - Por la regla de compatibilidad (mismo major, minor igual o mayor), un
+        POS 4.1.0 considera incompatible a un backend 4.0.0: podría no guardar
+        el número. Un backend 4.1.0 acepta ventas con y sin `ticket`.
+
+    **4.0.0 reemplaza a la v3** (cambio incompatible):
+      - La anulación es un **ticket propio**: viaja como un `SaleEvent` más,
+        con líneas y pagos invertidos y `voidsSaleId` apuntando a la venta
+        que anula. Se elimina `SaleVoidEvent` (7 tipos de evento). El backend
+        la trata como cualquier venta (stock por sus `stock-movement`, saldo
+        por su pago `account` negativo sin `reference` = acreditación) y
+        puede usar `voidsSaleId` para auditoría o para marcar el original.
+      - `Sale.status` queda solo con `closed`; salen `voidedAt` y `syncedAt`.
+      - `GET /info`: versión del contrato y estado (`ok`/`maintenance`).
+      - Header `X-POS-Contract-Version` en todo request. Un backend que no
+        habla esa versión mayor responde `409 IncompatibleContract` sin
+        procesar nada ni dar ack.
+
+    **v3 reemplazó a la v2** (cambio incompatible):
+      - Sobre por evento: cada `OutboxBatchItem` lleva `id`, `type`,
+        `createdAt` y `origin` (`branch`/`pointOfSale`, estampados en el POS
+        al encolar el evento, no al armar el lote). El `deviceId` de la
+        terminal viaja una vez por request, en push y en pull.
+      - Estados de lote `queued` (recibido, sin empezar), `processing`, `ok`
+        e `issues`; `pending` desaparece. `issues` pasa de texto a
+        `LotIssue` (`{ message, eventId? }`).
+      - Eventos nuevos `cash-movement` y `customer-payment`; se elimina
+        `cash-session`. Cobranzas y movimientos de caja no se anulan.
+      - Cantidades con signo y hasta 3 decimales; `Sale.total` y
+        `Payment.amount` pueden ser negativos (devolución declarativa).
+      - El pull trae `createdAt` (obligatorio) y `blocked` (bloqueo
+        informativo) en productos y clientes.
+
+    **Identidad**: `deviceId`, `origin.branch` y `origin.pointOfSale` son
+    obligatorios en v3. El POS los manda siempre, pero un evento encolado por
+    una versión anterior del POS puede llegar sin ellos: el backend lo guarda
+    con el valor vacío.
+
+    **v2 reemplazó por completo la v1** (10 endpoints por recurso/evento) por
+    dos operaciones batch más dos excepciones síncronas. Principio central:
+    **el backend nunca valida ni rechaza el contenido de lo que el POS
+    manda** — solo registra y audita. Puede dejar de aceptar lotes de una
+    terminal por motivos propios (cuota, contrato), pero eso nunca lo hace
+    devolviendo un error de negocio a un push: se resuelve puertas adentro
+    o se informa como `issues` en un pull posterior, nunca como un
+    "rechazo" síncrono.
+
+    **Compatibilidad (desde 4.0.0)**: el POS manda `X-POS-Contract-Version` en
+    todos los requests. Si el major no es uno que el backend soporta, el
+    backend responde `409` con `{ code: "incompatible-contract",
+    contractVersion: "<la del backend>" }` **sin procesar nada y sin ack**.
+    Sin el header (un POS anterior a 4.0.0) queda a criterio del backend; se
+    recomienda tratarlo igual. No es un rechazo de contenido — el backend no
+    juzga una venta, dice que no entiende el idioma — y nada se pierde: sin
+    ack, el lote sigue congelado en el outbox del POS con su mismo
+    `idempotency_id` y sale cuando el backend se actualice.
+
+    **Compatibilidad del lado del POS (4.4.0)**: el POS habla 4.4.0 y
+    considera compatible a un backend del **mismo major con minor igual o
+    mayor que el piso 4.0.0** (hasta 4.3.0 exigía su mismo minor). Lo que un
+    backend puede o no hacer más allá del piso lo declara como **capacidad**
+    en `GET /info.capabilities`; el POS nunca la deduce de la versión y un
+    nombre de capacidad que no conoce lo ignora. Capacidades de 4.4.0:
+
+    | Capacidad | Qué habilita | Sin ella |
+    |---|---|---|
+    | `demo-sessions` | El backend implementa `POST /demo-sessions` | El POS no la consulta antes: un link de demo prueba directo y el 404 es la respuesta |
+    | `customer-payment-void` | El POS anula cobranzas (`voidsPaymentId`, 4.3.0) | La cobranza se ve en `/ANULAR` pero no se anula |
+
+    **Reglas de evolución (4.4.0)**:
+      - **Campos desconocidos**: los dos lados los ignoran, en cualquier nivel.
+        Ningún schema del POS sobre datos del backend es estricto.
+      - **Enums desconocidos, del lado del POS**: un `status` de `/info`
+        desconocido se trata como `ok` (se muestra el `message`); una
+        `severity` desconocida de un aviso, como `info`; un estado de lote
+        desconocido (o un lote `issues` con los avisos mal armados) se trata
+        como **terminado con aviso** (`issues`), nunca como `processing`: un
+        lote no puede quedar colgado. Un estado futuro que pida otra cosa
+        llega con una versión del POS que lo anuncie.
+      - **Del lado del backend**:
+        - Registra un **tipo de evento** que no conoce sin rechazar el lote
+          (lo informa como `LotIssue`, ver `/sync/push`).
+        - Registra un `Payment.method` que no conoce y lo trata como "otro".
+          Los pagos viajan solo del POS al backend (en `sale.payments` y en
+          `customer-payment.payments`, incluidas las anulaciones), así que un
+          POS más nuevo puede sumar un medio sin romper a los backends.
+        - **Nunca trunca una foto completa** (pull sin cursor). Si algún día
+          hay paginación, el backend la usa solo con un POS que la anuncie en
+          su versión de contrato.
+        - **No espera números contiguos** en `Sale.ticket` ni en
+          `CustomerPayment.receipt`: puede haber huecos.
+
+    **Vuelta del onboarding (4.4.0)**: un POS en demo (ver
+    `POST /demo-sessions`) manda al usuario a `onboarding.url` con
+    `?return_url=<url del POS>&wipe_key=<token>`. Cuando el alta termina, el
+    backend lo devuelve a `return_url` con la conexión en el **fragmento**
+    (el navegador nunca lo manda al servidor que sirve el POS), nunca en la
+    query string:
+
+        <return_url>#connect=<base64url de JSON>
+        JSON: { baseUrl, apiKey, branch, pointOfSale, wipeKey? }
+
+    `baseUrl` tiene que ser `https:` (o `http:` a `localhost`, `127.0.0.1` o
+    `[::1]`). `wipeKey` es el `wipe_key` que recibió en la ida, sin
+    modificar: con él (o sin datos del usuario) el POS borra lo local de la
+    demo y aplica la conexión; sin él, precarga `/CONFIG` para que el
+    operador decida.
+
+    Cada operación está marcada con una extensión `x-pos-status`:
+      - `implemented-v4`: el POS ya la consume con la forma de 4.x.
+      - `implemented-v3`: el POS ya la consume con la forma de v3.
+      - `documented-not-implemented`: parte del contrato, sin consumidor todavía.
+
+    Autenticación: Bearer token, configurado por terminal (ver `/CONFIG` en
+    la app) — desacoplada del contrato en sí, cada integración define cómo
+    emite ese token.
+servers:
+  - url: https://api.example.com
+    description: Placeholder — cada instalación configura su propia base URL vía /CONFIG.
+security:
+  - bearerAuth: []
+
+paths:
+  /info:
+    get:
+      operationId: getInfo
+      summary: Versión del contrato y estado del backend
+      x-pos-status: implemented-v4
+      description: |
+        Liviano. El POS lo consulta al probar la conexión (`/CONFIG`), al
+        arrancar, antes de `/SINCRONIZAR` y después de un fallo de sync que
+        no sea de red. Con `status: maintenance` o un contrato incompatible,
+        el POS no corre ningún push ni pull (la venta nunca se bloquea) y
+        vuelve a preguntar acá en cada ciclo hasta que el backend vuelva.
+        Autenticado como el resto. **Nunca responde 409**: es justamente cómo
+        el POS se entera de que no son compatibles.
+
+        4.4.0: `capabilities` declara lo que el backend implementa más allá
+        del piso 4.0.0. El POS guarda las del último `/info` exitoso, así una
+        terminal que arranca sin red las sabe igual.
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+      responses:
+        '200':
+          description: Versión y estado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackendInfo'
+
+  /demo-sessions:
+    post:
+      operationId: createDemoSession
+      summary: Arranca una demo para un POS nuevo (sin autenticación)
+      x-pos-status: implemented-v4
+      description: |
+        Opcional (4.4.0): solo lo implementa un backend que ofrece
+        demos, y lo declara con la capacidad `demo-sessions`. Es el **único
+        endpoint sin autenticación** (no lleva API key; sí el header de
+        versión).
+
+        El POS lo llama al abrirse con un link de demo
+        (`<pos>/?demo=true&backend=<base URL>&template=<opcional>`), en una
+        terminal sin config y sin datos del usuario, o que ya está en demo.
+        Con la respuesta arma una conexión REST, la prueba (un pull) y la
+        aplica borrando lo local. Después muestra un botón
+        `<onboarding.label> (/ALTA)` que lleva al usuario a `onboarding.url`
+        (ver "Vuelta del onboarding" en la descripción general).
+
+        Un `template` desconocido responde 422 con la lista: el POS reintenta
+        sin template y avisa qué plantilla usó.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoSessionRequest'
+      responses:
+        '201':
+          description: Demo creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoSessionResponse'
+        '404':
+          description: El backend no ofrece demos.
+        '422':
+          description: El template pedido no existe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnknownTemplate'
+
+  /sync/push:
+    post:
+      operationId: pushBatch
+      summary: Envía toda la cola pendiente del outbox en un solo lote
+      x-pos-status: implemented-v4
+      description: |
+        Un solo `idempotency_id` para el lote entero (no uno por evento) —
+        reintentar el mismo lote (mismo id, mismo conjunto de eventos) nunca
+        debe duplicar su efecto. La respuesta es un ack de **recepción**, no
+        de procesamiento: el backend puede seguir procesando el lote después
+        de responder 200. El estado real de procesamiento (`ok`/`issues`) se
+        consulta después, vía `/sync/pull` (ver `PullBatchResponse.lots`).
+
+        El backend nunca devuelve un error de negocio acá — solo errores de
+        transporte reales (auth, payload no parseable). Cualquier
+        inconsistencia de negocio (stock, cuenta corriente) se resuelve del
+        lado del backend y se informa como `issues`, nunca como un 4xx.
+
+        v3: el backend puede dejar un lote `queued` (recibido, sin empezar) o
+        `processing` y resolverlo después. Un tipo de evento que no reconoce
+        (por ejemplo un `cash-session` de una terminal vieja) se informa como
+        `LotIssue` con su `eventId` — nunca como error del push, y nunca
+        impide aplicar el resto del lote.
+
+        4.0.0: un `sale-void` (tipo que 4.0.0 ya no tiene) se trata igual:
+        `LotIssue` con su `eventId`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushBatchRequest'
+      responses:
+        '200':
+          description: Lote recibido (o ya recibido antes, si el idempotency_id se repite).
+        '409':
+          $ref: '#/components/responses/IncompatibleContract'
+
+  /sync/pull:
+    post:
+      operationId: pullBatch
+      summary: Trae productos, stock y clientes en una sola llamada, más el estado de lotes de push
+      x-pos-status: implemented-v4
+      description: |
+        Un `POST` (no `GET`) porque los parámetros son estructurados
+        (cursores por recurso, lista de ids de lotes) — no una query string
+        plana.
+
+        Cada recurso trae su propio cursor `since` opcional en el request:
+        **ausente pide la foto completa de ese recurso**, que tiene que ser
+        el conjunto entero, no paginado ni truncado (el POS la usa para
+        darse cuenta de las bajas — un delta nunca las informa). `stock`
+        nunca tiene cursor: siempre viaja completo, es liviano.
+
+        **Stock vacío (4.4.0)**: `stock: []` significa "el backend no
+        mandó información de stock", no "todo el stock es 0": el POS conserva
+        el suyo intacto, en la foto completa y en el delta. Un backend que no
+        maneja stock manda sus productos con `tracksStock: false`.
+
+        **Avisos (4.4.0)**: `notices` es la lista **vigente y completa**
+        de avisos del backend para esta terminal (discrepancias, cuota,
+        contrato), como el stock: sin cursor ni acuse. Un aviso desaparece
+        cuando el backend deja de mandarlo; ausente = ninguno. El POS los
+        muestra ("Avisos (N)" en la barra de estado y en `/DIAGNOSTICO`) y
+        nunca bloquea nada por ellos. Uno mal formado se descarta sin tirar
+        el pull.
+
+        `lots` en la respuesta trae estado para los ids de `pendingLotIds`
+        que el backend recibió; un id que no recibió se omite. Del lado del
+        POS, un lote con ack que no viene informado cuenta como `processing`;
+        el lote que el POS mandó sin recibir ack (también viaja en
+        `pendingLotIds`) y no viene informado, como **no recibido**. Si viene
+        informado, el POS lo toma como un ack recuperado y no lo reenvía.
+
+        **Consistencia**: la foto (productos, clientes con su saldo, stock) y
+        los estados de lote tienen que ser **del mismo instante**. Un lote
+        `queued` todavía no tiene ningún efecto en la foto; uno `ok`/`issues`
+        ya los tiene todos. Todo cambio de saldo de un cliente mueve su
+        cursor (`updatedAt`), así viaja en el pull por delta.
+
+        **Regla de aplicación del POS**: datos
+        maestros y bloqueos de productos y clientes se aplican siempre. Stock
+        y saldos: si algún lote sigue `processing` (o equivalente), el POS
+        conserva los suyos y no avanza el cursor de clientes; si no, toma los
+        del backend y les reaplica los efectos de los eventos de lotes
+        `queued` y de los que todavía no envió. El backend puede bloquear
+        productos y clientes por lo que surja al procesar un lote, aun
+        mientras está `processing`. Un lote `issues` nunca bloquea: el POS
+        solo le muestra los avisos al humano.
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PullBatchRequest'
+      responses:
+        '200':
+          description: Datos pedidos, más el estado de los lotes de interés.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullBatchResponse'
+        '409':
+          $ref: '#/components/responses/IncompatibleContract'
+
+  /account-holds:
+    post:
+      operationId: postAccountHold
+      summary: Bloqueo síncrono de crédito antes de cerrar una venta a cuenta corriente
+      x-pos-status: implemented-v4
+      description: |
+        Única operación del contrato pensada para llamarse de forma síncrona
+        durante el cobro (§5 del doc de diseño) — nunca pasa por el outbox ni
+        por `/sync/push`. Sin cambios respecto de la v1 del contrato, salvo
+        el header de versión (4.0.0). Una devolución a cuenta corriente
+        (ticket negativo) nunca pide hold: acredita con un pago `account`
+        negativo sin `reference`.
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountHoldRequest'
+      responses:
+        '200':
+          description: Resultado del bloqueo (aprobado o rechazado).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountHoldResponse'
+        '409':
+          $ref: '#/components/responses/IncompatibleContract'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token configurado por terminal (ver `/CONFIG`) — opcional si el backend no lo requiere.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ULID del lote (o de la operación síncrona) — repetir el mismo valor nunca debe duplicar el efecto.
+    ContractVersion:
+      name: X-POS-Contract-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        example: '4.4.0'
+      description: |
+        Versión del contrato que habla el POS (4.4.0). El POS la manda en
+        todos los requests. Un backend que no soporta ese major responde 409
+        `IncompatibleContract` sin procesar nada (salvo `/info`, que nunca
+        responde 409). Sin el header (un POS anterior a 4.0.0) queda a
+        criterio del backend; se recomienda tratarlo igual.
+
+  responses:
+    IncompatibleContract:
+      description: |
+        El backend no habla la versión mayor del contrato que declaró el POS.
+        No procesó nada ni dio ack: no es un rechazo de contenido (el backend
+        nunca rechaza una venta), es un "no entiendo el idioma". Sin ack, el
+        lote queda congelado en el outbox del POS con su mismo
+        `idempotency_id` y se reenvía cuando el backend se actualice. Se
+        descartó aceptar y guardar en cuarentena con ack: el POS lo daría por
+        entregado y lo borraría a los 7 días.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, contractVersion]
+            properties:
+              code: { type: string, enum: [incompatible-contract] }
+              contractVersion:
+                type: string
+                description: La versión del contrato que habla el backend.
+
+  schemas:
+    BackendInfo:
+      type: object
+      required: [contractVersion, status]
+      properties:
+        contractVersion: { type: string, example: '4.4.0' }
+        status:
+          type: string
+          enum: [ok, maintenance]
+          description: 'Un valor que el POS no conoce se trata como `ok` (reglas de evolución).'
+        capabilities:
+          type: array
+          items: { type: string, example: customer-payment-void }
+          description: |
+            4.4.0: lo que el backend implementa más allá del piso 4.0.0
+            (`demo-sessions`, `customer-payment-void`). Ausente = ninguna. El
+            POS ignora un nombre que no conoce.
+        message:
+          {
+            type: string,
+            description: 'Para mostrar en el POS (p. ej. el motivo del mantenimiento).',
+          }
+        backend:
+          type: object
+          required: [name, version]
+          properties:
+            name: { type: string }
+            version: { type: string }
+
+    Blocked:
+      type: object
+      required: [reason]
+      description: |
+        Bloqueo informativo — nunca impide operar; el POS lo muestra y el
+        usuario decide. Ausente = no bloqueado. `reason` puede ser vacío (el
+        POS muestra "Bloqueado" a secas).
+      properties:
+        reason: { type: string }
+
+    Product:
+      type: object
+      required: [id, sku, barcodes, name, price, taxRate, category, tracksStock, createdAt]
+      properties:
+        id: { type: string }
+        sku: { type: string }
+        barcodes: { type: array, items: { type: string } }
+        name: { type: string }
+        price: { type: number, minimum: 0 }
+        taxRate: { type: number, minimum: 0, maximum: 1 }
+        category: { type: string }
+        tracksStock:
+          type: boolean
+          description: 'Un backend que no maneja stock manda `false` (4.4.0).'
+        createdAt: { type: string, format: date-time, description: Fecha de alta real. }
+        blocked: { $ref: '#/components/schemas/Blocked' }
+
+    StockItem:
+      type: object
+      required: [productId, quantity, updatedAt]
+      properties:
+        productId: { type: string }
+        quantity: { type: number, description: 'Con signo, hasta 3 decimales.' }
+        updatedAt: { type: string, format: date-time }
+
+    Customer:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        document: { type: string }
+        phone: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+          description: |
+            Fecha de alta real — obligatoria en el pull. En un evento
+            `customer` es la fecha en que se creó en el POS.
+        blocked: { $ref: '#/components/schemas/Blocked' }
+        creditLimit:
+          type: number
+          description: |
+            Cuenta corriente, opcional — ver §6 del doc de diseño. La cuenta
+            corriente necesita `creditLimit`, `margin` y `balance`, o
+            `unrestricted`.
+        margin: { type: number }
+        balance:
+          type: number
+          description: |
+            Saldo del cliente, tenga o no cuenta corriente (4.2.0): positivo
+            debe, negativo a favor. Sin `creditLimit`/`margin` es un saldo sin
+            crédito. Un backend que no lleva saldo lo omite y el POS conserva
+            el local.
+        updatedAt: { type: string, format: date-time }
+        unrestricted:
+          type: boolean
+          description: |
+            Fiado sin bloqueo de crédito para este cliente —
+            aprueba sin evaluar creditLimit/margin/balance, que pueden omitirse.
+
+    Discount:
+      type: object
+      required: [type, value]
+      properties:
+        type: { type: string, enum: [amount, percentage] }
+        value: { type: number }
+
+    SaleLine:
+      oneOf:
+        - $ref: '#/components/schemas/ProductSaleLine'
+        - $ref: '#/components/schemas/FreeformSaleLine'
+
+    ProductSaleLine:
+      type: object
+      required: [kind, productId, qty, unitPrice]
+      properties:
+        kind: { type: string, enum: [product] }
+        productId: { type: string }
+        qty: { type: number, description: 'Con signo, hasta 3 decimales (se vende por peso).' }
+        unitPrice: { type: number }
+        discount: { $ref: '#/components/schemas/Discount' }
+
+    FreeformSaleLine:
+      type: object
+      required: [kind, description, qty, unitPrice]
+      properties:
+        kind: { type: string, enum: [freeform] }
+        description: { type: string }
+        qty: { type: number, description: 'Con signo, hasta 3 decimales.' }
+        unitPrice: { type: number }
+        discount: { $ref: '#/components/schemas/Discount' }
+
+    Payment:
+      type: object
+      required: [method, amount]
+      properties:
+        method:
+          type: string
+          enum: [cash, debit, credit, transfer, qr, account]
+          description: |
+            Los que manda el POS hoy. El backend registra un valor que no
+            conoce y lo trata como "otro" (reglas de evolución, 4.4.0): un POS
+            más nuevo puede sumar un medio sin romper a los backends.
+        amount:
+          type: number
+          description: |
+            Con signo, 2 decimales. Un ticket negativo es una devolución
+            declarativa, con cualquier medio. Un pago `account` sin
+            `reference` (sin hold) es fiado offline si es positivo, o una
+            acreditación al cliente si es negativo — un pago `account`
+            negativo nunca lleva hold.
+        reference:
+          type: string
+          description: Para method=account con red, el holdId del bloqueo aprobado (§5).
+
+    Sale:
+      type: object
+      required: [id, lines, payments, total, status, createdAt]
+      properties:
+        id: { type: string }
+        lines: { type: array, items: { $ref: '#/components/schemas/SaleLine' } }
+        payments: { type: array, items: { $ref: '#/components/schemas/Payment' } }
+        total: { type: number, description: 'Puede ser 0 o negativo (devolución).' }
+        status: { type: string, enum: [closed] }
+        createdAt: { type: string, format: date-time }
+        ticket:
+          type: object
+          description: >-
+            Número del ticket en su día (4.1.0). `date` es la fecha local
+            de la terminal con la que se numeró; el número arranca en 1 cada
+            día y lo comparten ventas y anulaciones. Una venta anterior a 4.1.0
+            no lo trae. El backend no espera números contiguos: puede haber
+            huecos (4.4.0).
+          required: [date, number]
+          properties:
+            date: { type: string, format: date, example: '2026-09-24' }
+            number: { type: integer, minimum: 1, example: 12 }
+        voidsSaleId:
+          type: string
+          description: |
+            Solo en el ticket de una anulación (4.0.0): el id de la venta
+            que anula. La anulación es un documento propio — mismas líneas con
+            `qty` invertida (el descuento de cada línea se conserva), pagos
+            invertidos (un pago `account` pierde su `reference`: negativo y
+            sin hold es una acreditación), `total` invertido, mismo
+            `customerId` y ajuste global — que mueve stock y saldo por su
+            cuenta. El original nunca se modifica.
+        voidReason: { type: string, description: 'Solo en el ticket de una anulación.' }
+        customerId: { type: string }
+
+    StockMovement:
+      type: object
+      required: [id, productId, delta, reason, createdAt]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        delta: { type: number, description: 'Con signo, hasta 3 decimales.' }
+        reason:
+          type: string
+          enum: [sale, sale-void]
+          description: '`sale-void` marca los movimientos del ticket de una anulación (reponen stock).'
+        saleId: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    CashMovement:
+      type: object
+      required: [id, direction, amount, concept, source, createdAt]
+      description: |
+        Ingreso/egreso de caja. El arqueo viaja solo como ajuste
+        (`source: count-adjustment`, concepto fijo "Ajuste por arqueo",
+        `direction` según el signo de `counted - expected` y
+        `amount = |counted - expected|`) y solo si la diferencia no es 0.
+        No se anula: un movimiento mal cargado se compensa con otro.
+      properties:
+        id: { type: string }
+        direction: { type: string, enum: [in, out] }
+        amount: { type: number, exclusiveMinimum: 0, description: 2 decimales. }
+        concept: { type: string }
+        description: { type: string }
+        source: { type: string, enum: [manual, count-adjustment] }
+        count:
+          type: object
+          required: [expected, counted]
+          description: Obligatorio si source = count-adjustment.
+          properties:
+            expected: { type: number }
+            counted: { type: number }
+        createdAt: { type: string, format: date-time }
+
+    CustomerPayment:
+      type: object
+      required: [id, customerId, payments, total, createdAt]
+      description: |
+        Cobranza sin venta, a favor de un cliente identificado (tenga o no
+        cuenta corriente). Sin vuelto: lo tendido es lo acreditado. Se anula
+        con otra cobranza (4.3.0): ver `voidsPaymentId`.
+      properties:
+        id: { type: string }
+        customerId: { type: string }
+        payments:
+          type: array
+          items: { $ref: '#/components/schemas/Payment' }
+          description: 'method != account; amount > 0, salvo en una anulación (voidsPaymentId), donde todos son < 0.'
+        total: { type: number, description: Suma de payments. }
+        createdAt: { type: string, format: date-time }
+        receipt:
+          type: object
+          description: >-
+            Número de recibo en su día (4.2.0). `date` es la fecha local de
+            la terminal con la que se numeró; el número arranca en 1 cada día,
+            independiente del de tickets. Una cobranza anterior a 4.2.0 no lo
+            trae. El backend no espera números contiguos: puede haber huecos
+            (4.4.0).
+          required: [date, number]
+          properties:
+            date: { type: string, format: date, example: '2026-09-27' }
+            number: { type: integer, minimum: 1, example: 3 }
+        voidsPaymentId:
+          type: string
+          description: |
+            Solo en la anulación de una cobranza (4.3.0): el id de la
+            cobranza que anula. Mismos medios con `amount` negativo, `total`
+            negativo, mismo `customerId` y su propio `receipt`. El original
+            nunca se modifica.
+
+    EventOrigin:
+      type: object
+      required: [branch, pointOfSale]
+      description: |
+        Sucursal y punto de venta, texto libre, estampados al encolar el
+        evento en el POS (no al armar el lote): cambiar la sucursal con
+        eventos pendientes no reescribe los ya encolados. Obligatorios en
+        v3: el POS los manda siempre, pero un evento encolado por una versión
+        anterior del POS puede llegar sin ellos: el backend lo guarda con el
+        valor vacío.
+      properties:
+        branch: { type: string }
+        pointOfSale: { type: string }
+
+    EventEnvelope:
+      type: object
+      required: [id, type, createdAt, origin]
+      description: Sobre común de los 7 tipos de evento.
+      properties:
+        id:
+          type: string
+          description: Id del evento — también el que usan los LotIssue (`eventId`).
+        type: { type: string }
+        createdAt:
+          { type: string, format: date-time, description: Cuándo se encoló el evento en el POS. }
+        origin: { $ref: '#/components/schemas/EventOrigin' }
+
+    OutboxBatchItem:
+      description: |
+        Un evento del outbox tal como viaja dentro de un lote de push —
+        sobre (`EventEnvelope`) más el payload de su tipo, discriminado por
+        `type`. Un tipo que el backend no reconoce se informa como
+        `LotIssue` del lote, nunca como error.
+      oneOf:
+        - $ref: '#/components/schemas/SaleEvent'
+        - $ref: '#/components/schemas/StockMovementEvent'
+        - $ref: '#/components/schemas/CustomerEvent'
+        - $ref: '#/components/schemas/AccountHoldConfirmEvent'
+        - $ref: '#/components/schemas/AccountHoldReleaseEvent'
+        - $ref: '#/components/schemas/CashMovementEvent'
+        - $ref: '#/components/schemas/CustomerPaymentEvent'
+
+    SaleEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, sale]
+          properties:
+            type: { type: string, enum: [sale] }
+            sale: { $ref: '#/components/schemas/Sale' }
+
+    StockMovementEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, movement]
+          properties:
+            type: { type: string, enum: [stock-movement] }
+            movement: { $ref: '#/components/schemas/StockMovement' }
+
+    CustomerEvent:
+      description: |
+        Alta **o actualización** de un cliente por `id` (aclaración de 4.4.0),
+        con `updatedAt`. Hoy el POS solo da altas; la pantalla para
+        editar viene después del MVP.
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, customer]
+          properties:
+            type: { type: string, enum: [customer] }
+            customer: { $ref: '#/components/schemas/Customer' }
+
+    AccountHoldConfirmEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, holdId, saleId]
+          properties:
+            type: { type: string, enum: [account-hold-confirm] }
+            holdId: { type: string }
+            saleId: { type: string }
+
+    AccountHoldReleaseEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, holdId]
+          properties:
+            type: { type: string, enum: [account-hold-release] }
+            holdId: { type: string }
+
+    CashMovementEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, movement]
+          properties:
+            type: { type: string, enum: [cash-movement] }
+            movement: { $ref: '#/components/schemas/CashMovement' }
+
+    CustomerPaymentEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [type, payment]
+          properties:
+            type: { type: string, enum: [customer-payment] }
+            payment: { $ref: '#/components/schemas/CustomerPayment' }
+
+    PushBatchRequest:
+      type: object
+      required: [deviceId, events]
+      properties:
+        deviceId:
+          type: string
+          description: UUID de la terminal, una vez por request.
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/OutboxBatchItem' }
+
+    PullBatchRequest:
+      type: object
+      required: [deviceId, cursors, pendingLotIds]
+      properties:
+        deviceId:
+          type: string
+          description: |
+            UUID de la terminal. En v3 todavía no se usa: habilita que el
+            backend informe lotes que la terminal perdió de vista.
+        cursors:
+          type: object
+          description: Cursor por recurso; ausente pide la foto completa de ese recurso.
+          properties:
+            products: { type: string }
+            customers: { type: string }
+        pendingLotIds:
+          type: array
+          items: { type: string }
+          description: |
+            idempotency_id de lotes de push que el POS mandó y todavía no
+            confirmó ok/issues, más el lote en curso cuyo ack no llegó (si hay
+            uno). El backend informa solo los que recibió.
+
+    ProductsPullResult:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        nextCursor: { type: string, description: Pasar como cursors.products en el próximo pull. }
+
+    CustomersPullResult:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+        nextCursor: { type: string, description: Pasar como cursors.customers en el próximo pull. }
+
+    LotIssue:
+      type: object
+      required: [message]
+      description: Aviso del backend sobre un lote ya procesado. Siempre se refiere a un lote.
+      properties:
+        message: { type: string, description: Texto para el humano. }
+        eventId: { type: string, description: Id del evento del lote al que se refiere el aviso. }
+
+    BatchLotStatus:
+      description: |
+        `queued` = recibido, sin empezar; `processing` = en curso; `ok` =
+        procesado sin avisos; `issues` = procesado, con avisos para el
+        humano (nunca bloquea al POS). Un lote pedido y no informado se
+        trata como `processing`. `queued` y `processing` son de paso: el
+        backend no debería dejarlos mucho tiempo. Un estado que el POS no
+        conoce, o un `issues` con los avisos mal armados, el POS lo trata
+        como `issues` con un aviso (4.4.0, reglas de evolución).
+      oneOf:
+        - type: object
+          required: [status]
+          properties: { status: { type: string, enum: [queued] } }
+        - type: object
+          required: [status]
+          properties: { status: { type: string, enum: [processing] } }
+        - type: object
+          required: [status]
+          properties: { status: { type: string, enum: [ok] } }
+        - type: object
+          required: [status, issues]
+          properties:
+            status: { type: string, enum: [issues] }
+            issues: { type: array, items: { $ref: '#/components/schemas/LotIssue' } }
+
+    PullBatchResponse:
+      type: object
+      required: [products, customers, stock, lots]
+      properties:
+        products: { $ref: '#/components/schemas/ProductsPullResult' }
+        customers: { $ref: '#/components/schemas/CustomersPullResult' }
+        stock:
+          type: array
+          items: { $ref: '#/components/schemas/StockItem' }
+          description: 'Siempre completo. `[]` = el backend no mandó stock: el POS conserva el suyo (4.4.0).'
+        lots:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/BatchLotStatus' }
+          description: Una entrada por cada id de pendingLotIds que el backend todavía reconoce.
+        notices:
+          type: array
+          items: { $ref: '#/components/schemas/BackendNotice' }
+          description: 'La lista vigente y completa de avisos para esta terminal (4.4.0). Ausente = ninguno.'
+
+    BackendNotice:
+      type: object
+      required: [id, severity, message]
+      description: |
+        Aviso del backend para el humano (4.4.0): una discrepancia de un
+        lote, un aviso de cuota o de contrato. Informativo, nunca bloquea.
+      properties:
+        id: { type: string }
+        severity:
+          type: string
+          enum: [info, warning, critical]
+          description: 'Una severidad que el POS no conoce se trata como `info`.'
+        message: { type: string, description: Texto para el humano. }
+        ref:
+          type: object
+          required: [type, id]
+          description: 'A qué se refiere, si aplica (p. ej. `{ type: sale, id }`).'
+          properties:
+            type: { type: string }
+            id: { type: string }
+
+    DemoSessionRequest:
+      type: object
+      properties:
+        template:
+          type: string
+          description: Plantilla de datos de la demo; ausente = la que el backend tenga por defecto.
+
+    DemoSessionResponse:
+      type: object
+      required: [apiKey, branch, pointOfSale, template, onboarding]
+      properties:
+        apiKey: { type: string, description: API key de la demo. }
+        branch: { type: string }
+        pointOfSale: { type: string }
+        template: { type: string, description: La plantilla que usó (la pedida o la por defecto). }
+        onboarding:
+          type: object
+          required: [url, label]
+          properties:
+            url:
+              type: string
+              format: uri
+              description: |
+                Página del backend para darse de alta; el POS le suma
+                `return_url` y `wipe_key`. `https:` (o `http:` a localhost).
+            label:
+              type: string
+              description: 'Texto del botón en el POS, p. ej. "Crear mi comercio".'
+        baseUrl:
+          type: string
+          format: uri
+          description: 'URL del Connector API para esta demo; ausente = la misma del link. `https:` (o `http:` a localhost).'
+
+    UnknownTemplate:
+      type: object
+      required: [code, templates]
+      properties:
+        code: { type: string, enum: [unknown-template] }
+        templates:
+          { type: array, items: { type: string }, description: Las plantillas que existen. }
+
+    AccountHoldRequest:
+      type: object
+      required: [customerId, amount]
+      properties:
+        customerId: { type: string }
+        amount: { type: number }
+
+    AccountHoldResponse:
+      oneOf:
+        - type: object
+          required: [approved, holdId]
+          properties:
+            approved: { type: boolean, enum: [true] }
+            holdId: { type: string }
+        - type: object
+          required: [approved, reasonCode]
+          properties:
+            approved: { type: boolean, enum: [false] }
+            reasonCode: { type: string }
