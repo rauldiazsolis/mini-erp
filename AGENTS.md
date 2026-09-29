@@ -28,35 +28,48 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
 
 ## Cómo trabajamos
 
-Las mismas convenciones que offline-pos.
+Las mismas convenciones que offline-pos. Valen para cualquier agente (en este repo se trabaja con
+Claude Code y con Antigravity IDE); donde un agente hace algo distinto, se dice.
 
 - **Idioma**: todo en español (respuestas, specs, planes, commits, comentarios e issues), aunque el
-  pedido o las instrucciones de un skill vengan en inglés.
-- **Plan antes de codear**: un trabajo de varios pasos arranca con brainstorming y un plan que el
-  usuario revisa y aprueba. El plan se ejecuta **inline** (`superpowers:executing-plans`, tarea por
-  tarea y con checkpoints), no con un subagente por tarea. Specs y planes en `docs/superpowers/`.
+  pedido o las instrucciones de una herramienta vengan en inglés.
+- **Plan antes de codear**: un trabajo de varios pasos arranca con un brainstorming (opciones,
+  impacto en la arquitectura, casos de borde, etapas verificables con su criterio de aceptación) y un
+  plan que el usuario revisa y aprueba. Nada de código antes de esa aprobación. El plan se ejecuta
+  **tarea por tarea**, en la misma conversación: al terminar cada tarea se verifica y se frena para
+  que el usuario la revise antes de seguir (en Claude Code, con `superpowers:executing-plans`; nunca
+  un subagente por tarea). Specs y planes en `docs/superpowers/`.
 - **Informe final con prueba manual**: al terminar, un informe con instrucciones paso a paso de qué
   hacer en la UI (o con `curl`) y qué se debería ver. La prueba la hace el usuario.
 - **Revisión sin cambios**: en una revisión no se toca código salvo pedido explícito en el momento; las
   observaciones se anotan como issues. Contestar una pregunta de alcance no es la luz verde para
   implementar: esa es aparte y explícita.
-- **Ramas y PR**: cada etapa en su rama (`claude/<tema>`), con commits chicos verificados
-  localmente. El PR se abre al terminar la etapa, después de la revisión, y se mergea con **merge
-  commit**, nunca squash.
+- **Ramas y PR**: cada etapa en su rama (`claude/<tema>`, `antigravity/<tema>`, etc.), con commits
+  chicos verificados localmente. El PR se abre al terminar la etapa, después de la revisión, y se
+  mergea con **merge commit**, nunca squash.
+- **Quién commitea depende del agente**:
+  - **Antigravity IDE: el agente nunca ejecuta `git commit` ni `git push`** (tampoco abre ni mergea
+    PR). Al terminar cada tarea verificada, se detiene y sugiere el commit: el comando con el
+    mensaje convencional y la lista exacta de archivos. El usuario commitea.
+  - **Claude Code**: commitea en la rama de la etapa y abre el PR cuando el usuario lo aprueba.
 - **CI**: después de un push no se espera ni se lee el CI; alcanzan los chequeos locales. Si el CI
   falla, el usuario avisa.
 - **Issues en GitHub**, nunca en un markdown del repo. "Anotá: …" crea un issue y se sigue con lo que
   se estaba haciendo. Etiquetas `feature:<slug>` (`feature:contrato`, `feature:publicacion`,
   `feature:transversal`, y las que hagan falta) y `backlog` (se prioriza después de lo ya diseñado).
   El cuerpo alcanza para arrancar una sesión nueva sin más contexto.
-- **Claude mantiene los issues**: en el cuerpo del PR va "Closes #N" (GitHub no reconoce "Cierra");
-  después del merge se verifica que se haya cerrado.
+- **El agente mantiene los issues** (el usuario no los edita a mano): en el cuerpo del PR va
+  "Closes #N" (GitHub no reconoce "Cierra"); después del merge se verifica que se haya cerrado.
 - **Dependencias**: con opciones equivalentes, la que tenga menos dependencias propias
   (`npm view <paquete> dependencies`).
 - **Commits**: mensajes convencionales en español (`feat:`, `fix:`, `docs:`, `build:`, `ci:`,
   `test:`, `refactor:`).
 
 ## Verificación
+
+Todo cambio de comportamiento lleva tests de Vitest en `test/`, escritos **antes** que el código
+(TDD): el test falla, se implementa lo mínimo para que pase y se vuelve a correr la suite. Una tarea
+no está terminada sin `typecheck` con 0 errores y todos los tests en verde:
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test
