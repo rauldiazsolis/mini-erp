@@ -1,10 +1,12 @@
-import { Router, type Response, type NextFunction } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
 import { summarizeForLog } from '../connector/push-events.ts';
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
+import type { DemoSessionService } from '../demo/demo-session-service.ts';
+import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
 
 const CONTRACT_VERSION = '4.2.0';
 
@@ -18,7 +20,7 @@ function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   throw new Error('Tenant DB o Scope no inicializado para POS');
 }
 
-function checkContractVersion(req: AuthenticatedPosRequest, res: Response, next: NextFunction): void {
+function checkContractVersion(req: Request, res: Response, next: NextFunction): void {
   const version = req.headers['x-pos-contract-version'];
   if (typeof version === 'string') {
     const major = version.split('.')[0];
@@ -44,6 +46,8 @@ const pullBatchSchema = z.object({
   pendingLotIds: z.array(z.string()),
 });
 
+const demoSessionRequestSchema = z.object({ template: z.string().optional() }).passthrough();
+
 const accountHoldSchema = z.object({
   customerId: z.string().min(1, 'customerId requerido'),
   amount: z.number().positive('Monto debe ser positivo'),
@@ -51,8 +55,45 @@ const accountHoldSchema = z.object({
 
 export function createConnectorRoutes(
   requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
+  demoSessions: DemoSessionService,
 ): Router {
   const router = Router();
+
+  // POST /demo-sessions (4.4.0, #9): el único endpoint sin key; sí valida la versión del contrato
+  router.post('/demo-sessions', checkContractVersion, (req: Request, res: Response) => {
+    if (!demoSessions.enabled()) {
+      res.status(404).json({ error: 'Este backend no ofrece demos' });
+      return;
+    }
+    const body: unknown = req.body ?? {};
+    const parsed = demoSessionRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Payload inválido' });
+      return;
+    }
+    const template = parsed.data.template ?? DEFAULT_DEMO_TEMPLATE;
+    if (!isDemoTemplate(template)) {
+      res.status(422).json({ code: 'unknown-template', templates: [...DEMO_TEMPLATES] });
+      return;
+    }
+    demoSessions.sweepExpired();
+    if (demoSessions.isFull()) {
+      res.status(503).json({ code: 'demo-capacity', error: 'No hay lugar para más demos; probá más tarde' });
+      return;
+    }
+    const session = demoSessions.create(template);
+    const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+    res.status(201).json({
+      apiKey: session.apiKey,
+      branch: session.branch,
+      pointOfSale: session.pointOfSale,
+      template: session.template,
+      onboarding: {
+        url: `${origin}/alta?template=${encodeURIComponent(session.template)}`,
+        label: 'Crear mi comercio',
+      },
+    });
+  });
 
   router.use(requirePosAuth);
 
@@ -65,6 +106,7 @@ export function createConnectorRoutes(
         name: 'mini-erp',
         version: '0.1.0',
       },
+      ...(demoSessions.enabled() ? { capabilities: ['demo-sessions'] } : {}),
     });
   });
 

@@ -25,12 +25,17 @@ import {
   tenantManagerDef,
   authServiceDef,
   apiKeyServiceDef,
+  demoSessionServiceDef,
 } from './di/container.ts';
+import type { DemoConfig } from './demo/demo-config.ts';
+import type { DemoSessionService } from './demo/demo-session-service.ts';
 
 export type AppDependencies = {
   systemDb?: DatabaseSync;
   tenantManager?: TenantManager;
   rootContainer?: Container;
+  demoConfig?: DemoConfig | undefined;
+  now?: (() => Date) | undefined;
 };
 
 export function createApp(deps?: AppDependencies): {
@@ -39,6 +44,7 @@ export function createApp(deps?: AppDependencies): {
   tenantManager: TenantManager;
   authService: AuthService;
   apiKeyService: ApiKeyService;
+  demoSessions: DemoSessionService;
   rootContainer: Container;
 } {
   const app = express();
@@ -46,15 +52,20 @@ export function createApp(deps?: AppDependencies): {
   const rootContainer = deps?.rootContainer ?? createRootContainer({
     systemDb: deps?.systemDb,
     tenantManager: deps?.tenantManager,
+    demoConfig: deps?.demoConfig,
+    now: deps?.now,
   });
 
   const systemDb = rootContainer.use(systemDbDef);
   const tenantManager = rootContainer.use(tenantManagerDef);
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
+  const demoSessions = rootContainer.use(demoSessionServiceDef);
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer);
+  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (tenantId) => {
+    demoSessions.touch(tenantId);
+  });
 
   app.use(allowPrivateNetwork);
   app.use(cors());
@@ -82,8 +93,8 @@ export function createApp(deps?: AppDependencies): {
     createDashboardRoutes(),
   );
 
-  // Rutas para terminales POS (Connector API 4.2.0)
-  app.use('/connector', createConnectorRoutes(requirePos));
+  // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -98,6 +109,7 @@ export function createApp(deps?: AppDependencies): {
     tenantManager,
     authService,
     apiKeyService,
+    demoSessions,
     rootContainer,
   };
 }

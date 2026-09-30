@@ -1,0 +1,144 @@
+import { describe, it, expect } from 'vitest';
+import request from 'supertest';
+import { DatabaseSync } from 'node:sqlite';
+import { createApp } from '../src/server/app.ts';
+import { initSystemDb } from '../src/server/db/system-db.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import type { DemoConfig } from '../src/server/demo/demo-config.ts';
+
+const HOUR = 60 * 60 * 1000;
+
+type DemoBody = {
+  apiKey: string;
+  branch: string;
+  pointOfSale: string;
+  template: string;
+  onboarding: { url: string; label: string };
+  baseUrl?: string;
+};
+
+function makeApp(overrides: Partial<DemoConfig> = {}) {
+  const systemDb = new DatabaseSync(':memory:');
+  initSystemDb(systemDb);
+  const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
+  const bundle = createApp({
+    systemDb,
+    tenantManager: new TenantManager(systemDb, { inMemory: true }),
+    demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, ...overrides },
+    now: () => clock.now,
+  });
+  const advance = (ms: number): void => {
+    clock.now = new Date(clock.now.getTime() + ms);
+  };
+  return { ...bundle, advance };
+}
+
+function startDemo(app: ReturnType<typeof makeApp>['app'], body?: object) {
+  const req = request(app).post('/connector/demo-sessions').set('X-POS-Contract-Version', '4.4.0');
+  return body === undefined ? req : req.send(body);
+}
+
+describe('POST /connector/demo-sessions (#9)', () => {
+  it('crea una demo sin autenticación con el template por defecto', async () => {
+    const { app } = makeApp();
+    const res = await startDemo(app);
+    expect(res.status).toBe(201);
+    const body = res.body as DemoBody;
+    expect(body).toMatchObject({ branch: 'CENTRAL', pointOfSale: 'Caja 1', template: 'kiosco' });
+    expect(body.onboarding.label).toBe('Crear mi comercio');
+    expect(body.onboarding.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/alta\?template=kiosco$/);
+    expect(body).not.toHaveProperty('baseUrl');
+  });
+
+  it('usa PUBLIC_URL para la página de alta', async () => {
+    const { app } = makeApp({ publicUrl: 'https://erp.example.com' });
+    const res = await startDemo(app, { template: 'almacen' });
+    expect(res.status).toBe(201);
+    expect((res.body as DemoBody).onboarding.url).toBe('https://erp.example.com/alta?template=almacen');
+  });
+
+  it('la key de la demo sincroniza el catálogo del template y declara la capacidad', async () => {
+    const { app } = makeApp();
+    const { apiKey } = (await startDemo(app, { template: 'ferreteria' })).body as DemoBody;
+
+    const pull = await request(app)
+      .post('/connector/sync/pull')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.4.0')
+      .send({ cursors: {}, pendingLotIds: [] });
+    expect(pull.status).toBe(200);
+    const skus = (pull.body as { products: { items: { sku: string }[] } }).products.items.map((p) => p.sku);
+    expect(skus).toContain('FER-001');
+
+    const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
+    expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['demo-sessions']);
+  });
+
+  it('422 con la lista si el template no existe', async () => {
+    const { app } = makeApp();
+    const res = await startDemo(app, { template: 'panaderia' });
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ code: 'unknown-template', templates: ['kiosco', 'almacen', 'ferreteria'] });
+  });
+
+  it('400 si el body no tiene la forma', async () => {
+    const { app } = makeApp();
+    expect((await startDemo(app, { template: 5 })).status).toBe(400);
+  });
+
+  it('409 con otro major del contrato', async () => {
+    const { app } = makeApp();
+    const res = await request(app).post('/connector/demo-sessions').set('X-POS-Contract-Version', '5.0.0');
+    expect(res.status).toBe(409);
+  });
+
+  it('404 si las demos están apagadas', async () => {
+    const { app } = makeApp({ enabled: false });
+    expect((await startDemo(app)).status).toBe(404);
+  });
+
+  it('503 al llegar al tope', async () => {
+    const { app } = makeApp({ maxActive: 1 });
+    expect((await startDemo(app)).status).toBe(201);
+    const res = await startDemo(app);
+    expect(res.status).toBe(503);
+    expect((res.body as { code: string }).code).toBe('demo-capacity');
+  });
+
+  it('una demo en uso no vence; una sin uso sí', async () => {
+    const { app, advance, demoSessions } = makeApp();
+    const { apiKey } = (await startDemo(app)).body as DemoBody;
+    const info = () => request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
+
+    advance(23 * HOUR);
+    expect((await info()).status).toBe(200); // el request la toca
+    advance(23 * HOUR);
+    demoSessions.sweepExpired();
+    expect((await info()).status).toBe(200);
+
+    advance(25 * HOUR);
+    demoSessions.sweepExpired();
+    expect((await info()).status).toBe(401);
+  });
+
+  it('sin demos, /info no declara capacidades', async () => {
+    const { app } = makeApp({ enabled: false });
+    const reg = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana' });
+    const token = (reg.body as { token: string }).token;
+    await request(app)
+      .post('/api/tenants')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: 'tienda', slug: 'tienda', name: 'Tienda' });
+    const key = await request(app)
+      .post('/api/tenants/tienda/api-keys')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
+    const info = await request(app)
+      .get('/connector/info')
+      .set('Authorization', `Bearer ${(key.body as { rawKey: string }).rawKey}`);
+    expect(info.status).toBe(200);
+    expect(info.body).not.toHaveProperty('capabilities');
+  });
+});
