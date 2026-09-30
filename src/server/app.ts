@@ -16,6 +16,7 @@ import { createBulkRoutes } from './routes/bulk-routes.ts';
 import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
+import { allowPrivateNetwork } from './middleware/private-network.ts';
 
 import type { Container } from 'hardwired';
 import {
@@ -55,6 +56,7 @@ export function createApp(deps?: AppDependencies): {
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
   const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer);
 
+  app.use(allowPrivateNetwork);
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
   app.use(requestLogger);
