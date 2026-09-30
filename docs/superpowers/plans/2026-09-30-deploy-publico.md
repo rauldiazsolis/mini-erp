@@ -992,7 +992,10 @@ ls -1dt "$BASE"/releases/*/ | tail -n +6 | xargs -r rm -rf
 echo "Versión $SHA activa"
 ```
 
-- [ ] **Paso 6: `deploy/README.md`** con, en este orden:
+- [ ] **Paso 6: `deploy/README.md`**: guía para alguien **sin experiencia en Ubuntu ni Lightsail**:
+  cada clic de la consola de AWS, qué copiar y dónde pegarlo, y qué se tiene que ver en cada paso.
+  Terminal: la SSH del navegador de Lightsail ("Connect using SSH"); en Windows, PowerShell para
+  `ssh-keygen` y `ssh-keyscan`. Contenido, en este orden:
   1. **Lightsail** (consola): instancia Ubuntu 24.04, plan de US$5; IP estática asignada; en
      Networking abrir 80 y 443; en Snapshots activar los automáticos.
   2. **Llave de deploy** (en tu máquina): `ssh-keygen -t ed25519 -f mini-erp-deploy -N "" -C deploy@mini-erp`.
