@@ -213,6 +213,7 @@ Fases 1 a 10 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, 
 temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy público): detalle en
 `PLAN.md`. Sigue:
 
-1. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
+1. #11 (prioritario): dominio propio; algunos proveedores no resuelven `sslip.io`.
+2. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
 
 En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).
