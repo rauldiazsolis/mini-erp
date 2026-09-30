@@ -368,3 +368,7 @@ Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166)
   se fue el formato viejo con credenciales en la query string.
 - `Access-Control-Allow-Private-Network: true` en el preflight (el POS publicado llamando a
   `localhost`).
+- Probado de punta a punta con el POS publicado 0.1.0 en Chrome contra el mini-erp en `localhost`:
+  landing → demo → venta → `/ALTA` → alta → el POS vuelve conectado al comercio nuevo, sin la venta de
+  la demo. El navegador integrado de la app de Claude no sirve para esto: bloquea sin preguntar que
+  una página pública llame a la red local (`net::ERR_BLOCKED_BY_CLIENT`).
