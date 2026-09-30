@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "contract:update": "node scripts/contract-update.ts"
+    "contract:update": "node scripts/contract-update.ts",
+    "pos:mirror": "node scripts/pos-mirror.ts"
   },
   "dependencies": {
     "@preact/signals": "^2.11.2",

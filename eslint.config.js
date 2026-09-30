@@ -8,6 +8,7 @@ export default defineConfig([
   {
     ignores: [
       'dist',
+      'vendor',
       'dist/**',
       '**/dist/**',
       'coverage',
