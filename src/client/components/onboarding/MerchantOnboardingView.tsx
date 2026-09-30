@@ -333,12 +333,13 @@ export function MerchantOnboardingView() {
 
                 {/* Acciones de Retorno o Ingreso */}
                 <div class="p-5 bg-gradient-to-tr from-indigo-50 to-violet-50 dark:from-indigo-950/30 dark:to-violet-950/30 border border-indigo-200 dark:border-indigo-500/30 rounded-3xl space-y-4 text-center">
-                  {result.returnWithParamsUrl ? (
+                  {result.connectReturnUrl ? (
                     <>
                       <div>
                         <h4 class="text-sm font-bold text-slate-900 dark:text-white">Vincular con tu Punto de Venta (POS)</h4>
                         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          Vuelve a la pantalla de tu POS. Tu terminal se configurará automáticamente con tu nueva cuenta.
+                          Vas a volver a <strong class="text-slate-700 dark:text-slate-200">{result.returnHost}</strong>.
+                          Tu caja queda conectada a tu comercio nuevo y se borran los datos de la demo.
                         </p>
                       </div>
                       <div class="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
@@ -348,7 +349,7 @@ export function MerchantOnboardingView() {
                           class="w-full sm:w-auto shadow-lg shadow-indigo-600/30"
                           onClick={returnToPosWithCredentials}
                         >
-                          🚀 Volver al POS y Conectar Caja Automáticamente
+                          Volver al POS
                         </Button>
                         <Button
                           variant="outline"
@@ -357,20 +358,6 @@ export function MerchantOnboardingView() {
                         >
                           Ir al Panel Mini-ERP →
                         </Button>
-                      </div>
-
-                      <div class="pt-2 border-t border-indigo-200/50 dark:border-indigo-800/40 flex justify-center">
-                        <a
-                          href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                            `¡Hola! Configura la terminal de caja Offline POS para "${result.name}" abriendo este enlace:\n\n${result.returnWithParamsUrl}`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-all"
-                        >
-                          <span>💬</span>
-                          <span>Compartir configuración por WhatsApp</span>
-                        </a>
                       </div>
                     </>
                   ) : (

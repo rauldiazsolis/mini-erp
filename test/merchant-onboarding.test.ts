@@ -8,6 +8,8 @@ import {
   businessNameSignal,
   selectedMerchantPresetSignal,
   returnUrlSignal,
+  wipeKeySignal,
+  readAltaParams,
   errorMessageSignal,
   merchantResultSignal,
   sanitizeToSlug,
@@ -77,6 +79,24 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       merchantOnboardingActiveSignal.value = true;
       closeMerchantOnboarding();
       expect(merchantOnboardingActiveSignal.value).toBe(false);
+    });
+  });
+
+  describe('Parámetros de /alta (#9)', () => {
+    it('lee return_url, wipe_key y template', () => {
+      expect(
+        readAltaParams(
+          'http://localhost:4100/alta?template=almacen&return_url=https%3A%2F%2Foffline-pos.pages.dev%2F0.1.0%2F&wipe_key=wk-9',
+        ),
+      ).toEqual({ returnUrl: 'https://offline-pos.pages.dev/0.1.0/', wipeKey: 'wk-9', template: 'almacen' });
+    });
+
+    it('ignora un template desconocido y los parámetros viejos', () => {
+      expect(readAltaParams('http://localhost:4100/alta?template=panaderia&returnUrl=x&preset=almacen')).toEqual({
+        returnUrl: null,
+        wipeKey: null,
+        template: null,
+      });
     });
   });
 
@@ -227,6 +247,7 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       businessNameSignal.value = 'Kiosco Pepe & Amigos';
       selectedMerchantPresetSignal.value = 'kiosco';
       returnUrlSignal.value = 'http://localhost:5173/';
+      wipeKeySignal.value = 'wk-123';
 
       await executeMerchantProvisioning();
 
@@ -237,12 +258,21 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       expect(merchantResultSignal.value?.branch).toBe('CENTRAL');
       expect(merchantResultSignal.value?.pointOfSale).toBe('Caja 1');
 
-      // Verificar que la URL de retorno incluya las credenciales listas para el POS
-      const returnWithParams = merchantResultSignal.value?.returnWithParamsUrl;
-      expect(returnWithParams).toContain('http://localhost:5173/');
-      expect(returnWithParams).toContain('api_key=pos_live_merchant_xyz');
-      expect(returnWithParams).toContain('branch=CENTRAL');
-      expect(returnWithParams).toContain('pos_terminal=Caja+1');
+      // La vuelta al POS lleva la conexión en #connect (contrato 4.4.0), nunca en la query
+      const connectUrl = merchantResultSignal.value?.connectReturnUrl ?? '';
+      expect(connectUrl.startsWith('http://localhost:5173/#connect=')).toBe(true);
+      expect(connectUrl).not.toContain('api_key=');
+      const payload: unknown = JSON.parse(
+        Buffer.from(new URL(connectUrl).hash.slice('#connect='.length), 'base64url').toString('utf-8'),
+      );
+      expect(payload).toEqual({
+        baseUrl: 'http://localhost:4100/connector',
+        apiKey: 'pos_live_merchant_xyz',
+        branch: 'CENTRAL',
+        pointOfSale: 'Caja 1',
+        wipeKey: 'wk-123',
+      });
+      expect(merchantResultSignal.value?.returnHost).toBe('localhost:5173');
 
       // Verificar que el tenant creado quedó como activo en el cliente
       expect(activeTenantIdSignal.value).toBe(merchantResultSignal.value?.tenantId);
