@@ -13,10 +13,10 @@ export type StockMatrixProduct = {
 };
 
 export type StockMatrixFilter = {
-  search?: string;
-  category?: string;
-  limit?: number;
-  offset?: number;
+  search?: string | undefined;
+  category?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 };
 
 export type AdjustStockInput = {
@@ -25,7 +25,7 @@ export type AdjustStockInput = {
   type: 'set' | 'delta';
   quantity: number;
   reason: string;
-  notes?: string;
+  notes?: string | undefined;
 };
 
 export type AdjustStockResult = {
@@ -39,13 +39,13 @@ export type AdjustStockResult = {
 };
 
 export type KardexFilter = {
-  productId?: string;
-  branchId?: string;
-  reason?: string;
-  from?: string;
-  to?: string;
-  limit?: number;
-  offset?: number;
+  productId?: string | undefined;
+  branchId?: string | undefined;
+  reason?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 };
 
 export type KardexMovement = {

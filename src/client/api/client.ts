@@ -39,7 +39,7 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
   const res = await fetch(url, {
     method,
     headers,
-    body: options?.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: options?.body !== undefined ? JSON.stringify(options.body) : null,
   });
 
   if (res.status === 401) {

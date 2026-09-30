@@ -18,40 +18,40 @@ export type CustomerRecord = {
 };
 
 export type CreateCustomerInput = {
-  id?: string;
+  id?: string | undefined;
   name: string;
-  document?: string | null;
-  phone?: string | null;
-  creditLimit?: number;
-  margin?: number;
-  unrestricted?: boolean;
-  initialBalance?: number;
-  blockedReason?: string | null;
+  document?: string | null | undefined;
+  phone?: string | null | undefined;
+  creditLimit?: number | undefined;
+  margin?: number | undefined;
+  unrestricted?: boolean | undefined;
+  initialBalance?: number | undefined;
+  blockedReason?: string | null | undefined;
 };
 
 export type UpdateCustomerInput = {
-  name?: string;
-  document?: string | null;
-  phone?: string | null;
-  creditLimit?: number;
-  margin?: number;
-  unrestricted?: boolean;
-  blockedReason?: string | null;
+  name?: string | undefined;
+  document?: string | null | undefined;
+  phone?: string | null | undefined;
+  creditLimit?: number | undefined;
+  margin?: number | undefined;
+  unrestricted?: boolean | undefined;
+  blockedReason?: string | null | undefined;
 };
 
 export type CustomerFilter = {
-  search?: string;
-  debtorsOnly?: boolean;
-  blocked?: boolean;
-  limit?: number;
-  offset?: number;
+  search?: string | undefined;
+  debtorsOnly?: boolean | undefined;
+  blocked?: boolean | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 };
 
 export type RegisterPaymentInput = {
   amount: number;
-  method?: string;
-  reference?: string;
-  description?: string;
+  method?: string | undefined;
+  reference?: string | undefined;
+  description?: string | undefined;
 };
 
 export type PaymentResult = {
@@ -79,11 +79,11 @@ export type AdjustBalanceResult = {
 };
 
 export type MovementFilter = {
-  type?: string;
-  from?: string;
-  to?: string;
-  limit?: number;
-  offset?: number;
+  type?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 };
 
 export type AccountMovementRecord = {
@@ -267,7 +267,7 @@ export class CustomerService {
     };
   }
 
-  deleteCustomer(id: string, options?: { hard?: boolean; blockedReason?: string }): CustomerRecord | { deleted: boolean } {
+  deleteCustomer(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): CustomerRecord | { deleted: boolean } {
     const current = this.getCustomer(id);
     if (!current) {
       const err = new Error(`Cliente '${id}' no encontrado`);

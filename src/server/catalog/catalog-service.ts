@@ -9,14 +9,14 @@ export type BranchRecord = {
 };
 
 export type CreateBranchInput = {
-  id?: string;
+  id?: string | undefined;
   name: string;
   code: string;
 };
 
 export type UpdateBranchInput = {
-  name?: string;
-  code?: string;
+  name?: string | undefined;
+  code?: string | undefined;
 };
 
 export type ProductRecord = {
@@ -34,34 +34,34 @@ export type ProductRecord = {
 };
 
 export type CreateProductInput = {
-  id?: string;
+  id?: string | undefined;
   sku: string;
-  barcodes?: string[];
+  barcodes?: string[] | undefined;
   name: string;
   price: number;
-  taxRate?: number;
-  category?: string;
-  tracksStock?: boolean;
-  blockedReason?: string | null;
+  taxRate?: number | undefined;
+  category?: string | undefined;
+  tracksStock?: boolean | undefined;
+  blockedReason?: string | null | undefined;
 };
 
 export type UpdateProductInput = {
-  sku?: string;
-  barcodes?: string[];
-  name?: string;
-  price?: number;
-  taxRate?: number;
-  category?: string;
-  tracksStock?: boolean;
-  blockedReason?: string | null;
+  sku?: string | undefined;
+  barcodes?: string[] | undefined;
+  name?: string | undefined;
+  price?: number | undefined;
+  taxRate?: number | undefined;
+  category?: string | undefined;
+  tracksStock?: boolean | undefined;
+  blockedReason?: string | null | undefined;
 };
 
 export type ProductFilter = {
-  search?: string;
-  category?: string;
-  blocked?: boolean;
-  limit?: number;
-  offset?: number;
+  search?: string | undefined;
+  category?: string | undefined;
+  blocked?: boolean | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 };
 
 interface RawProductRow {
@@ -335,7 +335,7 @@ export class CatalogService {
     };
   }
 
-  deleteProduct(id: string, options?: { hard?: boolean; blockedReason?: string }): ProductRecord | { deleted: boolean } {
+  deleteProduct(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): ProductRecord | { deleted: boolean } {
     const current = this.getProduct(id);
     if (!current) {
       throw new Error(`Producto '${id}' no encontrado`);

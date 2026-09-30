@@ -4,7 +4,7 @@ export type ModalProps = {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   icon?: ComponentChildren;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   footer?: ComponentChildren;

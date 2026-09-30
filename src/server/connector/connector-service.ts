@@ -32,7 +32,7 @@ export class ConnectorService {
     if (existing !== undefined && (existing.status === 'ok' || existing.status === 'issues')) {
       return {
         status: existing.status,
-        issues: existing.issues ? (JSON.parse(existing.issues) as LotIssue[]) : undefined,
+        ...(existing.issues ? { issues: JSON.parse(existing.issues) as LotIssue[] } : {}),
       };
     }
 
@@ -70,7 +70,7 @@ export class ConnectorService {
 
     return {
       status: finalStatus,
-      issues: issues.length > 0 ? issues : undefined,
+      ...(issues.length > 0 ? { issues } : {}),
     };
   }
 
@@ -307,7 +307,7 @@ export class ConnectorService {
   }
 
   pullCatalog(params: {
-    cursors: { products?: string; customers?: string };
+    cursors: { products?: string | undefined; customers?: string | undefined };
     pendingLotIds: string[];
     branchId?: string;
   }) {

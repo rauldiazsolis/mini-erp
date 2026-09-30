@@ -58,7 +58,6 @@ describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', ()
   describe('Interacción con Métricas del Dashboard', () => {
     const mockDashboardData: DashboardData = {
       period: 'week',
-      branchId: undefined,
       summary: {
         totalSales: 125000,
         salesCount: 45,
