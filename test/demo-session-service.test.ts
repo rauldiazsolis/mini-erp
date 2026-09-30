@@ -120,4 +120,13 @@ describe('startDemoSweeper (#9)', () => {
     expect(sweep).toHaveBeenCalledTimes(3);
     clearInterval(timer);
   });
+
+  it('loguea cuántas demos borró al arrancar (#3)', () => {
+    const { service } = setup();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const timer = startDemoSweeper(service, 1000);
+    expect(log).toHaveBeenCalledWith('[demos] barrido: 0 demos vencidas borradas');
+    clearInterval(timer);
+    log.mockRestore();
+  });
 });

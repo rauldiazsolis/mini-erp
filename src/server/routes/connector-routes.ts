@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router, type Request, type RequestHandler, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
@@ -56,11 +56,12 @@ const accountHoldSchema = z.object({
 export function createConnectorRoutes(
   requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
   demoSessions: DemoSessionService,
+  demoLimit: RequestHandler,
 ): Router {
   const router = Router();
 
   // POST /demo-sessions (4.4.0, #9): el único endpoint sin key; sí valida la versión del contrato
-  router.post('/demo-sessions', checkContractVersion, (req: Request, res: Response) => {
+  router.post('/demo-sessions', checkContractVersion, demoLimit, (req: Request, res: Response) => {
     if (!demoSessions.enabled()) {
       res.status(404).json({ error: 'Este backend no ofrece demos' });
       return;

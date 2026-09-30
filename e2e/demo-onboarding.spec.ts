@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { E2E_DATA_DIR, E2E_PORT } from '../playwright.config.ts';
 
 /**
@@ -8,10 +9,9 @@ import { E2E_DATA_DIR, E2E_PORT } from '../playwright.config.ts';
  * mini-erp: landing → demo → venta → /ALTA → alta → el POS vuelve al comercio nuevo.
  */
 
-const EMAIL = 'e2e-alta@local.test';
-
 function query<T>(file: string, sql: string, ...params: string[]): T[] {
-  const db = new DatabaseSync(join(E2E_DATA_DIR, file), { readOnly: true });
+  // timeout: si el servidor está escribiendo un lote, espera en lugar de fallar con "database is locked"
+  const db = new DatabaseSync(join(E2E_DATA_DIR, file), { readOnly: true, timeout: 5000 });
   try {
     return db.prepare(sql).all(...params) as T[];
   } finally {
@@ -37,6 +37,9 @@ async function sellOneAndSync(page: Page, search: string): Promise<void> {
 }
 
 test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado al comercio nuevo', async ({ page }) => {
+  // Un reintento reusa el servidor y la base: email propio por corrida
+  const email = `e2e-alta-${randomUUID().slice(0, 8)}@local.test`;
+
   // Landing: abre la copia local del POS publicado en demo contra este Connector API
   await page.goto('/');
   const demoLink = page.getByRole('link', { name: 'Probar la demo' });
@@ -52,7 +55,10 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await expect(page.getByText('DEMO', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Crear mi comercio (/ALTA)' })).toBeVisible();
 
-  const [demo] = query<{ tenant_id: string; template: string }>('system.sqlite', 'SELECT tenant_id, template FROM demo_sessions');
+  const [demo] = query<{ tenant_id: string; template: string }>(
+    'system.sqlite',
+    'SELECT tenant_id, template FROM demo_sessions ORDER BY created_at DESC LIMIT 1',
+  );
   expect(demo?.template).toBe('kiosco');
   const demoTenant = demo?.tenant_id ?? '';
 
@@ -66,7 +72,7 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await expect(page).toHaveURL(/\/alta\?template=kiosco&return_url=.*&wipe_key=/);
 
   await page.getByPlaceholder('Ej: Martín Rodríguez').fill('Alta E2E');
-  await page.getByPlaceholder('ejemplo@comercio.com').fill(EMAIL);
+  await page.getByPlaceholder('ejemplo@comercio.com').fill(email);
   await page.getByPlaceholder('Mínimo 6 caracteres').fill('prueba-e2e');
   await page.getByRole('button', { name: 'Continuar a Datos del Negocio →' }).click();
   await page.getByPlaceholder(/Ej: Kiosco San Martín/).fill('Kiosco E2E');
@@ -82,7 +88,7 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   const [alta] = query<{ tenant_id: string }>(
     'system.sqlite',
     'SELECT m.tenant_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = ?',
-    EMAIL,
+    email,
   );
   const newTenant = alta?.tenant_id ?? '';
   expect(newTenant).not.toBe('');

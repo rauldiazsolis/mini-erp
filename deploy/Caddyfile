@@ -1,0 +1,5 @@
+# /etc/caddy/Caddyfile (lo instala provision.sh con el host real). HTTPS automático.
+__SITE_ADDRESS__ {
+	encode gzip
+	reverse_proxy localhost:4100
+}

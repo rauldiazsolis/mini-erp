@@ -17,6 +17,7 @@ import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
+import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
 
 import type { Container } from 'hardwired';
 import {
@@ -26,6 +27,7 @@ import {
   authServiceDef,
   apiKeyServiceDef,
   demoSessionServiceDef,
+  clockDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -36,6 +38,7 @@ export type AppDependencies = {
   rootContainer?: Container;
   demoConfig?: DemoConfig | undefined;
   now?: (() => Date) | undefined;
+  rateLimits?: RateLimitConfig | undefined;
 };
 
 export function createApp(deps?: AppDependencies): {
@@ -48,6 +51,8 @@ export function createApp(deps?: AppDependencies): {
   rootContainer: Container;
 } {
   const app = express();
+  // Detrás de Caddy en la misma máquina (#3): req.ip es la del cliente y req.protocol, https
+  app.set('trust proxy', 'loopback');
 
   const rootContainer = deps?.rootContainer ?? createRootContainer({
     systemDb: deps?.systemDb,
@@ -61,6 +66,12 @@ export function createApp(deps?: AppDependencies): {
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
   const demoSessions = rootContainer.use(demoSessionServiceDef);
+
+  // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
+  const now = rootContainer.use(clockDef);
+  const limits = deps?.rateLimits ?? readRateLimitConfig(process.env);
+  const demoLimit = createRateLimit({ limit: limits.demoPerHour, windowMs: 60 * 60 * 1000, now });
+  const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
   const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (tenantId) => {
@@ -79,7 +90,7 @@ export function createApp(deps?: AppDependencies): {
   const requireTenantContext = createTenantContextMiddleware(authService, tenantManager, rootContainer);
 
   // Rutas del Admin
-  app.use('/api/auth', createAuthRoutes(authService, requireAdmin));
+  app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit));
   app.use('/api/tenants', createTenantRoutes(authService, tenantManager, apiKeyService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
@@ -94,7 +105,7 @@ export function createApp(deps?: AppDependencies): {
   );
 
   // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

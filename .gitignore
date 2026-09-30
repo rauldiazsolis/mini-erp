@@ -4,5 +4,6 @@ vendor
 test-results
 playwright-report
 data
+backups
 *.sqlite
 *.sqlite-journal

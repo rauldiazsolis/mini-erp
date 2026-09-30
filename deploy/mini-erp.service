@@ -1,0 +1,21 @@
+[Unit]
+Description=mini-erp (Connector API, admin y alta)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minierp
+Group=minierp
+WorkingDirectory=/opt/mini-erp/current
+EnvironmentFile=/etc/mini-erp/env
+ExecStart=/usr/bin/node src/server/server.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mini-erp /var/lib/mini-erp-backups
+
+[Install]
+WantedBy=multi-user.target

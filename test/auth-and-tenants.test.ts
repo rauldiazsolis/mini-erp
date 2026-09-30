@@ -9,6 +9,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
+  let authService: ReturnType<typeof createApp>['authService'];
 
   beforeEach(() => {
     systemDb = new DatabaseSync(':memory:');
@@ -17,27 +18,18 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
 
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
+    authService = bundle.authService;
   });
 
-  it('asigna rol "root" al primer usuario registrado y "user" a los subsiguientes', async () => {
-    // 1. Primer usuario
+  it('registra siempre con rol "user", aunque sea el primer usuario (#3)', async () => {
     const res1 = await request(app)
       .post('/api/auth/register')
-      .send({ email: 'admin@sistema.com', password: 'password123', name: 'Super Admin' });
+      .send({ email: 'primero@sistema.com', password: 'password123', name: 'Primero' });
 
     expect(res1.status).toBe(201);
     const body1 = res1.body as unknown as { user: { globalRole: string }; token: string };
-    expect(body1.user.globalRole).toBe('root');
+    expect(body1.user.globalRole).toBe('user');
     expect(typeof body1.token).toBe('string');
-
-    // 2. Segundo usuario
-    const res2 = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'empleado@tienda.com', password: 'password123', name: 'Empleado 1' });
-
-    expect(res2.status).toBe(201);
-    const body2 = res2.body as unknown as { user: { globalRole: string } };
-    expect(body2.user.globalRole).toBe('user');
   });
 
   it('permite login y consulta de perfil con /api/auth/me', async () => {
@@ -116,10 +108,11 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   });
 
   it('el usuario root puede ver y acceder a todos los tenants (impersonación)', async () => {
-    // 1. Registrar Root
+    // 1. Root por ensureRoot (#3: el registro ya no da root) y login
+    authService.ensureRoot({ email: 'root@sistema.com', password: 'password-root-123', name: 'Root' });
     const rootRes = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'root@sistema.com', password: 'password123', name: 'Root' });
+      .post('/api/auth/login')
+      .send({ email: 'root@sistema.com', password: 'password-root-123' });
     const rootBody = rootRes.body as unknown as { token: string };
     const rootToken = rootBody.token;
 

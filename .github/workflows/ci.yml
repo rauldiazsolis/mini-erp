@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # El deploy (#3) corre el CI entero antes de publicar
+  workflow_call:
 
 jobs:
   build:

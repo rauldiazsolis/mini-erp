@@ -7,7 +7,7 @@ export type DemoConfig = {
   publicUrl?: string;
 };
 
-function positiveInt(raw: string | undefined, fallback: number): number {
+export function positiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
