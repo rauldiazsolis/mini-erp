@@ -1,6 +1,7 @@
 import { defineConfig } from 'eslint/config';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig([
@@ -25,7 +26,22 @@ export default defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: {
+      'react-hooks': reactHooks,
+    },
     rules: {
+      ...reactHooks.configs.recommended.rules,
+      // AGENTS.md: el estado del admin vive en signals; sin hooks de React ni de Preact.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'preact/hooks', message: 'Sin hooks: usar signals (AGENTS.md).' },
+            { name: 'preact/compat', message: 'Sin compat de React: Preact directo (AGENTS.md).' },
+            { name: 'react', message: 'Es Preact: importar de preact (AGENTS.md).' },
+          ],
+        },
+      ],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unsafe-assignment': 'error',
       '@typescript-eslint/no-unsafe-member-access': 'error',
