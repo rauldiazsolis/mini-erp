@@ -98,8 +98,14 @@ Windows, pnpm se corre desde PowerShell.
     en SQLite (`data/`) o en `dist/`.
 - **UI (Preact)**: tipar con `JSX.IntrinsicElements['button']`, `JSX.TargetedEvent`, etc.; nada de
   tipos laxos.
-- Endurecer esto (TypeScript nuevo, `erasableSyntaxOnly`, `exactOptionalPropertyTypes`, todos los
-  eventos del push con Zod) es #1.
+- **TypeScript 6** con `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
+  `noUnusedLocals`, `noUnusedParameters` y `erasableSyntaxOnly` (el compilador rechaza la sintaxis
+  que Node no puede stripear: parameter properties, `enum`, `namespace`).
+- **Opcionales con `exactOptionalPropertyTypes`**: las entradas de servicios (lo que llega de Zod o
+  de la URL, props de componentes) se tipan `x?: T | undefined`, porque Zod 3 infiere así y el
+  servicio ya trata `undefined` como ausente; en los resultados que arma el propio código, la
+  propiedad se omite si no hay valor (`...(x === undefined ? {} : { x })`). Nunca `as` ni `!` para
+  callar el error.
 
 ## Arquitectura
 
@@ -116,16 +122,19 @@ Windows, pnpm se corre desde PowerShell.
   tenant es `unbound` (`tenantDbDef`): resolverla desde el contenedor raíz falla a propósito, para
   que no haya fugas entre tenants. Detalle en `src/server/di/container.ts` y la Fase 5 de `PLAN.md`.
 - **Connector API** bajo `/connector`:
-  - Push validado con Zod al aplicarse: un evento inválido queda como `issue` del lote, con su
-    `eventId`, sin tumbar el resto. Hoy se valida solo `sale` (con `passthrough`); los otros tipos,
-    en #1.
+  - Push validado con Zod al aplicarse, en `src/server/connector/push-events.ts`: los siete tipos
+    de evento validan lo que el mini-erp lee y dejan pasar el resto (`passthrough`); los enums
+    abiertos del contrato (medio de pago, motivo de stock) son `string`. Un evento inválido, de tipo
+    desconocido o que ni siquiera es un objeto queda como `issue` del lote (con su `eventId` si lo
+    tiene), sin tumbar el resto.
   - **El backend nunca rechaza de forma síncrona el contenido de un lote**: responde `200` y reporta
     las inconsistencias como `issues` en el pull.
   - `X-POS-Contract-Version`: `409 IncompatibleContract` si el major difiere (salvo en `/info`).
 - **Admin** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Estado solo con signals (`signal`, `computed`, stores por dominio en `src/client/state/`). **Sin
-    hooks de React** (`useState`, `useEffect`, etc.).
+    hooks de React** (`useState`, `useEffect`, etc.): lo hace cumplir el lint
+    (`no-restricted-imports` de `preact/hooks`, `preact/compat` y `react`).
   - Temas claro, oscuro y del sistema: `src/client/state/theme-state.ts`, variante class-based
     `@custom-variant dark (&:where(.dark, .dark *))` en `index.css`, script anti-FOUC en
     `index.html` y `ThemeToggle.tsx` en `Header.tsx`, `AuthView.tsx`, `MerchantOnboardingView.tsx`
@@ -142,9 +151,10 @@ Windows, pnpm se corre desde PowerShell.
 
 ## Estado
 
-Fases 1 a 7 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
-temas): detalle en `PLAN.md`. Sigue:
+Fases 1 a 8 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
+temas, estrictez de TypeScript y Zod): detalle en `PLAN.md`. Sigue:
 
-1. #1: estrictez de TypeScript y Zod.
-2. #2: contrato 4.4.0 con `/demo-sessions` y demos aisladas.
-3. #3: publicarlo como backend de la demo pública del POS.
+1. #2: contrato 4.4.0 con `/demo-sessions` y demos aisladas.
+2. #3: publicarlo como backend de la demo pública del POS.
+
+En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).
