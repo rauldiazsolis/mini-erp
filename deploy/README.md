@@ -173,7 +173,9 @@ Es una sola línea que empieza con `ssh-ed25519`.
    > No uses `ssh-keyscan` desde Windows: su OpenSSH es viejo y falla con
    > `choose_kex: unsupported KEX method` contra Ubuntu 24.04.
 
-3. En **Environment variables**, **Add environment variable**: nombre `PUBLIC_HOST`, valor `<HOST>`.
+3. Más abajo, en **Environment variables** (no en los secretos: el workflow la lee como variable y,
+   si está como secreto, le llega vacía), **Add environment variable**: nombre `PUBLIC_HOST`, valor
+   `<HOST>`.
 
 Después de cargar la llave privada en GitHub, guardá el archivo `mini-erp-deploy` en un lugar seguro
 (o borralo: si hace falta, se genera otra y se repiten los pasos 3 a 5).
@@ -189,6 +191,10 @@ workflow queda en rojo.
 
 Cuando termine en verde, abrí `https://<HOST>/` en el navegador: tiene que aparecer el landing del
 mini-erp con el candado de HTTPS.
+
+> Si el navegador dice que no encuentra el sitio, puede ser tu proveedor de internet: algunos no
+> resuelven `sslip.io` (#11). En Chrome: Configuración → Privacidad y seguridad → Seguridad → "Usar
+> DNS seguro" con Google o Cloudflare.
 
 ## Paso 7: crear el root (una sola vez)
 
