@@ -1,36 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import { parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts';
 
-export type LotIssue = { message: string; eventId?: string };
-
-export type BatchEvent = {
-  type: string;
-  id: string;
-  createdAt?: string;
-  origin?: { branch?: string; pointOfSale?: string };
-} & Record<string, unknown>;
-
-/**
- * Venta del Connector API 4.2.0: se valida lo que el mini-erp usa (total, cliente, anulación, pagos
- * y el número de ticket de #120); el resto viaja tal cual al payload (`passthrough`), así el ERP
- * guarda la venta completa aunque el contrato sume campos. El resto de los eventos todavía se
- * castea sin validar (#122).
- */
-const saleEventSchema = z
-  .object({
-    id: z.string().min(1),
-    total: z.number(),
-    customerId: z.string().optional(),
-    voidsSaleId: z.string().optional(),
-    payments: z.array(
-      z.object({ method: z.string(), amount: z.number(), reference: z.string().optional() }),
-    ),
-    ticket: z
-      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) })
-      .optional(),
-  })
-  .passthrough();
+export type { LotIssue };
 
 export type PushLotResult = {
   status: 'ok' | 'issues';
@@ -47,8 +19,8 @@ export class ConnectorService {
   processPushLot(params: {
     lotId: string;
     deviceId: string;
-    events: BatchEvent[];
-    defaultBranchId?: string;
+    events: unknown[];
+    defaultBranchId?: string | undefined;
   }): PushLotResult {
     const now = new Date().toISOString();
 
@@ -60,7 +32,7 @@ export class ConnectorService {
     if (existing !== undefined && (existing.status === 'ok' || existing.status === 'issues')) {
       return {
         status: existing.status,
-        issues: existing.issues ? (JSON.parse(existing.issues) as LotIssue[]) : undefined,
+        ...(existing.issues ? { issues: JSON.parse(existing.issues) as LotIssue[] } : {}),
       };
     }
 
@@ -75,8 +47,13 @@ export class ConnectorService {
     const resolvedBranchId = this.resolveBranchId(params.defaultBranchId);
 
     // Procesar cada evento atómicamente
-    for (const event of params.events) {
-      const issue = this.applyEvent(event, params.deviceId, resolvedBranchId, now);
+    for (const raw of params.events) {
+      const parsed = parseBatchEvent(raw);
+      if (!parsed.ok) {
+        issues.push(parsed.issue);
+        continue;
+      }
+      const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now);
       if (issue !== undefined) {
         issues.push(issue);
       }
@@ -93,7 +70,7 @@ export class ConnectorService {
 
     return {
       status: finalStatus,
-      issues: issues.length > 0 ? issues : undefined,
+      ...(issues.length > 0 ? { issues } : {}),
     };
   }
 
@@ -111,7 +88,7 @@ export class ConnectorService {
   }
 
   private applyEvent(
-    event: BatchEvent,
+    event: PushEvent,
     deviceId: string,
     defaultBranchId: string,
     now: string,
@@ -121,16 +98,7 @@ export class ConnectorService {
 
     switch (event.type) {
       case 'sale': {
-        const parsed = saleEventSchema.safeParse(event['sale']);
-        if (!parsed.success) {
-          return {
-            message: `Venta inválida: ${parsed.error.issues
-              .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-              .join('; ')}`,
-            eventId: event.id,
-          };
-        }
-        const sale = parsed.data;
+        const sale = event.sale;
 
         this.tenantDb
           .prepare(
@@ -168,13 +136,7 @@ export class ConnectorService {
       }
 
       case 'stock-movement': {
-        const movement = event['movement'] as {
-          id: string;
-          productId: string;
-          delta: number;
-          reason: string;
-          saleId?: string;
-        };
+        const movement = event.movement;
 
         const movementBranchId = this.resolveBranchId(originBranch ?? defaultBranchId);
 
@@ -210,17 +172,7 @@ export class ConnectorService {
       }
 
       case 'customer': {
-        const cust = event['customer'] as {
-          id: string;
-          name: string;
-          document?: string;
-          phone?: string;
-          creditLimit?: number;
-          margin?: number;
-          balance?: number;
-          unrestricted?: boolean;
-          blocked?: { reason: string };
-        };
+        const cust = event.customer;
 
         this.tenantDb
           .prepare(
@@ -254,8 +206,7 @@ export class ConnectorService {
       }
 
       case 'account-hold-confirm': {
-        const holdId = String(event['holdId']);
-        const saleId = String(event['saleId']);
+        const { holdId, saleId } = event;
 
         const hold = this.tenantDb
           .prepare('SELECT customer_id, amount, status FROM account_holds WHERE id = ?')
@@ -279,7 +230,7 @@ export class ConnectorService {
       }
 
       case 'account-hold-release': {
-        const holdId = String(event['holdId']);
+        const { holdId } = event;
         this.tenantDb
           .prepare("UPDATE account_holds SET status = 'released', released_at = ? WHERE id = ? AND status = 'pending'")
           .run(now, holdId);
@@ -287,7 +238,7 @@ export class ConnectorService {
       }
 
       case 'cash-movement': {
-        const movement = event['movement'] as { id: string };
+        const movement = event.movement;
         this.tenantDb
           .prepare(
             `INSERT INTO cash_movements (id, payload, device_id, branch, point_of_sale, created_at)
@@ -299,7 +250,7 @@ export class ConnectorService {
       }
 
       case 'customer-payment': {
-        const payment = event['payment'] as { id: string; customerId: string; total: number };
+        const payment = event.payment;
         const inserted = this.tenantDb
           .prepare(
             `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, created_at)
@@ -320,12 +271,6 @@ export class ConnectorService {
         }
         return undefined;
       }
-
-      default:
-        return {
-          message: `Tipo de evento no reconocido: ${event.type}`,
-          eventId: event.id,
-        };
     }
   }
 
@@ -362,7 +307,7 @@ export class ConnectorService {
   }
 
   pullCatalog(params: {
-    cursors: { products?: string; customers?: string };
+    cursors: { products?: string | undefined; customers?: string | undefined };
     pendingLotIds: string[];
     branchId?: string;
   }) {

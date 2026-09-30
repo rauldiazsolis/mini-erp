@@ -5,11 +5,11 @@ export type RoundingStrategy = 'none' | '10' | '50' | '100';
 
 export type BulkPriceInput = {
   action: 'percentage' | 'fixed' | 'items';
-  value?: number;
-  category?: string;
-  rounding?: RoundingStrategy;
-  items?: Array<{ id: string; price: number }>;
-  dryRun?: boolean;
+  value?: number | undefined;
+  category?: string | undefined;
+  rounding?: RoundingStrategy | undefined;
+  items?: Array<{ id: string; price: number }> | undefined;
+  dryRun?: boolean | undefined;
 };
 
 export type BulkPricePreviewItem = {
@@ -31,9 +31,9 @@ export type BulkPriceResult = {
 export type BulkInterestInput = {
   interestRatePercent: number;
   description: string;
-  minimumBalance?: number;
-  customerIds?: string[];
-  dryRun?: boolean;
+  minimumBalance?: number | undefined;
+  customerIds?: string[] | undefined;
+  dryRun?: boolean | undefined;
 };
 
 export type BulkInterestPreviewItem = {

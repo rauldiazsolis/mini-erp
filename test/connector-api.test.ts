@@ -41,6 +41,31 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
     rawApiKey = keyBody.rawKey;
   });
 
+  async function pushAndPull(lotId: string, events: unknown[]) {
+    const pushRes = await request(app)
+      .post('/connector/sync/push')
+      .set('Authorization', `Bearer ${rawApiKey}`)
+      .set('X-POS-Contract-Version', '4.2.0')
+      .set('Idempotency-Key', lotId)
+      .send({ deviceId: 'device-pos-01', events });
+    expect(pushRes.status).toBe(200);
+    const pullRes = await request(app)
+      .post('/connector/sync/pull')
+      .set('Authorization', `Bearer ${rawApiKey}`)
+      .send({ cursors: {}, pendingLotIds: [lotId] });
+    return (pullRes.body as unknown as {
+      lots?: Record<string, { status: string; issues?: { message: string; eventId?: string }[] }>;
+    }).lots?.[lotId];
+  }
+
+  function storedSale(id: string): Record<string, unknown> | undefined {
+    const row = tenantManager
+      .getTenantDb(tenantId)
+      .prepare('SELECT payload FROM sales WHERE id = ?')
+      .get(id) as { payload: string } | undefined;
+    return row === undefined ? undefined : (JSON.parse(row.payload) as Record<string, unknown>);
+  }
+
   describe('GET /connector/info', () => {
     it('requiere autenticación Bearer con API key', async () => {
       const res = await request(app).get('/connector/info');
@@ -218,31 +243,6 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       };
     }
 
-    async function pushAndPull(lotId: string, events: unknown[]) {
-      const pushRes = await request(app)
-        .post('/connector/sync/push')
-        .set('Authorization', `Bearer ${rawApiKey}`)
-        .set('X-POS-Contract-Version', '4.2.0')
-        .set('Idempotency-Key', lotId)
-        .send({ deviceId: 'device-pos-01', events });
-      expect(pushRes.status).toBe(200);
-      const pullRes = await request(app)
-        .post('/connector/sync/pull')
-        .set('Authorization', `Bearer ${rawApiKey}`)
-        .send({ cursors: {}, pendingLotIds: [lotId] });
-      return (pullRes.body as unknown as {
-        lots?: Record<string, { status: string; issues?: { message: string; eventId?: string }[] }>;
-      }).lots?.[lotId];
-    }
-
-    function storedSale(id: string): Record<string, unknown> | undefined {
-      const row = tenantManager
-        .getTenantDb(tenantId)
-        .prepare('SELECT payload FROM sales WHERE id = ?')
-        .get(id) as { payload: string } | undefined;
-      return row === undefined ? undefined : (JSON.parse(row.payload) as Record<string, unknown>);
-    }
-
     it('guarda la venta completa con su ticket', async () => {
       const lot = await pushAndPull('lot-ticket-1', [
         saleEvent('sale-t1', { ticket: { date: '2026-09-24', number: 12 } }),
@@ -272,6 +272,58 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['sale-bad']);
       expect(storedSale('sale-bad')).toBeUndefined();
       expect(storedSale('sale-good')).toBeDefined();
+    });
+  });
+
+  describe('validación de los eventos del push (#1)', () => {
+    const now = new Date().toISOString();
+    const origin = { branch: 'CENTRAL', pointOfSale: 'POS-01' };
+    const validSale = {
+      id: 'e-sale-ok',
+      type: 'sale',
+      createdAt: now,
+      origin,
+      sale: { id: 'sale-ok', total: 100, status: 'closed', lines: [], payments: [{ method: 'cash', amount: 100 }] },
+    };
+
+    it('un elemento que no es un evento no rechaza el lote: es un aviso y el resto se aplica', async () => {
+      const lot = await pushAndPull('lot-no-evento', [42, validSale]);
+
+      expect(lot?.status).toBe('issues');
+      expect(lot?.issues).toHaveLength(1);
+      expect(lot?.issues?.[0]?.eventId).toBeUndefined();
+      expect(storedSale('sale-ok')).toBeDefined();
+    });
+
+    it('una liberación de bloqueo sin holdId es un aviso del lote', async () => {
+      const lot = await pushAndPull('lot-release-sin-hold', [
+        { id: 'e-release', type: 'account-hold-release', createdAt: now, origin },
+      ]);
+
+      expect(lot?.status).toBe('issues');
+      expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['e-release']);
+    });
+
+    it('un movimiento de stock sin delta es un aviso y no toca el stock', async () => {
+      const stockOf = () =>
+        (tenantManager
+          .getTenantDb(tenantId)
+          .prepare("SELECT SUM(quantity) AS total FROM stock WHERE product_id = 'prod-coca-500'")
+          .get() as { total: number | null }).total;
+      const before = stockOf();
+
+      const lot = await pushAndPull('lot-mov-sin-delta', [
+        {
+          id: 'e-mov',
+          type: 'stock-movement',
+          createdAt: now,
+          origin,
+          movement: { id: 'mov-sin-delta', productId: 'prod-coca-500', reason: 'sale' },
+        },
+      ]);
+
+      expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['e-mov']);
+      expect(stockOf()).toBe(before);
     });
   });
 

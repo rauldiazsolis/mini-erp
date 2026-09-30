@@ -79,6 +79,13 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 │   • Conexión real del POS (src/) con Mini-ERP (localhost:4100).        │
 │   • Ciclo de vida completo: pull, ventas offline, holds y push.        │
 │   • Auditoría bidireccional de stock, cuentas corrientes y dashboard.  │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+┌──────────────────────────────────▼─────────────────────────────────────┐
+│ FASE 8: Estrictez de TypeScript y Zod [COMPLETADA]                     │
+│   • TypeScript 6 con las mismas opciones estrictas que offline-pos.    │
+│   • Los siete eventos del push validados con Zod.                      │
+│   • Lint de hooks y prohibición de preact/hooks.                       │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -321,4 +328,18 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 - Verificación estricta de TypeScript: `tsc --noEmit` en 0 errores.
 - Build de producción Vite completado con éxito (`dist/client/assets/`).
 
+---
 
+## 10. Detalle de Etapas: FASE 8 (Estrictez de TypeScript y Zod) [COMPLETADA]
+
+Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). Plan en
+`docs/superpowers/plans/2026-09-29-estrictez-typescript-zod.md`.
+
+- TypeScript 6.0.3 con `exactOptionalPropertyTypes`, `noUnusedLocals`, `noUnusedParameters` y
+  `erasableSyntaxOnly` (`types` suma `vite/client` para el import del CSS).
+- Los siete tipos de evento del push validados con Zod en `src/server/connector/push-events.ts`: lo
+  que el mini-erp lee, `passthrough` para el resto. Un elemento inválido, de tipo desconocido o que
+  no es un objeto queda como issue del lote (antes: `400`, o `500` con un movimiento de stock sin
+  `delta`).
+- `eslint-plugin-react-hooks` y `no-restricted-imports` de `preact/hooks`, `preact/compat` y `react`.
+- **217 tests pasando en verde** en 27 suites; `tsc --noEmit` en 0 errores; build de Vite OK.

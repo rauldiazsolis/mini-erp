@@ -145,7 +145,7 @@ describe('Wizard de Onboarding para Nuevos Comercios (Etapa 3.6)', () => {
 
       // Mock de fetch global
       const originalFetch = globalThis.fetch;
-      const fetchCalls: Array<{ url: string; method?: string; body?: unknown }> = [];
+      const fetchCalls: Array<{ url: string; method?: string | undefined; body?: unknown }> = [];
 
       globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         fetchCalls.push({

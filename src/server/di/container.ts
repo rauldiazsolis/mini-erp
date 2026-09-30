@@ -51,8 +51,8 @@ export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(t
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
 
 export type ContainerDependencies = {
-  systemDb?: DatabaseSync;
-  tenantManager?: TenantManager;
+  systemDb?: DatabaseSync | undefined;
+  tenantManager?: TenantManager | undefined;
 };
 
 /**

@@ -81,7 +81,7 @@ export const posLog = {
   pull: (info: {
     branch?: string;
     pos?: string;
-    cursors: { products?: string; customers?: string };
+    cursors: { products?: string | undefined; customers?: string | undefined };
     productsCount: number;
     customersCount: number;
     stockCount: number;
@@ -101,8 +101,8 @@ export const posLog = {
     customerId: string;
     amount: number;
     approved: boolean;
-    reasonCode?: string;
-    holdId?: string;
+    reasonCode?: string | undefined;
+    holdId?: string | undefined;
   }) => {
     const outcome = info.approved
       ? `${c.green}✔ APROBADO${c.reset} ${c.dim}(hold=${info.holdId ?? ''})${c.reset}`

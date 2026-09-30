@@ -11,6 +11,11 @@ export type ImportIssue = {
   message: string;
 };
 
+/** Issue de una fila; sin `identifier` si la fila no lo trae. */
+function importIssue(row: number, identifier: string | null | undefined, message: string): ImportIssue {
+  return identifier == null ? { row, message } : { row, identifier, message };
+}
+
 export type ImportResult = {
   dryRun: boolean;
   totalRows: number;
@@ -199,10 +204,10 @@ export class ImportExportService {
   // --- IMPORTACIÓN ---
 
   importProducts(input: {
-    items?: unknown[];
-    csv?: string;
-    updateExisting?: boolean;
-    dryRun?: boolean;
+    items?: unknown[] | undefined;
+    csv?: string | undefined;
+    updateExisting?: boolean | undefined;
+    dryRun?: boolean | undefined;
   }): ImportResult {
     const rawList = this.normalizeInputRows(input.items, input.csv);
     const updateExisting = input.updateExisting ?? true;
@@ -220,11 +225,13 @@ export class ImportExportService {
 
       const parseResult = importProductRowSchema.safeParse(rawRow);
       if (!parseResult.success) {
-        errors.push({
-          row: rowNum,
-          identifier: typeof rawRow === 'object' && rawRow !== null && 'sku' in rawRow ? String((rawRow as Record<string, unknown>)['sku']) : undefined,
-          message: parseResult.error.errors[0]?.message ?? 'Fila inválida',
-        });
+        errors.push(
+          importIssue(
+            rowNum,
+            typeof rawRow === 'object' && rawRow !== null && 'sku' in rawRow ? String(rawRow.sku) : undefined,
+            parseResult.error.errors[0]?.message ?? 'Fila inválida',
+          ),
+        );
         continue;
       }
 
@@ -319,10 +326,10 @@ export class ImportExportService {
   }
 
   importCustomers(input: {
-    items?: unknown[];
-    csv?: string;
-    updateExisting?: boolean;
-    dryRun?: boolean;
+    items?: unknown[] | undefined;
+    csv?: string | undefined;
+    updateExisting?: boolean | undefined;
+    dryRun?: boolean | undefined;
   }): ImportResult {
     const rawList = this.normalizeInputRows(input.items, input.csv);
     const updateExisting = input.updateExisting ?? true;
@@ -339,11 +346,13 @@ export class ImportExportService {
 
       const parseResult = importCustomerRowSchema.safeParse(rawRow);
       if (!parseResult.success) {
-        errors.push({
-          row: rowNum,
-          identifier: typeof rawRow === 'object' && rawRow !== null && 'document' in rawRow ? String((rawRow as Record<string, unknown>)['document']) : undefined,
-          message: parseResult.error.errors[0]?.message ?? 'Fila de cliente inválida',
-        });
+        errors.push(
+          importIssue(
+            rowNum,
+            typeof rawRow === 'object' && rawRow !== null && 'document' in rawRow ? String(rawRow.document) : undefined,
+            parseResult.error.errors[0]?.message ?? 'Fila de cliente inválida',
+          ),
+        );
         continue;
       }
 
@@ -379,11 +388,7 @@ export class ImportExportService {
           }
           updatedCount++;
         } else {
-          errors.push({
-            row: rowNum,
-            identifier: document ?? undefined,
-            message: `El cliente con documento '${document ?? ''}' ya existe`,
-          });
+          errors.push(importIssue(rowNum, document, `El cliente con documento '${document ?? ''}' ya existe`));
         }
       } else {
         const id = data.id ?? `cust_${randomUUID()}`;

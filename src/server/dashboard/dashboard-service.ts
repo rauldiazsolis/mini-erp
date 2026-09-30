@@ -61,7 +61,7 @@ export class DashboardService {
     this.db = db;
   }
 
-  public getSummary(options?: { period?: DashboardPeriod; branchId?: string }): DashboardSummaryResponse {
+  public getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): DashboardSummaryResponse {
     const period: DashboardPeriod = options?.period ?? 'today';
     const branchId = options?.branchId;
 
@@ -96,7 +96,7 @@ export class DashboardService {
 
     return {
       period,
-      branchId,
+      ...(branchId === undefined ? {} : { branchId }),
       summary: {
         totalSales,
         salesCount,
