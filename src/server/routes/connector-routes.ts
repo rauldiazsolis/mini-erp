@@ -1,7 +1,8 @@
 import { Router, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
-import { ConnectorService, type BatchEvent } from '../connector/connector-service.ts';
+import { ConnectorService } from '../connector/connector-service.ts';
+import { summarizeForLog } from '../connector/push-events.ts';
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 
@@ -31,7 +32,7 @@ function checkContractVersion(req: AuthenticatedPosRequest, res: Response, next:
 
 const pushBatchSchema = z.object({
   deviceId: z.string().min(1, 'deviceId requerido'),
-  events: z.array(z.record(z.unknown())),
+  events: z.array(z.unknown()),
 });
 
 const pullBatchSchema = z.object({
@@ -94,25 +95,12 @@ export function createConnectorRoutes(
     const result = connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
-      events: parseResult.data.events as BatchEvent[],
+      events: parseResult.data.events,
       defaultBranchId: branch,
     });
 
     // Logging detallado del lote recibido
-    const eventsForLog = (parseResult.data.events as BatchEvent[]).map((e) => {
-      let detail: string | undefined;
-      if (e.type === 'sale') {
-        const sale = e['sale'] as { total?: number } | undefined;
-        detail = sale?.total !== undefined ? `$${String(sale.total)}` : undefined;
-      } else if (e.type === 'stock-movement') {
-        const mov = e['movement'] as { productId?: string; delta?: number } | undefined;
-        detail = mov?.productId !== undefined && mov.delta !== undefined ? `${mov.productId} (${String(mov.delta)})` : undefined;
-      } else if (e.type === 'customer') {
-        const cust = e['customer'] as { name?: string } | undefined;
-        detail = cust?.name;
-      }
-      return { type: e.type, id: e.id, detail };
-    });
+    const eventsForLog = parseResult.data.events.map(summarizeForLog);
 
     posLog.push({
       lotId: idempotencyKey.trim(),
