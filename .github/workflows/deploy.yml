@@ -1,0 +1,61 @@
+name: Deploy
+
+# #3: por tag v* o a mano. Corre el CI entero y después despliega en Lightsail por SSH
+# (guía en deploy/README.md; secretos y PUBLIC_HOST en el environment production).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Armar la versión
+        run: tar -czf release.tar.gz dist src scripts deploy package.json pnpm-lock.yaml contract.json
+
+      - name: Llave SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Subir y activar
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          scp -i ~/.ssh/id_deploy release.tar.gz "$SSH_USER@$SSH_HOST:/opt/mini-erp/releases/$GITHUB_SHA.tar.gz"
+          ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" \
+            "set -e; R=/opt/mini-erp/releases/$GITHUB_SHA; rm -rf \$R; mkdir -p \$R; tar -xzf \$R.tar.gz -C \$R; bash \$R/deploy/deploy.sh $GITHUB_SHA"
+
+      - name: Chequeo público
+        env:
+          PUBLIC_HOST: ${{ vars.PUBLIC_HOST }}
+        run: curl -fsS --retry 5 --retry-delay 3 "https://$PUBLIC_HOST/health"
