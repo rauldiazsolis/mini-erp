@@ -88,7 +88,12 @@ export async function fetchBranches(): Promise<void> {
   }
 }
 
-export async function fetchDashboardData(): Promise<void> {
+export async function fetchDashboardData(
+  filters: { period: DashboardPeriod; branch: string } = {
+    period: selectedPeriodSignal.value,
+    branch: selectedBranchSignal.value,
+  },
+): Promise<void> {
   const tenantId = effectiveTenantIdSignal.value;
   const token = tokenSignal.value;
   if (!tenantId || !token) {
@@ -100,8 +105,7 @@ export async function fetchDashboardData(): Promise<void> {
     dashboardLoadingSignal.value = true;
     dashboardErrorSignal.value = null;
 
-    const period = selectedPeriodSignal.value;
-    const branch = selectedBranchSignal.value;
+    const { period, branch } = filters;
 
     let query = `period=${period}`;
     if (branch) {
@@ -132,12 +136,11 @@ if (typeof window !== 'undefined') {
   });
 
   effect(() => {
-    // Escuchar cambios de filtros (período o sucursal)
-    const _p = selectedPeriodSignal.value;
-    const _b = selectedBranchSignal.value;
+    // Recargar cuando cambian los filtros (período o sucursal): leerlos acá suscribe el effect.
+    const filters = { period: selectedPeriodSignal.value, branch: selectedBranchSignal.value };
     const tenantId = effectiveTenantIdSignal.value;
     if (tenantId && tokenSignal.value) {
-      void fetchDashboardData();
+      void fetchDashboardData(filters);
     }
   });
 }
