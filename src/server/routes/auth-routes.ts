@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
@@ -17,10 +17,11 @@ const loginSchema = z.object({
 export function createAuthRoutes(
   authService: AuthService,
   requireAdmin: (req: AuthenticatedAdminRequest, res: Response, next: () => void) => void,
+  limit: RequestHandler,
 ): Router {
   const router = Router();
 
-  router.post('/register', (req, res) => {
+  router.post('/register', limit, (req, res) => {
     const parseResult = registerSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
@@ -36,7 +37,7 @@ export function createAuthRoutes(
     }
   });
 
-  router.post('/login', (req, res) => {
+  router.post('/login', limit, (req, res) => {
     const parseResult = loginSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
