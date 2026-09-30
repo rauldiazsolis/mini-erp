@@ -80,6 +80,10 @@ pnpm lint && pnpm typecheck && pnpm test
 Y `pnpm build` si se toca el cliente o la config de Vite. Todo en verde antes de cada commit. En
 Windows, pnpm se corre desde PowerShell.
 
+Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e (Playwright, en
+`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con `DATA_DIR=test-results/e2e-data`
+(base descartable; nunca la de desarrollo) y corre en el CI.
+
 ## Convenciones de TypeScript y Node
 
 - **TypeScript estricto**: `any` prohibido; `unknown` solo en fronteras externas (payloads HTTP) y
@@ -150,6 +154,14 @@ Windows, pnpm se corre desde PowerShell.
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
     en `/alta` (`/onboarding` se reescribe). La versión del POS del landing sale de `contract.json`.
+  - **POS híbrido** (#9): en desarrollo, el landing abre una **copia local del POS publicado** que el
+    mini-erp sirve en `/pos/<versión>/` (`src/server/pos-mirror/`, montada en `client-middleware.ts`
+    solo fuera de producción; `pnpm dev` la baja sola a `vendor/pos/` si falta, `pnpm pos:mirror` la
+    renueva). Mismo JS que el publicado, mismo origen que el mini-erp: sin CORS ni permiso de red
+    local, así el recorrido anda en cualquier navegador y en el e2e. En producción el landing abre
+    `https://offline-pos.pages.dev/<versión>/`: la demo pública sigue probando la integración real
+    (CORS, `#connect` entre dominios). La copia se baja siempre de una carpeta publicada, nunca de
+    `main` de offline-pos, y no se commitea.
   - El alta vuelve al POS con `state/connect-return.ts`: la conexión va siempre en el fragmento
     (`#connect=`), nunca en la query.
   - Estado solo con signals (`signal`, `computed`, stores por dominio en `src/client/state/`). **Sin

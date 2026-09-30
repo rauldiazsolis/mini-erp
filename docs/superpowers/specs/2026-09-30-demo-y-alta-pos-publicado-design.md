@@ -233,3 +233,28 @@ Con capturas del recorrido para el informe.
   de demos y el ruteo del cliente.
 - PLAN.md: la fase nueva.
 - Después del merge: tildar el ítem en rauldiazsolis/offline-pos#166.
+
+## Addendum: POS híbrido y e2e (aprobado el 2026-09-30)
+
+La prueba de punta a punta con el POS publicado contra el mini-erp en `localhost` solo anda en Chrome
+con el permiso de red local (página pública → red local); el navegador integrado de la app de Claude la
+bloquea sin preguntar (`net::ERR_BLOCKED_BY_CLIENT`). Para que el recorrido sea repetible y
+automatizable:
+
+- **En desarrollo**, el mini-erp sirve una copia local del POS publicado en `/pos/<versión>/`
+  (mismo origen: sin CORS ni permiso de red local) y el landing la abre. `pnpm pos:mirror [versión]`
+  la baja de la carpeta publicada (nunca de `main`) a `vendor/pos/<versión>/`, ignorada por git, y
+  `pnpm dev` la baja sola si falta (sin red, avisa y sigue). La copia se arma en una carpeta temporal
+  y se mueve al final, así nunca queda a medias.
+- **En producción**, el landing abre `https://offline-pos.pages.dev/<versión>/`: la demo pública
+  sigue probando la integración real. Con el mini-erp en `https:` público no hay mezcla con la red
+  local.
+- **Descartado**: servir el POS desde el mini-erp también en producción. Dejaría de probar que el POS
+  publicado anda con un backend que no conoce, ataría los datos locales del POS al dominio del
+  mini-erp y obligaría a redeployar el mini-erp con cada versión del POS.
+- **e2e con Playwright** (solo Chromium, como offline-pos): `DATA_DIR` nueva para una base
+  descartable; `pnpm test:e2e` levanta el mini-erp en el puerto 4110 y recorre landing → demo →
+  venta → `/ALTA` → alta → vuelta, verificando en la base que la venta de práctica queda en la demo y
+  la nueva llega al comercio nuevo. Corre en el CI.
+- La coordinación de versiones entre el POS instalado y el backend quedó fuera:
+  rauldiazsolis/offline-pos#172.

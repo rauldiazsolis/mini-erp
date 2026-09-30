@@ -1587,3 +1587,22 @@ Sin código: el recorrido real, con capturas para el informe.
 
 Después de la revisión, y solo con su aprobación: push, PR con "Closes #9" (merge commit), verificar
 que #9 se cierre y tildar el ítem en rauldiazsolis/offline-pos#166.
+
+---
+
+## Addendum: POS híbrido y e2e (tareas 9 a 13, aprobadas el 2026-09-30)
+
+Ver el addendum de la spec. Se ejecutaron inline con checkpoints, igual que las anteriores.
+
+- **Tarea 9**: `pnpm pos:mirror`. `src/server/pos-mirror/pos-assets.ts` (referencias del `index.html`
+  y de los bundles, sin salirse de la carpeta), `src/server/pos-mirror/mirror.ts` (`mirrorPos`,
+  `isPosMirrored`, `contractPosVersion`; valida `version.json` y arma la copia en una carpeta temporal),
+  `scripts/pos-mirror.ts`. `vendor/` en `.gitignore` y en el lint. Tests: `test/pos-mirror.test.ts`.
+- **Tarea 10**: `src/server/pos-mirror/serve.ts` (`mountPosMirror`, `ensurePosMirror`), montado en
+  `client-middleware.ts` solo fuera de producción; `posBaseUrl` en `src/client/state/demo-link.ts` y el
+  landing con `import.meta.env.DEV`; `DATA_DIR` (`src/server/db/data-dir.ts`) en el contenedor. Tests:
+  `test/pos-local-copy.test.ts`.
+- **Tarea 11**: `@playwright/test` 1.63.0, `playwright.config.ts`, `e2e/serve.ts` (base vacía,
+  nunca la de desarrollo), `e2e/demo-onboarding.spec.ts`, `pnpm test:e2e` y el paso en el CI.
+- **Tarea 12**: README, AGENTS.md, PLAN.md y estos addenda.
+- **Tarea 13**: actualizar el PR #10.

@@ -15,7 +15,8 @@ pnpm dev
 
 El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el landing en `/`, el admin
 en `/admin`, la página de alta de comercios en `/alta`, la API del admin en `/api` y el Connector API
-en `/connector`. Los datos van a `data/` (SQLite, un archivo por comercio).
+en `/connector`. Los datos van a `data/` (SQLite, un archivo por comercio), o a la carpeta de
+`DATA_DIR`.
 
 Al arrancar crea datos de desarrollo, si no existen: un admin (`root`), el comercio "Tienda Demo
 Central" con datos de ejemplo y una API key de terminal. Las credenciales se imprimen en la consola.
@@ -23,14 +24,21 @@ Con esa key, un POS se conecta a `http://localhost:4100/connector`.
 
 ## Probar la demo con el POS publicado
 
-1. `pnpm dev` y abrir `http://localhost:4100/` en Chrome.
-2. **Probar la demo**: abre el POS publicado (versión de `contract.json`, hoy 0.1.0) en demo contra
-   este mini-erp. La primera vez Chrome pide permiso para acceder a la red local: hay que aceptarlo
-   (es una página pública llamando a `localhost`).
+1. `pnpm dev` y abrir `http://localhost:4100/` (anda en cualquier navegador).
+2. **Probar la demo**: abre el POS en demo contra este mini-erp.
+   - **En desarrollo**, una copia local del POS publicado (versión de `contract.json`, hoy 0.1.0) que
+     el mini-erp sirve en `/pos/<versión>/`: el mismo JS de `https://offline-pos.pages.dev/<versión>/`,
+     en el mismo origen que el mini-erp, sin CORS ni permiso de red local. `pnpm dev` la baja sola si
+     falta; `pnpm pos:mirror [versión]` la vuelve a bajar a `vendor/pos/` (ignorada por git).
+   - **En producción** (`pnpm build` + `NODE_ENV=production`), el POS publicado en offline-pos.pages.dev.
 3. El POS arranca con la marca DEMO y el catálogo del template (por defecto `kiosco`). Cada demo es un
    comercio aislado que vence solo.
 4. **Crear mi comercio (/ALTA)**: lleva a `/alta` del mini-erp. Al terminar el alta, "Volver al POS"
    deja la caja conectada al comercio nuevo, sin los datos de la demo.
+
+El POS publicado de verdad contra el mini-erp en `localhost` también anda, en Chrome: pide permiso de
+red local la primera vez (es una página pública llamando a `localhost`). El navegador integrado de la
+app de Claude lo bloquea sin preguntar.
 
 Variables de entorno de las demos:
 
@@ -54,6 +62,15 @@ Variables de entorno de las demos:
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+El e2e (Playwright, solo Chromium) recorre la demo y el alta de punta a punta: levanta el mini-erp en
+el puerto 4110 con una base descartable (`DATA_DIR=test-results/e2e-data`) y la copia local del POS.
+La primera vez hay que instalar Chromium:
+
+```bash
+pnpm exec playwright install chromium
+pnpm test:e2e
 ```
 
 Las reglas del repo están en [`AGENTS.md`](./AGENTS.md); la historia de las fases, en

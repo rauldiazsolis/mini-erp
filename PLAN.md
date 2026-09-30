@@ -93,6 +93,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 │   • Landing en / con "Probar la demo"; admin en /admin, alta en /alta. │
 │   • POST /demo-sessions: demos aisladas con vencimiento y barrido.     │
 │   • El alta vuelve al POS con #connect; CORS y red privada.            │
+│   • POS híbrido: copia local del publicado en dev; e2e con Playwright. │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -368,6 +369,11 @@ Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166)
   se fue el formato viejo con credenciales en la query string.
 - `Access-Control-Allow-Private-Network: true` en el preflight (el POS publicado llamando a
   `localhost`).
+- **POS híbrido**: en desarrollo el mini-erp sirve una copia local del POS publicado en
+  `/pos/<versión>/` (`pnpm pos:mirror`, o sola al arrancar `pnpm dev`) y el landing la abre; en
+  producción abre el POS publicado. Mismo origen en desarrollo: sin CORS ni permiso de red local.
+- e2e con Playwright (`e2e/demo-onboarding.spec.ts`, `pnpm test:e2e`, también en el CI) contra esa
+  copia y una base descartable (`DATA_DIR`).
 - Probado de punta a punta con el POS publicado 0.1.0 en Chrome contra el mini-erp en `localhost`:
   landing → demo → venta → `/ALTA` → alta → el POS vuelve conectado al comercio nuevo, sin la venta de
   la demo. El navegador integrado de la app de Claude no sirve para esto: bloquea sin preguntar que
