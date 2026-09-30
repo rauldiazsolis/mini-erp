@@ -22,8 +22,8 @@ export function ensureDevData(params: {
   let ownerUserId: string;
 
   if (userRow === undefined) {
-    // 1. Crear usuario Root
-    const { user } = params.authService.register({
+    // 1. Crear el admin de desarrollo como root (#3: el registro ya no da root)
+    const { user } = params.authService.ensureRoot({
       email: DEV_ADMIN_EMAIL,
       password: DEV_ADMIN_PASS,
       name: 'Admin Demo',

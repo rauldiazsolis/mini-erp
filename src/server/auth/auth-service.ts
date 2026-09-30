@@ -38,10 +38,8 @@ export class AuthService {
       throw new Error('El correo electrónico ya está registrado');
     }
 
-    const countRow = this.systemDb
-      .prepare('SELECT COUNT(*) as count FROM users')
-      .get() as { count: number };
-    const globalRole: UserRole = countRow.count === 0 ? 'root' : 'user';
+    // El root sale de ensureRoot (#3): publicado, el primero en registrarse sería root
+    const globalRole: UserRole = 'user';
 
     const userId = `usr_${randomUUID()}`;
     const passwordHash = hashPassword(params.password);
@@ -64,6 +62,31 @@ export class AuthService {
         globalRole,
       },
     };
+  }
+
+  /** Root inicial (#3): crea el usuario como root o promueve uno existente con la contraseña dada. */
+  ensureRoot(params: { email: string; password: string; name: string }): { user: UserSession; created: boolean } {
+    const email = params.email.trim().toLowerCase();
+    const name = params.name.trim();
+    const passwordHash = hashPassword(params.password);
+    const existing = this.systemDb
+      .prepare('SELECT id, name FROM users WHERE email = ?')
+      .get(email) as { id: string; name: string } | undefined;
+
+    if (existing !== undefined) {
+      this.systemDb
+        .prepare("UPDATE users SET global_role = 'root', password_hash = ? WHERE id = ?")
+        .run(passwordHash, existing.id);
+      return { user: { id: existing.id, email, name: existing.name, globalRole: 'root' }, created: false };
+    }
+
+    const id = `usr_${randomUUID()}`;
+    this.systemDb
+      .prepare(
+        'INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(id, email, passwordHash, name, 'root', new Date().toISOString());
+    return { user: { id, email, name, globalRole: 'root' }, created: true };
   }
 
   login(params: { email: string; password: string }): {
