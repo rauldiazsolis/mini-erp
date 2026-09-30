@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const SYSTEM_SCHEMA_VERSION = 2;
+export const SYSTEM_SCHEMA_VERSION = 3;
 
 const SYSTEM_SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -50,6 +50,15 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
   point_of_sale TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
+-- Demos aisladas (#9): un tenant sin dueño por demo, que vence por falta de uso
+CREATE TABLE IF NOT EXISTS demo_sessions (
+  tenant_id TEXT PRIMARY KEY,
+  template TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 `;

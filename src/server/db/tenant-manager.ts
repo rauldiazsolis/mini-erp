@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { initTenantDb, openTenantDb } from './tenant-db.ts';
@@ -21,7 +22,8 @@ export type CreateTenantParams = {
   id: string;
   slug: string;
   name: string;
-  ownerUserId: string;
+  /** Sin dueño (una demo, #9) no se crea membresía. */
+  ownerUserId?: string | undefined;
   seedDemoData?: boolean;
 };
 
@@ -94,11 +96,13 @@ export class TenantManager {
       )
       .run(finalId, finalSlug, params.name, status, now);
 
-    this.systemDb
-      .prepare(
-        'INSERT INTO memberships (user_id, tenant_id, role, created_at) VALUES (?, ?, ?, ?)',
-      )
-      .run(params.ownerUserId, finalId, 'owner', now);
+    if (params.ownerUserId !== undefined) {
+      this.systemDb
+        .prepare(
+          'INSERT INTO memberships (user_id, tenant_id, role, created_at) VALUES (?, ?, ?, ?)',
+        )
+        .run(params.ownerUserId, finalId, 'owner', now);
+    }
 
     const tenantDb = this.getTenantDb(finalId);
 
@@ -119,6 +123,41 @@ export class TenantManager {
       status,
       created_at: now,
     };
+  }
+
+  /**
+   * Borra un tenant entero: cierra su base, borra sus filas de sistema y su archivo. Lo usa el
+   * barrido de demos vencidas (#9). No depende de `PRAGMA foreign_keys`.
+   */
+  deleteTenant(id: string): void {
+    const db = this.cache.get(id);
+    if (db !== undefined) {
+      try {
+        db.close();
+      } catch {
+        // Ignorar si ya estaba cerrada
+      }
+      this.cache.delete(id);
+    }
+
+    this.systemDb.exec('BEGIN');
+    try {
+      this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
+      this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
+      this.systemDb.prepare('DELETE FROM demo_sessions WHERE tenant_id = ?').run(id);
+      this.systemDb.prepare('DELETE FROM tenants WHERE id = ?').run(id);
+      this.systemDb.exec('COMMIT');
+    } catch (err: unknown) {
+      this.systemDb.exec('ROLLBACK');
+      throw err;
+    }
+
+    if (!this.inMemory) {
+      const file = join(this.baseDir, `${id}.sqlite`);
+      for (const path of [file, `${file}-wal`, `${file}-shm`]) {
+        rmSync(path, { force: true });
+      }
+    }
   }
 
   getConsolidatedStock(tenantDb: DatabaseSync): ConsolidatedStockItem[] {

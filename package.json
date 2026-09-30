@@ -13,10 +13,12 @@
     "start": "node src/server/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "contract:update": "node scripts/contract-update.ts"
+    "contract:update": "node scripts/contract-update.ts",
+    "pos:mirror": "node scripts/pos-mirror.ts"
   },
   "dependencies": {
     "@preact/signals": "^2.11.2",
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
     "@preact/preset-vite": "^2.10.6",
     "@tailwindcss/vite": "^4.3.3",
     "@types/cors": "^2.8.17",

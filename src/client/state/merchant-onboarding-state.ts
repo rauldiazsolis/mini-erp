@@ -9,7 +9,9 @@ import {
   login,
 } from './auth-state.ts';
 import { navigateTo } from './navigation-state.ts';
+import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
+import { buildConnectReturnUrl } from './connect-return.ts';
 import type { BusinessPreset } from './onboarding-state.ts';
 
 export type MerchantProvisionResult = {
@@ -20,7 +22,10 @@ export type MerchantProvisionResult = {
   pointOfSale: string;
   connectorUrl: string;
   returnUrl: string | null;
-  returnWithParamsUrl: string | null;
+  /** `<return_url>#connect=…` para volver al POS; null si no vino `return_url` o no es válido. */
+  connectReturnUrl: string | null;
+  /** El host al que vuelve, para mostrarlo antes de mandar la conexión. */
+  returnHost: string | null;
   preset: BusinessPreset;
 };
 
@@ -67,39 +72,44 @@ export function sanitizeToSlug(text: string): string {
   return clean;
 }
 
+export type AltaTemplate = 'kiosco' | 'almacen' | 'ferreteria';
+const ALTA_TEMPLATES: readonly AltaTemplate[] = ['kiosco', 'almacen', 'ferreteria'];
+
+function isAltaTemplate(value: string): value is AltaTemplate {
+  return (ALTA_TEMPLATES as readonly string[]).includes(value);
+}
+
+/** Lo que el POS (o el link de una demo) le pasa a `/alta`: `return_url`, `wipe_key` y `template`. */
+export function readAltaParams(href: string): {
+  returnUrl: string | null;
+  wipeKey: string | null;
+  template: AltaTemplate | null;
+} {
+  const params = new URL(href).searchParams;
+  const template = params.get('template');
+  return {
+    returnUrl: params.get('return_url') || null,
+    wipeKey: params.get('wipe_key') || null,
+    template: template !== null && isAltaTemplate(template) ? template : null,
+  };
+}
+
 /**
- * Inicializa el onboarding detectando parámetros de query o hash.
+ * En `/alta`, abre el alta con lo que mandó el POS (#9): adónde volver, el `wipe_key` y el rubro de
+ * la demo.
  */
 export function initMerchantOnboardingFromUrl(): void {
   if (typeof window === 'undefined') return;
 
   const url = new URL(window.location.href);
-  const searchParams = url.searchParams;
+  if (routeFromPath(url.pathname) !== 'alta') return;
 
-  const pathname = url.pathname.toLowerCase();
-  const hash = url.hash.toLowerCase();
-  const isOnboardingParam = searchParams.get('onboarding') === 'true' || searchParams.get('view') === 'onboarding';
-
-  if (pathname.includes('/onboarding') || hash.includes('onboarding') || isOnboardingParam) {
-    merchantOnboardingActiveSignal.value = true;
-  }
-
-  // Capturar return_url (para retorno al POS demo)
-  const ret = searchParams.get('return_url') || searchParams.get('returnUrl') || searchParams.get('redirect_uri');
-  if (ret) {
-    returnUrlSignal.value = ret;
-  }
-
-  // Capturar wipe_key para handshake seguro de wipe con el POS
-  const wipeKey = searchParams.get('wipe_key') || searchParams.get('wipeKey');
-  if (wipeKey) {
-    wipeKeySignal.value = wipeKey;
-  }
-
-  // Capturar preset sugerido si viniera del demo
-  const presetParam = searchParams.get('preset') as BusinessPreset | null;
-  if (presetParam && ['kiosco', 'ferreteria', 'almacen', 'empty'].includes(presetParam)) {
-    selectedMerchantPresetSignal.value = presetParam;
+  merchantOnboardingActiveSignal.value = true;
+  const { returnUrl, wipeKey, template } = readAltaParams(url.href);
+  returnUrlSignal.value = returnUrl;
+  wipeKeySignal.value = wipeKey;
+  if (template !== null) {
+    selectedMerchantPresetSignal.value = template;
   }
 
   // Si el usuario ya está autenticado, avanzamos directamente al paso de negocio
@@ -132,14 +142,13 @@ export function openMerchantOnboarding(customReturnUrl?: string): void {
     returnUrlSignal.value = customReturnUrl;
   }
   merchantOnboardingActiveSignal.value = true;
+  navigate('/alta');
 }
 
 export function closeMerchantOnboarding(): void {
   merchantOnboardingActiveSignal.value = false;
   resetMerchantOnboarding();
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/onboarding')) {
-    window.history.pushState(null, '', '/');
-  }
+  navigate('/admin');
 }
 
 /**
@@ -351,27 +360,18 @@ export async function executeMerchantProvisioning(): Promise<void> {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4100';
     const connectorUrl = `${origin}/connector`;
 
-    // Armar URL de retorno con credenciales para auto-conexión del POS si se especificó returnUrl
-    let returnWithParamsUrl: string | null = null;
+    // Vuelta al POS con la conexión en el fragmento (contrato 4.4.0), si vino return_url
     const rawReturnUrl = returnUrlSignal.value;
-    if (rawReturnUrl) {
-      try {
-        const u = new URL(rawReturnUrl, origin);
-        u.searchParams.set('api_key', apiKey);
-        u.searchParams.set('tenant_id', tenantId);
-        u.searchParams.set('connector_url', connectorUrl);
-        u.searchParams.set('branch', branchCode);
-        u.searchParams.set('pos_terminal', posTerminalName);
-        u.searchParams.set('business_name', businessName);
-        u.searchParams.set('preset', preset);
-        if (wipeKeySignal.value) {
-          u.searchParams.set('wipe_key', wipeKeySignal.value);
-        }
-        returnWithParamsUrl = u.toString();
-      } catch {
-        returnWithParamsUrl = rawReturnUrl;
-      }
-    }
+    const connectReturnUrl =
+      rawReturnUrl === null
+        ? undefined
+        : buildConnectReturnUrl(rawReturnUrl, {
+            baseUrl: connectorUrl,
+            apiKey,
+            branch: branchCode,
+            pointOfSale: posTerminalName,
+            wipeKey: wipeKeySignal.value ?? undefined,
+          });
 
     merchantResultSignal.value = {
       tenantId,
@@ -381,7 +381,8 @@ export async function executeMerchantProvisioning(): Promise<void> {
       pointOfSale: posTerminalName,
       connectorUrl,
       returnUrl: rawReturnUrl,
-      returnWithParamsUrl,
+      connectReturnUrl: connectReturnUrl ?? null,
+      returnHost: connectReturnUrl === undefined ? null : new URL(connectReturnUrl).host,
       preset,
     };
 
@@ -409,9 +410,7 @@ export function enterDashboardFromOnboarding(): void {
     setActiveTenant(res.tenantId);
   }
   merchantOnboardingActiveSignal.value = false;
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/onboarding')) {
-    window.history.pushState(null, '', '/');
-  }
+  navigate('/admin');
   navigateTo('dashboard');
 }
 
@@ -420,7 +419,7 @@ export function enterDashboardFromOnboarding(): void {
  */
 export function returnToPosWithCredentials(): void {
   const res = merchantResultSignal.value;
-  if (res?.returnWithParamsUrl && typeof window !== 'undefined') {
-    window.location.href = res.returnWithParamsUrl;
+  if (res?.connectReturnUrl && typeof window !== 'undefined') {
+    window.location.href = res.connectReturnUrl;
   }
 }

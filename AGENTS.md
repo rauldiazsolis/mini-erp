@@ -19,8 +19,10 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
   `contract.json`. Hoy: POS `0.1.0`, contrato **4.4.0**, piso **4.0.0**.
 - **Contrato implementado**: **4.2.0** (4.1.0 suma `Sale.ticket`, el número del ticket en su día;
   4.2.0 suma `CustomerPayment.receipt` y define `balance` como el saldo de cualquier cliente, tenga o
-  no crédito). Es compatible con el POS por el piso. Lo que falta de 4.4.0 (capacidades,
-  `/demo-sessions`, `notices`, la vuelta del onboarding) es #2.
+  no crédito) más la capacidad **`demo-sessions`** de 4.4.0 (`POST /connector/demo-sessions` y la
+  vuelta del onboarding con `#connect` desde `/alta`, #9). `GET /info` sigue diciendo `4.2.0` y
+  declara `capabilities`. Es compatible con el POS por el piso. Lo que falta de 4.4.0
+  (`customer-payment-void`, `notices`, las reglas de evolución) es #2.
 - **Actualizar la copia**: `pnpm contract:update <versión del POS>`. Siempre de una carpeta publicada
   (`https://offline-pos.pages.dev/<versión>/`), nunca de `main` de offline-pos. El diff del OpenAPI
   muestra qué cambió; implementarlo es trabajo aparte, con su issue.
@@ -78,6 +80,10 @@ pnpm lint && pnpm typecheck && pnpm test
 Y `pnpm build` si se toca el cliente o la config de Vite. Todo en verde antes de cada commit. En
 Windows, pnpm se corre desde PowerShell.
 
+Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e (Playwright, en
+`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con `DATA_DIR=test-results/e2e-data`
+(base descartable; nunca la de desarrollo) y corre en el CI.
+
 ## Convenciones de TypeScript y Node
 
 - **TypeScript estricto**: `any` prohibido; `unknown` solo en fronteras externas (payloads HTTP) y
@@ -130,8 +136,34 @@ Windows, pnpm se corre desde PowerShell.
   - **El backend nunca rechaza de forma síncrona el contenido de un lote**: responde `200` y reporta
     las inconsistencias como `issues` en el pull.
   - `X-POS-Contract-Version`: `409 IncompatibleContract` si el major difiere (salvo en `/info`).
-- **Admin** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
+  - CORS `*` (sin cookies: el admin y el POS usan Bearer) y `Access-Control-Allow-Private-Network:
+    true` en el preflight, para el POS publicado llamando a `localhost`
+    (`src/server/middleware/private-network.ts`).
+- **Demos aisladas** (#9), en `src/server/demo/`:
+  - `POST /connector/demo-sessions` es el único endpoint sin key: crea un tenant `demo-*` **sin
+    dueño**, marcado en `demo_sessions` (`system.sqlite`) y sembrado con `seedDemoSession` (template
+    = preset: `kiosco`, `almacen`, `ferreteria`). `DemoSessionService` es de sistema (contenedor
+    raíz), con reloj inyectable (`clockDef`).
+  - Vence a las `DEMO_TTL_HOURS` del **último uso**: la auth del POS llama a `touch` con cada key
+    válida. `startDemoSweeper` barre al arrancar y cada 15 minutos (`TenantManager.deleteTenant`
+    borra filas y archivo). Tope `DEMO_MAX_ACTIVE` (`503 demo-capacity`).
+  - Las demos no aparecen en la lista de comercios del admin, ni para `root`.
+  - El alta desde una demo crea un **comercio nuevo** (la demo vence sola); el rubro se preselecciona
+    con el `template` que viaja en `onboarding.url`.
+- **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
+  - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
+    en `/alta` (`/onboarding` se reescribe). La versión del POS del landing sale de `contract.json`.
+  - **POS híbrido** (#9): en desarrollo, el landing abre una **copia local del POS publicado** que el
+    mini-erp sirve en `/pos/<versión>/` (`src/server/pos-mirror/`, montada en `client-middleware.ts`
+    solo fuera de producción; `pnpm dev` la baja sola a `vendor/pos/` si falta, `pnpm pos:mirror` la
+    renueva). Mismo JS que el publicado, mismo origen que el mini-erp: sin CORS ni permiso de red
+    local, así el recorrido anda en cualquier navegador y en el e2e. En producción el landing abre
+    `https://offline-pos.pages.dev/<versión>/`: la demo pública sigue probando la integración real
+    (CORS, `#connect` entre dominios). La copia se baja siempre de una carpeta publicada, nunca de
+    `main` de offline-pos, y no se commitea.
+  - El alta vuelve al POS con `state/connect-return.ts`: la conexión va siempre en el fragmento
+    (`#connect=`), nunca en la query.
   - Estado solo con signals (`signal`, `computed`, stores por dominio en `src/client/state/`). **Sin
     hooks de React** (`useState`, `useEffect`, etc.): lo hace cumplir el lint
     (`no-restricted-imports` de `preact/hooks`, `preact/compat` y `react`).
@@ -151,10 +183,10 @@ Windows, pnpm se corre desde PowerShell.
 
 ## Estado
 
-Fases 1 a 8 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
-temas, estrictez de TypeScript y Zod): detalle en `PLAN.md`. Sigue:
+Fases 1 a 9 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
+temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado): detalle en `PLAN.md`. Sigue:
 
-1. #2: contrato 4.4.0 con `/demo-sessions` y demos aisladas.
-2. #3: publicarlo como backend de la demo pública del POS.
+1. #3: publicarlo como backend de la demo pública del POS.
+2. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
 
 En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).

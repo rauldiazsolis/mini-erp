@@ -8,10 +8,12 @@ export default defineConfig([
   {
     ignores: [
       'dist',
+      'vendor',
       'dist/**',
       '**/dist/**',
       'coverage',
       'test-results',
+      'playwright-report',
       '.vite',
       'eslint.config.js',
       'vite.config.ts',

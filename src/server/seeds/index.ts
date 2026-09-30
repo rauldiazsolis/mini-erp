@@ -90,6 +90,30 @@ export function seedDemoTenant(
   }
 
   // 2. Clientes iniciales
+  insertDemoCustomers(db, now);
+
+  // 3. Generar historial de ventas y movimientos si está habilitado
+  if (options?.withHistory ?? true) {
+    generateHistoricalDemoActivity(db, defaultBranchId);
+  }
+}
+
+/** Templates de `POST /demo-sessions` (#9): son los presets del mini-erp. */
+export const DEMO_TEMPLATES = ['kiosco', 'almacen', 'ferreteria'] as const satisfies readonly BusinessPreset[];
+export type DemoTemplate = (typeof DEMO_TEMPLATES)[number];
+export const DEFAULT_DEMO_TEMPLATE: DemoTemplate = 'kiosco';
+
+export function isDemoTemplate(value: string): value is DemoTemplate {
+  return (DEMO_TEMPLATES as readonly string[]).includes(value);
+}
+
+/** Datos de una demo: el catálogo del preset y los clientes demo, sin historial (el POS no lo ve). */
+export function seedDemoSession(db: DatabaseSync, template: DemoTemplate): void {
+  applyPreset(db, template);
+  insertDemoCustomers(db, new Date().toISOString());
+}
+
+function insertDemoCustomers(db: DatabaseSync, now: string): void {
   const insertCust = db.prepare(
     'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
@@ -115,10 +139,5 @@ export function seedDemoTenant(
          VALUES (?, ?, 'adjustment', ?, ?, 'Saldo inicial cuenta corriente', NULL, ?)`,
       ).run(`mov_init_${custId}`, custId, c.balance, c.balance, now);
     }
-  }
-
-  // 3. Generar historial de ventas y movimientos si está habilitado
-  if (options?.withHistory ?? true) {
-    generateHistoricalDemoActivity(db, defaultBranchId);
   }
 }

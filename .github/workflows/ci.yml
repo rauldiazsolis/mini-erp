@@ -28,3 +28,16 @@ jobs:
       - run: pnpm test
 
       - run: pnpm build
+
+      # e2e (#9): el mini-erp sirve la copia local del POS publicado (la baja solo al arrancar)
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm test:e2e
+
+      # Si falla el e2e, o si un test pasó recién al reintentar (queda su trace.zip), sube la traza
+      - uses: actions/upload-artifact@v7
+        if: failure() || hashFiles('test-results/**/trace.zip') != ''
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 14

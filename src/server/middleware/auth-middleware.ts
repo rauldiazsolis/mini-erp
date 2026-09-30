@@ -64,6 +64,8 @@ export function createPosAuthMiddleware(
   apiKeyService: ApiKeyService,
   tenantManager: TenantManager,
   rootContainer?: Container,
+  /** Se llama con cada key válida: así una demo en uso no vence (#9). */
+  onAuthenticated?: (tenantId: string) => void,
 ) {
   return (req: AuthenticatedPosRequest, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization;
@@ -78,6 +80,8 @@ export function createPosAuthMiddleware(
       res.status(401).json({ error: 'API key de terminal POS inválida o inactiva' });
       return;
     }
+
+    onAuthenticated?.(validated.tenantId);
 
     const tenantDb = tenantManager.getTenantDb(validated.tenantId);
 
