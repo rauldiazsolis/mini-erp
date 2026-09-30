@@ -18,9 +18,20 @@ en `/admin`, la página de alta de comercios en `/alta`, la API del admin en `/a
 en `/connector`. Los datos van a `data/` (SQLite, un archivo por comercio), o a la carpeta de
 `DATA_DIR`.
 
-Al arrancar crea datos de desarrollo, si no existen: un admin (`root`), el comercio "Tienda Demo
-Central" con datos de ejemplo y una API key de terminal. Las credenciales se imprimen en la consola.
-Con esa key, un POS se conecta a `http://localhost:4100/connector`.
+Fuera de producción, al arrancar crea datos de desarrollo si no existen: un admin (`root`), el
+comercio "Tienda Demo Central" con datos de ejemplo y una API key de terminal. Las credenciales se
+imprimen en la consola. Con esa key, un POS se conecta a `http://localhost:4100/connector`. Con
+`NODE_ENV=production` no se crea nada de eso.
+
+Registrarse desde la web (el alta de comercios) crea siempre un usuario común. El administrador
+(`root`), que ve todos los comercios, se crea con un comando:
+
+```bash
+node scripts/create-root.ts
+```
+
+Pide email, nombre y contraseña (mínimo 12 caracteres, sin eco). Si el email ya existe, lo promueve a
+root y le pone la contraseña nueva.
 
 ## Probar la demo con el POS publicado
 
@@ -40,14 +51,28 @@ El POS publicado de verdad contra el mini-erp en `localhost` también anda, en C
 red local la primera vez (es una página pública llamando a `localhost`). El navegador integrado de la
 app de Claude lo bloquea sin preguntar.
 
-Variables de entorno de las demos:
+## Variables de entorno
 
 | Variable | Por defecto | Qué controla |
 |---|---|---|
+| `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado (`dist/`), abre el POS publicado y no crea datos de desarrollo |
+| `PORT` | `4100` | Puerto del servidor |
+| `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
+| `PUBLIC_URL` | origen del request | URL pública del mini-erp, para armar la página de alta detrás de un proxy |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (responde 404) |
 | `DEMO_TTL_HOURS` | `24` | Horas sin uso hasta que una demo se borra |
 | `DEMO_MAX_ACTIVE` | `200` | Tope de demos vivas (pasado el tope, 503) |
-| `PUBLIC_URL` | origen del request | URL pública del mini-erp, para armar la página de alta detrás de un proxy |
+| `DEMO_RATE_LIMIT` | `10` | Demos por hora por IP (pasado el límite, 429 con `Retry-After`) |
+| `AUTH_RATE_LIMIT` | `20` | Pedidos a login y registro cada 15 minutos por IP (contador compartido) |
+
+## Producción
+
+Publicado en AWS Lightsail detrás de Caddy, con HTTPS en `<ip>.sslip.io`. Cada tag `v*` (o "Run
+workflow" en Actions) corre el CI entero y despliega por SSH, con vuelta a la versión anterior si la
+nueva no responde. Backups: snapshots diarios de Lightsail y una copia nocturna por archivo de las
+bases reales. La guía paso a paso (instancia, secretos, root, operación y restauración) está en
+[`deploy/README.md`](./deploy/README.md).
 
 ## Contrato
 

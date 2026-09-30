@@ -121,8 +121,17 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
     ventas y lotes de sincronización.
 - **Auth propia**: sin servicios externos; `node:crypto` (`scryptSync`, comparación timing-safe). El
-  primer usuario registrado queda `root` (cerrarlo antes de publicar es parte de #3). `root` y
-  `support` pueden impersonar cualquier tenant.
+  registro crea siempre `user`; el `root` sale de `AuthService.ensureRoot`, que usan el comando
+  `scripts/create-root.ts` (una vez, en el servidor) y el seed de desarrollo. `root` y `support`
+  pueden impersonar cualquier tenant.
+- **Arranque** en `src/server/bootstrap.ts`: el barrido de demos siempre; el seed de desarrollo
+  (`ensureDevData`: admin root, `tienda-demo` y una key fija, todo en el repo) **solo fuera de
+  `NODE_ENV=production`**.
+- **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
+  demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
+  (`AUTH_RATE_LIMIT`, contador compartido); `429` con `Retry-After`. `trust proxy` en `loopback`:
+  detrás de Caddy, `req.ip` es la del cliente y `req.protocol`, `https`. El contrato todavía no
+  documenta el 429 ni el 503 de `/demo-sessions` (rauldiazsolis/offline-pos#173).
 - **IoC con Hardwired 1.6.2** (versión exacta): servicios por request con
   `req.tenantScope.use(serviceDef)`; nunca `new Service()` para un servicio de tenant. La base del
   tenant es `unbound` (`tenantDbDef`): resolverla desde el contenedor raíz falla a propósito, para
@@ -148,6 +157,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     válida. `startDemoSweeper` barre al arrancar y cada 15 minutos (`TenantManager.deleteTenant`
     borra filas y archivo). Tope `DEMO_MAX_ACTIVE` (`503 demo-capacity`).
   - Las demos no aparecen en la lista de comercios del admin, ni para `root`.
+  - El barrido loguea `[demos] barrido: N …` al arrancar y cada vez que borra alguna.
   - El alta desde una demo crea un **comercio nuevo** (la demo vence sola); el rubro se preselecciona
     con el `template` que viaja en `onboarding.url`.
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
@@ -173,6 +183,22 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     y la solapa Apariencia de configuración (`AppearanceSection.tsx`).
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
 
+## Deploy (#3)
+
+- **AWS Lightsail** (plan de US$5, Ubuntu 24.04) con **Caddy** y HTTPS en `<ip>.sslip.io`. Todo lo
+  del servidor está en `deploy/`; la guía para quien lo opera, en `deploy/README.md`.
+- En la instancia: `minierp` corre `mini-erp.service` (`/opt/mini-erp/current`, datos en
+  `/var/lib/mini-erp`, entorno en `/etc/mini-erp/env`); `deploy` recibe las versiones y solo puede
+  reiniciar el servicio.
+- `.github/workflows/deploy.yml`, por tag `v*` o manual: corre el CI entero (`ci.yml` con
+  `workflow_call`), sube un tarball por SSH y lo activa con `deploy/deploy.sh`, que vuelve a la
+  versión anterior si `/health` no responde. Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment
+  `production`: los carga el usuario, nunca el agente.
+- Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
+  `scripts/backup.ts` (`VACUUM INTO` de las bases reales, sin demos, 7 días).
+- Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen
+  hashes de contraseñas.
+
 ## Datos semilla y fidelidad al contrato
 
 - Catálogos iniciales, fixtures y presets de rubro en `src/server/seeds/`, nunca dentro de servicios
@@ -183,10 +209,10 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 
 ## Estado
 
-Fases 1 a 9 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
-temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado): detalle en `PLAN.md`. Sigue:
+Fases 1 a 10 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
+temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy público): detalle en
+`PLAN.md`. Sigue:
 
-1. #3: publicarlo como backend de la demo pública del POS.
-2. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
+1. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
 
 En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).

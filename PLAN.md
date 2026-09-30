@@ -378,3 +378,21 @@ Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166)
   landing → demo → venta → `/ALTA` → alta → el POS vuelve conectado al comercio nuevo, sin la venta de
   la demo. El navegador integrado de la app de Claude no sirve para esto: bloquea sin preguntar que
   una página pública llame a la red local (`net::ERR_BLOCKED_BY_CLIENT`).
+
+## 12. Detalle de Etapas: FASE 10 (Deploy público) [COMPLETADA]
+
+Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
+`docs/superpowers/specs/2026-09-30-deploy-publico-design.md` y plan en
+`docs/superpowers/plans/2026-09-30-deploy-publico.md`.
+
+- Antes de exponerlo: el registro crea siempre `user` y el root sale de `scripts/create-root.ts`; el
+  seed de desarrollo no corre con `NODE_ENV=production` (`src/server/bootstrap.ts`); límite por IP en
+  `POST /connector/demo-sessions` (10 por hora) y en login y registro (20 cada 15 minutos); el barrido
+  de demos deja log.
+- AWS Lightsail (US$5 por mes, precio fijo) con Caddy y `<ip>.sslip.io`; aprovisionamiento,
+  unidades de systemd y guía en `deploy/`.
+- Deploy por tag `v*` o manual (`.github/workflows/deploy.yml`), con el CI entero antes y vuelta
+  atrás si `/health` no responde.
+- Backups: snapshots automáticos de Lightsail y copia nocturna con `VACUUM INTO` (`scripts/backup.ts`).
+- El e2e dejó de fallar de a ratos: espera si la base está bloqueada y usa un email por corrida.
+- **293 tests pasando en verde** en 39 suites; `tsc --noEmit` en 0 errores; build de Vite OK.
