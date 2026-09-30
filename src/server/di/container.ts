@@ -11,6 +11,8 @@ import { BulkService } from '../bulk/bulk-service.ts';
 import { ImportExportService } from '../io/import-export-service.ts';
 import { DashboardService } from '../dashboard/dashboard-service.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
+import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
+import { DemoSessionService } from '../demo/demo-session-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -37,6 +39,21 @@ export const tenantManagerDef = fn.singleton((c) => new TenantManager(c.use(syst
 export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef)));
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemDbDef)));
 
+// --- DEMOS (#9) ---
+
+export const demoConfigDef = fn.singleton((): DemoConfig => readDemoConfig(process.env));
+export const clockDef = fn.singleton((): (() => Date) => () => new Date());
+export const demoSessionServiceDef = fn.singleton(
+  (c) =>
+    new DemoSessionService({
+      systemDb: c.use(systemDbDef),
+      tenantManager: c.use(tenantManagerDef),
+      apiKeyService: c.use(apiKeyServiceDef),
+      config: c.use(demoConfigDef),
+      now: c.use(clockDef),
+    }),
+);
+
 // --- DEFINICIONES SCOPED POR REQUEST / TENANT ---
 
 export const catalogServiceDef = fn.scoped((c) => new CatalogService(c.use(tenantDbDef)));
@@ -53,6 +70,8 @@ export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(t
 export type ContainerDependencies = {
   systemDb?: DatabaseSync | undefined;
   tenantManager?: TenantManager | undefined;
+  demoConfig?: DemoConfig | undefined;
+  now?: (() => Date) | undefined;
 };
 
 /**
@@ -66,6 +85,14 @@ export function createRootContainer(deps?: ContainerDependencies): Container {
 
     if (deps?.tenantManager !== undefined) {
       c.bindCascading(tenantManagerDef).toValue(deps.tenantManager);
+    }
+
+    if (deps?.demoConfig !== undefined) {
+      c.bindCascading(demoConfigDef).toValue(deps.demoConfig);
+    }
+
+    if (deps?.now !== undefined) {
+      c.bindCascading(clockDef).toValue(deps.now);
     }
   });
 }
