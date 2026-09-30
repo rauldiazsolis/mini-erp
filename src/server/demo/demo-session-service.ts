@@ -99,11 +99,17 @@ export class DemoSessionService {
   }
 }
 
-/** Barre al arrancar y cada `intervalMs`, sin mantener vivo el proceso. */
+/** Barre al arrancar y cada `intervalMs`, sin mantener vivo el proceso. Loguea lo que borra (#3). */
 export function startDemoSweeper(service: DemoSessionService, intervalMs: number): NodeJS.Timeout {
-  service.sweepExpired();
+  const sweep = (always: boolean): void => {
+    const removed = service.sweepExpired();
+    if (always || removed > 0) {
+      console.log(`[demos] barrido: ${String(removed)} demos vencidas borradas`);
+    }
+  };
+  sweep(true);
   const timer = setInterval(() => {
-    service.sweepExpired();
+    sweep(false);
   }, intervalMs);
   timer.unref();
   return timer;
