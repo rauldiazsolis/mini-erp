@@ -160,13 +160,18 @@ Es una sola línea que empieza con `ssh-ed25519`.
 
    y pegala en el valor de `SSH_PRIVATE_KEY`.
 
-   Para la huella (le dice a GitHub que la instancia es la verdadera y no un impostor):
+   Para la huella (le dice a GitHub que la instancia es la verdadera y no un impostor), en la
+   **terminal de Lightsail**, reemplazando `<IP>`:
 
-   ```powershell
-   ssh-keyscan -t ed25519 <IP> | Set-Clipboard
+   ```bash
+   echo "<IP> $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
    ```
 
-   y pegala en `SSH_KNOWN_HOSTS`. Es una línea que empieza con la IP y sigue con `ssh-ed25519`.
+   Imprime una línea que empieza con la IP y sigue con `ssh-ed25519 AAAA…`. Seleccionala entera,
+   copiala (`Ctrl+Shift+C`) y pegala en `SSH_KNOWN_HOSTS`.
+
+   > No uses `ssh-keyscan` desde Windows: su OpenSSH es viejo y falla con
+   > `choose_kex: unsupported KEX method` contra Ubuntu 24.04.
 
 3. En **Environment variables**, **Add environment variable**: nombre `PUBLIC_HOST`, valor `<HOST>`.
 
