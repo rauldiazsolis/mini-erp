@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { contractBaseUrl, parseVersionJson } from '../../../scripts/contract-source.ts';
 import { bundleAssetRefs, htmlAssetRefs } from './pos-assets.ts';
@@ -12,6 +12,15 @@ import { bundleAssetRefs, htmlAssetRefs } from './pos-assets.ts';
 export type FetchLike = (url: string) => Promise<Response>;
 
 export const DEFAULT_POS_MIRROR_DIR = 'vendor/pos';
+
+/** La versión del POS fijada en `contract.json` (la que abre el landing). */
+export async function contractPosVersion(contractJsonPath: string): Promise<string> {
+  const raw: unknown = JSON.parse(await readFile(contractJsonPath, 'utf8'));
+  if (typeof raw === 'object' && raw !== null && 'posVersion' in raw && typeof raw.posVersion === 'string') {
+    return raw.posVersion;
+  }
+  throw new Error(`${contractJsonPath} no tiene posVersion`);
+}
 
 export function isPosMirrored(destDir: string, version: string): boolean {
   return existsSync(join(destDir, version, 'index.html')) && existsSync(join(destDir, version, 'version.json'));

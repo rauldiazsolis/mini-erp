@@ -1,6 +1,8 @@
 import { container, unbound, fn, type Container, type IContainer } from 'hardwired';
 import { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../db/system-db.ts';
+import { dataDir } from '../db/data-dir.ts';
+import { join } from 'node:path';
 import { TenantManager } from '../db/tenant-manager.ts';
 import { AuthService } from '../auth/auth-service.ts';
 import { ApiKeyService } from '../tenant/api-key-service.ts';
@@ -18,11 +20,11 @@ import { DemoSessionService } from '../demo/demo-session-service.ts';
 
 /**
  * Definición singleton para la base de datos del sistema.
- * Por defecto abre el archivo configurado en SYSTEM_DB_PATH, y puede ser
+ * Por defecto abre SYSTEM_DB_PATH o `<DATA_DIR>/system.sqlite`, y puede ser
  * sobreescrito con toValue() en createRootContainer (ej. en tests con :memory:).
  */
 export const systemDbDef = fn.singleton<DatabaseSync>(() => {
-  return openSystemDb(process.env['SYSTEM_DB_PATH'] ?? 'data/system.sqlite');
+  return openSystemDb(process.env['SYSTEM_DB_PATH'] ?? join(dataDir(), 'system.sqlite'));
 });
 export const masterDbDef = systemDbDef;
 
@@ -35,7 +37,9 @@ export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
 
 // --- DEFINICIONES SINGLETON DE APLICACIÓN ---
 
-export const tenantManagerDef = fn.singleton((c) => new TenantManager(c.use(systemDbDef)));
+export const tenantManagerDef = fn.singleton(
+  (c) => new TenantManager(c.use(systemDbDef), { baseDir: join(dataDir(), 'tenants') }),
+);
 export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef)));
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemDbDef)));
 

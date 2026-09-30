@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { canonicalPath, routeFromPath, navigate, routeSignal } from '../src/client/state/route-state.ts';
-import { POS_VERSION, buildDemoUrl } from '../src/client/state/demo-link.ts';
+import { POS_VERSION, buildDemoUrl, posBaseUrl } from '../src/client/state/demo-link.ts';
 
 describe('Ruteo del SPA (#9)', () => {
   it.each([
@@ -36,7 +36,7 @@ describe('Link de demo del landing (#9)', () => {
   });
 
   it('abre el POS publicado en demo contra este Connector API', () => {
-    const url = new URL(buildDemoUrl('0.1.0', 'http://localhost:4100'));
+    const url = new URL(buildDemoUrl(posBaseUrl('0.1.0', 'http://localhost:4100', false), 'http://localhost:4100'));
     expect(`${url.origin}${url.pathname}`).toBe('https://offline-pos.pages.dev/0.1.0/');
     expect(url.searchParams.get('demo')).toBe('true');
     expect(url.searchParams.get('backend')).toBe('http://localhost:4100/connector');
