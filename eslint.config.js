@@ -13,6 +13,7 @@ export default defineConfig([
       '**/dist/**',
       'coverage',
       'test-results',
+      'playwright-report',
       '.vite',
       'eslint.config.js',
       'vite.config.ts',

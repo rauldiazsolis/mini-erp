@@ -1,6 +1,8 @@
 node_modules
 dist
 vendor
+test-results
+playwright-report
 data
 *.sqlite
 *.sqlite-journal

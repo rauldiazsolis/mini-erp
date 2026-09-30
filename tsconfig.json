@@ -27,5 +27,5 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "test/**/*", "scripts/**/*", "vitest.config.ts", "vite.config.ts"]
+  "include": ["src/**/*", "test/**/*", "e2e/**/*", "scripts/**/*", "vitest.config.ts", "vite.config.ts", "playwright.config.ts"]
 }
