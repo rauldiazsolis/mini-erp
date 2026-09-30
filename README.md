@@ -13,16 +13,38 @@ pnpm install
 pnpm dev
 ```
 
-El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el admin en `/`, su API en
-`/api` y el Connector API en `/connector`. Los datos van a `data/` (SQLite, un archivo por comercio).
+El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el landing en `/`, el admin
+en `/admin`, la página de alta de comercios en `/alta`, la API del admin en `/api` y el Connector API
+en `/connector`. Los datos van a `data/` (SQLite, un archivo por comercio).
 
 Al arrancar crea datos de desarrollo, si no existen: un admin (`root`), el comercio "Tienda Demo
 Central" con datos de ejemplo y una API key de terminal. Las credenciales se imprimen en la consola.
 Con esa key, un POS se conecta a `http://localhost:4100/connector`.
 
+## Probar la demo con el POS publicado
+
+1. `pnpm dev` y abrir `http://localhost:4100/` en Chrome.
+2. **Probar la demo**: abre el POS publicado (versión de `contract.json`, hoy 0.1.0) en demo contra
+   este mini-erp. La primera vez Chrome pide permiso para acceder a la red local: hay que aceptarlo
+   (es una página pública llamando a `localhost`).
+3. El POS arranca con la marca DEMO y el catálogo del template (por defecto `kiosco`). Cada demo es un
+   comercio aislado que vence solo.
+4. **Crear mi comercio (/ALTA)**: lleva a `/alta` del mini-erp. Al terminar el alta, "Volver al POS"
+   deja la caja conectada al comercio nuevo, sin los datos de la demo.
+
+Variables de entorno de las demos:
+
+| Variable | Por defecto | Qué controla |
+|---|---|---|
+| `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (responde 404) |
+| `DEMO_TTL_HOURS` | `24` | Horas sin uso hasta que una demo se borra |
+| `DEMO_MAX_ACTIVE` | `200` | Tope de demos vivas (pasado el tope, 503) |
+| `PUBLIC_URL` | origen del request | URL pública del mini-erp, para armar la página de alta detrás de un proxy |
+
 ## Contrato
 
-- Implementa el Connector API **4.2.0**; el POS acepta backends desde **4.0.0**.
+- Implementa el Connector API **4.2.0** más la capacidad `demo-sessions` de 4.4.0; el POS acepta
+  backends desde **4.0.0**.
 - La copia del contrato publicado está en
   [`docs/connector-api.openapi.yaml`](./docs/connector-api.openapi.yaml), con su procedencia en
   [`contract.json`](./contract.json). Se actualiza con `pnpm contract:update <versión del POS>`.

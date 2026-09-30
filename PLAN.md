@@ -86,6 +86,13 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 │   • TypeScript 6 con las mismas opciones estrictas que offline-pos.    │
 │   • Los siete eventos del push validados con Zod.                      │
 │   • Lint de hooks y prohibición de preact/hooks.                       │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+┌──────────────────────────────────▼─────────────────────────────────────┐
+│ FASE 9: Demo y alta con el POS publicado 0.1.0 [COMPLETADA]            │
+│   • Landing en / con "Probar la demo"; admin en /admin, alta en /alta. │
+│   • POST /demo-sessions: demos aisladas con vencimiento y barrido.     │
+│   • El alta vuelve al POS con #connect; CORS y red privada.            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -343,3 +350,21 @@ Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). Plan en
   `delta`).
 - `eslint-plugin-react-hooks` y `no-restricted-imports` de `preact/hooks`, `preact/compat` y `react`.
 - **217 tests pasando en verde** en 27 suites; `tsc --noEmit` en 0 errores; build de Vite OK.
+
+## 11. Detalle de Etapas: FASE 9 (Demo y alta con el POS publicado 0.1.0) [COMPLETADA]
+
+Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
+`docs/superpowers/specs/2026-09-30-demo-y-alta-pos-publicado-design.md` y plan en
+`docs/superpowers/plans/2026-09-30-demo-y-alta-pos-publicado.md`.
+
+- Un solo SPA con ruteo por path (`src/client/state/route-state.ts`): landing en `/` con "Probar la
+  demo" (abre `https://offline-pos.pages.dev/<posVersion>/?demo=true&backend=<origen>/connector`, con
+  la versión de `contract.json`), admin en `/admin` y alta en `/alta` (`/onboarding` se reescribe).
+- `POST /connector/demo-sessions` sin key: una demo aislada por pedido (tenant `demo-*` sin dueño,
+  marcado en `demo_sessions` de `system.sqlite`, sembrado con el preset del template), vencimiento a
+  las 24 h del último uso, barrido al arrancar y cada 15 minutos, tope de demos vivas. La capacidad
+  `demo-sessions` en `GET /info`.
+- El alta lee `return_url`, `wipe_key` y `template`, y vuelve con `<return_url>#connect=<base64url>`;
+  se fue el formato viejo con credenciales en la query string.
+- `Access-Control-Allow-Private-Network: true` en el preflight (el POS publicado llamando a
+  `localhost`).
