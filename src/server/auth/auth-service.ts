@@ -147,7 +147,12 @@ export class AuthService {
     if (globalRole === 'root' || globalRole === 'support') {
       // Impersonación: root y support tienen acceso a todos los tenants
       const rows = this.systemDb
-        .prepare('SELECT id, slug, name, status FROM tenants ORDER BY created_at DESC')
+        .prepare(
+          // Las demos (#9) no se listan: en la web serían cientos
+          `SELECT id, slug, name, status FROM tenants
+           WHERE id NOT IN (SELECT tenant_id FROM demo_sessions)
+           ORDER BY created_at DESC`,
+        )
         .all() as { id: string; slug: string; name: string; status: string }[];
 
       const role = globalRole === 'root' ? 'root_impersonator' : 'support_impersonator';
