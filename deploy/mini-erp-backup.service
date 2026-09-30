@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup nocturno del mini-erp
+
+[Service]
+Type=oneshot
+User=minierp
+Group=minierp
+WorkingDirectory=/opt/mini-erp/current
+EnvironmentFile=/etc/mini-erp/env
+ExecStart=/usr/bin/node scripts/backup.ts
