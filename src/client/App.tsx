@@ -19,9 +19,12 @@ import {
   initMerchantOnboardingFromUrl,
 } from './state/merchant-onboarding-state.ts';
 import { MerchantOnboardingView } from './components/onboarding/MerchantOnboardingView.tsx';
+import { LandingView } from './components/landing/LandingView.tsx';
+import { initRouting, routeSignal } from './state/route-state.ts';
 
-// Inicializar detector de onboarding desde URL/query params
+// Ruta del SPA (#9) y, en /alta, los parámetros del alta
 if (typeof window !== 'undefined') {
+  initRouting();
   initMerchantOnboardingFromUrl();
 }
 
@@ -31,7 +34,11 @@ if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.val
 }
 
 export function App() {
-  if (merchantOnboardingActiveSignal.value) {
+  if (routeSignal.value === 'landing') {
+    return <LandingView />;
+  }
+
+  if (routeSignal.value === 'alta' || merchantOnboardingActiveSignal.value) {
     return <MerchantOnboardingView />;
   }
 

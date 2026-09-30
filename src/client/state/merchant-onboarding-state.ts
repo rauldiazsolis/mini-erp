@@ -9,6 +9,7 @@ import {
   login,
 } from './auth-state.ts';
 import { navigateTo } from './navigation-state.ts';
+import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import type { BusinessPreset } from './onboarding-state.ts';
 
@@ -76,11 +77,7 @@ export function initMerchantOnboardingFromUrl(): void {
   const url = new URL(window.location.href);
   const searchParams = url.searchParams;
 
-  const pathname = url.pathname.toLowerCase();
-  const hash = url.hash.toLowerCase();
-  const isOnboardingParam = searchParams.get('onboarding') === 'true' || searchParams.get('view') === 'onboarding';
-
-  if (pathname.includes('/onboarding') || hash.includes('onboarding') || isOnboardingParam) {
+  if (routeFromPath(url.pathname) === 'alta') {
     merchantOnboardingActiveSignal.value = true;
   }
 
@@ -132,14 +129,13 @@ export function openMerchantOnboarding(customReturnUrl?: string): void {
     returnUrlSignal.value = customReturnUrl;
   }
   merchantOnboardingActiveSignal.value = true;
+  navigate('/alta');
 }
 
 export function closeMerchantOnboarding(): void {
   merchantOnboardingActiveSignal.value = false;
   resetMerchantOnboarding();
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/onboarding')) {
-    window.history.pushState(null, '', '/');
-  }
+  navigate('/admin');
 }
 
 /**
@@ -409,9 +405,7 @@ export function enterDashboardFromOnboarding(): void {
     setActiveTenant(res.tenantId);
   }
   merchantOnboardingActiveSignal.value = false;
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/onboarding')) {
-    window.history.pushState(null, '', '/');
-  }
+  navigate('/admin');
   navigateTo('dashboard');
 }
 
