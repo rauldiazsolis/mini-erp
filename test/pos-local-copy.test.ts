@@ -90,11 +90,11 @@ describe('DATA_DIR (#9)', () => {
 
 describe('URL del POS del landing (#9)', () => {
   it('en desarrollo, la copia local del mismo origen', () => {
-    expect(posBaseUrl('0.1.0', 'http://localhost:4100', true)).toBe('http://localhost:4100/pos/0.1.0/');
+    expect(posBaseUrl('0.1.0', 'http://localhost:4100', true, 'https://offline-pos.pages.dev')).toBe('http://localhost:4100/pos/0.1.0/');
   });
 
   it('en producción, el POS publicado', () => {
-    expect(posBaseUrl('0.1.0', 'https://erp.example.com', false)).toBe('https://offline-pos.pages.dev/0.1.0/');
+    expect(posBaseUrl('0.1.0', 'https://erp.example.com', false, 'https://offline-pos.pages.dev')).toBe('https://offline-pos.pages.dev/0.1.0/');
   });
 
   it('el link de demo lleva el Connector API de este mini-erp', () => {

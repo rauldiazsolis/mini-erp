@@ -1,14 +1,15 @@
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
-import { POS_VERSION, buildDemoUrl, posBaseUrl } from '../../state/demo-link.ts';
+import { POS_VERSION, buildDemoUrl, posBaseUrl, publishedPosOrigin } from '../../state/demo-link.ts';
 
 /**
  * Landing en la raíz (#9): abre el POS en demo contra este mini-erp. En desarrollo, la copia local del
- * POS publicado que sirve el mini-erp; en producción, el POS publicado.
+ * POS publicado que sirve el mini-erp; en producción, el POS publicado (`VITE_POS_URL`, #11).
  */
 export function LandingView() {
   const origin = typeof window === 'undefined' ? 'http://localhost:4100' : window.location.origin;
   const useLocalCopy = import.meta.env.DEV;
-  const demoUrl = buildDemoUrl(posBaseUrl(POS_VERSION, origin, useLocalCopy), origin);
+  const posOrigin = publishedPosOrigin(import.meta.env.VITE_POS_URL);
+  const demoUrl = buildDemoUrl(posBaseUrl(POS_VERSION, origin, useLocalCopy, posOrigin), origin);
 
   return (
     <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
@@ -39,7 +40,7 @@ export function LandingView() {
           <p class="text-xs text-slate-500 dark:text-slate-400">
             {useLocalCopy
               ? `Abre una copia local del POS ${POS_VERSION} publicado (la sirve este mini-erp en desarrollo), conectada a este mini-erp.`
-              : `Abre el POS ${POS_VERSION} publicado en offline-pos.pages.dev, conectado a este mini-erp.`}
+              : `Abre el POS ${POS_VERSION} publicado en ${new URL(posOrigin).host}, conectado a este mini-erp.`}
           </p>
         </div>
       </main>
