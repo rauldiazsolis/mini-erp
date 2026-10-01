@@ -116,7 +116,7 @@ export function PosKeysSection() {
             <div class="text-3xl">🔑</div>
             <div class="text-sm font-bold text-slate-900 dark:text-white">No hay API Keys generadas</div>
             <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-              Crea tu primera llave para vincular tu caja registradora o terminal de venta con el Mini-ERP.
+              Creá tu primera llave para vincular tu caja con mini contax.
             </p>
             <Button size="sm" onClick={openCreateKeyModal}>
               Crear Primera Llave

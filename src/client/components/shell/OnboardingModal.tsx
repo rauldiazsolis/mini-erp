@@ -23,6 +23,7 @@ import {
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Logo } from '../ui/Logo.tsx';
 
 const PRESETS: Array<{
   id: BusinessPreset;
@@ -94,11 +95,9 @@ export function OnboardingModal() {
         {/* Header Modal */}
         <div class="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-indigo-500/25">
-              🚀
-            </div>
+            <Logo class="w-10 h-10 shrink-0" />
             <div>
-              <h2 class="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Nuevo Comercio en Mini-ERP</h2>
+              <h2 class="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Nuevo comercio en mini contax</h2>
               <p class="text-xs text-slate-500 dark:text-slate-400">Asistente de configuración y aprovisionamiento en 3 pasos</p>
             </div>
           </div>
