@@ -146,8 +146,9 @@ Se borran `POST /api/auth/register`, `POST /api/tenants` y `POST /api/tenants/:i
   details? })` y `listForTenant(tenantId, limit)`. Lo llaman los servicios, no los middlewares.
 - `AltaService` (de sistema): orquesta `AuthService`, `TenantManager`, el preset y `ApiKeyService`.
   Si algo falla después de crear el usuario o el comercio, deshace lo creado.
-- `AuthService` pierde `register` y suma `changePassword`, `setPassword` y `revokeSessions`;
-  `listUserTenants` solo cuenta membresías activas.
+- `AuthService.register` pasa a llamarse `createUser` (lo usan el alta, la invitación y los tests;
+  ya no hay ruta HTTP que lo exponga) y suma `changePassword`, `setPassword`, `revokeSessions` y
+  `deleteUser`; `listUserTenants` solo cuenta membresías activas.
 
 ## Cliente
 
@@ -173,7 +174,9 @@ Se borran `POST /api/auth/register`, `POST /api/tenants` y `POST /api/tenants/:i
   (la invitación, con ese comercio activo). Link que no sirve: el mensaje del `410`.
 - `AuthView` sin "Registrarse": se borran `RegisterForm` y `register()` de `auth-state`.
 - El alta (`/alta`) y "Crear nuevo comercio…" (`OnboardingModal`) llaman a `POST /api/alta`; lo que
-  muestran al terminar (key y `#connect` de vuelta al POS) no cambia.
+  muestran al terminar (key y `#connect` de vuelta al POS) no cambia. El modal pierde los campos de
+  slug, identificador, sucursal y terminal (el servidor arma el slug y la caja es siempre "Caja 1"
+  en `CENTRAL`, como ya pasaba en la práctica): quedan nombre y rubro.
 
 ## Desarrollo, pruebas y deploy
 
