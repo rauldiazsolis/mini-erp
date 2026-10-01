@@ -20,17 +20,9 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
 
-    // Registrar root y tenant
-    const regRes = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
-    const regBody = regRes.body as unknown as { token: string };
-    const token = regBody.token;
-
-    await request(app)
-      .post('/api/tenants')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', seedDemoData: true });
+    // Dueño y comercio con la semilla de demo (sin pasar por el alta, #19)
+    const { token, user } = bundle.authService.createUser({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
+    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', ownerUserId: user.id, seedDemoData: true });
 
     // Crear API Key para la terminal POS
     const keyRes = await request(app)

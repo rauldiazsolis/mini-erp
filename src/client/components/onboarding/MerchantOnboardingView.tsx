@@ -26,6 +26,7 @@ import { Input } from '../ui/Input.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { Logo } from '../ui/Logo.tsx';
 import type { BusinessPreset } from '../../state/onboarding-state.ts';
+import { PASSWORD_MIN_LENGTH } from '../../../shared/password.ts';
 
 const PRESETS: Array<{
   id: BusinessPreset;
@@ -225,7 +226,7 @@ export function MerchantOnboardingView() {
                     <Input
                       label="Contraseña"
                       type="password"
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder={`Mínimo ${String(PASSWORD_MIN_LENGTH)} caracteres`}
                       value={userPasswordSignal.value}
                       onInput={(e) => (userPasswordSignal.value = (e.target as HTMLInputElement).value)}
                       helperText="Utiliza una contraseña segura para acceder a tus reportes y ventas"

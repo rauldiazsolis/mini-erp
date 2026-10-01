@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { applyPreset } from '../src/server/seeds/index.ts';
 
 interface ProductItem {
   id?: string;
@@ -50,7 +51,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'admin@io.test',
       password: 'password123',
       name: 'Admin IO',
@@ -261,15 +262,10 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     });
   });
 
-  describe('Semillas de Negocio Preconfiguradas (/seed-preset)', () => {
+  // El alta aplica el preset del rubro (#19): ya no hay endpoint /seed-preset
+  describe('Semillas de Negocio Preconfiguradas (applyPreset)', () => {
     it('aplica el preset de "kiosco" poblando productos y categorías representativas', async () => {
-      const res = await request(app)
-        .post(`/api/tenants/${tenantId}/seed-preset`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ preset: 'kiosco' });
-
-      expect(res.status).toBe(200);
-      const body = res.body as unknown as PresetResult;
+      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'kiosco');
       expect(body.preset).toBe('kiosco');
       expect(body.productsCreated).toBeGreaterThanOrEqual(6);
 
@@ -295,13 +291,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     });
 
     it('aplica el preset de "ferreteria" con productos y stock inicial correspondientes', async () => {
-      const res = await request(app)
-        .post(`/api/tenants/${tenantId}/seed-preset`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ preset: 'ferreteria' });
-
-      expect(res.status).toBe(200);
-      const body = res.body as unknown as PresetResult;
+      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'ferreteria');
       expect(body.preset).toBe('ferreteria');
 
       const prodRes = await request(app)

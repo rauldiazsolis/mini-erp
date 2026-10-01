@@ -1,10 +1,11 @@
 import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
+import { can, effectiveTenantRole } from '../../shared/permissions.ts';
 import { showToast } from './toast-state.ts';
 import type { BranchItem } from './stock-state.ts';
 
-export type SettingsTab = 'pos' | 'branches' | 'connection' | 'appearance';
+export type SettingsTab = 'pos' | 'branches' | 'connection' | 'appearance' | 'account';
 
 
 export type PosApiKeyItem = {
@@ -323,8 +324,12 @@ if (typeof window !== 'undefined') {
   effect(() => {
     const tenantId = effectiveTenantIdSignal.value;
     const token = tokenSignal.value;
+    const tenant = activeTenantSignal.value;
     if (tenantId && token) {
-      void fetchApiKeys();
+      // Las keys son de owner y admin (#19); las sucursales las ve cualquiera
+      if (tenant !== null && can(effectiveTenantRole(tenant.role), 'settings.manage')) {
+        void fetchApiKeys();
+      }
       void fetchSettingsBranches();
     }
   });

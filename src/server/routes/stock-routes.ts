@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { StockService } from '../stock/stock-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { stockServiceDef } from '../di/container.ts';
 
 const adjustStockSchema = z.object({
@@ -29,7 +30,7 @@ export function createStockRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /stock - Matriz de stock consolidada y por sucursal
-  router.get('/stock', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const search =
@@ -57,7 +58,7 @@ export function createStockRoutes(): Router {
   });
 
   // POST /stock/adjust - Ajuste manual auditado de stock (Kardex)
-  router.post('/stock/adjust', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/stock/adjust', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = adjustStockSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de ajuste inválidos' });
@@ -76,7 +77,7 @@ export function createStockRoutes(): Router {
   });
 
   // GET /stock/kardex - Historial de movimientos de stock con filtros
-  router.get('/stock/kardex', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock/kardex', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const productId = typeof req.query['productId'] === 'string' ? req.query['productId'] : undefined;

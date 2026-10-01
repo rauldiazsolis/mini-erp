@@ -15,6 +15,11 @@ import { DashboardService } from '../dashboard/dashboard-service.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
 import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
 import { DemoSessionService } from '../demo/demo-session-service.ts';
+import { AuditLog } from '../audit/audit-log.ts';
+import { MembershipService } from '../users/membership-service.ts';
+import { AltaService } from '../alta/alta-service.ts';
+import { InvitationService } from '../users/invitation-service.ts';
+import { PasswordResetService } from '../users/password-reset-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -54,6 +59,41 @@ export const demoSessionServiceDef = fn.singleton(
       tenantManager: c.use(tenantManagerDef),
       apiKeyService: c.use(apiKeyServiceDef),
       config: c.use(demoConfigDef),
+      now: c.use(clockDef),
+    }),
+);
+
+// --- USUARIOS Y AUDITORÍA (#19) ---
+
+export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), c.use(clockDef)));
+export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemDbDef), c.use(auditLogDef)));
+export const invitationServiceDef = fn.singleton(
+  (c) =>
+    new InvitationService({
+      db: c.use(systemDbDef),
+      auth: c.use(authServiceDef),
+      members: c.use(membershipServiceDef),
+      audit: c.use(auditLogDef),
+      now: c.use(clockDef),
+    }),
+);
+export const altaServiceDef = fn.singleton(
+  (c) =>
+    new AltaService({
+      auth: c.use(authServiceDef),
+      tenants: c.use(tenantManagerDef),
+      apiKeys: c.use(apiKeyServiceDef),
+      audit: c.use(auditLogDef),
+    }),
+);
+
+export const passwordResetServiceDef = fn.singleton(
+  (c) =>
+    new PasswordResetService({
+      db: c.use(systemDbDef),
+      auth: c.use(authServiceDef),
+      members: c.use(membershipServiceDef),
+      audit: c.use(auditLogDef),
       now: c.use(clockDef),
     }),
 );

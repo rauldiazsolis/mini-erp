@@ -45,7 +45,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador (primer usuario es root)
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'admin@tienda.com',
       password: 'password123',
       name: 'Dueño Tienda',

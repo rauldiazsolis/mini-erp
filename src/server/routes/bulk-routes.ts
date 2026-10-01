@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { BulkService } from '../bulk/bulk-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { bulkServiceDef } from '../di/container.ts';
 
 const bulkPriceSchema = z.object({
@@ -44,7 +45,7 @@ export function createBulkRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // POST /bulk/prices - Actualización masiva de precios
-  router.post('/bulk/prices', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/prices', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkPriceSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
@@ -62,7 +63,7 @@ export function createBulkRoutes(): Router {
   });
 
   // POST /bulk/interests - Devengamiento masivo de intereses en cuentas corrientes
-  router.post('/bulk/interests', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/interests', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkInterestSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });

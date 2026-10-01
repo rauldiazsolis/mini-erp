@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CustomerService } from '../customer/customer-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { customerServiceDef } from '../di/container.ts';
 
 const createCustomerSchema = z.object({
@@ -60,7 +61,7 @@ export function createCustomerRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /customers - Listar clientes con filtros
-  router.get('/customers', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCustomerService(req);
       const search =
@@ -92,7 +93,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers - Crear nuevo cliente
-  router.post('/customers', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createCustomerSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de cliente inválidos' });
@@ -110,7 +111,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId - Detalle de cliente
-  router.get('/customers/:customerId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -132,7 +133,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // PUT /customers/:customerId - Actualizar cliente
-  router.put('/customers/:customerId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -160,7 +161,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // DELETE /customers/:customerId - Bloquear o eliminar cliente
-  router.delete('/customers/:customerId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -183,7 +184,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers/:customerId/payments - Cobranza manual de cuenta corriente
-  router.post('/customers/:customerId/payments', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers/:customerId/payments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -208,7 +209,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers/:customerId/adjustments - Ajuste manual transparente de saldo
-  router.post('/customers/:customerId/adjustments', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers/:customerId/adjustments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -233,7 +234,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId/movements - Extracto de cuenta corriente
-  router.get('/customers/:customerId/movements', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId/movements', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });

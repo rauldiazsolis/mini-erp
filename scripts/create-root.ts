@@ -9,11 +9,12 @@ import { z } from 'zod';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { dataDir } from '../src/server/db/data-dir.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
+import { passwordSchema } from '../src/shared/password.ts';
 
 const rootSchema = z.object({
   email: z.string().trim().email('Email inválido'),
   name: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres'),
-  password: z.string().min(12, 'La contraseña del root debe tener al menos 12 caracteres'),
+  password: passwordSchema,
 });
 
 /** Lee una línea sin mostrarla. */

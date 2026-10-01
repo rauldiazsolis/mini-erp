@@ -13,6 +13,7 @@ import { StockView } from './components/stock/StockView.tsx';
 import { CustomerView } from './components/customers/CustomerView.tsx';
 import { BulkView } from './components/bulk/BulkView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
+import { UsersView } from './components/users/UsersView.tsx';
 
 import {
   merchantOnboardingActiveSignal,
@@ -21,11 +22,15 @@ import {
 import { MerchantOnboardingView } from './components/onboarding/MerchantOnboardingView.tsx';
 import { LandingView } from './components/landing/LandingView.tsx';
 import { initRouting, routeSignal } from './state/route-state.ts';
+import { initLinkPageFromUrl } from './state/link-pages-state.ts';
+import { InvitationView } from './components/links/InvitationView.tsx';
+import { ResetPasswordView } from './components/links/ResetPasswordView.tsx';
 
 // Ruta del SPA (#9) y, en /alta, los parámetros del alta
 if (typeof window !== 'undefined') {
   initRouting();
   initMerchantOnboardingFromUrl();
+  initLinkPageFromUrl();
 }
 
 // Cargar perfil al inicializar si hay un token persistido
@@ -36,6 +41,15 @@ if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.val
 export function App() {
   if (routeSignal.value === 'landing') {
     return <LandingView />;
+  }
+
+  // Links de invitación y restablecimiento (#19): se abren con o sin sesión
+  if (routeSignal.value === 'invitacion') {
+    return <InvitationView />;
+  }
+
+  if (routeSignal.value === 'restablecer') {
+    return <ResetPasswordView />;
   }
 
   if (routeSignal.value === 'alta' || merchantOnboardingActiveSignal.value) {
@@ -60,6 +74,8 @@ export function App() {
       {currentView === 'customers' && <CustomerView />}
 
       {currentView === 'bulk' && <BulkView />}
+
+      {currentView === 'users' && <UsersView />}
 
       {currentView === 'settings' && <SettingsView />}
     </AppShell>

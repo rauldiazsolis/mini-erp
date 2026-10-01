@@ -1,7 +1,10 @@
 import { signal } from '@preact/signals';
 
-/** Un solo SPA (#9): landing en `/`, admin en `/admin`, alta en `/alta`. */
-export type AppRoute = 'landing' | 'admin' | 'alta';
+/**
+ * Un solo SPA (#9): landing en `/`, admin en `/admin`, alta en `/alta`, y los links de invitación y
+ * restablecimiento en `/invitacion` y `/restablecer` (#19).
+ */
+export type AppRoute = 'landing' | 'admin' | 'alta' | 'invitacion' | 'restablecer';
 
 function normalize(pathname: string): string {
   const clean = pathname.toLowerCase().replace(/\/+$/, '');
@@ -12,6 +15,8 @@ export function routeFromPath(pathname: string): AppRoute {
   const path = normalize(pathname);
   if (path === '/admin' || path.startsWith('/admin/')) return 'admin';
   if (path === '/alta' || path === '/onboarding') return 'alta';
+  if (path === '/invitacion') return 'invitacion';
+  if (path === '/restablecer') return 'restablecer';
   return 'landing';
 }
 

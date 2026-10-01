@@ -73,7 +73,7 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
 
   await page.getByPlaceholder('Ej: Martín Rodríguez').fill('Alta E2E');
   await page.getByPlaceholder('ejemplo@comercio.com').fill(email);
-  await page.getByPlaceholder('Mínimo 6 caracteres').fill('prueba-e2e');
+  await page.getByPlaceholder('Mínimo 8 caracteres').fill('prueba-e2e');
   await page.getByRole('button', { name: 'Continuar a Datos del Negocio →' }).click();
   await page.getByPlaceholder(/Ej: Kiosco San Martín/).fill('Kiosco E2E');
   await page.getByRole('button', { name: /Aprovisionar Mi Comercio/ }).click();

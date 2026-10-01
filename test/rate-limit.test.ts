@@ -63,11 +63,11 @@ describe('límite de pedidos (#3)', () => {
     expect((await demo(app)).status).toBe(201);
   });
 
-  it('login y registro comparten 20 pedidos cada 15 minutos por IP', async () => {
+  it('login y alta comparten 20 pedidos cada 15 minutos por IP', async () => {
     const { app } = makeApp();
     for (let i = 0; i < 10; i++) {
       expect((await login(app)).status).toBe(401);
-      expect((await request(app).post('/api/auth/register').set('X-Forwarded-For', '203.0.113.9').send({})).status).toBe(400);
+      expect((await request(app).post('/api/alta').set('X-Forwarded-For', '203.0.113.9').send({})).status).toBe(400);
     }
     const blocked = await login(app);
     expect(blocked.status).toBe(429);

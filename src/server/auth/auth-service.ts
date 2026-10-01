@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword, generateSessionToken } from './crypto.ts';
+import { DomainError } from '../errors.ts';
+import type { MembershipRole } from '../../shared/permissions.ts';
 
 export type UserRole = 'root' | 'support' | 'user';
 
@@ -16,7 +18,7 @@ export type TenantMembershipInfo = {
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: 'owner' | 'admin' | 'member' | 'root_impersonator' | 'support_impersonator';
+  role: MembershipRole;
 };
 
 export class AuthService {
@@ -26,7 +28,8 @@ export class AuthService {
     this.systemDb = systemDb;
   }
 
-  register(params: { email: string; password: string; name: string }): {
+  /** Crea una cuenta con su sesión. Solo la usan el alta y las invitaciones (#19): no hay registro suelto. */
+  createUser(params: { email: string; password: string; name: string }): {
     token: string;
     user: UserSession;
   } {
@@ -122,7 +125,7 @@ export class AuthService {
     };
   }
 
-  private createSession(userId: string): string {
+  createSession(userId: string): string {
     const token = generateSessionToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 días
@@ -166,6 +169,47 @@ export class AuthService {
     };
   }
 
+  findUserByEmail(email: string): { id: string; email: string; name: string } | undefined {
+    return this.systemDb
+      .prepare('SELECT id, email, name FROM users WHERE email = ?')
+      .get(email.trim().toLowerCase()) as { id: string; email: string; name: string } | undefined;
+  }
+
+  verifyUserPassword(userId: string, password: string): boolean {
+    const row = this.systemDb.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as
+      | { password_hash: string }
+      | undefined;
+    return row !== undefined && verifyPassword(password, row.password_hash);
+  }
+
+  setPassword(userId: string, password: string): void {
+    this.systemDb.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), userId);
+  }
+
+  /** Cierra las sesiones del usuario, salvo la indicada (la del equipo que cambió la contraseña). */
+  revokeSessions(userId: string, exceptToken?: string): void {
+    if (exceptToken === undefined) {
+      this.systemDb.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+      return;
+    }
+    this.systemDb.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(userId, exceptToken);
+  }
+
+  /** Deshace un usuario recién creado (alta fallida). */
+  deleteUser(userId: string): void {
+    this.systemDb.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+    this.systemDb.prepare('DELETE FROM memberships WHERE user_id = ?').run(userId);
+    this.systemDb.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  }
+
+  changePassword(params: { userId: string; currentPassword: string; newPassword: string; currentToken: string }): void {
+    if (!this.verifyUserPassword(params.userId, params.currentPassword)) {
+      throw new DomainError(400, 'La contraseña actual no es correcta');
+    }
+    this.setPassword(params.userId, params.newPassword);
+    this.revokeSessions(params.userId, params.currentToken);
+  }
+
   listUserTenants(userId: string, globalRole: UserRole): TenantMembershipInfo[] {
     if (globalRole === 'root' || globalRole === 'support') {
       // Impersonación: root y support tienen acceso a todos los tenants
@@ -194,7 +238,7 @@ export class AuthService {
         `SELECT t.id, t.slug, t.name, t.status, m.role 
          FROM memberships m 
          JOIN tenants t ON m.tenant_id = t.id 
-         WHERE m.user_id = ? 
+         WHERE m.user_id = ? AND m.status = 'active'
          ORDER BY m.created_at DESC`,
       )
       .all(userId) as {

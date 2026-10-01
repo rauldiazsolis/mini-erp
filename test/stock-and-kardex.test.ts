@@ -49,7 +49,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'owner@stock.test',
       password: 'password123',
       name: 'Dueño Stock',

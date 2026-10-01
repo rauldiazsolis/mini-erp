@@ -35,3 +35,13 @@ export function generatePosApiKey(): { rawKey: string; keyPrefix: string; keyHas
 export function hashApiKey(rawKey: string): string {
   return createHash('sha256').update(rawKey).digest('hex');
 }
+
+/** Token de un link de invitación o restablecimiento (#19): el crudo va al link, el hash a la base. */
+export function generateLinkToken(): { raw: string; hash: string } {
+  const raw = randomBytes(32).toString('base64url');
+  return { raw, hash: hashLinkToken(raw) };
+}
+
+export function hashLinkToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}

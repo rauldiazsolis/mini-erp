@@ -137,7 +137,7 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
       tokenSignal.value = 'token-root';
       userTenantsSignal.value = [
         { tenantId: 'propio', slug: 'propio', name: 'Mi Comercio', status: 'active', role: 'owner' },
-        { tenantId: 'ajeno', slug: 'ajeno', name: 'Comercio Cliente', status: 'active', role: 'impersonated' },
+        { tenantId: 'ajeno', slug: 'ajeno', name: 'Comercio Cliente', status: 'active', role: 'root_impersonator' },
       ];
 
       setActiveTenant('propio');

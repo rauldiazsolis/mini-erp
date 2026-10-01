@@ -120,12 +120,32 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     API keys de terminales.
   - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
     ventas y lotes de sincronización.
-- **Auth propia**: sin servicios externos; `node:crypto` (`scryptSync`, comparación timing-safe). El
-  registro crea siempre `user`; el `root` sale de `AuthService.ensureRoot`, que usan el comando
+- **Auth propia**: sin servicios externos; `node:crypto` (`scryptSync`, comparación timing-safe). Las
+  cuentas nacen siempre como `user`; el `root` sale de `AuthService.ensureRoot`, que usan el comando
   `scripts/create-root.ts` (una vez, en el servidor) y el seed de desarrollo. `root` y `support`
   pueden impersonar cualquier tenant.
+- **Roles de comercio e invitaciones** (#19, spec `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`):
+  - Matriz en `src/shared/permissions.ts` (TS puro, la usan servidor y cliente): roles `owner`,
+    `admin`, `member` y capacidades `tenant.use`, `bulk`, `settings.manage`, `users.manage`,
+    `owners.manage`. Permisos fijos. Root y support impersonando cuentan como `owner` hasta M7.
+  - `requireTenantContext` resuelve el rol (`MembershipService.resolveRole`, solo membresías
+    activas) y **cada** ruta de `/api/tenants/:tenantId` lleva `requirePermission(<capacidad>)`.
+    `test/permissions-api.test.ts` tiene la tabla de todas las rutas y falla si una ruta nueva no
+    está o exige otra capacidad.
+  - El cliente esconde lo que el rol no permite con `canDo` (`state/permissions-state.ts`).
+  - **Sin registro suelto**: una cuenta nace en `POST /api/alta` (cuenta, comercio, catálogo del rubro
+    y key de "Caja 1", atómico) o aceptando una invitación.
+  - Links de invitación y de restablecimiento de contraseña: un solo uso, 48 h, token en el fragmento
+    (`/invitacion#t=…`, `/restablecer#t=…`), en la base solo su sha256. El restablecimiento lo genera
+    el owner, solo para usuarios cuyas membresías activas son todas en comercios suyos.
+  - Contraseña mínima de 8 caracteres para todos (`src/shared/password.ts`).
+  - Auditoría en `audit_log` (`AuditLog`, de sistema): usuarios, roles, invitaciones y contraseñas.
+    La ve el owner en Usuarios → Actividad.
+  - Los errores de negocio son `DomainError` con su estado HTTP (`src/server/errors.ts`).
+  - Esquema de sistema 4, sin migraciones: una base vieja no arranca ("borrá el directorio de datos").
 - **Arranque** en `src/server/bootstrap.ts`: el barrido de demos siempre; el seed de desarrollo
-  (`ensureDevData`: admin root, `tienda-demo` y una key fija, todo en el repo) **solo fuera de
+  (`ensureDevData`: admin root, `tienda-demo` con un admin y un empleado para probar los roles, y una
+  key fija, todo en el repo) **solo fuera de
   `NODE_ENV=production`**.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
@@ -238,7 +258,7 @@ Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
 (roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
 las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
-(#19), M3 contrato 4.4.0 (#2), M4 ventas y caja (#20), M5 créditos (#21) y M6 importación (#22).
+(#19, hecha), M3 contrato 4.4.0 (#2), M4 ventas y caja (#20), M5 créditos (#21) y M6 importación (#22).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
