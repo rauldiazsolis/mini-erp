@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { appVersionDefine } from '../vite.config.ts';
 import { resolveAppVersion, versionLabel } from '../src/client/state/app-version.ts';
+import { devLoginDefaults } from '../src/client/state/dev-login.ts';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string };
 
@@ -26,5 +27,12 @@ describe('Marca mini contax (#18)', () => {
     expect(html).toContain('<title>mini contax</title>');
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
     expect(readFileSync('src/client/public/favicon.svg', 'utf-8')).toContain('<svg');
+  });
+});
+
+describe('Login sin datos de desarrollo en producción (#18)', () => {
+  it('precarga el admin del seed solo en desarrollo', () => {
+    expect(devLoginDefaults(true)).toEqual({ email: 'admin@local.test', password: 'admin123' });
+    expect(devLoginDefaults(false)).toEqual({ email: '', password: '' });
   });
 });
