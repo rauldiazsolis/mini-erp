@@ -43,6 +43,7 @@ const RUTAS: Record<string, Capability> = {
   'DELETE /invitations/:invitationId': 'users.manage',
   'PATCH /users/:userId': 'users.manage',
   'GET /audit': 'owners.manage',
+  'POST /users/:userId/password-reset': 'owners.manage',
 };
 
 type Layer = {

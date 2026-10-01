@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import type { InvitationService } from '../users/invitation-service.ts';
+import type { PasswordResetService } from '../users/password-reset-service.ts';
 import { passwordSchema } from '../../shared/password.ts';
 import { sendError } from '../errors.ts';
 
@@ -43,6 +44,41 @@ export function createInvitationLinkRoutes(invitations: InvitationService, limit
         }
       }
       res.status(200).json(invitations.accept(parsed.data));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  return router;
+}
+
+const completeSchema = tokenSchema.extend({ password: passwordSchema });
+
+/** Links públicos de restablecimiento (#19): consultar y fijar la contraseña nueva. */
+export function createPasswordResetLinkRoutes(resets: PasswordResetService, limit: RequestHandler): Router {
+  const router = Router();
+
+  router.post('/lookup', limit, (req, res) => {
+    const parsed = tokenSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Falta el token' });
+      return;
+    }
+    try {
+      res.status(200).json(resets.lookup(parsed.data.token));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.post('/complete', limit, (req, res) => {
+    const parsed = completeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      return;
+    }
+    try {
+      res.status(200).json(resets.complete(parsed.data));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

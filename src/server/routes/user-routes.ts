@@ -4,6 +4,7 @@ import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import type { MembershipService } from '../users/membership-service.ts';
 import type { InvitationService } from '../users/invitation-service.ts';
+import type { PasswordResetService } from '../users/password-reset-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import { TENANT_ROLES, type TenantRole } from '../../shared/permissions.ts';
 import { DomainError, sendError } from '../errors.ts';
@@ -26,7 +27,12 @@ function actorOf(req: AuthenticatedAdminRequest): { tenantId: string; actor: { u
 }
 
 /** Usuarios del comercio, invitaciones y auditoría (#19), en la cadena de /api/tenants/:tenantId. */
-export function createUserRoutes(deps: { members: MembershipService; invitations: InvitationService; audit: AuditLog }): Router {
+export function createUserRoutes(deps: {
+  members: MembershipService;
+  invitations: InvitationService;
+  resets: PasswordResetService;
+  audit: AuditLog;
+}): Router {
   const router = Router({ mergeParams: true });
 
   router.get('/users', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
@@ -72,6 +78,14 @@ export function createUserRoutes(deps: { members: MembershipService; invitations
     }
     try {
       res.status(200).json(deps.members.updateMember({ ...actorOf(req), targetUserId: req.params['userId'] ?? '', ...parsed.data }));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.post('/users/:userId/password-reset', requirePermission('owners.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      res.status(201).json(deps.resets.create({ ...actorOf(req), targetUserId: req.params['userId'] ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

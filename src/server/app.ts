@@ -11,7 +11,7 @@ import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createApiKeyRoutes } from './routes/api-key-routes.ts';
 import { createAltaRoutes } from './routes/alta-routes.ts';
 import { createUserRoutes } from './routes/user-routes.ts';
-import { createInvitationLinkRoutes } from './routes/link-routes.ts';
+import { createInvitationLinkRoutes, createPasswordResetLinkRoutes } from './routes/link-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
@@ -36,6 +36,7 @@ import {
   altaServiceDef,
   auditLogDef,
   invitationServiceDef,
+  passwordResetServiceDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -78,6 +79,7 @@ export function createApp(deps?: AppDependencies): {
   const membershipService = rootContainer.use(membershipServiceDef);
   const invitationService = rootContainer.use(invitationServiceDef);
   const auditLog = rootContainer.use(auditLogDef);
+  const passwordResetService = rootContainer.use(passwordResetServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -102,10 +104,11 @@ export function createApp(deps?: AppDependencies): {
   const requireTenantContext = createTenantContextMiddleware(membershipService, tenantManager, rootContainer);
 
   // Rutas del Admin
-  app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit));
+  app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit));
+  app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
@@ -118,7 +121,7 @@ export function createApp(deps?: AppDependencies): {
     createIoRoutes(),
     createDashboardRoutes(),
     createApiKeyRoutes(apiKeyService),
-    createUserRoutes({ members: membershipService, invitations: invitationService, audit: auditLog }),
+    createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 
   // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)

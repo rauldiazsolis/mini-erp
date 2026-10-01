@@ -19,6 +19,7 @@ import { AuditLog } from '../audit/audit-log.ts';
 import { MembershipService } from '../users/membership-service.ts';
 import { AltaService } from '../alta/alta-service.ts';
 import { InvitationService } from '../users/invitation-service.ts';
+import { PasswordResetService } from '../users/password-reset-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -83,6 +84,17 @@ export const altaServiceDef = fn.singleton(
       tenants: c.use(tenantManagerDef),
       apiKeys: c.use(apiKeyServiceDef),
       audit: c.use(auditLogDef),
+    }),
+);
+
+export const passwordResetServiceDef = fn.singleton(
+  (c) =>
+    new PasswordResetService({
+      db: c.use(systemDbDef),
+      auth: c.use(authServiceDef),
+      members: c.use(membershipServiceDef),
+      audit: c.use(auditLogDef),
+      now: c.use(clockDef),
     }),
 );
 
