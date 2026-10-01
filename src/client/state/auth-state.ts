@@ -192,6 +192,12 @@ export function setActiveTenant(tenantId: string): void {
   }
 }
 
+/** Cambia de comercio desde el selector y devuelve el nombre del elegido, para el aviso (#45). */
+export function selectTenant(tenantId: string): string {
+  setActiveTenant(tenantId);
+  return userTenantsSignal.value.find((t) => t.tenantId === tenantId)?.name ?? tenantId;
+}
+
 export function impersonateTenant(tenantId: string): void {
   if (!isRootOrSupportSignal.value) {
     throw new Error('Solo usuarios root o support pueden impersonar comercios');

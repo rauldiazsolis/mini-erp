@@ -3,7 +3,7 @@ import {
   currentUserSignal,
   activeTenantSignal,
   userTenantsSignal,
-  setActiveTenant,
+  selectTenant,
   effectiveTenantIdSignal,
   isRootOrSupportSignal,
   logout,
@@ -34,12 +34,12 @@ export function Header() {
   const isDropdownOpen = tenantDropdownOpenSignal.value;
 
   const handleSelectTenant = (tenantId: string) => {
-    setActiveTenant(tenantId);
+    const name = selectTenant(tenantId);
     closeTenantDropdown();
     showToast({
       type: 'info',
       title: 'Comercio seleccionado',
-      message: `Cambiado a ${activeTenant?.name ?? tenantId}`,
+      message: `Cambiado a ${name}`,
     });
   };
 

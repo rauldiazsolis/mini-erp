@@ -12,6 +12,7 @@ import {
   isImpersonatingSignal,
   logout,
   setActiveTenant,
+  selectTenant,
   impersonateTenant,
   stopImpersonation,
   type AuthUser,
@@ -26,6 +27,17 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
   });
 
   describe('auth-state Signals & Computeds', () => {
+    it('selectTenant cambia el comercio y devuelve el nombre del elegido, no el anterior (#45)', () => {
+      userTenantsSignal.value = [
+        { tenantId: 'ferreteria', slug: 'ferreteria', name: 'Ferretería El Candado', status: 'active', role: 'owner' },
+        { tenantId: 'kiosco', slug: 'kiosco', name: 'Kiosco San Martín', status: 'active', role: 'owner' },
+      ];
+      setActiveTenant('ferreteria');
+      expect(selectTenant('kiosco')).toBe('Kiosco San Martín');
+      expect(activeTenantSignal.value?.tenantId).toBe('kiosco');
+      expect(selectTenant('no-esta')).toBe('no-esta');
+    });
+
     it('inicia en estado no autenticado', () => {
       expect(tokenSignal.value).toBeNull();
       expect(currentUserSignal.value).toBeNull();
