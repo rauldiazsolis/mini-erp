@@ -30,7 +30,7 @@ export function TopProductsTable() {
               const isTop3 = idx < 3;
 
               return (
-                <div key={item.productId} class="space-y-1">
+                <div key={item.key} class="space-y-1">
                   <div class="flex items-center justify-between text-xs">
                     <div class="flex items-center gap-2.5 truncate max-w-[65%]">
                       <span
@@ -47,6 +47,11 @@ export function TopProductsTable() {
                         #{idx + 1}
                       </span>
                       <span class="font-medium text-slate-800 dark:text-slate-200 truncate">{item.name}</span>
+                      {item.kind === 'freeform' && (
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">
+                          sin código
+                        </span>
+                      )}
                     </div>
 
                     <div class="text-right shrink-0">

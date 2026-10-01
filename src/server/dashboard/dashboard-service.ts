@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { lineTotal, parseSaleLines, roundAmount } from './sale-lines.ts';
 
 export type DashboardPeriod = 'today' | 'week' | 'month';
 
@@ -21,7 +22,9 @@ export type TimelinePoint = {
 };
 
 export type TopProductItem = {
-  productId: string;
+  key: string;
+  kind: 'product' | 'freeform';
+  productId?: string;
   name: string;
   unitsSold: number;
   totalRevenue: number;
@@ -240,39 +243,59 @@ export class DashboardService {
     });
   }
 
+  /**
+   * Top 5 por unidades (#15): productos por `productId`, con el nombre del catálogo; líneas
+   * `freeform` agrupadas por descripción normalizada. Importes con la fórmula del POS.
+   */
   private calculateTopProducts(sales: SaleRow[]): TopProductItem[] {
-    const productMap = new Map<string, { productId: string; name: string; unitsSold: number; totalRevenue: number }>();
+    type Entry = {
+      key: string;
+      kind: 'product' | 'freeform';
+      productId?: string;
+      label: string;
+      units: number;
+      revenue: number;
+    };
+    const entries = new Map<string, Entry>();
 
     for (const sale of sales) {
-      let lines: Array<{ productId?: string; name?: string; qty?: number; lineTotal?: number }> = [];
-      try {
-        const parsed = JSON.parse(sale.payload) as { lines?: Array<{ productId?: string; name?: string; qty?: number; lineTotal?: number }> };
-        if (Array.isArray(parsed.lines)) {
-          lines = parsed.lines;
+      for (const line of parseSaleLines(sale.payload)) {
+        let fresh: Entry;
+        if (line.kind === 'product') {
+          fresh = { key: `product:${line.productId}`, kind: 'product', productId: line.productId, label: '', units: 0, revenue: 0 };
+        } else {
+          const label = line.description.trim().replace(/\s+/g, ' ');
+          if (label === '') continue;
+          fresh = { key: `freeform:${label.toLowerCase()}`, kind: 'freeform', label, units: 0, revenue: 0 };
         }
-      } catch {
-        // Ignorar payload malformado
-      }
-
-      for (const line of lines) {
-        if (line.productId !== undefined && line.productId !== '') {
-          const prodId = line.productId;
-          const current = productMap.get(prodId) ?? {
-            productId: prodId,
-            name: line.name ?? 'Producto',
-            unitsSold: 0,
-            totalRevenue: 0,
-          };
-          current.unitsSold += line.qty ?? 0;
-          current.totalRevenue += line.lineTotal ?? 0;
-          productMap.set(prodId, current);
-        }
+        const entry = entries.get(fresh.key) ?? fresh;
+        entry.units += line.qty;
+        entry.revenue += lineTotal(line);
+        entries.set(entry.key, entry);
       }
     }
 
-    const list = Array.from(productMap.values());
-    list.sort((a, b) => b.unitsSold - a.unitsSold || b.totalRevenue - a.totalRevenue);
-    return list.slice(0, 5);
+    const top = Array.from(entries.values())
+      .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
+      .slice(0, 5);
+    const names = this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));
+
+    return top.map((e) => ({
+      key: e.key,
+      kind: e.kind,
+      ...(e.productId === undefined ? {} : { productId: e.productId }),
+      name: e.productId === undefined ? e.label : (names.get(e.productId) ?? 'Producto eliminado'),
+      unitsSold: Math.round(e.units * 1000) / 1000,
+      totalRevenue: roundAmount(e.revenue),
+    }));
+  }
+
+  private productNames(ids: string[]): Map<string, string> {
+    if (ids.length === 0) return new Map();
+    const rows = this.db
+      .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(', ')})`)
+      .all(...ids) as unknown as Array<{ id: string; name: string }>;
+    return new Map(rows.map((r) => [r.id, r.name]));
   }
 
   private calculateCustomerMetrics(): { totalReceivables: number; debtorCount: number; totalCustomers: number } {

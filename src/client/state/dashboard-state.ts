@@ -22,8 +22,11 @@ export type TimelinePoint = {
   count: number;
 };
 
+/** Igual que en el servidor (#15): productos del catálogo o líneas manuales (`freeform`) agrupadas. */
 export type TopProductItem = {
-  productId: string;
+  key: string;
+  kind: 'product' | 'freeform';
+  productId?: string;
   name: string;
   unitsSold: number;
   totalRevenue: number;
