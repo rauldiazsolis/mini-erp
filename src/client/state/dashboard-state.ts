@@ -128,22 +128,31 @@ export async function fetchDashboardData(
   }
 }
 
-// Reactividad automática sin hooks: cuando cambia el tenant activo, recargar sucursales y dashboard
-if (typeof window !== 'undefined') {
-  effect(() => {
-    const tenantId = effectiveTenantIdSignal.value;
-    if (tenantId && tokenSignal.value) {
+/**
+ * Reactividad sin hooks (#7): un effect por cosa que se carga. Las sucursales dependen solo del
+ * tenant y del token; el resumen, de eso y de los filtros. Así un filtro recarga solo el resumen, una
+ * vez, y al entrar no se pide dos veces.
+ */
+export function registerDashboardEffects(): () => void {
+  const disposeBranches = effect(() => {
+    if (effectiveTenantIdSignal.value && tokenSignal.value) {
       void fetchBranches();
-      void fetchDashboardData();
     }
   });
 
-  effect(() => {
-    // Recargar cuando cambian los filtros (período o sucursal): leerlos acá suscribe el effect.
+  const disposeSummary = effect(() => {
     const filters = { period: selectedPeriodSignal.value, branch: selectedBranchSignal.value };
-    const tenantId = effectiveTenantIdSignal.value;
-    if (tenantId && tokenSignal.value) {
+    if (effectiveTenantIdSignal.value && tokenSignal.value) {
       void fetchDashboardData(filters);
     }
   });
+
+  return () => {
+    disposeBranches();
+    disposeSummary();
+  };
+}
+
+if (typeof window !== 'undefined') {
+  registerDashboardEffects();
 }
