@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { importExportServiceDef } from '../di/container.ts';
 
 const importBodySchema = z.object({
@@ -31,7 +32,7 @@ export function createIoRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
-  router.get('/export/:entity', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/export/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const entity = req.params['entity'];
     const format = req.query['format'] === 'csv' ? 'csv' : 'json';
     const tenantId = req.activeTenantId ?? 'tenant';
@@ -69,7 +70,7 @@ export function createIoRoutes(): Router {
   });
 
   // POST /import/:entity - Importar datos en lote con preview (dryRun)
-  router.post('/import/:entity', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/import/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const entity = req.params['entity'];
 
     const parseResult = importBodySchema.safeParse(req.body);
@@ -101,7 +102,7 @@ export function createIoRoutes(): Router {
   });
 
   // POST /seed-preset - Poblar datos iniciales según rubro comercial
-  router.post('/seed-preset', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/seed-preset', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = seedPresetSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Preset inválido' });

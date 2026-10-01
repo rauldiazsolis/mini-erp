@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { DashboardService } from '../dashboard/dashboard-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { dashboardSummaryServiceDef } from '../di/container.ts';
 
 const summaryQuerySchema = z.object({
@@ -22,7 +23,7 @@ function getDashboardService(req: AuthenticatedAdminRequest): DashboardService {
 export function createDashboardRoutes(): Router {
   const router = Router({ mergeParams: true });
 
-  router.get('/dashboard/summary', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/dashboard/summary', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = summaryQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Parámetros inválidos' });

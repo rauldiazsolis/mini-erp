@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { CatalogService } from '../catalog/catalog-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
+import { requirePermission } from '../middleware/permission-middleware.ts';
 import { catalogServiceDef } from '../di/container.ts';
 
 const createBranchSchema = z.object({
@@ -58,7 +59,7 @@ export function createCatalogRoutes(): Router {
 
   // --- SUCURSALES ---
 
-  router.get('/branches', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const branches = service.listBranches();
@@ -69,7 +70,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.post('/branches', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/branches', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createBranchSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de sucursal inválidos' });
@@ -86,7 +87,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/branches/:branchId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches/:branchId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const branchId = req.params['branchId'];
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
@@ -107,7 +108,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.put('/branches/:branchId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/branches/:branchId', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     const branchId = req.params['branchId'];
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
@@ -136,7 +137,7 @@ export function createCatalogRoutes(): Router {
 
   // --- PRODUCTOS ---
 
-  router.get('/products', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const search = typeof req.query['search'] === 'string' ? req.query['search'] : (typeof req.query['q'] === 'string' ? req.query['q'] : undefined);
@@ -162,7 +163,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.post('/products', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/products', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createProductSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de producto inválidos' });
@@ -179,7 +180,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/products/:productId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = req.params['productId'];
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -200,7 +201,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.put('/products/:productId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = req.params['productId'];
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -227,7 +228,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.delete('/products/:productId', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = req.params['productId'];
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -250,7 +251,7 @@ export function createCatalogRoutes(): Router {
 
   // --- CATEGORÍAS ---
 
-  router.get('/categories', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/categories', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const categories = service.listCategories();

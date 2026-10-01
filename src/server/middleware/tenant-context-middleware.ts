@@ -1,12 +1,16 @@
 import type { Response, NextFunction } from 'express';
 import type { Container } from 'hardwired';
-import type { AuthService } from '../auth/auth-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
+import type { MembershipService } from '../users/membership-service.ts';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 import { createTenantScope } from '../di/container.ts';
 
+/**
+ * Resuelve el comercio del pedido y el rol con el que se opera (#19): la membresía activa, u owner
+ * para root y support hasta M7. Sin rol, 403. Cada ruta exige después su capacidad.
+ */
 export function createTenantContextMiddleware(
-  authService: AuthService,
+  membershipService: MembershipService,
   tenantManager: TenantManager,
   rootContainer?: Container,
 ) {
@@ -23,10 +27,8 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    const accessibleTenants = authService.listUserTenants(req.user.id, req.user.globalRole);
-    const isAllowed = accessibleTenants.some((t) => t.tenantId === tenantId);
-
-    if (!isAllowed) {
+    const role = membershipService.resolveRole(req.user, tenantId);
+    if (role === undefined) {
       res.status(403).json({ error: 'No tienes acceso a este tenant' });
       return;
     }
@@ -34,6 +36,7 @@ export function createTenantContextMiddleware(
     const tenantDb = tenantManager.getTenantDb(tenantId);
     req.activeTenantId = tenantId;
     req.activeTenantDb = tenantDb;
+    req.tenantRole = role;
 
     if (rootContainer !== undefined) {
       req.tenantScope = createTenantScope(rootContainer, tenantDb);

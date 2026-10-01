@@ -5,12 +5,15 @@ import type { AuthService, UserSession } from '../auth/auth-service.ts';
 import type { ApiKeyService, ValidatedPosKey } from '../tenant/api-key-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import { createTenantScope } from '../di/container.ts';
+import type { TenantRole } from '../../shared/permissions.ts';
 
 export interface AuthenticatedAdminRequest extends Request {
   user?: UserSession;
   activeTenantId?: string;
   activeTenantDb?: DatabaseSync;
   tenantScope?: IContainer;
+  /** El rol con el que opera el comercio activo (#19); lo pone requireTenantContext. */
+  tenantRole?: TenantRole;
 }
 
 export interface AuthenticatedPosRequest extends Request {

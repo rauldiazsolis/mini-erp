@@ -8,6 +8,7 @@ import { createAdminAuthMiddleware, createPosAuthMiddleware } from './middleware
 import { createTenantContextMiddleware } from './middleware/tenant-context-middleware.ts';
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
+import { createApiKeyRoutes } from './routes/api-key-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
@@ -28,6 +29,7 @@ import {
   apiKeyServiceDef,
   demoSessionServiceDef,
   clockDef,
+  membershipServiceDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -67,6 +69,7 @@ export function createApp(deps?: AppDependencies): {
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
   const demoSessions = rootContainer.use(demoSessionServiceDef);
+  const membershipService = rootContainer.use(membershipServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -88,11 +91,11 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(authService, tenantManager, rootContainer);
+  const requireTenantContext = createTenantContextMiddleware(membershipService, tenantManager, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit));
-  app.use('/api/tenants', createTenantRoutes(authService, tenantManager, apiKeyService, requireAdmin));
+  app.use('/api/tenants', createTenantRoutes(authService, tenantManager, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
     requireAdmin,
@@ -103,6 +106,7 @@ export function createApp(deps?: AppDependencies): {
     createBulkRoutes(),
     createIoRoutes(),
     createDashboardRoutes(),
+    createApiKeyRoutes(apiKeyService),
   );
 
   // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
