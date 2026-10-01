@@ -321,8 +321,13 @@ arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
 
    ```bash
    sudo systemctl stop mini-erp
-   sudo rm -rf /var/lib/mini-erp/*
+   sudo sh -c 'rm -rf /var/lib/mini-erp/*'
+   sudo ls -A /var/lib/mini-erp
    ```
+
+   El último no tiene que listar nada. El `rm` va dentro de `sudo sh -c '…'` porque el `*` lo tiene
+   que expandir root: `ubuntu` no puede leer la carpeta (es de `minierp`, 750), y con un
+   `sudo rm -rf /var/lib/mini-erp/*` a secas el `*` no coincide con nada y `rm -f` no borra ni avisa.
 
 2. Publicá la versión (paso 6: el tag desde `package.json`). El deploy arranca el mini-erp nuevo sobre
    la carpeta vacía, que crea las bases nuevas, y termina en verde.

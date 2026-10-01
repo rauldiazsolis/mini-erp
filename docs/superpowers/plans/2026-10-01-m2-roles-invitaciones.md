@@ -2996,7 +2996,7 @@ después del merge, el tag `v0.3.0` y el deploy:
 ```bash
 ssh <usuario>@mini.contax.ar
 sudo systemctl stop mini-erp
-sudo rm -rf /var/lib/mini-erp/*
+sudo sh -c 'rm -rf /var/lib/mini-erp/*'
 sudo systemctl start mini-erp
 sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
 curl -s https://mini.contax.ar/health
