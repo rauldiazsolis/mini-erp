@@ -7,6 +7,7 @@ import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
+import { APP_VERSION } from '../app-version.ts';
 
 const CONTRACT_VERSION = '4.2.0';
 
@@ -105,7 +106,7 @@ export function createConnectorRoutes(
       status: 'ok',
       backend: {
         name: 'mini-erp',
-        version: '0.1.0',
+        version: APP_VERSION,
       },
       ...(demoSessions.enabled() ? { capabilities: ['demo-sessions'] } : {}),
     });

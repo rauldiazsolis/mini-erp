@@ -209,6 +209,12 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   `workflow_call`), sube un tarball por SSH y lo activa con `deploy/deploy.sh`, que vuelve a la
   versión anterior si `/health` no responde. Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment
   `production`: los carga el usuario, nunca el agente.
+- **Versión única** (#40): la de `package.json`, sin literales en el código (`src/server/app-version.ts`
+  para `/health` y `GET /connector/info`; `appVersionDefine` en `vite.config.ts` para el cliente). Se
+  sube en el PR de cada etapa (`pnpm version minor --no-git-tag-version`; `patch` para arreglos) y el
+  tag `v*` se crea después del merge desde `package.json` (comando en `deploy/README.md`).
+  `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
+  `/health` responda la versión subida.
 - Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
   `scripts/backup.ts` (`VACUUM INTO` de las bases reales, sin demos, 7 días).
 - Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen

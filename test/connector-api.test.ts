@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
@@ -78,10 +79,17 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
         .set('Authorization', `Bearer ${rawApiKey}`);
 
       expect(res.status).toBe(200);
-      const body = res.body as unknown as { contractVersion: string; status: string; backend: { name: string } };
+      const body = res.body as unknown as {
+        contractVersion: string;
+        status: string;
+        backend: { name: string; version: string };
+      };
       expect(body.contractVersion).toBe('4.2.0');
       expect(body.status).toBe('ok');
       expect(body.backend.name).toBe('mini-erp');
+      // La versión del backend es la de package.json (#40), no un literal
+      const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string };
+      expect(body.backend.version).toBe(pkg.version);
     });
   });
 

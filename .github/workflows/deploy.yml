@@ -12,11 +12,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # #40: la versión publicada es siempre la de package.json; un tag distinto frena todo antes del CI
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - id: release
+        run: node scripts/check-release.ts
+
   ci:
+    needs: version
     uses: ./.github/workflows/ci.yml
 
   deploy:
-    needs: ci
+    needs: [version, ci]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -59,7 +75,17 @@ jobs:
           ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" \
             "set -e; R=/opt/mini-erp/releases/$GITHUB_SHA; rm -rf \$R; mkdir -p \$R; tar -xzf \$R.tar.gz -C \$R; bash \$R/deploy/deploy.sh $GITHUB_SHA"
 
+      # Que la versión que responde sea la que se acaba de subir (si deploy.sh volvió a la anterior,
+      # /health responde igual, pero con otra versión)
       - name: Chequeo público
         env:
           PUBLIC_HOST: ${{ vars.PUBLIC_HOST }}
-        run: curl -fsS --retry 5 --retry-delay 3 "https://$PUBLIC_HOST/health"
+          EXPECTED_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          body=$(curl -fsS --retry 5 --retry-delay 3 "https://$PUBLIC_HOST/health")
+          echo "$body"
+          deployed=$(printf '%s' "$body" | jq -r '.version // empty')
+          if [ "$deployed" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Responde la versión ${deployed:-desconocida} y se esperaba $EXPECTED_VERSION"
+            exit 1
+          fi
