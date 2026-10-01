@@ -1,0 +1,30 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { appVersionDefine } from '../vite.config.ts';
+import { resolveAppVersion, versionLabel } from '../src/client/state/app-version.ts';
+
+const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string };
+
+describe('Marca mini contax (#18)', () => {
+  it('Vite inyecta la versión de package.json', () => {
+    expect(appVersionDefine['import.meta.env.VITE_APP_VERSION']).toBe(JSON.stringify(pkg.version));
+  });
+
+  it('la versión cae en "dev" si no se inyectó', () => {
+    expect(resolveAppVersion('0.1.0')).toBe('0.1.0');
+    expect(resolveAppVersion(undefined)).toBe('dev');
+    expect(resolveAppVersion('  ')).toBe('dev');
+  });
+
+  it('la etiqueta dice mini contax y la versión', () => {
+    expect(versionLabel('0.1.0')).toBe('mini contax v0.1.0');
+    expect(versionLabel('dev')).toBe('mini contax (desarrollo)');
+  });
+
+  it('index.html tiene el título y el favicon', () => {
+    const html = readFileSync('src/client/index.html', 'utf-8');
+    expect(html).toContain('<title>mini contax</title>');
+    expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    expect(readFileSync('src/client/public/favicon.svg', 'utf-8')).toContain('<svg');
+  });
+});
