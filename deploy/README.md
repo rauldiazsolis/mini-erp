@@ -211,12 +211,27 @@ Después de cargar la llave privada en GitHub, guardá el archivo `mini-erp-depl
 
 ## Paso 6: publicar una versión
 
-Las versiones se publican con un **tag** de git que empiece con `v` (por ejemplo `v0.1.0`), o a mano
-desde GitHub: pestaña **Actions** → **Deploy** → **Run workflow** (sobre `main`).
+La versión de mini es **la de `package.json`**, y es la única (#40): la muestran el admin y el
+landing, y la informan `/health` y `GET /connector/info`. Para publicar una:
 
-El workflow tarda unos minutos: primero corre el CI entero (lint, tipos, tests, build y e2e) y
-después sube la versión. Si el mini-erp nuevo no responde, **vuelve solo a la versión anterior** y el
-workflow queda en rojo.
+1. En el PR de la etapa, subí la versión: `pnpm version minor --no-git-tag-version` para una etapa,
+   `pnpm version patch --no-git-tag-version` para un arreglo. Cambia solo `package.json`.
+2. Después del merge, desde `main` actualizado, creá el tag **desde `package.json`** y subilo:
+
+   ```bash
+   V="v$(node -p "require('./package.json').version")" && git tag -a "$V" -m "$V" && git push origin "$V"
+   ```
+
+También se puede publicar a mano desde GitHub: pestaña **Actions** → **Deploy** → **Run workflow**
+(sobre `main`). Despliega la versión que diga `package.json`.
+
+El workflow tarda unos minutos:
+
+- Primero compara el tag con `package.json`. Si no coinciden (por ejemplo `v0.3.0` con `0.2.1`), se
+  frena ahí, sin tocar el servidor, y dice qué corregir.
+- Después corre el CI entero (lint, tipos, tests, build y e2e) y sube la versión. Si el mini-erp
+  nuevo no responde, **vuelve solo a la versión anterior** y el workflow queda en rojo.
+- Al final pide `https://<HOST>/health` y comprueba que responda la versión que se acaba de subir.
 
 Cuando termine en verde, abrí `https://<HOST>/` en el navegador: tiene que aparecer el landing del
 mini-erp con el candado de HTTPS.
