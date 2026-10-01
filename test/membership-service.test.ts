@@ -54,6 +54,19 @@ describe('MembershipService y AuditLog (#19)', () => {
     expect(members.countActiveOwners('kiosco-a')).toBe(1);
   });
 
+  it('el último owner activo no se baja ni se desactiva (409)', () => {
+    const ana = auth.createUser({ email: 'ana@x.com', password: 'password123', name: 'Ana' }).user;
+    const root = auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' }).user;
+    tm.createTenant({ id: 'kiosco-a', slug: 'kiosco-a', name: 'A', ownerUserId: ana.id });
+    const actor = { userId: root.id, role: 'owner' as const };
+    expect(() => members.updateMember({ tenantId: 'kiosco-a', actor, targetUserId: ana.id, status: 'disabled' })).toThrow(
+      'El comercio necesita al menos un owner activo',
+    );
+    expect(() => members.updateMember({ tenantId: 'kiosco-a', actor, targetUserId: ana.id, role: 'admin' })).toThrow(
+      'El comercio necesita al menos un owner activo',
+    );
+  });
+
   it('AuditLog registra y lista con nombres, lo más nuevo primero', () => {
     let t = 0;
     const audit = new AuditLog(systemDb, () => new Date(Date.UTC(2026, 9, 1, 10, t++)));

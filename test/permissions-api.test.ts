@@ -38,6 +38,11 @@ const RUTAS: Record<string, Capability> = {
   'GET /api-keys': 'settings.manage',
   'POST /api-keys': 'settings.manage',
   'DELETE /api-keys/:keyId': 'settings.manage',
+  'GET /users': 'users.manage',
+  'POST /invitations': 'users.manage',
+  'DELETE /invitations/:invitationId': 'users.manage',
+  'PATCH /users/:userId': 'users.manage',
+  'GET /audit': 'owners.manage',
 };
 
 type Layer = {

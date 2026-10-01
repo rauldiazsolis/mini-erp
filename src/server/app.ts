@@ -10,6 +10,8 @@ import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createApiKeyRoutes } from './routes/api-key-routes.ts';
 import { createAltaRoutes } from './routes/alta-routes.ts';
+import { createUserRoutes } from './routes/user-routes.ts';
+import { createInvitationLinkRoutes } from './routes/link-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
@@ -32,6 +34,8 @@ import {
   clockDef,
   membershipServiceDef,
   altaServiceDef,
+  auditLogDef,
+  invitationServiceDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -72,6 +76,8 @@ export function createApp(deps?: AppDependencies): {
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
   const demoSessions = rootContainer.use(demoSessionServiceDef);
   const membershipService = rootContainer.use(membershipServiceDef);
+  const invitationService = rootContainer.use(invitationServiceDef);
+  const auditLog = rootContainer.use(auditLogDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -99,6 +105,7 @@ export function createApp(deps?: AppDependencies): {
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit));
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
+  app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
@@ -111,6 +118,7 @@ export function createApp(deps?: AppDependencies): {
     createIoRoutes(),
     createDashboardRoutes(),
     createApiKeyRoutes(apiKeyService),
+    createUserRoutes({ members: membershipService, invitations: invitationService, audit: auditLog }),
   );
 
   // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
