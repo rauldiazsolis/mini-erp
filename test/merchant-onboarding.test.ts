@@ -12,7 +12,7 @@ import {
   readAltaParams,
   errorMessageSignal,
   merchantResultSignal,
-  sanitizeToSlug,
+  isExistingAccountSignal,
   resetMerchantOnboarding,
   openMerchantOnboarding,
   closeMerchantOnboarding,
@@ -40,19 +40,6 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
     returnUrlSignal.value = null;
     activeViewSignal.value = 'dashboard';
     vi.restoreAllMocks();
-  });
-
-  describe('Sanitización de Nombres de Negocio (Slug & DB ID)', () => {
-    it('convierte nombres comerciales a slugs seguros para SQLite sin requerir input técnico', () => {
-      expect(sanitizeToSlug('Kiosco "San Martín" & Cía')).toBe('kiosco-san-martin-cia');
-      expect(sanitizeToSlug('Ferretería & Corralón 24 Horas')).toBe('ferreteria-corralon-24-horas');
-    });
-
-    it('agrega sufijo seguro si el nombre es demasiado corto (<3 caracteres)', () => {
-      const slug = sanitizeToSlug('K');
-      expect(slug.length).toBeGreaterThanOrEqual(3);
-      expect(slug.startsWith('k-')).toBe(true);
-    });
   });
 
   describe('Control de Apertura y Reset', () => {
@@ -115,26 +102,16 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       userEmailSignal.value = 'martin@gmail.com';
       userPasswordSignal.value = '123';
       await advanceMerchantStep();
-      expect(errorMessageSignal.value).toContain('6 caracteres');
+      expect(errorMessageSignal.value).toBe('La contraseña debe tener al menos 8 caracteres');
+
+      userPasswordSignal.value = '1234567';
+      await advanceMerchantStep();
+      expect(merchantStepSignal.value).toBe(1);
     });
 
-    it('avanza al Paso 2 si los datos de cuenta son válidos y registra al usuario', async () => {
-      global.fetch = vi.fn().mockImplementation((url: string | URL | Request) => {
-        const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
-        if (urlStr.includes('/auth/register')) {
-          return Promise.resolve(new Response(JSON.stringify({
-            token: 'mock-jwt-step1',
-            user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez' },
-          }), { status: 201, headers: { 'content-type': 'application/json' } }));
-        }
-        if (urlStr.includes('/auth/me')) {
-          return Promise.resolve(new Response(JSON.stringify({
-            user: { id: 'usr_step1', email: 'martin@gmail.com', name: 'Martín Gómez', globalRole: 'user' },
-            tenants: [],
-          }), { status: 200, headers: { 'content-type': 'application/json' } }));
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
-      });
+    it('avanza al Paso 2 sin llamar al servidor: la cuenta se crea con el alta (#19)', async () => {
+      const fetchMock = vi.fn();
+      global.fetch = fetchMock;
 
       merchantStepSignal.value = 1;
       userNameSignal.value = 'Martín Gómez';
@@ -144,25 +121,7 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       await advanceMerchantStep();
       expect(merchantStepSignal.value).toBe(2);
       expect(errorMessageSignal.value).toBeNull();
-      expect(tokenSignal.value).toBe('mock-jwt-step1');
-    });
-
-    it('detiene y advierte en el Paso 1 si el correo ya está registrado', async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'El correo electrónico ya está registrado' }), {
-          status: 400,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
-
-      merchantStepSignal.value = 1;
-      userNameSignal.value = 'Martín Gómez';
-      userEmailSignal.value = 'existente@gmail.com';
-      userPasswordSignal.value = 'segura123';
-
-      await advanceMerchantStep();
-      expect(merchantStepSignal.value).toBe(1);
-      expect(errorMessageSignal.value).toContain('ya está registrado');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('goBackMerchantStep permite volver del Paso 2 al 1 si no está autenticado', () => {
@@ -182,56 +141,30 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
   });
 
   describe('Aprovisionamiento Completo y Retorno con Credenciales', () => {
-    it('registra usuario, crea tenant, siembra preset, genera API Key y arma URL de retorno para el POS', async () => {
-      const fetchCalls: Array<{ url: string; method?: string; body?: unknown }> = [];
+    it('crea cuenta y comercio con un solo POST /api/alta y arma la URL de retorno para el POS', async () => {
+      const fetchCalls: Array<{ url: string; method?: string; body?: unknown; auth?: string | undefined }> = [];
 
       global.fetch = vi.fn().mockImplementation((url: string | URL | Request, opts?: RequestInit) => {
         const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
         const method = opts?.method ?? 'GET';
         const parsedBody = typeof opts?.body === 'string' ? (JSON.parse(opts.body) as Record<string, unknown>) : undefined;
-        fetchCalls.push({ url: urlStr, method, body: parsedBody });
+        const headers = (opts?.headers ?? {}) as Record<string, string>;
+        fetchCalls.push({ url: urlStr, method, body: parsedBody, auth: headers['Authorization'] });
 
-        // 1. Registro
-        if (urlStr.includes('/auth/register')) {
+        if (urlStr.endsWith('/api/alta') && method === 'POST') {
           return Promise.resolve(new Response(JSON.stringify({
             token: 'mock-jwt-merchant',
-            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe' },
+            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe Argento', globalRole: 'user' },
+            tenant: { id: 'kiosco-pepe-amigos', name: 'Kiosco Pepe & Amigos' },
+            posKey: { key: 'pos_live_merchant_xyz', branch: 'CENTRAL', pointOfSale: 'Caja 1' },
           }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
 
-        // 2. Auth me
         if (urlStr.includes('/auth/me')) {
           return Promise.resolve(new Response(JSON.stringify({
-            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe', globalRole: 'user' },
-            tenants: [{ tenantId: 'kiosco-pepe-1234', slug: 'kiosco-pepe-1234', name: 'Kiosco Pepe', status: 'active', role: 'owner' }],
+            user: { id: 'usr_new', email: 'pepe@kiosco.com', name: 'Pepe Argento', globalRole: 'user' },
+            tenants: [{ tenantId: 'kiosco-pepe-amigos', slug: 'kiosco-pepe-amigos', name: 'Kiosco Pepe & Amigos', status: 'active', role: 'owner' }],
           }), { status: 200, headers: { 'content-type': 'application/json' } }));
-        }
-
-        // 3. Crear tenant
-        if (urlStr.endsWith('/tenants') && method === 'POST') {
-          return Promise.resolve(new Response(JSON.stringify({
-            id: typeof parsedBody?.['id'] === 'string' ? parsedBody['id'] : 'tenant-id',
-            slug: typeof parsedBody?.['slug'] === 'string' ? parsedBody['slug'] : 'slug',
-            name: typeof parsedBody?.['name'] === 'string' ? parsedBody['name'] : 'name',
-          }), { status: 201, headers: { 'content-type': 'application/json' } }));
-        }
-
-        // 4. Sembrar preset
-        if (urlStr.includes('/seed-preset') && method === 'POST') {
-          return Promise.resolve(new Response(JSON.stringify({ success: true, count: 15 }), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          }));
-        }
-
-        // 5. Crear API Key
-        if (urlStr.includes('/api-keys') && method === 'POST') {
-          return Promise.resolve(new Response(JSON.stringify({
-            id: 'key_123',
-            key: 'pos_live_merchant_xyz',
-            branch: 'CENTRAL',
-            pointOfSale: 'Caja 1',
-          }), { status: 201, headers: { 'content-type': 'application/json' } }));
         }
 
         return Promise.resolve(new Response(JSON.stringify({ error: 'Not found' }), {
@@ -253,6 +186,17 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
 
       expect(merchantStepSignal.value).toBe(4);
       expect(merchantResultSignal.value).not.toBeNull();
+      const altaCalls = fetchCalls.filter((c) => c.url.endsWith('/api/alta'));
+      expect(altaCalls).toHaveLength(1);
+      expect(altaCalls[0]?.body).toEqual({
+        name: 'Pepe Argento',
+        email: 'pepe@kiosco.com',
+        password: 'pepe123456',
+        businessName: 'Kiosco Pepe & Amigos',
+        template: 'kiosco',
+      });
+      expect(altaCalls[0]?.auth).toBeUndefined();
+      expect(tokenSignal.value).toBe('mock-jwt-merchant');
       expect(merchantResultSignal.value?.name).toBe('Kiosco Pepe & Amigos');
       expect(merchantResultSignal.value?.apiKey).toBe('pos_live_merchant_xyz');
       expect(merchantResultSignal.value?.branch).toBe('CENTRAL');
@@ -275,12 +219,59 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       expect(merchantResultSignal.value?.returnHost).toBe('localhost:5173');
 
       // Verificar que el tenant creado quedó como activo en el cliente
-      expect(activeTenantIdSignal.value).toBe(merchantResultSignal.value?.tenantId);
+      expect(activeTenantIdSignal.value).toBe('kiosco-pepe-amigos');
 
       // Finalizar e ingresar al dashboard
       enterDashboardFromOnboarding();
       expect(merchantOnboardingActiveSignal.value).toBe(false);
       expect(activeViewSignal.value).toBe('dashboard');
+    });
+
+    it('con sesión manda solo el comercio, con el token', async () => {
+      tokenSignal.value = 'jwt-existente';
+      currentUserSignal.value = { id: 'u1', email: 'a@b.com', name: 'Ana', globalRole: 'user' };
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith('/api/alta')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            user: { id: 'u1', email: 'a@b.com', name: 'Ana', globalRole: 'user' },
+            tenant: { id: 'otro', name: 'Otro' },
+            posKey: { key: 'k', branch: 'CENTRAL', pointOfSale: 'Caja 1' },
+          }), { status: 201, headers: { 'content-type': 'application/json' } }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ user: { id: 'u1', email: 'a@b.com', name: 'Ana', globalRole: 'user' }, tenants: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }));
+      });
+      global.fetch = fetchMock;
+      businessNameSignal.value = 'Otro';
+      selectedMerchantPresetSignal.value = 'almacen';
+
+      await executeMerchantProvisioning();
+
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(init.body).toBe(JSON.stringify({ businessName: 'Otro', template: 'almacen' }));
+      expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer jwt-existente');
+      expect(tokenSignal.value).toBe('jwt-existente');
+    });
+
+    it('un mail ya registrado vuelve al Paso 1 con "iniciá sesión"', async () => {
+      global.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Ya tenés una cuenta con ese correo: iniciá sesión' }), {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      userNameSignal.value = 'Martín';
+      userEmailSignal.value = 'existente@gmail.com';
+      userPasswordSignal.value = 'segura123';
+      businessNameSignal.value = 'Kiosco';
+
+      await executeMerchantProvisioning();
+
+      expect(merchantStepSignal.value).toBe(1);
+      expect(isExistingAccountSignal.value).toBe(true);
+      expect(errorMessageSignal.value).toBe('Ya tenés una cuenta con ese correo: iniciá sesión');
     });
   });
 });

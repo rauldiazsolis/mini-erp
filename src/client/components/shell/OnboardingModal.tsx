@@ -1,12 +1,7 @@
 import {
   stepSignal,
   nameSignal,
-  slugSignal,
-  tenantIdSignal,
   selectedPresetSignal,
-  branchNameSignal,
-  branchCodeSignal,
-  posNameSignal,
   isSubmittingSignal,
   errorMessageSignal,
   provisionResultSignal,
@@ -14,6 +9,7 @@ import {
   nextStep,
   prevStep,
   finishAndEnterTenant,
+  DONE_STEP,
   type BusinessPreset,
 } from '../../state/onboarding-state.ts';
 import {
@@ -98,10 +94,10 @@ export function OnboardingModal() {
             <Logo class="w-10 h-10 shrink-0" />
             <div>
               <h2 class="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Nuevo comercio en mini contax</h2>
-              <p class="text-xs text-slate-500 dark:text-slate-400">Asistente de configuración y aprovisionamiento en 3 pasos</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Nombre y rubro: el resto lo armamos nosotros</p>
             </div>
           </div>
-          {step < 4 && (
+          {step < DONE_STEP && (
             <button
               type="button"
               onClick={closeOnboardingModal}
@@ -120,8 +116,7 @@ export function OnboardingModal() {
           {[
             { num: 1, label: 'Identidad' },
             { num: 2, label: 'Rubro & Preset' },
-            { num: 3, label: 'Sucursal & POS' },
-            { num: 4, label: '¡Listo!' },
+            { num: DONE_STEP, label: '¡Listo!' },
           ].map((s) => {
             const isActive = step === s.num;
             const isDone = step > s.num;
@@ -169,8 +164,8 @@ export function OnboardingModal() {
           {step === 1 && (
             <div class="space-y-4 animate-in fade-in duration-150">
               <div class="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                Ingresa los datos comerciales básicos. Se generará un slug amigable y un identificador aislado para la
-                base de datos SQLite del tenant.
+                Elegí el nombre de tu comercio. Después elegís el rubro y listo: la primera caja ("Caja 1") se crea
+                sola.
               </div>
 
               <Input
@@ -180,24 +175,6 @@ export function OnboardingModal() {
                 onInput={(e) => { setName((e.target as HTMLInputElement).value); }}
                 autoFocus
               />
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Slug Web"
-                  placeholder="ej: kiosco-san-martin"
-                  value={slugSignal.value}
-                  onInput={(e) => (slugSignal.value = (e.target as HTMLInputElement).value)}
-                  helperText="Identificador legible para URLs y subdominios"
-                />
-
-                <Input
-                  label="Identificador de Tenant (ID)"
-                  placeholder="ej: kiosco-san-martin"
-                  value={tenantIdSignal.value}
-                  onInput={(e) => (tenantIdSignal.value = (e.target as HTMLInputElement).value)}
-                  helperText="Nombre del archivo SQLite aislado: data/tenants/[id].sqlite"
-                />
-              </div>
             </div>
           )}
 
@@ -245,43 +222,8 @@ export function OnboardingModal() {
             </div>
           )}
 
-          {/* STEP 3: SUCURSAL & TERMINAL POS */}
-          {step === 3 && (
-            <div class="space-y-4 animate-in fade-in duration-150">
-              <div class="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 p-3.5 rounded-2xl text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                Configura la primera sucursal física y la terminal POS donde operará tu caja registradora. Se emitirá
-                una API Key segura lista para sincronizar.
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Nombre de Sucursal"
-                  placeholder="Casa Central, Sucursal 1..."
-                  value={branchNameSignal.value}
-                  onInput={(e) => (branchNameSignal.value = (e.target as HTMLInputElement).value)}
-                />
-
-                <Input
-                  label="Código de Sucursal"
-                  placeholder="CENTRAL, SUC01..."
-                  value={branchCodeSignal.value}
-                  onInput={(e) => (branchCodeSignal.value = (e.target as HTMLInputElement).value)}
-                  helperText="Código alfanumérico en mayúsculas"
-                />
-              </div>
-
-              <Input
-                label="Nombre del Punto de Venta / Terminal"
-                placeholder="Caja 1, Mostrador Principal..."
-                value={posNameSignal.value}
-                onInput={(e) => (posNameSignal.value = (e.target as HTMLInputElement).value)}
-                helperText="Identificará a esta caja registradora en los reportes de ventas"
-              />
-            </div>
-          )}
-
-          {/* STEP 4: RESULTADO Y CREDENCIALES POS */}
-          {step === 4 && result && (
+          {/* RESULTADO Y CREDENCIALES POS */}
+          {step === DONE_STEP && result && (
             <div class="space-y-5 animate-in fade-in duration-150">
               <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3.5">
                 <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-emerald-500/30 shrink-0">
@@ -359,7 +301,7 @@ export function OnboardingModal() {
 
         {/* Footer Modal Actions */}
         <div class="p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between">
-          {step < 4 ? (
+          {step < DONE_STEP ? (
             <>
               <div>
                 {step > 1 ? (
@@ -386,7 +328,7 @@ export function OnboardingModal() {
               </div>
 
               <div>
-                {step < 3 ? (
+                {step < 2 ? (
                   <Button type="button" size="sm" onClick={nextStep}>
                     Siguiente Paso →
                   </Button>

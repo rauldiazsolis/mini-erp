@@ -1,17 +1,11 @@
-import { signal } from '@preact/signals';
 import { LoginForm } from './LoginForm.tsx';
-import { RegisterForm } from './RegisterForm.tsx';
 import { Card } from '../ui/Card.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { Logo } from '../ui/Logo.tsx';
 import { versionLabel } from '../../state/app-version.ts';
 import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 
-export const authViewModeSignal = signal<'login' | 'register'>('login');
-
 export function AuthView() {
-  const isLogin = authViewModeSignal.value === 'login';
-
   return (
     <div class="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col justify-center items-center p-4 selection:bg-indigo-500 selection:text-white relative overflow-hidden transition-colors">
       {/* Botón de tema en pantalla de login */}
@@ -32,19 +26,11 @@ export function AuthView() {
 
         <Card class="border-slate-200 dark:border-slate-800/90 shadow-xl dark:shadow-2xl">
           <div class="mb-6 text-center">
-            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              {isLogin ? 'Iniciar Sesión' : 'Crear Nueva Cuenta'}
-            </h2>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {isLogin ? 'Ingresa tus credenciales para acceder' : 'Regístrate para administrar tus comercios'}
-            </p>
+            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Iniciar Sesión</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ingresa tus credenciales para acceder</p>
           </div>
 
-          {isLogin ? (
-            <LoginForm onSwitchToRegister={() => (authViewModeSignal.value = 'register')} />
-          ) : (
-            <RegisterForm onSwitchToLogin={() => (authViewModeSignal.value = 'login')} />
-          )}
+          <LoginForm />
         </Card>
 
         {/* Acceso directo al alta */}

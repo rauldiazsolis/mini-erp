@@ -1,5 +1,6 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch, setOnUnauthorized } from '../api/client.ts';
+import type { MembershipRole } from '../../shared/permissions.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
 
@@ -15,7 +16,7 @@ export type TenantMembershipItem = {
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: 'owner' | 'member' | 'impersonated';
+  role: MembershipRole;
 };
 
 const TOKEN_KEY = 'mini_erp_token';
@@ -165,32 +166,11 @@ export async function login(credentials: { email: string; password: string }): P
   }
 }
 
-export async function register(data: { email: string; password: string; name: string }): Promise<boolean> {
-  try {
-    authLoadingSignal.value = true;
-    authErrorSignal.value = null;
-
-    const res = await apiFetch<{
-      user: AuthUser;
-      token: string;
-    }>('auth/register', {
-      method: 'POST',
-      body: data,
-    });
-
-    tokenSignal.value = res.token;
-    setStoredToken(res.token);
-    currentUserSignal.value = res.user;
-
-    await fetchProfile();
-    return true;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al registrar usuario';
-    authErrorSignal.value = msg;
-    return false;
-  } finally {
-    authLoadingSignal.value = false;
-  }
+/** Adopta una sesión que dio el servidor (alta, invitación, restablecimiento, #19). */
+export async function adoptSession(token: string): Promise<boolean> {
+  tokenSignal.value = token;
+  setStoredToken(token);
+  return fetchProfile();
 }
 
 export function logout(): void {

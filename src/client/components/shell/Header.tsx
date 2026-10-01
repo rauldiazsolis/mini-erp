@@ -15,6 +15,7 @@ import {
 } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
+import { ROLE_LABEL } from '../../state/permissions-state.ts';
 
 export const tenantDropdownOpenSignal = signal(false);
 
@@ -70,7 +71,7 @@ export function Header() {
                 {activeTenant?.name ?? 'Seleccionar Comercio'}
               </div>
               <div class="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 leading-none">
-                {activeTenant ? activeTenant.tenantId : 'Sin selección'}
+                {activeTenant ? `${ROLE_LABEL[activeTenant.role]} · ${activeTenant.tenantId}` : 'Sin selección'}
               </div>
             </div>
             <svg class="w-4 h-4 text-slate-400 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

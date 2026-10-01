@@ -1,13 +1,14 @@
 import { signal } from '@preact/signals';
-import { apiFetch } from '../api/client.ts';
+import { apiFetch, ApiError } from '../api/client.ts';
 import {
   tokenSignal,
-  currentUserSignal,
   isAuthenticatedSignal,
   fetchProfile,
+  adoptSession,
   setActiveTenant,
   login,
 } from './auth-state.ts';
+import { PASSWORD_MIN_LENGTH, PASSWORD_MIN_MESSAGE } from '../../shared/password.ts';
 import { navigateTo } from './navigation-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
@@ -54,23 +55,6 @@ export const isSubmittingSignal = signal<boolean>(false);
 export const progressStepMessageSignal = signal<string>('');
 export const errorMessageSignal = signal<string | null>(null);
 export const merchantResultSignal = signal<MerchantProvisionResult | null>(null);
-
-// Helper para sanitizar nombres a slug/identificador
-export function sanitizeToSlug(text: string): string {
-  const clean = text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  if (clean.length < 3) {
-    const randomSuffix = Math.random().toString(36).substring(2, 6);
-    return `${clean ? clean + '-' : 'tienda-'}${randomSuffix}`;
-  }
-  return clean;
-}
 
 export type AltaTemplate = 'kiosco' | 'almacen' | 'ferreteria';
 const ALTA_TEMPLATES: readonly AltaTemplate[] = ['kiosco', 'almacen', 'ferreteria'];
@@ -189,45 +173,11 @@ export async function advanceMerchantStep(): Promise<void> {
           errorMessageSignal.value = 'Ingresa un correo electrónico válido';
           return;
         }
-        if (userPasswordSignal.value.length < 6) {
-          errorMessageSignal.value = 'La contraseña debe tener al menos 6 caracteres';
+        if (userPasswordSignal.value.length < PASSWORD_MIN_LENGTH) {
+          errorMessageSignal.value = PASSWORD_MIN_MESSAGE;
           return;
         }
-
-        // Validar y registrar de inmediato en el servidor
-        isSubmittingSignal.value = true;
-        try {
-          const registerRes = await apiFetch<{
-            user: { id: string; email: string; name: string };
-            token: string;
-          }>('auth/register', {
-            method: 'POST',
-            body: {
-              name: userNameSignal.value.trim(),
-              email: userEmailSignal.value.trim(),
-              password: userPasswordSignal.value,
-            },
-          });
-
-          tokenSignal.value = registerRes.token;
-          currentUserSignal.value = {
-            id: registerRes.user.id,
-            email: registerRes.user.email,
-            name: registerRes.user.name,
-            globalRole: 'user',
-          };
-          await fetchProfile();
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Error al registrar usuario';
-          if (msg.includes('ya está registrado')) {
-            errorMessageSignal.value = `${msg}. ¿Ya tienes cuenta? Haz clic en "Iniciar sesión" arriba.`;
-          } else {
-            errorMessageSignal.value = msg;
-          }
-          return;
-        } finally {
-          isSubmittingSignal.value = false;
-        }
+        // La cuenta se crea junto con el comercio, en un solo POST /api/alta (#19)
       }
     }
     // Pasa a datos del negocio habiendo validado/autenticado con éxito
@@ -264,98 +214,39 @@ export async function executeMerchantProvisioning(): Promise<void> {
     errorMessageSignal.value = null;
     merchantStepSignal.value = 3;
 
-    let token = tokenSignal.value;
-
-    if (!token && !isAuthenticatedSignal.value) {
-      if (userEmailSignal.value && userPasswordSignal.value) {
-        const registerRes = await apiFetch<{
-          user: { id: string; email: string; name: string };
-          token: string;
-        }>('auth/register', {
-          method: 'POST',
-          body: {
-            name: userNameSignal.value.trim() || 'Comerciante',
+    // Cuenta (si no hay sesión), comercio, catálogo del rubro y key de Caja 1 en un solo pedido (#19)
+    progressStepMessageSignal.value = 'Creando tu comercio, su catálogo y la conexión de tu caja...';
+    const businessName = businessNameSignal.value.trim();
+    const preset = selectedMerchantPresetSignal.value;
+    const authenticated = isAuthenticatedSignal.value;
+    const res = await apiFetch<{
+      token?: string;
+      tenant: { id: string; name: string };
+      posKey: { key: string; branch: string; pointOfSale: string };
+    }>('alta', {
+      method: 'POST',
+      token: authenticated ? tokenSignal.value : null,
+      body: authenticated
+        ? { businessName, template: preset }
+        : {
+            name: userNameSignal.value.trim(),
             email: userEmailSignal.value.trim(),
             password: userPasswordSignal.value,
+            businessName,
+            template: preset,
           },
-        });
-        token = registerRes.token;
-        tokenSignal.value = token;
-        currentUserSignal.value = {
-          id: registerRes.user.id,
-          email: registerRes.user.email,
-          name: registerRes.user.name,
-          globalRole: 'user',
-        };
-      } else {
-        throw new Error('Debes estar autenticado para crear el comercio');
-      }
-    }
-
-    // 2. Generar slug e ID limpio (el backend desambigua automáticamente con -2, -3 sólo si ya existe)
-    progressStepMessageSignal.value = 'Aprovisionando base de datos segura y aislada...';
-    const businessName = businessNameSignal.value.trim();
-    const baseSlug = sanitizeToSlug(businessName);
-
-    // Crear Tenant
-    const tenantRes = await apiFetch<{
-      id: string;
-      slug: string;
-      name: string;
-    }>('tenants', {
-      method: 'POST',
-      body: {
-        id: baseSlug,
-        slug: baseSlug,
-        name: businessName,
-        seedDemoData: false,
-      },
-      token,
     });
 
-    const tenantId = tenantRes.id;
-
-    // 3. Poblar preset si corresponde
-    const preset = selectedMerchantPresetSignal.value;
-    if (preset !== 'empty') {
-      progressStepMessageSignal.value = `Precargando catálogo y rubro modelo (${preset})...`;
-      try {
-        await apiFetch(`tenants/${tenantId}/seed-preset`, {
-          method: 'POST',
-          body: { preset },
-          token,
-        });
-      } catch (err: unknown) {
-        console.warn('Aviso al sembrar preset comercial:', err);
-      }
+    if (res.token !== undefined) {
+      await adoptSession(res.token);
+    } else {
+      await fetchProfile();
     }
-
-    // 4. Crear API Key inicial para la terminal POS (Casa Central / Caja 1)
-    progressStepMessageSignal.value = 'Generando credenciales de sincronización para tu caja...';
-    const branchCode = 'CENTRAL';
-    const posTerminalName = 'Caja 1';
-
-    const keyRes = await apiFetch<{
-      id: string;
-      key?: string;
-      rawKey?: string;
-      branch: string;
-      pointOfSale: string;
-    }>(`tenants/${tenantId}/api-keys`, {
-      method: 'POST',
-      body: {
-        name: posTerminalName,
-        branch: branchCode,
-        pointOfSale: posTerminalName,
-      },
-      token,
-    });
-
-    const apiKey = keyRes.key || keyRes.rawKey || '';
-
-    // Actualizar perfil del usuario y seleccionar el nuevo tenant
-    await fetchProfile();
+    const tenantId = res.tenant.id;
     setActiveTenant(tenantId);
+    const apiKey = res.posKey.key;
+    const branchCode = res.posKey.branch;
+    const posTerminalName = res.posKey.pointOfSale;
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4100';
     const connectorUrl = `${origin}/connector`;
@@ -395,7 +286,13 @@ export async function executeMerchantProvisioning(): Promise<void> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error inesperado durante el aprovisionamiento';
     errorMessageSignal.value = msg;
-    merchantStepSignal.value = 2; // Permitir reintentar
+    if (err instanceof ApiError && err.status === 409) {
+      // El mail ya tiene cuenta: vuelve al paso 1 para iniciar sesión
+      isExistingAccountSignal.value = true;
+      merchantStepSignal.value = 1;
+    } else {
+      merchantStepSignal.value = 2; // Permitir reintentar
+    }
   } finally {
     isSubmittingSignal.value = false;
   }

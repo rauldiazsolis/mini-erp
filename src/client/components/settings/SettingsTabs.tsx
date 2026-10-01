@@ -2,11 +2,13 @@ import {
   activeSettingsTabSignal,
   type SettingsTab,
 } from '../../state/settings-state.ts';
+import { isSettingsTabAllowed } from '../../state/permissions-state.ts';
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'pos', label: 'Terminales POS & API Keys', icon: '📡' },
   { id: 'branches', label: 'Gestión de Sucursales', icon: '🏢' },
   { id: 'connection', label: 'Guía de Sincronización Connector', icon: '🔌' },
+  { id: 'account', label: 'Mi cuenta', icon: '🔑' },
   { id: 'appearance', label: 'Apariencia & Tema', icon: '🎨' },
 ];
 
@@ -15,7 +17,7 @@ export function SettingsTabs() {
 
   return (
     <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-      {TABS.map((t) => {
+      {TABS.filter((t) => isSettingsTabAllowed(t.id)).map((t) => {
         const isActive = activeTab === t.id;
         return (
           <button

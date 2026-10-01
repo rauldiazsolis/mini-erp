@@ -8,7 +8,8 @@ const initialLogin = devLoginDefaults(import.meta.env.DEV);
 export const loginEmailSignal = signal(initialLogin.email);
 export const loginPasswordSignal = signal(initialLogin.password);
 
-export function LoginForm(props: { onSwitchToRegister: () => void }) {
+/** Sin "Registrarse" (#19): una cuenta nace en el alta o aceptando una invitación. */
+export function LoginForm() {
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     if (!loginEmailSignal.value.trim() || !loginPasswordSignal.value.trim()) {
@@ -71,19 +72,6 @@ export function LoginForm(props: { onSwitchToRegister: () => void }) {
             Rellenar credenciales de desarrollo
           </button>
         )}
-      </div>
-
-      <div class="pt-4 border-t border-slate-800 text-center">
-        <p class="text-xs text-slate-400">
-          ¿No tienes una cuenta aún?{' '}
-          <button
-            type="button"
-            onClick={props.onSwitchToRegister}
-            class="text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer underline-offset-2 hover:underline"
-          >
-            Registrarse
-          </button>
-        </p>
       </div>
     </form>
   );
