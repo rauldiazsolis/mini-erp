@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
@@ -15,6 +16,8 @@ describe('App Scaffolding & Healthcheck', () => {
     const res = await request(app).get('/health');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok', service: 'mini-erp' });
+    // La versión sale de package.json (#40): el deploy la compara con el tag
+    const pkg = JSON.parse(readFileSync('package.json', 'utf-8')) as { version: string };
+    expect(res.body).toEqual({ status: 'ok', service: 'mini-erp', version: pkg.version });
   });
 });

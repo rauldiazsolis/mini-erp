@@ -31,6 +31,7 @@ import {
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
+import { APP_VERSION } from './app-version.ts';
 
 export type AppDependencies = {
   systemDb?: DatabaseSync;
@@ -84,7 +85,7 @@ export function createApp(deps?: AppDependencies): {
   app.use(requestLogger);
 
   app.get('/health', (_req: Request, res: Response) => {
-    res.status(200).json({ status: 'ok', service: 'mini-erp' });
+    res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
   const requireTenantContext = createTenantContextMiddleware(authService, tenantManager, rootContainer);
