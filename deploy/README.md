@@ -219,8 +219,11 @@ landing, y la informan `/health` y `GET /connector/info`. Para publicar una:
 2. Después del merge, desde `main` actualizado, creá el tag **desde `package.json`** y subilo:
 
    ```bash
-   V="v$(node -p "require('./package.json').version")" && git tag -a "$V" -m "$V" && git push origin "$V"
+   V="v$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' package.json)" && echo "$V" && git tag -a "$V" -m "$V" && git push origin "$V"
    ```
+
+   Lee la versión con `sed` y no con `node`: en Git Bash, `node` es un alias a `winpty` que dentro
+   de `$(...)` se corta con "stdout is not a tty" y no crea el tag.
 
 También se puede publicar a mano desde GitHub: pestaña **Actions** → **Deploy** → **Run workflow**
 (sobre `main`). Despliega la versión que diga `package.json`.
@@ -318,8 +321,13 @@ arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
 
    ```bash
    sudo systemctl stop mini-erp
-   sudo rm -rf /var/lib/mini-erp/*
+   sudo sh -c 'rm -rf /var/lib/mini-erp/*'
+   sudo ls -A /var/lib/mini-erp
    ```
+
+   El último no tiene que listar nada. El `rm` va dentro de `sudo sh -c '…'` porque el `*` lo tiene
+   que expandir root: `ubuntu` no puede leer la carpeta (es de `minierp`, 750), y con un
+   `sudo rm -rf /var/lib/mini-erp/*` a secas el `*` no coincide con nada y `rm -f` no borra ni avisa.
 
 2. Publicá la versión (paso 6: el tag desde `package.json`). El deploy arranca el mini-erp nuevo sobre
    la carpeta vacía, que crea las bases nuevas, y termina en verde.
@@ -329,6 +337,11 @@ arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
    sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
    curl -s https://mini.contax.ar/health
    ```
+
+Si el deploy falla con "no respondió /health" y vuelve a la versión anterior, la causa es una base
+vieja (`sudo journalctl -u mini-erp -n 60 --no-pager | grep -i "versión anterior"`). Aunque la hayas
+borrado, la versión anterior, al volver, crea otra base vieja. Repetí el paso 1 y corré **Actions** →
+**Deploy** → **Run workflow** sobre `main` (el tag ya existe: no hace falta otro); después, el paso 3.
 
 ## Restaurar un backup
 
