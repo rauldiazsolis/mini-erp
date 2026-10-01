@@ -42,7 +42,8 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
     body: options?.body !== undefined ? JSON.stringify(options.body) : null,
   });
 
-  if (res.status === 401) {
+  // Solo un pedido con sesión puede tener la sesión vencida: un 401 del login o de un link no cierra nada (#19)
+  if (res.status === 401 && options?.token) {
     if (onUnauthorizedCallback) {
       onUnauthorizedCallback();
     }

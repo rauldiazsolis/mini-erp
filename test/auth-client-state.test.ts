@@ -154,8 +154,27 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
         json: () => Promise.resolve({ error: 'Token inválido o expirado' }),
       });
 
-      await expect(apiFetch('/api/test-401')).rejects.toThrow('Token inválido o expirado');
+      await expect(apiFetch('/api/test-401', { token: 'vencido' })).rejects.toThrow('Token inválido o expirado');
       expect(onUnauthMock).toHaveBeenCalled();
+
+      globalThis.fetch = originalFetch;
+    });
+
+    it('un 401 de un pedido sin sesión (login, links) no cierra la sesión (#19)', async () => {
+      const originalFetch = globalThis.fetch;
+      const onUnauthMock = vi.fn();
+      setOnUnauthorized(onUnauthMock);
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () => Promise.resolve({ error: 'Contraseña incorrecta' }),
+      });
+
+      await expect(apiFetch('/api/invitations/accept', { method: 'POST', body: {} })).rejects.toThrow('Contraseña incorrecta');
+      expect(onUnauthMock).not.toHaveBeenCalled();
 
       globalThis.fetch = originalFetch;
     });

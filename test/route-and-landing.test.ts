@@ -17,6 +17,8 @@ describe('Ruteo del SPA (#9)', () => {
     ['/admin/lo-que-sea', 'admin'],
     ['/alta', 'alta'],
     ['/onboarding', 'alta'],
+    ['/invitacion', 'invitacion'],
+    ['/restablecer', 'restablecer'],
     ['/no-existe', 'landing'],
   ] as const)('%s → %s', (path, route) => {
     expect(routeFromPath(path)).toBe(route);
