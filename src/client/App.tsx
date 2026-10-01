@@ -13,6 +13,7 @@ import { StockView } from './components/stock/StockView.tsx';
 import { CustomerView } from './components/customers/CustomerView.tsx';
 import { BulkView } from './components/bulk/BulkView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
+import { UsersView } from './components/users/UsersView.tsx';
 
 import {
   merchantOnboardingActiveSignal,
@@ -60,6 +61,8 @@ export function App() {
       {currentView === 'customers' && <CustomerView />}
 
       {currentView === 'bulk' && <BulkView />}
+
+      {currentView === 'users' && <UsersView />}
 
       {currentView === 'settings' && <SettingsView />}
     </AppShell>

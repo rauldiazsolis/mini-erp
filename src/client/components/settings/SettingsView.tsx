@@ -4,6 +4,7 @@ import { PosKeysSection } from './PosKeysSection.tsx';
 import { BranchesSection } from './BranchesSection.tsx';
 import { ConnectorGuideSection } from './ConnectorGuideSection.tsx';
 import { AppearanceSection } from './AppearanceSection.tsx';
+import { AccountSection } from './AccountSection.tsx';
 
 import { PageHeader } from '../ui/PageHeader.tsx';
 
@@ -27,6 +28,7 @@ export function SettingsView() {
       {activeTab === 'branches' && <BranchesSection />}
       {activeTab === 'connection' && <ConnectorGuideSection />}
       {activeTab === 'appearance' && <AppearanceSection />}
+      {activeTab === 'account' && <AccountSection />}
     </div>
   );
 }
