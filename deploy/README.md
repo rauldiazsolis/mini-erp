@@ -219,8 +219,11 @@ landing, y la informan `/health` y `GET /connector/info`. Para publicar una:
 2. Después del merge, desde `main` actualizado, creá el tag **desde `package.json`** y subilo:
 
    ```bash
-   V="v$(node -p "require('./package.json').version")" && git tag -a "$V" -m "$V" && git push origin "$V"
+   V="v$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' package.json)" && echo "$V" && git tag -a "$V" -m "$V" && git push origin "$V"
    ```
+
+   Lee la versión con `sed` y no con `node`: en Git Bash, `node` es un alias a `winpty` que dentro
+   de `$(...)` se corta con "stdout is not a tty" y no crea el tag.
 
 También se puede publicar a mano desde GitHub: pestaña **Actions** → **Deploy** → **Run workflow**
 (sobre `main`). Despliega la versión que diga `package.json`.
