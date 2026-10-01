@@ -3,6 +3,8 @@ import { LoginForm } from './LoginForm.tsx';
 import { RegisterForm } from './RegisterForm.tsx';
 import { Card } from '../ui/Card.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
+import { Logo } from '../ui/Logo.tsx';
+import { versionLabel } from '../../state/app-version.ts';
 import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 
 export const authViewModeSignal = signal<'login' | 'register'>('login');
@@ -23,13 +25,9 @@ export function AuthView() {
 
       <div class="w-full max-w-md relative z-10">
         <div class="text-center mb-8">
-          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-4 border border-indigo-500/20 shadow-inner">
-            <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mini-ERP Admin</h1>
-          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Gestión multitenant, catálogo, stock y analíticas</p>
+          <Logo class="w-14 h-14 mb-4 inline-block" />
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">mini contax</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Caja, stock, clientes y cuentas corrientes de tu comercio</p>
         </div>
 
         <Card class="border-slate-200 dark:border-slate-800/90 shadow-xl dark:shadow-2xl">
@@ -49,23 +47,22 @@ export function AuthView() {
           )}
         </Card>
 
-        {/* Acceso directo a Onboarding Express para comerciantes */}
+        {/* Acceso directo al alta */}
         <div class="mt-4 p-4 rounded-3xl bg-gradient-to-tr from-indigo-500/10 via-purple-500/10 to-violet-500/10 border border-indigo-500/20 text-center backdrop-blur-sm">
           <p class="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            ¿Nuevo comerciante o quieres conectar tu POS?
+            ¿Todavía no tenés tu comercio en mini contax?
           </p>
           <button
             type="button"
             onClick={() => { openMerchantOnboarding(); }}
             class="mt-2.5 w-full py-2.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>🚀</span>
-            <span>Comenzar Onboarding Express (1 minuto)</span>
+            Crear mi comercio
           </button>
         </div>
 
         <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          offline-pos • Mini-ERP Multitenant v4.2.0
+          {versionLabel()}
         </p>
       </div>
     </div>

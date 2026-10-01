@@ -6,6 +6,8 @@ import {
   toggleMobileMenu,
   type ActiveNavView,
 } from '../../state/navigation-state.ts';
+import { versionLabel } from '../../state/app-version.ts';
+import { Logo } from '../ui/Logo.tsx';
 
 type NavItem = {
   id: ActiveNavView;
@@ -136,15 +138,8 @@ export function Sidebar() {
       <div class="space-y-6">
         {/* App Logo */}
         <div class="flex items-center gap-3 px-2 py-1">
-          <div class="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/30">
-            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <div>
-            <span class="text-sm font-black tracking-tight text-slate-900 dark:text-white block">mini-erp</span>
-            <span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Connector v4.2.0</span>
-          </div>
+          <Logo class="w-10 h-10 shrink-0" />
+          <span class="text-sm font-black tracking-tight text-slate-900 dark:text-white">mini contax</span>
         </div>
 
         {/* Navigation Items */}
@@ -178,16 +173,7 @@ export function Sidebar() {
       </div>
 
       {/* Footer Info */}
-      <div class="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
-        <div class="flex items-center justify-between">
-          <span class="text-slate-500">Offline-POS</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Online
-          </span>
-        </div>
-        <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">Puerto: 4100 • Express</div>
-      </div>
+      <div class="px-3 text-[11px] text-slate-500 dark:text-slate-400">{versionLabel()}</div>
     </div>
   );
 

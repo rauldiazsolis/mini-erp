@@ -11,7 +11,7 @@ export function AppearanceSection() {
       <Card>
         <CardHeader
           title="Modo de Visualización & Apariencia"
-          description="Selecciona cómo deseas visualizar el panel de administración de Mini-ERP. Tu preferencia se guardará en tu navegador."
+          description="Elegí cómo ver el panel de mini contax. Tu preferencia se guarda en este navegador."
         />
 
         <div class="space-y-6">

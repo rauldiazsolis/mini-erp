@@ -186,6 +186,13 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `index.html` y `ThemeToggle.tsx` en `Header.tsx`, `AuthView.tsx`, `MerchantOnboardingView.tsx`
     y la solapa Apariencia de configuración (`AppearanceSection.tsx`).
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
+  - **Marca** (#18): lo visible dice "mini contax" (en minúsculas). Logo en `components/ui/Logo.tsx`
+    (un ticket con la "c" de Contax) y favicon en `public/favicon.svg` (variante de ticket grande,
+    legible a 16 px). La versión de mini sale de `package.json`: `appVersionDefine` en
+    `vite.config.ts` la inyecta al compilar y `state/app-version.ts` la expone (`versionLabel()`).
+    `test/brand.test.ts` falla si vuelven "Mini-ERP", "Express", "Multitenant", "Connector v…",
+    "Puerto: …" o "TPV" a la UI. Las credenciales del seed de desarrollo están detrás de
+    `import.meta.env.DEV` (`state/dev-login.ts`), así el build de producción no las incluye.
 
 ## Deploy (#3)
 
@@ -224,7 +231,7 @@ temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy p
 Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
 (roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
-las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18), M2 roles e invitaciones
+las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
 (#19), M3 contrato 4.4.0 (#2), M4 ventas y caja (#20), M5 créditos (#21) y M6 importación (#22).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.

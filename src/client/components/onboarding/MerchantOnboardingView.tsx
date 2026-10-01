@@ -24,6 +24,7 @@ import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
+import { Logo } from '../ui/Logo.tsx';
 import type { BusinessPreset } from '../../state/onboarding-state.ts';
 
 const PRESETS: Array<{
@@ -100,12 +101,10 @@ export function MerchantOnboardingView() {
       {/* Top Navbar */}
       <header class="w-full border-b border-slate-200 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md sticky top-0 z-30 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-indigo-500/25">
-            🚀
-          </div>
+          <Logo class="w-10 h-10 shrink-0" />
           <div>
-            <h1 class="text-base font-bold tracking-tight text-slate-900 dark:text-white">Mini-ERP Express</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Onboarding de Nuevos Comercios</p>
+            <h1 class="text-base font-bold tracking-tight text-slate-900 dark:text-white">mini contax</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Alta de tu comercio</p>
           </div>
         </div>
 
@@ -356,7 +355,7 @@ export function MerchantOnboardingView() {
                           size="md"
                           onClick={enterDashboardFromOnboarding}
                         >
-                          Ir al Panel Mini-ERP →
+                          Ir al panel de mini contax →
                         </Button>
                       </div>
                     </>
@@ -375,7 +374,7 @@ export function MerchantOnboardingView() {
                           class="shadow-lg shadow-indigo-600/30"
                           onClick={enterDashboardFromOnboarding}
                         >
-                          Ingresar al Panel de Mini-ERP →
+                          Ir al panel de mini contax →
                         </Button>
                       </div>
                     </>

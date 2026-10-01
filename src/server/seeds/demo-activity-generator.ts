@@ -67,10 +67,8 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
         {
           kind: 'product',
           productId: prod1.id,
-          name: prod1.name,
           qty: qty1,
           unitPrice: prod1.price,
-          lineTotal: line1Total,
         },
       ];
 
@@ -95,10 +93,8 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
         lines.push({
           kind: 'product',
           productId: prod2.id,
-          name: prod2.name,
           qty: qty2,
           unitPrice: prod2.price,
-          lineTotal: line2Total,
         });
 
         db.prepare(
@@ -114,7 +110,7 @@ export function generateHistoricalDemoActivity(db: DatabaseSync, branchId: strin
 
       // Método de pago: la mayoría efectivo/tarjeta, alguna a cuenta corriente
       const isAccountSale = s === 2 && d % 2 === 0;
-      const paymentMethod = isAccountSale ? 'account' : s % 2 === 0 ? 'cash' : 'card';
+      const paymentMethod = isAccountSale ? 'account' : s % 2 === 0 ? 'cash' : 'debit';
       const customerId = isAccountSale ? 'cust-juan' : 'cust-cf';
 
       const salePayload = {

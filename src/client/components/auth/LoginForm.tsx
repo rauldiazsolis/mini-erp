@@ -2,9 +2,11 @@ import { signal } from '@preact/signals';
 import { login, authLoadingSignal, authErrorSignal } from '../../state/auth-state.ts';
 import { Input } from '../ui/Input.tsx';
 import { Button } from '../ui/Button.tsx';
+import { devLoginDefaults } from '../../state/dev-login.ts';
 
-export const loginEmailSignal = signal('admin@local.test');
-export const loginPasswordSignal = signal('admin123');
+const initialLogin = devLoginDefaults(import.meta.env.DEV);
+export const loginEmailSignal = signal(initialLogin.email);
+export const loginPasswordSignal = signal(initialLogin.password);
 
 export function LoginForm(props: { onSwitchToRegister: () => void }) {
   const handleSubmit = (e: Event) => {
@@ -21,8 +23,9 @@ export function LoginForm(props: { onSwitchToRegister: () => void }) {
   };
 
   const handleFillDemo = () => {
-    loginEmailSignal.value = 'admin@local.test';
-    loginPasswordSignal.value = 'admin123';
+    const dev = devLoginDefaults(true);
+    loginEmailSignal.value = dev.email;
+    loginPasswordSignal.value = dev.password;
     authErrorSignal.value = null;
   };
 
@@ -59,13 +62,15 @@ export function LoginForm(props: { onSwitchToRegister: () => void }) {
           Iniciar Sesión
         </Button>
 
-        <button
-          type="button"
-          onClick={handleFillDemo}
-          class="w-full text-center text-xs text-indigo-400 hover:text-indigo-300 transition-colors py-1 cursor-pointer font-medium"
-        >
-          ⚡ Rellenar credenciales demo (admin@local.test)
-        </button>
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={handleFillDemo}
+            class="w-full text-center text-xs text-indigo-400 hover:text-indigo-300 transition-colors py-1 cursor-pointer font-medium"
+          >
+            Rellenar credenciales de desarrollo
+          </button>
+        )}
       </div>
 
       <div class="pt-4 border-t border-slate-800 text-center">

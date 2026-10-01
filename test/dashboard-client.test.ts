@@ -78,9 +78,9 @@ describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', ()
         { date: '2026-09-25', label: 'Vie 25/09', total: 15000, count: 6 },
       ],
       topProducts: [
-        { productId: 'p1', name: 'Gaseosa Cola 2L', unitsSold: 40, totalRevenue: 60000 },
-        { productId: 'p2', name: 'Alfajor Triple', unitsSold: 35, totalRevenue: 35000 },
-        { productId: 'p3', name: 'Papas Fritas', unitsSold: 20, totalRevenue: 30000 },
+        { key: 'product:p1', kind: 'product', productId: 'p1', name: 'Gaseosa Cola 2L', unitsSold: 40, totalRevenue: 60000 },
+        { key: 'product:p2', kind: 'product', productId: 'p2', name: 'Alfajor Triple', unitsSold: 35, totalRevenue: 35000 },
+        { key: 'product:p3', kind: 'product', productId: 'p3', name: 'Papas Fritas', unitsSold: 20, totalRevenue: 30000 },
       ],
       stockAlerts: {
         criticalCount: 1,
