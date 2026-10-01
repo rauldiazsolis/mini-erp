@@ -17,6 +17,7 @@ import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
 import { DemoSessionService } from '../demo/demo-session-service.ts';
 import { AuditLog } from '../audit/audit-log.ts';
 import { MembershipService } from '../users/membership-service.ts';
+import { AltaService } from '../alta/alta-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -64,6 +65,15 @@ export const demoSessionServiceDef = fn.singleton(
 
 export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), c.use(clockDef)));
 export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemDbDef)));
+export const altaServiceDef = fn.singleton(
+  (c) =>
+    new AltaService({
+      auth: c.use(authServiceDef),
+      tenants: c.use(tenantManagerDef),
+      apiKeys: c.use(apiKeyServiceDef),
+      audit: c.use(auditLogDef),
+    }),
+);
 
 // --- DEFINICIONES SCOPED POR REQUEST / TENANT ---
 

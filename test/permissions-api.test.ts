@@ -34,7 +34,6 @@ const RUTAS: Record<string, Capability> = {
   'POST /bulk/interests': 'bulk',
   'GET /export/:entity': 'bulk',
   'POST /import/:entity': 'bulk',
-  'POST /seed-preset': 'bulk',
   'GET /dashboard/summary': 'tenant.use',
   'GET /api-keys': 'settings.manage',
   'POST /api-keys': 'settings.manage',

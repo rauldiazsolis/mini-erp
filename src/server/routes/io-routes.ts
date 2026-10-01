@@ -12,12 +12,6 @@ const importBodySchema = z.object({
   dryRun: z.boolean().optional(),
 });
 
-const seedPresetSchema = z.object({
-  preset: z.enum(['kiosco', 'ferreteria', 'almacen'], {
-    errorMap: () => ({ message: "El preset debe ser 'kiosco', 'ferreteria' o 'almacen'" }),
-  }),
-});
-
 function getImportExportService(req: AuthenticatedAdminRequest): ImportExportService {
   if (req.tenantScope !== undefined) {
     return req.tenantScope.use(importExportServiceDef);
@@ -98,24 +92,6 @@ export function createIoRoutes(): Router {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al importar datos';
       res.status(400).json({ error: msg });
-    }
-  });
-
-  // POST /seed-preset - Poblar datos iniciales según rubro comercial
-  router.post('/seed-preset', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const parseResult = seedPresetSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Preset inválido' });
-      return;
-    }
-
-    try {
-      const service = getImportExportService(req);
-      const result = service.applyBusinessPreset(parseResult.data.preset);
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al aplicar preset de negocio';
-      res.status(500).json({ error: msg });
     }
   });
 

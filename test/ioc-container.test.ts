@@ -153,23 +153,17 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(rootContainer).toBeDefined();
 
       // 1. Crear usuario root y obtener token
-      const regRes = await request(app)
-        .post('/api/auth/register')
-        .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema' });
-      expect(regRes.status).toBe(201);
-      const token = (regRes.body as unknown as { token: string }).token;
-
-      // 2. Crear dos comercios (tenants) sin datos demo automáticos
       const t1Res = await request(app)
-        .post('/api/tenants')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ id: 'kiosco-alfa', slug: 'kiosco-alfa', name: 'Kiosco Alfa', seedDemoData: false });
+        .post('/api/alta')
+        .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema', businessName: 'Kiosco Alfa', template: 'empty' });
       expect(t1Res.status).toBe(201);
+      const token = (t1Res.body as unknown as { token: string }).token;
 
+      // 2. Un segundo comercio vacío para la misma cuenta
       const t2Res = await request(app)
-        .post('/api/tenants')
+        .post('/api/alta')
         .set('Authorization', `Bearer ${token}`)
-        .send({ id: 'kiosco-beta', slug: 'kiosco-beta', name: 'Kiosco Beta', seedDemoData: false });
+        .send({ businessName: 'Kiosco Beta', template: 'empty' });
       expect(t2Res.status).toBe(201);
 
       // 3. Crear producto en Kiosco Alfa vía API HTTP

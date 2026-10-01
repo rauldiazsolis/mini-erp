@@ -21,10 +21,10 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     authService = bundle.authService;
   });
 
-  it('registra siempre con rol "user", aunque sea el primer usuario (#3)', async () => {
+  it('el alta crea siempre con rol "user", aunque sea el primer usuario (#3)', async () => {
     const res1 = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'primero@sistema.com', password: 'password123', name: 'Primero' });
+      .post('/api/alta')
+      .send({ email: 'primero@sistema.com', password: 'password123', name: 'Primero', businessName: 'Primero', template: 'empty' });
 
     expect(res1.status).toBe(201);
     const body1 = res1.body as unknown as { user: { globalRole: string }; token: string };
@@ -33,9 +33,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   });
 
   it('permite login y consulta de perfil con /api/auth/me', async () => {
-    await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'juan@tienda.com', password: 'mypassword', name: 'Juan' });
+    authService.createUser({ email: 'juan@tienda.com', password: 'mypassword', name: 'Juan' });
 
     const loginRes = await request(app)
       .post('/api/auth/login')
@@ -55,21 +53,15 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   });
 
   it('permite crear un tenant y generar API Keys para el POS', async () => {
-    const regRes = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Dueño Kiosco' });
-    const regBody = regRes.body as unknown as { token: string };
-    const token = regBody.token;
+    // El alta crea el comercio con la key de Caja 1 (#19)
+    const altaRes = await request(app)
+      .post('/api/alta')
+      .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Dueño Kiosco', businessName: 'Kiosco San Martín', template: 'kiosco' });
 
-    // Crear tenant
-    const createTenantRes = await request(app)
-      .post('/api/tenants')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ id: 'kiosco-san-martin', slug: 'kiosco-san-martin', name: 'Kiosco San Martín', seedDemoData: true });
-
-    expect(createTenantRes.status).toBe(201);
-    const tenantBody = createTenantRes.body as unknown as { id: string };
-    expect(tenantBody.id).toBe('kiosco-san-martin');
+    expect(altaRes.status).toBe(201);
+    const altaBody = altaRes.body as unknown as { token: string; tenant: { id: string } };
+    const token = altaBody.token;
+    expect(altaBody.tenant.id).toBe('kiosco-san-martin');
 
     // Generar API Key para terminal POS
     const keyRes = await request(app)
@@ -88,9 +80,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(listRes.status).toBe(200);
-    const listBody = listRes.body as unknown as Array<{ active: boolean }>;
-    expect(listBody.length).toBe(1);
-    expect(listBody[0]?.active).toBe(true);
+    const listBody = listRes.body as unknown as Array<{ id: string; active: boolean }>;
+    expect(listBody.length).toBe(2);
+    expect(listBody.find((k) => k.id === keyBody.id)?.active).toBe(true);
 
     // Revocar key
     const revokeRes = await request(app)
@@ -103,8 +95,8 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
       .get('/api/tenants/kiosco-san-martin/api-keys')
       .set('Authorization', `Bearer ${token}`);
 
-    const listAfterBody = listAfterRes.body as unknown as Array<{ active: boolean }>;
-    expect(listAfterBody[0]?.active).toBe(false);
+    const listAfterBody = listAfterRes.body as unknown as Array<{ id: string; active: boolean }>;
+    expect(listAfterBody.find((k) => k.id === keyBody.id)?.active).toBe(false);
   });
 
   it('el usuario root puede ver y acceder a todos los tenants (impersonación)', async () => {
@@ -116,17 +108,10 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     const rootBody = rootRes.body as unknown as { token: string };
     const rootToken = rootBody.token;
 
-    // 2. Registrar usuario común y que cree un tenant
-    const userRes = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante' });
-    const userBody = userRes.body as unknown as { token: string };
-    const userToken = userBody.token;
-
+    // 2. Un comerciante se da de alta con su comercio
     await request(app)
-      .post('/api/tenants')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({ id: 'zapateria-real', slug: 'zapateria-real', name: 'Zapatería Real' });
+      .post('/api/alta')
+      .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante', businessName: 'Zapatería Real', template: 'empty' });
 
     // 3. Root consulta tenants disponibles
     const rootTenantsRes = await request(app)

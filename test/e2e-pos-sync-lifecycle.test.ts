@@ -74,18 +74,10 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
 
-    // 1. Registrar usuario admin/root
-    const regRes = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'owner@e2e.test', password: 'password123', name: 'Owner E2E' });
-    const regBody = regRes.body as unknown as { token: string };
-    adminToken = regBody.token;
-
-    // 2. Crear tenant con datos iniciales (preset kiosco)
-    await request(app)
-      .post('/api/tenants')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ id: tenantId, slug: tenantId, name: 'Kiosco E2E', seedDemoData: true });
+    // 1. Dueño y 2. comercio con la semilla de demo (sin pasar por el alta, #19)
+    const owner = bundle.authService.createUser({ email: 'owner@e2e.test', password: 'password123', name: 'Owner E2E' });
+    adminToken = owner.token;
+    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco E2E', ownerUserId: owner.user.id, seedDemoData: true });
 
     // 3. Generar API Key para la terminal POS
     const keyRes = await request(app)

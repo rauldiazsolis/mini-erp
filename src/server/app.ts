@@ -9,6 +9,7 @@ import { createTenantContextMiddleware } from './middleware/tenant-context-middl
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createApiKeyRoutes } from './routes/api-key-routes.ts';
+import { createAltaRoutes } from './routes/alta-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
@@ -30,6 +31,7 @@ import {
   demoSessionServiceDef,
   clockDef,
   membershipServiceDef,
+  altaServiceDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -95,7 +97,9 @@ export function createApp(deps?: AppDependencies): {
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit));
-  app.use('/api/tenants', createTenantRoutes(authService, tenantManager, requireAdmin));
+  // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
+  app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
+  app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
     requireAdmin,

@@ -3,12 +3,6 @@ import { z } from 'zod';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 
-const registerSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
-});
-
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(1, 'Contraseña requerida'),
@@ -20,22 +14,6 @@ export function createAuthRoutes(
   limit: RequestHandler,
 ): Router {
   const router = Router();
-
-  router.post('/register', limit, (req, res) => {
-    const parseResult = registerSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
-      return;
-    }
-
-    try {
-      const result = authService.createUser(parseResult.data);
-      res.status(201).json(result);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al registrar';
-      res.status(400).json({ error: msg });
-    }
-  });
 
   router.post('/login', limit, (req, res) => {
     const parseResult = loginSchema.safeParse(req.body);

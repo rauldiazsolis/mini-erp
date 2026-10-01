@@ -123,14 +123,10 @@ describe('POST /connector/demo-sessions (#9)', () => {
 
   it('sin demos, /info no declara capacidades', async () => {
     const { app } = makeApp({ enabled: false });
-    const reg = await request(app)
-      .post('/api/auth/register')
-      .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana' });
-    const token = (reg.body as { token: string }).token;
-    await request(app)
-      .post('/api/tenants')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ id: 'tienda', slug: 'tienda', name: 'Tienda' });
+    const alta = await request(app)
+      .post('/api/alta')
+      .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana', businessName: 'Tienda', template: 'empty' });
+    const token = (alta.body as { token: string }).token;
     const key = await request(app)
       .post('/api/tenants/tienda/api-keys')
       .set('Authorization', `Bearer ${token}`)
