@@ -29,6 +29,15 @@ describe('Database Engine (DB-per-tenant)', () => {
       expect(names).toContain('tenants');
       expect(names).toContain('memberships');
       expect(names).toContain('tenant_api_keys');
+      expect(names).toContain('invitations');
+      expect(names).toContain('password_resets');
+      expect(names).toContain('audit_log');
+    });
+
+    it('frena con una base de sistema de un esquema anterior (#19)', () => {
+      const db = new DatabaseSync(':memory:');
+      db.exec('PRAGMA user_version = 3');
+      expect(() => { initSystemDb(db); }).toThrow(/versión anterior/);
     });
 
     it('permite insertar y consultar usuarios con roles', () => {

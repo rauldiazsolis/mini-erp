@@ -29,7 +29,7 @@ export function createAuthRoutes(
     }
 
     try {
-      const result = authService.register(parseResult.data);
+      const result = authService.createUser(parseResult.data);
       res.status(201).json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al registrar';

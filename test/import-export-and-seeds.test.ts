@@ -50,7 +50,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'admin@io.test',
       password: 'password123',
       name: 'Admin IO',

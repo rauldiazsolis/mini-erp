@@ -139,4 +139,21 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     expect(rootTenantsBody[0]?.tenantId).toBe('zapateria-real');
     expect(rootTenantsBody[0]?.role).toBe('root_impersonator');
   });
+  it('changePassword cierra las otras sesiones y deja la actual (#19)', () => {
+    const a = authService.createUser({ email: 'pepa@kiosco.com', password: 'clave-vieja', name: 'Pepa' });
+    const otra = authService.createSession(a.user.id);
+    authService.changePassword({ userId: a.user.id, currentPassword: 'clave-vieja', newPassword: 'clave-nueva', currentToken: a.token });
+    expect(authService.validateSession(a.token)).toBeDefined();
+    expect(authService.validateSession(otra)).toBeUndefined();
+    expect(() => {
+      authService.changePassword({ userId: a.user.id, currentPassword: 'mal', newPassword: 'otra-clave', currentToken: a.token });
+    }).toThrow('La contraseña actual no es correcta');
+  });
+
+  it('una membresía desactivada no da acceso al comercio (#19)', () => {
+    const a = authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
+    tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
+    systemDb.prepare("UPDATE memberships SET status = 'disabled' WHERE user_id = ?").run(a.user.id);
+    expect(authService.listUserTenants(a.user.id, 'user')).toEqual([]);
+  });
 });

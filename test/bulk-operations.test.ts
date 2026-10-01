@@ -63,7 +63,7 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'admin@bulk.test',
       password: 'password123',
       name: 'Admin Bulk',

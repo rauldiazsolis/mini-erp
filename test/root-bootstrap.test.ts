@@ -20,7 +20,7 @@ describe('AuthService.ensureRoot (#3)', () => {
   });
 
   it('promueve a root un usuario existente y le pone la contraseña dada', () => {
-    auth.register({ email: 'ana@erp.com', password: 'vieja123', name: 'Ana' });
+    auth.createUser({ email: 'ana@erp.com', password: 'vieja123', name: 'Ana' });
     const { user, created } = auth.ensureRoot({ email: 'ana@erp.com', password: 'nueva-clave-larga', name: 'Ana' });
     expect(created).toBe(false);
     expect(user.globalRole).toBe('root');

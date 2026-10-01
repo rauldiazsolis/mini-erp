@@ -41,7 +41,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
     app = bundle.app;
 
     // Registrar admin
-    const registerRes = bundle.authService.register({
+    const registerRes = bundle.authService.createUser({
       email: 'admin@dashboard.test',
       password: 'password123',
       name: 'Admin Dashboard',

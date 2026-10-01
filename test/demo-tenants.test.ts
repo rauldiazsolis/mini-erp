@@ -63,7 +63,7 @@ describe('TenantManager y demos (#9)', () => {
     const sys = systemDb();
     const manager = new TenantManager(sys, { inMemory: true });
     const auth = new AuthService(sys);
-    const { user } = auth.register({ email: 'a@b.com', password: 'secreta1', name: 'A' });
+    const { user } = auth.createUser({ email: 'a@b.com', password: 'secreta1', name: 'A' });
     manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     const keys = new ApiKeyService(sys);
     const { rawKey } = keys.createApiKey({
@@ -100,7 +100,7 @@ describe('TenantManager y demos (#9)', () => {
     const sys = systemDb();
     const manager = new TenantManager(sys, { inMemory: true });
     const auth = new AuthService(sys);
-    const { user } = auth.register({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
+    const { user } = auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
     markAsDemo(sys, 'demo-d');

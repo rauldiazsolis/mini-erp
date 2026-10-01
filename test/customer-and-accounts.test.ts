@@ -59,7 +59,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.register({
+    const registerRes = created.authService.createUser({
       email: 'admin@customers.test',
       password: 'password123',
       name: 'Admin Clientes',
