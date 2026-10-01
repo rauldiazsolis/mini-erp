@@ -401,3 +401,17 @@ Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166
   internet no resolvían `sslip.io`.
 - Origen del POS configurable (`POS_URL` en GitHub → `VITE_POS_URL` al compilar): mudar el POS a
   `pos.contax.ar` es cambiar la variable y correr el deploy, sin tocar código ni la terminal.
+
+## 13. MVP de mini contax: M1 (Marca y limpieza) [COMPLETADA]
+
+Issue #18 del epic #17. Spec del MVP en `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`
+y plan en `docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`.
+
+- Lo visible dice "mini contax": logo de ticket, favicon, título, landing para el comerciante con
+  "powered by offline-pos", login, alta y admin. La versión de mini (`package.json`) va en el pie del
+  menú, del login y del landing. Un test vigila que no vuelva la marca vieja.
+- Producción sin restos de desarrollo: ni el login precargado ni "Rellenar credenciales" (tampoco en
+  el bundle), ni el pie "Puerto: 4100 • Express" (#16, puntos 2 y 3).
+- Ranking del dashboard con las ventas reales del POS (#15): nombres del catálogo, importes con la
+  fórmula del POS y líneas manuales agrupadas; el historial simulado de las demos sigue el contrato.
+- Cambiar un filtro del dashboard pide una sola vez el resumen (#7).
