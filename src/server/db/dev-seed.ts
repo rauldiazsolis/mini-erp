@@ -9,6 +9,9 @@ export const DEV_ADMIN_PASS = 'admin123';
 export const DEV_TENANT_ID = 'tienda-demo';
 export const DEV_BRANCH = 'CENTRAL';
 export const DEV_POS = 'Caja 1';
+/** Usuarios para probar los roles a mano (#19), con la misma contraseña de desarrollo. */
+export const DEV_ADMIN2_EMAIL = 'admin2@local.test';
+export const DEV_MEMBER_EMAIL = 'empleado@local.test';
 
 export function ensureDevData(params: {
   systemDb: DatabaseSync;
@@ -48,7 +51,19 @@ export function ensureDevData(params: {
     });
   }
 
-  // 3. Asegurar API Key de desarrollo fija y conocida
+  // 3. Un admin y un empleado para probar los roles (#19)
+  for (const [email, name, role] of [
+    [DEV_ADMIN2_EMAIL, 'Admin Demo 2', 'admin'],
+    [DEV_MEMBER_EMAIL, 'Empleado Demo', 'member'],
+  ] as const) {
+    const existing = params.authService.findUserByEmail(email);
+    const userId = existing?.id ?? params.authService.createUser({ email, password: DEV_ADMIN_PASS, name }).user.id;
+    params.systemDb
+      .prepare("INSERT OR IGNORE INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)")
+      .run(userId, DEV_TENANT_ID, role, new Date().toISOString());
+  }
+
+  // 4. Asegurar API Key de desarrollo fija y conocida
   const keyHash = hashApiKey(DEV_POS_API_KEY);
   const keyRow = params.systemDb
     .prepare('SELECT id FROM tenant_api_keys WHERE key_hash = ?')

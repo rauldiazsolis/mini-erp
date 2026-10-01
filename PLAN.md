@@ -415,3 +415,21 @@ y plan en `docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`.
 - Ranking del dashboard con las ventas reales del POS (#15): nombres del catálogo, importes con la
   fórmula del POS y líneas manuales agrupadas; el historial simulado de las demos sigue el contrato.
 - Cambiar un filtro del dashboard pide una sola vez el resumen (#7).
+
+## 14. MVP de mini contax: M2 (Roles de comercio e invitaciones) [COMPLETADA]
+
+Issue #19 del epic #17. Spec en `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`
+y plan en `docs/superpowers/plans/2026-10-01-m2-roles-invitaciones.md`.
+
+- Roles `owner`, `admin` y `member` aplicados con una matriz de capacidades compartida por servidor y
+  cliente: cada ruta del comercio exige su capacidad (403 si no) y el admin esconde lo que el rol no
+  permite. Un test falla si una ruta nueva no declara su capacidad.
+- Invitaciones por link de un solo uso (48 h, sin mail): crean la cuenta o suman la membresía.
+- Vista Usuarios: miembros con su rol y estado, invitaciones pendientes, links listos para compartir
+  por WhatsApp y la actividad (auditoría) para el owner.
+- Contraseñas: "Mi cuenta" para cambiar la propia y links de restablecimiento que genera el owner.
+  Mínimo de 8 caracteres para todos.
+- Sin registro suelto: el alta es un solo `POST /api/alta` atómico; se fueron `/api/auth/register`,
+  `POST /api/tenants` y `/seed-preset`.
+- Esquema de sistema 4 sin migraciones: producción se reinicia al publicar la 0.3.0
+  (`deploy/README.md`, "Reiniciar producción").

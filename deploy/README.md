@@ -251,7 +251,7 @@ En la terminal de Lightsail (paso 4.1), en una línea:
 sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
 ```
 
-Te pide email, nombre y la contraseña dos veces (mínimo 12 caracteres). **La contraseña no se ve
+Te pide email, nombre y la contraseña dos veces (mínimo 8 caracteres, el mismo de todas las cuentas). **La contraseña no se ve
 mientras la escribís**: es normal. Termina con `Root creado: <tu email>`. Con eso entrás al admin en
 `https://<HOST>/admin`.
 
@@ -299,6 +299,36 @@ Los sinónimos sirven para el navegador (landing, admin y alta). **Una caja ya c
 viejo no sigue la redirección** (el navegador no sigue una redirección entre dominios en las llamadas
 del POS): hay que volver a conectarla con el nombre nuevo. Las demos nuevas ya salen con el nombre
 nuevo.
+
+## Reiniciar producción (borrar todo)
+
+Mientras el producto sea temprano, una etapa puede cambiar las bases sin migrarlas: entonces se
+reinicia producción a cero. La primera vez fue con la **0.3.0** (M2, roles e invitaciones, #19), que
+además se lleva las cuentas de prueba del deploy. Una versión que lo necesita no arranca sobre las
+bases viejas: el log de `mini-erp` dice "La base de sistema es de una versión anterior".
+
+**Se pierde todo**: comercios, cuentas (incluido el root), keys del POS y demos. Los backups de la
+noche (`/var/lib/mini-erp-backups`) quedan con los datos viejos hasta que se reemplazan solos.
+
+El orden importa: primero se borra, después se publica. Si se publica antes, la versión nueva no
+arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
+
+1. Con el PR mergeado y antes de crear el tag, en la terminal de Lightsail, de a una línea (desde acá
+   el sitio queda caído hasta el paso 2):
+
+   ```bash
+   sudo systemctl stop mini-erp
+   sudo rm -rf /var/lib/mini-erp/*
+   ```
+
+2. Publicá la versión (paso 6: el tag desde `package.json`). El deploy arranca el mini-erp nuevo sobre
+   la carpeta vacía, que crea las bases nuevas, y termina en verde.
+3. Volvé a crear el root (paso 7) y comprobá la versión:
+
+   ```bash
+   sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
+   curl -s https://mini.contax.ar/health
+   ```
 
 ## Restaurar un backup
 

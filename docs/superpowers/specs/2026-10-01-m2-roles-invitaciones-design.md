@@ -191,9 +191,12 @@ Se borran `POST /api/auth/register`, `POST /api/tenants` y `POST /api/tenants/:i
 - e2e: el alta pasa por `POST /api/alta`; uno nuevo con la invitación (el owner invita, el member
   acepta y no ve "Usuarios" ni "Operaciones Masivas").
 - Versión **0.3.0** en el PR (`pnpm version minor --no-git-tag-version`); el tag después del merge.
-- **Reinicio de producción** (lo corre el usuario, después del tag y el deploy): parar el servicio,
-  borrar `/var/lib/mini-erp`, arrancar y volver a correr `scripts/create-root.ts`. El procedimiento
-  queda en `deploy/README.md`. Se van todas las cuentas, incluidas las de prueba del deploy.
+- **Reinicio de producción** (lo corre el usuario, después del merge y **antes** del tag): parar el
+  servicio y borrar `/var/lib/mini-erp`; después el tag, que despliega la versión nueva sobre la
+  carpeta vacía; al final, `scripts/create-root.ts`. Si se publicara antes, la 0.3.0 no arrancaría
+  sobre las bases viejas, el deploy volvería a la 0.2.1 y esa volvería a crear bases de esquema 3. El
+  procedimiento queda en `deploy/README.md`. Se van todas las cuentas, incluidas las de prueba del
+  deploy.
 - `AGENTS.md`: roles y capacidades, links y auditoría en "Arquitectura".
 
 ## Casos de borde
