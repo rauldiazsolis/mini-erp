@@ -68,7 +68,7 @@ app de Claude lo bloquea sin preguntar.
 
 ## Producción
 
-Publicado en AWS Lightsail detrás de Caddy, con HTTPS en `<ip>.sslip.io`. Cada tag `v*` (o "Run
+Publicado en **https://mini.contax.ar** (AWS Lightsail detrás de Caddy; `mini.contax.com.ar` redirige ahí). Cada tag `v*` (o "Run
 workflow" en Actions) corre el CI entero y despliega por SSH, con vuelta a la versión anterior si la
 nueva no responde. Backups: snapshots diarios de Lightsail y una copia nocturna por archivo de las
 bases reales. La guía paso a paso (instancia, secretos, root, operación y restauración) está en

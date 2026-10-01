@@ -22,8 +22,11 @@ Internet ──https──▶ Caddy (puertos 80/443, certificado automático)
   terminal; Lightsail trae una **terminal en el navegador**, así que no hace falta instalar nada.
 - **Caddy** recibe las visitas por HTTPS y se las pasa al mini-erp. Pide y renueva solo el
   certificado.
-- **sslip.io** es un servicio gratis que convierte una IP en un nombre: `203-0-113-10.sslip.io`
-  apunta a `203.0.113.10`. Así hay HTTPS sin comprar un dominio.
+- **El nombre**: un dominio propio (hoy **`mini.contax.ar`**, con el DNS en DreamHost) que apunta a
+  la IP de la instancia. Los sinónimos (`mini.contax.com.ar`) y el nombre viejo redirigen al
+  principal. Sin dominio propio sirve **sslip.io**, un servicio gratis que convierte una IP en un
+  nombre (`203-0-113-10.sslip.io` apunta a `203.0.113.10`), aunque algunos proveedores de internet
+  no lo resuelven (#11).
 - **GitHub Actions** arma cada versión, corre todos los tests y la sube a la instancia por SSH.
 
 Hay dos usuarios en la instancia, además del tuyo (`ubuntu`, el administrador):
@@ -39,8 +42,10 @@ Hay dos usuarios en la instancia, además del tuyo (`ubuntu`, el administrador):
 - Unos 30 a 45 minutos.
 
 Convención de esta guía: donde dice `<IP>` va la IP estática de la instancia (por ejemplo
-`203.0.113.10`) y donde dice `<HOST>`, la misma IP con guiones más `.sslip.io` (por ejemplo
-`203-0-113-10.sslip.io`).
+`203.0.113.10`) y donde dice `<HOST>`, el nombre público principal: tu dominio (por ejemplo
+`mini.contax.ar`) o, sin dominio, la IP con guiones más `.sslip.io` (por ejemplo
+`203-0-113-10.sslip.io`). `<SINÓNIMOS>` son los nombres que redirigen al principal (por ejemplo
+`mini.contax.com.ar`); pueden no ser ninguno.
 
 ---
 
@@ -68,13 +73,12 @@ Convención de esta guía: donde dice `<IP>` va la IP estática de la instancia 
 
 Entrá a la instancia (clic en su nombre, `mini-erp`).
 
-**IP estática** (sin esto, la IP cambia si la instancia se reinicia y el nombre `sslip.io` deja de
-andar):
+**IP estática** (sin esto, la IP cambia si la instancia se reinicia y el nombre deja de apuntar a
+ella):
 
 1. Pestaña **Networking** → en "IPv4 networking", **Attach static IP** (o **Create static IP**).
 2. Nombre: `mini-erp-ip` → **Create** (o **Attach**).
-3. Anotá la IP que aparece: es tu `<IP>`. Armá tu `<HOST>` cambiando los puntos por guiones y
-   agregando `.sslip.io`.
+3. Anotá la IP que aparece: es tu `<IP>`.
 
    > La IP estática es gratis **mientras esté asignada** a una instancia. Si algún día borrás la
    > instancia, borrá también la IP estática (pestaña Networking de la cuenta), porque suelta cobra.
@@ -88,6 +92,25 @@ andar):
 
 1. Pestaña **Snapshots** → **Automatic snapshots** → activarlo.
 2. Horario: cualquiera (por ejemplo 06:00 UTC). AWS guarda los últimos 7. Cuestan centavos por mes.
+
+## Paso 2b: el nombre (DNS)
+
+**Con dominio propio** (el DNS de `contax.ar` y `contax.com.ar` está en DreamHost):
+
+1. En el panel de DreamHost, la sección de **DNS** del dominio (`contax.ar`).
+2. Agregá un registro (**Add Record**): tipo **A**, nombre **`mini`**, valor **`<IP>`**.
+3. Lo mismo en `contax.com.ar` para cada sinónimo (nombre `mini`, valor `<IP>`).
+4. Esperá a que se publique (de minutos a un par de horas). Para saber si ya está, en PowerShell:
+
+   ```powershell
+   nslookup mini.contax.ar 8.8.8.8
+   ```
+
+   Tiene que responder con la `<IP>`. Recién entonces seguí: Caddy pide el certificado apenas
+   arranca, y si el nombre todavía no apunta a la instancia, falla y reintenta más tarde.
+
+**Sin dominio**: `<HOST>` es la IP con los puntos cambiados por guiones más `.sslip.io`. No hay que
+cargar nada.
 
 ## Paso 3: la llave de deploy (en tu Windows)
 
@@ -125,11 +148,14 @@ Es una sola línea que empieza con `ssh-ed25519`.
    ```
 
    (La primera vez, antes del merge, se usa la rama del PR en lugar de `main`.)
-4. Corré la preparación, reemplazando `<HOST>` y pegando **tu** clave pública entre las comillas:
+4. Corré la preparación, reemplazando `<HOST>`, pegando **tu** clave pública entre las comillas y
+   agregando al final los `<SINÓNIMOS>`, si los hay:
 
    ```bash
-   sudo bash /tmp/mini-erp/deploy/provision.sh <HOST> "ssh-ed25519 AAAA... deploy@mini-erp"
+   sudo bash /tmp/mini-erp/deploy/provision.sh <HOST> "ssh-ed25519 AAAA... deploy@mini-erp" <SINÓNIMOS>
    ```
+
+   Por ejemplo: `… provision.sh mini.contax.ar "ssh-ed25519 AAAA…" mini.contax.com.ar`.
 
    Tarda unos minutos (instala Node, pnpm y Caddy). Tiene que terminar con:
 
@@ -192,9 +218,9 @@ workflow queda en rojo.
 Cuando termine en verde, abrí `https://<HOST>/` en el navegador: tiene que aparecer el landing del
 mini-erp con el candado de HTTPS.
 
-> Si el navegador dice que no encuentra el sitio, puede ser tu proveedor de internet: algunos no
-> resuelven `sslip.io` (#11). En Chrome: Configuración → Privacidad y seguridad → Seguridad → "Usar
-> DNS seguro" con Google o Cloudflare.
+> Con `sslip.io`, si el navegador dice que no encuentra el sitio, puede ser tu proveedor de
+> internet: algunos no lo resuelven (#11). En Chrome: Configuración → Privacidad y seguridad →
+> Seguridad → "Usar DNS seguro" con Google o Cloudflare. Con dominio propio no pasa.
 
 ## Paso 7: crear el root (una sola vez)
 
@@ -228,6 +254,28 @@ Todo en la terminal de Lightsail.
 | Reiniciar el mini-erp | `sudo systemctl restart mini-erp` |
 
 Las variables de `/etc/mini-erp/env` están explicadas en el README principal.
+
+## Cambiar el nombre (mudarse de dominio)
+
+Por ejemplo, de `52-203-224-101.sslip.io` a `mini.contax.ar`:
+
+1. Cargá el DNS del nombre nuevo (paso 2b) y esperá a que responda con la `<IP>`.
+2. En la terminal de Lightsail, con la guía al día (`git -C /tmp/mini-erp pull`, o un `git clone`
+   nuevo como en el paso 4), el nombre nuevo primero y después los sinónimos. Conviene incluir el
+   nombre viejo, así los links que ya circulan siguen andando:
+
+   ```bash
+   sudo bash /tmp/mini-erp/deploy/set-host.sh mini.contax.ar mini.contax.com.ar 52-203-224-101.sslip.io
+   ```
+
+   Reescribe Caddy y `PUBLIC_URL`, y reinicia el mini-erp. Termina mostrando el host principal y a
+   dónde redirige cada sinónimo.
+3. En GitHub, la variable `PUBLIC_HOST` del environment `production` pasa al nombre nuevo.
+
+Los sinónimos sirven para el navegador (landing, admin y alta). **Una caja ya conectada al nombre
+viejo no sigue la redirección** (el navegador no sigue una redirección entre dominios en las llamadas
+del POS): hay que volver a conectarla con el nombre nuevo. Las demos nuevas ya salen con el nombre
+nuevo.
 
 ## Restaurar un backup
 
