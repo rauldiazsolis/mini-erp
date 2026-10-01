@@ -396,3 +396,6 @@ Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166
 - Backups: snapshots automáticos de Lightsail y copia nocturna con `VACUUM INTO` (`scripts/backup.ts`).
 - El e2e dejó de fallar de a ratos: espera si la base está bloqueada y usa un email por corrida.
 - **293 tests pasando en verde** en 39 suites; `tsc --noEmit` en 0 errores; build de Vite OK.
+- Dominio propio (#11): `mini.contax.ar`, con `mini.contax.com.ar` y el nombre viejo
+  `52-203-224-101.sslip.io` redirigiendo con 308 (`deploy/set-host.sh`). Algunos proveedores de
+  internet no resolvían `sslip.io`.

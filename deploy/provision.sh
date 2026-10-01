@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Prepara una instancia Ubuntu 24.04 de Lightsail para el mini-erp (#3). Idempotente: se puede
 # volver a correr sin romper nada. Uso (ver deploy/README.md):
-#   sudo bash deploy/provision.sh <ip-con-guiones>.sslip.io "<clave pública de deploy>"
+#   sudo bash deploy/provision.sh <host> "<clave pública de deploy>" [sinónimo ...]
 set -euo pipefail
 
-SITE="${1:?Falta el host, ej. 203-0-113-10.sslip.io}"
+SITE="${1:?Falta el host, ej. mini.contax.ar o 203-0-113-10.sslip.io}"
 PUBKEY="${2:?Falta la clave pública de deploy}"
+shift 2
 HERE="$(cd "$(dirname "$0")" && pwd)"
 [ "$(id -u)" -eq 0 ] || { echo "Correr con sudo" >&2; exit 1; }
 
@@ -67,9 +68,8 @@ systemctl daemon-reload
 systemctl enable mini-erp
 systemctl enable --now mini-erp-backup.timer
 
-# Caddy con el host real
-sed "s/__SITE_ADDRESS__/$SITE/" "$HERE/Caddyfile" > /etc/caddy/Caddyfile
-systemctl reload caddy || systemctl restart caddy
+# Caddy y PUBLIC_URL con el host real (y sus sinónimos, si los hay)
+bash "$HERE/set-host.sh" "$SITE" "$@"
 
 echo
 echo "Listo: Node $(node -v), Caddy $(caddy version | cut -d' ' -f1), sitio https://$SITE"

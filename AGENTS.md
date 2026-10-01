@@ -185,8 +185,12 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 
 ## Deploy (#3)
 
-- **AWS Lightsail** (plan de US$5, Ubuntu 24.04) con **Caddy** y HTTPS en `<ip>.sslip.io`. Todo lo
-  del servidor está en `deploy/`; la guía para quien lo opera, en `deploy/README.md`.
+- **AWS Lightsail** (plan de US$5, Ubuntu 24.04) con **Caddy** y HTTPS en **`https://mini.contax.ar`**
+  (marca Contax, producto mini contax; el POS irá en `pos.contax.ar`, rauldiazsolis/offline-pos#150).
+  DNS en DreamHost: registros A a la IP estática. `mini.contax.com.ar` y el nombre viejo
+  `52-203-224-101.sslip.io` redirigen con 308 desde Caddy (`deploy/set-host.sh`, #11): sirven para el
+  navegador, la conexión del POS va siempre al principal. Todo lo del servidor está en `deploy/`; la
+  guía para quien lo opera, en `deploy/README.md`.
 - En la instancia: `minierp` corre `mini-erp.service` (`/opt/mini-erp/current`, datos en
   `/var/lib/mini-erp`, entorno en `/etc/mini-erp/env`); `deploy` recibe las versiones y solo puede
   reiniciar el servicio.
@@ -213,7 +217,6 @@ Fases 1 a 10 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, 
 temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy público): detalle en
 `PLAN.md`. Sigue:
 
-1. #11 (prioritario): dominio propio; algunos proveedores no resuelven `sslip.io`.
-2. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
+1. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
 
 En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).
