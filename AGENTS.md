@@ -219,8 +219,14 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 
 Fases 1 a 10 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
 temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy público): detalle en
-`PLAN.md`. Sigue:
+`PLAN.md`.
 
-1. #2: el resto de 4.4.0 (`customer-payment-void`, `notices`, reglas de evolución).
+Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
+`docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
+(roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
+las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18), M2 roles e invitaciones
+(#19), M3 contrato 4.4.0 (#2), M4 ventas y caja (#20), M5 créditos (#21) y M6 importación (#22).
+Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
+epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
-En backlog, entre otros: #6 (Zod 4 y `@types/node` 24).
+En backlog, entre otros: #6 (Zod 4 y `@types/node` 24) y lo que quedó afuera del MVP (#28 a #36).
