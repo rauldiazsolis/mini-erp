@@ -333,6 +333,11 @@ arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
    curl -s https://mini.contax.ar/health
    ```
 
+Si el deploy falla con "no respondió /health" y vuelve a la versión anterior, la causa es una base
+vieja (`sudo journalctl -u mini-erp -n 60 --no-pager | grep -i "versión anterior"`). Aunque la hayas
+borrado, la versión anterior, al volver, crea otra base vieja. Repetí el paso 1 y corré **Actions** →
+**Deploy** → **Run workflow** sobre `main` (el tag ya existe: no hace falta otro); después, el paso 3.
+
 ## Restaurar un backup
 
 **Un comercio o el sistema, desde la copia nocturna** (por ejemplo, la del 2026-10-01):
