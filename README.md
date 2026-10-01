@@ -60,6 +60,7 @@ app de Claude lo bloquea sin preguntar.
 | `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
 | `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para armar la página de alta detrás de un proxy |
+| `VITE_POS_URL` (al compilar) | `https://offline-pos.pages.dev` | Origen del POS publicado que abre "Probar la demo" en producción (le suma `/<versión>/` de `contract.json`). En el deploy sale de la variable `POS_URL` del environment `production` de GitHub |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (responde 404) |
 | `DEMO_TTL_HOURS` | `24` | Horas sin uso hasta que una demo se borra |
 | `DEMO_MAX_ACTIVE` | `200` | Tope de demos vivas (pasado el tope, 503) |

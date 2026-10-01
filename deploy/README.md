@@ -202,6 +202,9 @@ Es una sola línea que empieza con `ssh-ed25519`.
 3. Más abajo, en **Environment variables** (no en los secretos: el workflow la lee como variable y,
    si está como secreto, le llega vacía), **Add environment variable**: nombre `PUBLIC_HOST`, valor
    `<HOST>`.
+4. Opcional, también en **Environment variables**: `POS_URL`, el origen del POS al que lleva el botón
+   "Probar la demo" (por ejemplo `https://pos.contax.ar`). Si no está, es
+   `https://offline-pos.pages.dev`.
 
 Después de cargar la llave privada en GitHub, guardá el archivo `mini-erp-deploy` en un lugar seguro
 (o borralo: si hace falta, se genera otra y se repiten los pasos 3 a 5).
@@ -254,6 +257,11 @@ Todo en la terminal de Lightsail.
 | Reiniciar el mini-erp | `sudo systemctl restart mini-erp` |
 
 Las variables de `/etc/mini-erp/env` están explicadas en el README principal.
+
+**Cambiar a dónde abre el POS el botón "Probar la demo"** (por ejemplo, cuando el POS se mude a
+`pos.contax.ar`), sin terminal: en GitHub, Settings → Environments → `production` → Environment
+variables → `POS_URL` = `https://pos.contax.ar` (crearla si no está), y después Actions → **Deploy**
+→ **Run workflow**. El valor queda dentro del landing al compilar, por eso hace falta el deploy.
 
 ## Cambiar el nombre (mudarse de dominio)
 

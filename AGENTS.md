@@ -163,13 +163,17 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
-    en `/alta` (`/onboarding` se reescribe). La versión del POS del landing sale de `contract.json`.
+    en `/alta` (`/onboarding` se reescribe). La versión del POS del landing sale de `contract.json`;
+    el origen del POS publicado, de `VITE_POS_URL` al compilar (`publishedPosOrigin` en
+    `state/demo-link.ts`, #11), que `deploy.yml` toma de la variable `POS_URL` del environment
+    `production` (vacía: `https://offline-pos.pages.dev`). Mudar el POS es cambiar esa variable y
+    correr el deploy.
   - **POS híbrido** (#9): en desarrollo, el landing abre una **copia local del POS publicado** que el
     mini-erp sirve en `/pos/<versión>/` (`src/server/pos-mirror/`, montada en `client-middleware.ts`
     solo fuera de producción; `pnpm dev` la baja sola a `vendor/pos/` si falta, `pnpm pos:mirror` la
     renueva). Mismo JS que el publicado, mismo origen que el mini-erp: sin CORS ni permiso de red
     local, así el recorrido anda en cualquier navegador y en el e2e. En producción el landing abre
-    `https://offline-pos.pages.dev/<versión>/`: la demo pública sigue probando la integración real
+    `<POS_URL>/<versión>/` (hoy `https://offline-pos.pages.dev`): la demo pública sigue probando la integración real
     (CORS, `#connect` entre dominios). La copia se baja siempre de una carpeta publicada, nunca de
     `main` de offline-pos, y no se commitea.
   - El alta vuelve al POS con `state/connect-return.ts`: la conexión va siempre en el fragmento

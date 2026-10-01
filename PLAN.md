@@ -399,3 +399,5 @@ Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166
 - Dominio propio (#11): `mini.contax.ar`, con `mini.contax.com.ar` y el nombre viejo
   `52-203-224-101.sslip.io` redirigiendo con 308 (`deploy/set-host.sh`). Algunos proveedores de
   internet no resolvían `sslip.io`.
+- Origen del POS configurable (`POS_URL` en GitHub → `VITE_POS_URL` al compilar): mudar el POS a
+  `pos.contax.ar` es cambiar la variable y correr el deploy, sin tocar código ni la terminal.
