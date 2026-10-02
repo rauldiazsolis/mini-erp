@@ -34,10 +34,10 @@ describe('Database Engine (DB-per-tenant)', () => {
       expect(names).toContain('audit_log');
     });
 
-    it('frena con una base de sistema de un esquema anterior (#19)', () => {
+    it('frena con una base de sistema anterior a la línea de base (#47)', () => {
       const db = new DatabaseSync(':memory:');
-      db.exec('PRAGMA user_version = 3');
-      expect(() => { initSystemDb(db); }).toThrow(/versión anterior/);
+      db.exec('CREATE TABLE vieja (id TEXT); PRAGMA user_version = 3');
+      expect(() => { initSystemDb(db); }).toThrow(/anterior a la línea de base/);
     });
 
     it('permite insertar y consultar usuarios con roles', () => {
