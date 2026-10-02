@@ -32,6 +32,7 @@ export const ROLE_LABEL: Record<MembershipRole, string> = {
 
 const VIEW_CAPABILITY: Record<ActiveNavView, Capability> = {
   dashboard: 'tenant.use',
+  sales: 'tenant.use',
   catalog: 'tenant.use',
   stock: 'tenant.use',
   customers: 'tenant.use',
