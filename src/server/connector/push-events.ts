@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Eventos del push del Connector API 4.2.0 (`OutboxBatchItem`). Cada tipo valida lo que el mini-erp
+ * Eventos del push del Connector API 4.4.0 (`OutboxBatchItem`). Cada tipo valida lo que el mini-erp
  * lee y deja pasar el resto (`passthrough`), así el ERP guarda el evento completo aunque el contrato
  * sume campos. Los enums abiertos (medio de pago, motivo de stock) son `string` por las reglas de
  * evolución del contrato. Un evento inválido es un `LotIssue` del lote, nunca un error del request.
@@ -67,8 +67,14 @@ const customerSchema = z
 /** Movimiento de caja: el mini-erp lo guarda completo; solo necesita el id. */
 const cashMovementSchema = z.object({ id: z.string().min(1) }).passthrough();
 
+/** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). */
 const customerPaymentSchema = z
-  .object({ id: z.string().min(1), customerId: z.string().min(1), total: z.number() })
+  .object({
+    id: z.string().min(1),
+    customerId: z.string().min(1),
+    total: z.number(),
+    voidsPaymentId: z.string().min(1).optional(),
+  })
   .passthrough();
 
 const pushEventSchema = z.discriminatedUnion('type', [

@@ -30,6 +30,8 @@ const RUTAS: Record<string, Capability> = {
   'POST /customers/:customerId/payments': 'tenant.use',
   'POST /customers/:customerId/adjustments': 'tenant.use',
   'GET /customers/:customerId/movements': 'tenant.use',
+  'GET /discrepancies': 'tenant.use',
+  'POST /discrepancies/:discrepancyId/dismiss': 'settings.manage',
   'POST /bulk/prices': 'bulk',
   'POST /bulk/interests': 'bulk',
   'GET /export/:entity': 'bulk',

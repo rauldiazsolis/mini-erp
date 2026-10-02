@@ -168,6 +168,7 @@ export function createConnectorRoutes(
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
       branchId: branch,
+      deviceId: parseResult.data.deviceId,
     });
 
     // Logging detallado del pull

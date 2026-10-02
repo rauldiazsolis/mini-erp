@@ -9,6 +9,7 @@ import {
 import { formatCurrency } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Drawer } from '../ui/Drawer.tsx';
+import { movementLabel, movementTone } from '../../state/movement-style.ts';
 
 function formatDateTime(dateStr: string): string {
   try {
@@ -78,8 +79,8 @@ export function AccountStatementDrawer() {
             </div>
           ) : (
             movements.map((m) => {
-              const isCredit = m.amount < 0 || m.type === 'payment' || m.type === 'credit_adjustment';
-              const isDebit = m.amount > 0 && m.type !== 'payment';
+              // El color sale del signo (#2): positivo sube la deuda, negativo la baja
+              const tone = movementTone(m.amount);
 
               return (
                 <div
@@ -90,9 +91,9 @@ export function AccountStatementDrawer() {
                     <div class="flex items-center gap-2">
                       <span
                         class={`inline-block px-2 py-0.5 rounded-md font-mono font-bold text-xs ${
-                          isCredit
+                          tone === 'credit'
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                            : isDebit
+                            : tone === 'debit'
                             ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
@@ -100,12 +101,8 @@ export function AccountStatementDrawer() {
                         {m.amount > 0 ? `+${formatCurrency(m.amount)}` : formatCurrency(m.amount)}
                       </span>
 
-                      <span class="text-xs font-semibold text-slate-900 dark:text-white capitalize">
-                        {m.type === 'payment'
-                          ? 'Pago / Cobranza'
-                          : m.type === 'sale'
-                          ? 'Compra en POS (Cuenta Corriente)'
-                          : m.type.replace(/_/g, ' ')}
+                      <span class="text-xs font-semibold text-slate-900 dark:text-white">
+                        {movementLabel(m.type)}
                       </span>
 
                       {m.saleId && (

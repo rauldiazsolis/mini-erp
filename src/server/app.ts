@@ -19,6 +19,7 @@ import { createCustomerRoutes } from './routes/customer-routes.ts';
 import { createBulkRoutes } from './routes/bulk-routes.ts';
 import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
+import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
@@ -117,6 +118,7 @@ export function createApp(deps?: AppDependencies): {
     createCatalogRoutes(),
     createStockRoutes(),
     createCustomerRoutes(),
+    createDiscrepancyRoutes(),
     createBulkRoutes(),
     createIoRoutes(),
     createDashboardRoutes(),
@@ -124,7 +126,7 @@ export function createApp(deps?: AppDependencies): {
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 
-  // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
+  // Rutas para terminales POS (Connector API 4.4.0, #2)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit));
 
   // Manejador centralizado de errores

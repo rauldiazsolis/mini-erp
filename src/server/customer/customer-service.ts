@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { applyPendingFor } from '../discrepancy/discrepancies.ts';
 
 export type CustomerRecord = {
   id: string;
@@ -212,21 +213,14 @@ export class CustomerService {
         .run(movId, id, 'adjustment', initialBalance, initialBalance, 'Saldo inicial registrado', now);
     }
 
-    return {
-      id,
-      name: data.name,
-      document: data.document ?? null,
-      phone: data.phone ?? null,
-      creditLimit,
-      margin,
-      balance: initialBalance,
-      availableCredit: unrestricted === 1 ? null : Math.max(0, creditLimit + margin - initialBalance),
-      unrestricted: unrestricted === 1,
-      isDebtor: initialBalance > 0,
-      blockedReason,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
+    applyPendingFor(this.db, id, now);
+
+    const created = this.getCustomer(id);
+    if (created === undefined) {
+      throw new Error(`No se encontró el cliente recién creado (${id})`);
+    }
+    return created;
   }
 
   updateCustomer(id: string, data: UpdateCustomerInput): CustomerRecord | undefined {

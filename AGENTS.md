@@ -17,12 +17,11 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
   algo del contrato, se abre un issue en offline-pos.
 - **Contrato publicado**: la copia en `docs/connector-api.openapi.yaml`, con su procedencia en
   `contract.json`. Hoy: POS `0.1.0`, contrato **4.4.0**, piso **4.0.0**.
-- **Contrato implementado**: **4.2.0** (4.1.0 suma `Sale.ticket`, el número del ticket en su día;
-  4.2.0 suma `CustomerPayment.receipt` y define `balance` como el saldo de cualquier cliente, tenga o
-  no crédito) más la capacidad **`demo-sessions`** de 4.4.0 (`POST /connector/demo-sessions` y la
-  vuelta del onboarding con `#connect` desde `/alta`, #9). `GET /info` sigue diciendo `4.2.0` y
-  declara `capabilities`. Es compatible con el POS por el piso. Lo que falta de 4.4.0
-  (`customer-payment-void`, `notices`, las reglas de evolución) es #2.
+- **Contrato implementado**: **4.4.0** (#2). `GET /info` dice `4.4.0` y declara las capacidades
+  `customer-payment-void` (siempre: la anulación de una cobranza es otra cobranza, en negativo) y
+  `demo-sessions` (si las demos están prendidas: `POST /connector/demo-sessions` y la vuelta del
+  onboarding con `#connect` desde `/alta`, #9). El pull manda `notices` y el backend cumple las
+  reglas de evolución (tests en `test/contract-evolution.test.ts`).
 - **Actualizar la copia**: `pnpm contract:update <versión del POS>`. Siempre de una carpeta publicada
   (`https://offline-pos.pages.dev/<versión>/`), nunca de `main` de offline-pos. El diff del OpenAPI
   muestra qué cambió; implementarlo es trabajo aparte, con su issue.
@@ -187,6 +186,15 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     tiene), sin tumbar el resto.
   - **El backend nunca rechaza de forma síncrona el contenido de un lote**: responde `200` y reporta
     las inconsistencias como `issues` en el pull.
+  - El push aplica cada lote en una transacción y cada evento en un `SAVEPOINT` (#2): un evento que
+    tira un error se deshace solo y queda como `issue` con su `eventId`.
+  - **Discrepancias** (`src/server/discrepancy/`, tabla `discrepancies`): lo que el push no puede
+    aplicar o le parece raro, sin rechazar el lote. Un movimiento de un cliente desconocido queda
+    pendiente y se aplica solo cuando el cliente aparece (evento `customer`, alta en el admin o
+    importación). Una anulación de cobranza inconsistente se aplica igual y queda para revisar. En el
+    admin se ven en Clientes y las descartan owner y admin, con motivo.
+  - Los `notices` del pull se calculan en el momento (`src/server/notices/`): hoy, las discrepancias
+    abiertas del equipo que las generó. M5 suma créditos y caja.
   - `X-POS-Contract-Version`: `409 IncompatibleContract` si el major difiere (salvo en `/info`).
   - CORS `*` (sin cookies: el admin y el POS usan Bearer) y `Access-Control-Allow-Private-Network:
     true` en el preflight, para el POS publicado llamando a `localhost`
@@ -229,6 +237,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `index.html` y `ThemeToggle.tsx` en `Header.tsx`, `AuthView.tsx`, `MerchantOnboardingView.tsx`
     y la solapa Apariencia de configuración (`AppearanceSection.tsx`).
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
+  - **Fechas, horas y números según la configuración del navegador** (su locale y su preferencia de
+    12 o 24 horas), nunca con un locale fijo. La moneda es siempre ARS; solo cambia cómo se escribe.
+    Hoy varios componentes fijan `es-AR`: unificarlo es #51.
   - **Marca** (#18): lo visible dice "mini contax" (en minúsculas). Logo en `components/ui/Logo.tsx`
     (un ticket con la "c" de Contax) y favicon en `public/favicon.svg` (variante de ticket grande,
     legible a 16 px). La versión de mini sale de `package.json`: `appVersionDefine` en

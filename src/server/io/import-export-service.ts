@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { applyPreset } from '../seeds/index.ts';
+import { applyPendingFor } from '../discrepancy/discrepancies.ts';
 
 export type EntityType = 'products' | 'customers' | 'stock';
 
@@ -411,6 +412,8 @@ export class ImportExportService {
               now,
               now,
             );
+          // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
+          applyPendingFor(this.db, id, now);
         }
         importedCount++;
       }

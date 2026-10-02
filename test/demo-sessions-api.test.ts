@@ -71,7 +71,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
     expect(skus).toContain('FER-001');
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
-    expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['demo-sessions']);
+    expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['customer-payment-void', 'demo-sessions']);
   });
 
   it('422 con la lista si el template no existe', async () => {
@@ -121,7 +121,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
     expect((await info()).status).toBe(401);
   });
 
-  it('sin demos, /info no declara capacidades', async () => {
+  it('sin demos, /info declara solo customer-payment-void', async () => {
     const { app } = makeApp({ enabled: false });
     const alta = await request(app)
       .post('/api/alta')
@@ -135,6 +135,6 @@ describe('POST /connector/demo-sessions (#9)', () => {
       .get('/connector/info')
       .set('Authorization', `Bearer ${(key.body as { rawKey: string }).rawKey}`);
     expect(info.status).toBe(200);
-    expect(info.body).not.toHaveProperty('capabilities');
+    expect((info.body as { capabilities: string[] }).capabilities).toEqual(['customer-payment-void']);
   });
 });

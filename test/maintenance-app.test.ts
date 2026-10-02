@@ -28,17 +28,17 @@ describe('app de mantenimiento (#47)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.body).toEqual({
-      contractVersion: '4.2.0',
+      contractVersion: '4.4.0',
       status: 'maintenance',
       message: MAINTENANCE_MESSAGE,
       backend: { name: 'mini-erp', version: pkg.version },
-      capabilities: ['demo-sessions'],
+      capabilities: ['customer-payment-void', 'demo-sessions'],
     });
   });
 
-  it('sin demos, /connector/info no declara capacidades', async () => {
+  it('sin demos, /connector/info declara solo customer-payment-void', async () => {
     const res = await request(app({ phase: 'migrating' }, false)).get('/connector/info');
-    expect(res.body).not.toHaveProperty('capabilities');
+    expect((res.body as { capabilities: string[] }).capabilities).toEqual(['customer-payment-void']);
   });
 
   it('el preflight de red privada pasa, como en el app real', async () => {
