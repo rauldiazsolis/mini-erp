@@ -4445,7 +4445,7 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
   await page.getByRole('row', { name: /Ana E2E/ }).click();
   await expect(page.getByText('Venta #3')).toBeVisible();
   await expect(page.getByText(product.name)).toBeVisible();
-  await page.getByRole('button', { name: /cerrar/i }).first().click();
+  await page.getByRole('button', { name: 'Cerrar panel' }).click();
 
   // Filtro de anuladas: solo el ticket 1
   await page.getByLabel('Estado').selectOption('voided');
@@ -4462,7 +4462,7 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
   await expect(page.getByText(/2[.,]000[.,]00/).first()).toBeVisible();
 
   // Drill-down: Facturación del dashboard lleva a la lista
-  await page.getByRole('button', { name: /cerrar/i }).first().click();
+  await page.getByRole('button', { name: 'Cerrar panel' }).click();
   await page.getByRole('button', { name: 'Dashboard' }).click();
   await page.getByRole('button', { name: /Facturación Total/ }).click();
   await expect(page.getByText(/^3 tickets/)).toBeVisible();

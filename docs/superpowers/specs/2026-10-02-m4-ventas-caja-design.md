@@ -182,6 +182,8 @@ Notas:
 - **Tickets** y **ticket promedio**: solo los vigentes. El promedio es Σ `total` de los vigentes
   dividido por su cantidad.
 - **Ranking**: las líneas de todos los tickets del período; una anulación descuenta sus unidades.
+  Solo se muestran los productos con unidades netas positivas (una anulación de un período anterior
+  no deja un producto en negativo).
 - El filtro de sucursal sigue comparando el nombre de la sucursal con `sales.branch`.
 
 ## Pantallas
@@ -224,6 +226,11 @@ Notas:
   - cobranzas por medio.
 
   Debajo, los movimientos del día. Un click en una venta abre su ticket.
+
+  Los textos son los del `/RESUMEN` (Total vendido, Tickets emitidos, Desc/Recargos, Otros pagos,
+  Cobros, Cobranzas…) y los medios de pago se llaman como en el POS ("Tarjeta de Débito", "Código
+  QR"). "Neto del día" es de mini: el POS muestra el saldo de efectivo actual, que mini no puede
+  calcular porque el arqueo sin diferencia no viaja.
 - **Formato**: `src/client/format.ts` (`formatMoney`, `formatDate`, `formatDateTime`, `formatTime`)
   con `Intl` y el locale del navegador (`undefined`), moneda ARS. Respeta la preferencia de 12 o
   24 horas. Un `day` (`YYYY-MM-DD`) se muestra como fecha sin pasar por la zona horaria.
