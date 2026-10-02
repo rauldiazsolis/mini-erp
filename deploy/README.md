@@ -232,8 +232,10 @@ El workflow tarda unos minutos:
 
 - Primero compara el tag con `package.json`. Si no coinciden (por ejemplo `v0.3.0` con `0.2.1`), se
   frena ahí, sin tocar el servidor, y dice qué corregir.
-- Después corre el CI entero (lint, tipos, tests, build y e2e) y sube la versión. Si el mini-erp
-  nuevo no responde, **vuelve solo a la versión anterior** y el workflow queda en rojo.
+- Después corre el CI entero (lint, tipos, tests, build y e2e) y sube la versión. Si la versión
+  trae migraciones, el mini-erp atiende "en mantenimiento" mientras migra y el deploy espera hasta 15
+  minutos (ver [Migraciones de esquema](#migraciones-de-esquema)). Si el mini-erp nuevo no responde
+  o la migración falla, **vuelve solo a la versión anterior** y el workflow queda en rojo.
 - Al final pide `https://<HOST>/health` y comprueba que responda la versión que se acaba de subir.
 
 Cuando termine en verde, abrí `https://<HOST>/` en el navegador: tiene que aparecer el landing del
@@ -303,45 +305,129 @@ viejo no sigue la redirección** (el navegador no sigue una redirección entre d
 del POS): hay que volver a conectarla con el nombre nuevo. Las demos nuevas ya salen con el nombre
 nuevo.
 
-## Reiniciar producción (borrar todo)
+## Migraciones de esquema
 
-Mientras el producto sea temprano, una etapa puede cambiar las bases sin migrarlas: entonces se
-reinicia producción a cero. La primera vez fue con la **0.3.0** (M2, roles e invitaciones, #19), que
-además se lleva las cuentas de prueba del deploy. Una versión que lo necesita no arranca sobre las
-bases viejas: el log de `mini-erp` dice "La base de sistema es de una versión anterior".
+Producción tiene datos que no se pueden perder: desde la **0.4.0** (#47) las bases se migran, nunca
+se borran. Una versión que trae migraciones, al arrancar:
 
-**Se pierde todo**: comercios, cuentas (incluido el root), keys del POS y demos. Los backups de la
-noche (`/var/lib/mini-erp-backups`) quedan con los datos viejos hasta que se reemplazan solos.
+1. Escucha enseguida y responde "en mantenimiento": `/health` da `503` con `"status":"maintenance"`,
+   el POS deja de sincronizar y sigue vendiendo, y el admin muestra "Estamos actualizando mini
+   contax".
+2. Copia cada base que va a migrar a `/var/lib/mini-erp/pre-migracion/<fecha-hora>/` (deja las
+   últimas 3 corridas).
+3. Migra la base de sistema y la de cada comercio, demos incluidas, y recién ahí atiende normal. El
+   POS sincroniza lo que vendió mientras tanto.
 
-El orden importa: primero se borra, después se publica. Si se publica antes, la versión nueva no
-arranca, el deploy vuelve solo a la anterior, y esa crea otra vez bases viejas.
+`deploy.sh` espera hasta 15 minutos mientras `/health` diga `maintenance`. Si la migración falla, las
+bases quedan como estaban, `/health` dice `migration-failed` y el deploy vuelve solo a la versión
+anterior.
 
-1. Con el PR mergeado y antes de crear el tag, en la terminal de Lightsail, de a una línea (desde acá
-   el sitio queda caído hasta el paso 2):
+### Seguir un deploy con migraciones
 
-   ```bash
-   sudo systemctl stop mini-erp
-   sudo sh -c 'rm -rf /var/lib/mini-erp/*'
-   sudo ls -A /var/lib/mini-erp
-   ```
+Todo en la terminal de Lightsail, mientras corre el workflow.
 
-   El último no tiene que listar nada. El `rm` va dentro de `sudo sh -c '…'` porque el `*` lo tiene
-   que expandir root: `ubuntu` no puede leer la carpeta (es de `minierp`, 750), y con un
-   `sudo rm -rf /var/lib/mini-erp/*` a secas el `*` no coincide con nada y `rm -f` no borra ni avisa.
+- [ ] **Ver el log en vivo.**
 
-2. Publicá la versión (paso 6: el tag desde `package.json`). El deploy arranca el mini-erp nuevo sobre
-   la carpeta vacía, que crea las bases nuevas, y termina en verde.
-3. Volvé a crear el root (paso 7) y comprobá la versión:
+  ```bash
+  sudo journalctl -u mini-erp -f
+  ```
 
-   ```bash
-   sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
-   curl -s https://mini.contax.ar/health
-   ```
+  Se tiene que ver `en mantenimiento hasta terminar las migraciones`, una línea
+  `[migraciones] tenants/<id>.sqlite (n/N)` por comercio, después
+  `[migraciones] listo: N bases migradas (copia en /var/lib/mini-erp/pre-migracion/<fecha-hora>)` y
+  el banner `Servidor iniciado`. `Ctrl+C` para salir.
+- [ ] **Confirmar que quedó lista** (en otra pestaña, o después de salir del log).
 
-Si el deploy falla con "no respondió /health" y vuelve a la versión anterior, la causa es una base
-vieja (`sudo journalctl -u mini-erp -n 60 --no-pager | grep -i "versión anterior"`). Aunque la hayas
-borrado, la versión anterior, al volver, crea otra base vieja. Repetí el paso 1 y corré **Actions** →
-**Deploy** → **Run workflow** sobre `main` (el tag ya existe: no hace falta otro); después, el paso 3.
+  ```bash
+  curl -s https://mini.contax.ar/health
+  ```
+
+  Tiene que responder `{"status":"ok","service":"mini-erp","version":"<la nueva>"}`.
+- [ ] **Confirmar la copia previa.**
+
+  ```bash
+  sudo ls /var/lib/mini-erp/pre-migracion
+  ```
+
+  Tiene que aparecer una carpeta con la fecha y hora del deploy (en UTC).
+
+### Si el deploy falla
+
+- [ ] **Ver por qué.**
+
+  ```bash
+  sudo journalctl -u mini-erp -n 100 --no-pager | grep migraciones
+  ```
+
+  | Si dice | Qué pasó | Qué hacer |
+  |---|---|---|
+  | `[migraciones] FALLÓ <base>, migración v<N> <nombre>: …` | Una migración falló. Las bases quedaron como estaban y el deploy volvió a la versión anterior | Arreglar la migración en el repo y publicar otra versión (`patch`) |
+  | `Bases fuera de rango, no se migró nada` | Hay una base más vieja que la línea de base o más nueva que el código | No tocar nada y revisarlo en una sesión de trabajo |
+  | Nada de `[migraciones]`, y el workflow dice "La migración sigue corriendo" | La migración tarda más de 15 minutos. El deploy **no** volvió atrás, a propósito | Seguir el log (`sudo journalctl -u mini-erp -f`) hasta que diga `listo` o `FALLÓ` |
+
+- [ ] **Confirmar qué versión responde.**
+
+  ```bash
+  curl -s https://mini.contax.ar/health
+  ```
+
+  Después de una vuelta atrás tiene que dar `"status":"ok"` con la versión anterior.
+
+### Volver a una versión anterior a mano
+
+Solo si una versión **ya migró y atendió** y hay que deshacerla. **Se pierde lo que se escribió
+después de migrar** (ventas sincronizadas, cambios en el admin): las bases vuelven a la copia previa.
+La versión anterior no arranca sobre una base más nueva (el log dice "es más nueva (vN) que este
+código"), por eso hay que restaurar la copia. Todo de a una línea, en la terminal de Lightsail.
+
+- [ ] **Elegir la corrida a deshacer.**
+
+  ```bash
+  sudo ls /var/lib/mini-erp/pre-migracion
+  ```
+
+  Es la más nueva, la del deploy que querés deshacer. Anotá su nombre (por ejemplo,
+  `2026-10-02T14-30-00`).
+- [ ] **Elegir la versión anterior.**
+
+  ```bash
+  ls -1dt /opt/mini-erp/releases/*/
+  ```
+
+  La primera es la activa; la segunda es la anterior. Anotá su carpeta.
+- [ ] **Parar el mini-erp.**
+
+  ```bash
+  sudo systemctl stop mini-erp
+  ```
+
+  `systemctl is-active mini-erp` tiene que decir `inactive`. Desde acá el sitio queda caído.
+- [ ] **Restaurar la corrida** (reemplazá `<corrida>`).
+
+  ```bash
+  sudo -u minierp sh -c 'cd /var/lib/mini-erp && cp -r pre-migracion/<corrida>/. . && rm -f *.sqlite-wal *.sqlite-shm tenants/*.sqlite-wal tenants/*.sqlite-shm'
+  ```
+
+  No tiene que imprimir nada.
+- [ ] **Volver el enlace a la versión anterior** (reemplazá `<carpeta-anterior>`).
+
+  ```bash
+  sudo -u deploy ln -sfn <carpeta-anterior> /opt/mini-erp/current
+  ```
+
+  `readlink /opt/mini-erp/current` tiene que mostrar esa carpeta.
+- [ ] **Arrancar y comprobar.**
+
+  ```bash
+  sudo systemctl start mini-erp
+  ```
+
+  ```bash
+  curl -s https://mini.contax.ar/health
+  ```
+
+  Tiene que responder `"status":"ok"` con la versión anterior (puede tardar unos segundos: mientras
+  tanto da `"status":"maintenance"`).
 
 ## Restaurar un backup
 
@@ -355,6 +441,9 @@ sudo cp /var/lib/mini-erp-backups/2026-10-01/system.sqlite /var/lib/mini-erp/
 sudo chown -R minierp:minierp /var/lib/mini-erp
 sudo systemctl start mini-erp
 ```
+
+Si la copia es de antes de una migración, el mini-erp la migra al arrancar, como cualquier deploy
+(ver [Migraciones de esquema](#migraciones-de-esquema)).
 
 **La instancia entera, desde un snapshot** (si se rompió o se borró): en Lightsail, pestaña
 **Snapshots** → el snapshot → **Create new instance** (mismo plan de US$5). Cuando esté en
