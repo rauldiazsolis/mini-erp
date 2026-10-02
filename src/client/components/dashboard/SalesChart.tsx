@@ -4,6 +4,7 @@ import {
   formatCurrency,
   formatNumber,
 } from '../../state/dashboard-state.ts';
+import { drillToSales } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
 
 export const hoveredIndexSignal = signal<number | null>(null);
@@ -133,7 +134,7 @@ export function SalesChart() {
           {points.map((p, idx) => {
             const isHovered = hoveredIdx === idx;
             return (
-              <g key={idx} class="cursor-pointer">
+              <g key={idx} class="cursor-pointer" onClick={() => { drillToSales({ day: p.item.date }); }}>
                 {/* Zona transparente grande para capturar hover fácilmente */}
                 <rect
                   x={p.x - 20}

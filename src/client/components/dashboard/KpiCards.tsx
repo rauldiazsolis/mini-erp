@@ -3,6 +3,7 @@ import {
   formatCurrency,
   formatNumber,
 } from '../../state/dashboard-state.ts';
+import { drillToDebtors, drillToSales } from '../../state/dashboard-drill.ts';
 import { StatCard } from '../ui/StatCard.tsx';
 
 export function KpiCards() {
@@ -23,6 +24,7 @@ export function KpiCards() {
       {/* 1. Facturación */}
       <StatCard
         title="Facturación Total"
+        onClick={() => { drillToSales({}); }}
         value={formatCurrency(totalSales)}
         variant="primary"
         icon={
@@ -50,6 +52,7 @@ export function KpiCards() {
       {/* 2. Tickets Emitidos */}
       <StatCard
         title="Tickets Emitidos"
+        onClick={() => { drillToSales({ status: 'valid' }); }}
         value={formatNumber(salesCount)}
         variant="default"
         icon={
@@ -63,6 +66,7 @@ export function KpiCards() {
       {/* 3. Ticket Promedio */}
       <StatCard
         title="Ticket Promedio"
+        onClick={() => { drillToSales({ status: 'valid' }); }}
         value={formatCurrency(averageTicket)}
         variant="default"
         icon={
@@ -76,6 +80,7 @@ export function KpiCards() {
       {/* 4. Deuda Cuentas Corrientes */}
       <StatCard
         title="Deuda en Cuenta Cte"
+        onClick={drillToDebtors}
         value={formatCurrency(totalReceivables)}
         variant="warning"
         icon={

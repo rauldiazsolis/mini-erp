@@ -9,6 +9,10 @@ import {
 } from '../src/client/state/sales-state.ts';
 import { activeViewSignal } from '../src/client/state/navigation-state.ts';
 import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { drillToDebtors, drillToSales, drillToStockProduct, periodRange } from '../src/client/state/dashboard-drill.ts';
+import { selectedBranchSignal, selectedPeriodSignal } from '../src/client/state/dashboard-state.ts';
+import { customerDebtorsOnlySignal } from '../src/client/state/customer-state.ts';
+import { stockSearchSignal } from '../src/client/state/stock-state.ts';
 
 const originalFetch = globalThis.fetch;
 const json = (status: number, body: unknown) =>
@@ -139,5 +143,41 @@ describe('resumen del día en el cliente (#20)', () => {
     await openDaySummary({ day: '2026-10-01', branch: 'CENTRAL', pointOfSale: null });
     expect((fetchMock.mock.calls[0] as [string])[0]).toBe('/api/tenants/t1/cash-summary/day?day=2026-10-01&branch=CENTRAL&pointOfSale=');
     expect(daySummarySignal.value?.day).toBe('2026-10-01');
+  });
+});
+
+describe('drill-down del dashboard (#20)', () => {
+  it('el período del dashboard es un rango de días argentinos', () => {
+    expect(periodRange('today', '2026-10-02')).toEqual({ from: '2026-10-02', to: '2026-10-02' });
+    expect(periodRange('week', '2026-10-02')).toEqual({ from: '2026-09-26', to: '2026-10-02' });
+    expect(periodRange('month', '2026-10-02')).toEqual({ from: '2026-09-03', to: '2026-10-02' });
+  });
+
+  it('un KPI lleva a Ventas con el período, la sucursal y el estado', () => {
+    selectedPeriodSignal.value = 'week';
+    selectedBranchSignal.value = 'CENTRAL';
+    drillToSales({ status: 'valid' }, '2026-10-02');
+    expect(activeViewSignal.value).toBe('sales');
+    expect(rangeSignal.value).toEqual({ from: '2026-09-26', to: '2026-10-02' });
+    expect(registerSignal.value).toEqual({ branch: 'CENTRAL' });
+    expect(salesFiltersSignal.value).toEqual({ status: 'valid' });
+  });
+
+  it('un punto del gráfico lleva a su día; un producto del ranking, a sus tickets', () => {
+    selectedBranchSignal.value = '';
+    drillToSales({ day: '2026-09-28' }, '2026-10-02');
+    expect(rangeSignal.value).toEqual({ from: '2026-09-28', to: '2026-09-28' });
+    expect(registerSignal.value).toEqual({});
+    drillToSales({ productId: 'p1' }, '2026-10-02');
+    expect(salesFiltersSignal.value).toEqual({ status: 'all', productId: 'p1' });
+  });
+
+  it('deuda lleva a Clientes deudores; una alerta, a Stock con el producto', () => {
+    drillToDebtors();
+    expect(activeViewSignal.value).toBe('customers');
+    expect(customerDebtorsOnlySignal.value).toBe(true);
+    drillToStockProduct('Alfajor');
+    expect(activeViewSignal.value).toBe('stock');
+    expect(stockSearchSignal.value).toBe('Alfajor');
   });
 });
