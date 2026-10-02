@@ -19,6 +19,7 @@ import { createCustomerRoutes } from './routes/customer-routes.ts';
 import { createBulkRoutes } from './routes/bulk-routes.ts';
 import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
+import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
@@ -122,6 +123,7 @@ export function createApp(deps?: AppDependencies): {
     createBulkRoutes(),
     createIoRoutes(),
     createDashboardRoutes(),
+    createSalesRoutes(),
     createApiKeyRoutes(apiKeyService),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );

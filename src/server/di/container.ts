@@ -21,6 +21,7 @@ import { AltaService } from '../alta/alta-service.ts';
 import { InvitationService } from '../users/invitation-service.ts';
 import { PasswordResetService } from '../users/password-reset-service.ts';
 import { DiscrepancyService } from '../discrepancy/discrepancy-service.ts';
+import { SalesQueryService } from '../sales/sales-query-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -109,6 +110,7 @@ export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(
 export const dashboardServiceDef = dashboardSummaryServiceDef;
 export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(tenantDbDef)));
 export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(tenantDbDef)));
+export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(tenantDbDef)));
 
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
 
