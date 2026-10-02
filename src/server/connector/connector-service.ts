@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts';
+import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
+import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.ts';
 
 export type { LotIssue };
 
@@ -106,6 +108,7 @@ export class ConnectorService {
   ): LotIssue | undefined {
     const originBranch = event.origin?.branch ?? (defaultBranchId ? defaultBranchId : null);
     const originPos = event.origin?.pointOfSale ?? null;
+    const where = { deviceId, branch: originBranch, pointOfSale: originPos };
 
     switch (event.type) {
       case 'sale': {
@@ -132,12 +135,11 @@ export class ConnectorService {
         if (sale.customerId !== undefined) {
           for (const payment of sale.payments) {
             if (payment.method === 'account' && payment.reference === undefined) {
-              this.adjustCustomerBalance(
+              this.moveBalance(
                 sale.customerId,
-                payment.amount,
-                'sale',
-                `Venta ${sale.id}`,
-                sale.id,
+                { type: 'sale', delta: payment.amount, description: `Venta ${sale.id}`, saleId: sale.id },
+                { type: 'sale', id: sale.id },
+                where,
                 now,
               );
             }
@@ -213,6 +215,9 @@ export class ConnectorService {
             now,
           );
 
+        // El cliente ya existe: sus movimientos pendientes se aplican (#2)
+        applyPendingFor(this.tenantDb, cust.id, now);
+
         return undefined;
       }
 
@@ -228,12 +233,11 @@ export class ConnectorService {
             .prepare("UPDATE account_holds SET status = 'confirmed', confirmed_at = ? WHERE id = ?")
             .run(now, holdId);
 
-          this.adjustCustomerBalance(
+          this.moveBalance(
             hold.customer_id,
-            hold.amount,
-            'sale',
-            `Venta a cuenta corriente ${saleId}`,
-            saleId,
+            { type: 'sale', delta: hold.amount, description: `Venta a cuenta corriente ${saleId}`, saleId },
+            { type: 'sale', id: saleId },
+            where,
             now,
           );
         }
@@ -264,19 +268,61 @@ export class ConnectorService {
         const payment = event.payment;
         const inserted = this.tenantDb
           .prepare(
-            `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, voids_payment_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO NOTHING`,
           )
-          .run(payment.id, payment.customerId, JSON.stringify(payment), deviceId, originBranch, originPos, event.createdAt ?? now);
-
-        if (inserted.changes > 0) {
-          this.adjustCustomerBalance(
-            payment.customerId,
-            -payment.total,
-            'payment',
-            `Cobranza ${payment.id}`,
-            undefined,
+          .run(payment.id, payment.customerId, JSON.stringify(payment), deviceId, originBranch, originPos, payment.voidsPaymentId ?? null, event.createdAt ?? now);
+        if (inserted.changes === 0) {
+          return undefined;
+        }
+        const ref = { type: 'customer-payment' as const, id: payment.id };
+        if (payment.voidsPaymentId === undefined) {
+          this.moveBalance(payment.customerId, { type: 'payment', delta: -payment.total, description: `Cobranza ${payment.id}` }, ref, where, now);
+          resolveVoidUnknown(this.tenantDb, payment.id, now);
+          return undefined;
+        }
+        // Anulación (4.3.0): nunca se rechaza; el saldo sube por -total y lo raro queda para revisar
+        this.moveBalance(
+          payment.customerId,
+          { type: 'payment-void', delta: -payment.total, description: `Anulación de cobranza ${payment.voidsPaymentId}` },
+          ref,
+          where,
+          now,
+        );
+        const original = this.tenantDb
+          .prepare('SELECT customer_id FROM customer_payments WHERE id = ?')
+          .get(payment.voidsPaymentId) as { customer_id: string } | undefined;
+        // Duplicada: otra anulación de la misma cobranza, del mismo cliente que la original (una de otro
+        // cliente ya es su propia discrepancia y no cuenta)
+        const otherVoid =
+          original === undefined
+            ? undefined
+            : this.tenantDb
+                .prepare('SELECT 1 FROM customer_payments WHERE voids_payment_id = ? AND id != ? AND customer_id = ? LIMIT 1')
+                .get(payment.voidsPaymentId, payment.id, original.customer_id);
+        const kind =
+          original === undefined
+            ? 'void-unknown-payment'
+            : original.customer_id !== payment.customerId
+              ? 'void-customer-mismatch'
+              : otherVoid !== undefined
+                ? 'void-duplicate'
+                : undefined;
+        if (kind !== undefined) {
+          recordDiscrepancy(
+            this.tenantDb,
+            {
+              kind,
+              deviceId,
+              originBranch,
+              originPos,
+              customerId: payment.customerId,
+              refType: 'customer-payment',
+              refId: payment.id,
+              amount: -payment.total,
+              ...(kind === 'void-unknown-payment' ? { voidsPaymentId: payment.voidsPaymentId } : {}),
+            },
             now,
           );
         }
@@ -285,36 +331,32 @@ export class ConnectorService {
     }
   }
 
-  private adjustCustomerBalance(
+  /** Mueve el saldo; con un cliente desconocido, el movimiento queda pendiente como discrepancia (#2). */
+  private moveBalance(
     customerId: string,
-    delta: number,
-    type: 'sale' | 'payment' | 'adjustment' | 'interest',
-    description: string,
-    saleId: string | undefined,
+    movement: LedgerMovement,
+    ref: { type: 'sale' | 'customer-payment'; id: string },
+    origin: { deviceId: string; branch: string | null; pointOfSale: string | null },
     now: string,
   ): void {
-    const cust = this.tenantDb
-      .prepare('SELECT balance FROM customers WHERE id = ?')
-      .get(customerId) as { balance: number | null } | undefined;
-
-    if (cust === undefined) {
+    if (applyToBalance(this.tenantDb, customerId, movement, now)) {
       return;
     }
-
-    const currentBalance = cust.balance ?? 0;
-    const newBalance = Math.round((currentBalance + delta) * 100) / 100;
-
-    this.tenantDb
-      .prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?')
-      .run(newBalance, now, customerId);
-
-    const movId = `mov_${randomUUID()}`;
-    this.tenantDb
-      .prepare(
-        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(movId, customerId, type, delta, newBalance, description, saleId ?? null, now);
+    recordDiscrepancy(
+      this.tenantDb,
+      {
+        kind: 'unknown-customer',
+        deviceId: origin.deviceId,
+        originBranch: origin.branch,
+        originPos: origin.pointOfSale,
+        customerId,
+        refType: ref.type,
+        refId: ref.id,
+        amount: movement.delta,
+        pending: movement,
+      },
+      now,
+    );
   }
 
   pullCatalog(params: {

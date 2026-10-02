@@ -21,9 +21,12 @@ describe('comercio v3 y v4 (#2)', () => {
       { id: 'p2', voids_payment_id: 'p1' },
     ]);
     expect(db.prepare('SELECT COUNT(*) AS n FROM customers').get()).toEqual({ n: 1 });
+    // Sin clave foránea a customers: se puede guardar la cobranza de un cliente que todavía no existe
+    expect(db.prepare('PRAGMA foreign_key_list(customer_payments)').all()).toEqual([]);
+    db.prepare('INSERT INTO customer_payments (id, customer_id, payload, created_at) VALUES (?, ?, ?, ?)').run('p3', 'nadie', '{}', at);
 
-    const indices = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('idx_customer_payments_voids', 'idx_discrepancies_open', 'idx_discrepancies_customer') ORDER BY name").all() as { name: string }[]).map((r) => r.name);
-    expect(indices).toEqual(['idx_customer_payments_voids', 'idx_discrepancies_customer', 'idx_discrepancies_open']);
+    const indices = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('idx_customer_payments_voids', 'idx_customer_payments_customer', 'idx_discrepancies_open', 'idx_discrepancies_customer') ORDER BY name").all() as { name: string }[]).map((r) => r.name);
+    expect(indices).toEqual(['idx_customer_payments_customer', 'idx_customer_payments_voids', 'idx_discrepancies_customer', 'idx_discrepancies_open']);
     const columnas = (db.prepare('PRAGMA table_info(discrepancies)').all() as { name: string }[]).map((r) => r.name);
     expect(columnas).toEqual([
       'id', 'kind', 'device_id', 'origin_branch', 'origin_pos', 'customer_id', 'ref_type', 'ref_id', 'amount',

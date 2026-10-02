@@ -67,8 +67,14 @@ const customerSchema = z
 /** Movimiento de caja: el mini-erp lo guarda completo; solo necesita el id. */
 const cashMovementSchema = z.object({ id: z.string().min(1) }).passthrough();
 
+/** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). */
 const customerPaymentSchema = z
-  .object({ id: z.string().min(1), customerId: z.string().min(1), total: z.number() })
+  .object({
+    id: z.string().min(1),
+    customerId: z.string().min(1),
+    total: z.number(),
+    voidsPaymentId: z.string().min(1).optional(),
+  })
   .passthrough();
 
 const pushEventSchema = z.discriminatedUnion('type', [

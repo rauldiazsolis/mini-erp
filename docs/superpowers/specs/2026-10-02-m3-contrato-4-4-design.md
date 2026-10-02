@@ -54,12 +54,20 @@ Dos migraciones nuevas de comercio, con la mecánica de #47 (un archivo por migr
 
 ### Comercio v3 `anulacion-cobranzas`
 
-```sql
-ALTER TABLE customer_payments ADD COLUMN voids_payment_id TEXT;
-UPDATE customer_payments SET voids_payment_id = json_extract(payload, '$.voidsPaymentId')
-  WHERE json_extract(payload, '$.voidsPaymentId') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_customer_payments_voids ON customer_payments (voids_payment_id);
-```
+Reconstruye `customer_payments`:
+
+- **suma `voids_payment_id`**, rellenado con `json_extract(payload, '$.voidsPaymentId')`, con su índice;
+- **saca la clave foránea a `customers`**.
+
+Sin la clave foránea se puede guardar la cobranza de un cliente que el mini-erp todavía no tiene: es
+plata cobrada, y queda como discrepancia hasta que el cliente llega. Una baja definitiva de un cliente
+ya no borra sus cobranzas en cascada, que es mejor para la auditoría.
+
+SQLite no saca una clave foránea con `ALTER`: la v3 crea la tabla nueva, copia, borra la vieja y
+renombra. Se agrega también el índice `idx_customer_payments_customer`.
+
+Esto se encontró al implementar la tarea 4: con la clave foránea, una cobranza de un cliente
+desconocido quedaba como `issue` y no se podía dejar pendiente. La v3 todavía no estaba publicada.
 
 El relleno cubre una anulación que haya entrado antes. No debería haber ninguna, porque el mini-erp
 nunca declaró la capacidad, pero el `payload` ya guardaba el campo.
