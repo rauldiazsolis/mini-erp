@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals';
-import { apiFetch, setOnUnauthorized } from '../api/client.ts';
+import { ApiError, apiFetch, setOnUnauthorized } from '../api/client.ts';
 import type { MembershipRole } from '../../shared/permissions.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
@@ -129,9 +129,11 @@ export async function fetchProfile(): Promise<boolean> {
 
     return true;
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al verificar sesión';
-    authErrorSignal.value = msg;
-    logout();
+    // Solo una sesión vencida la cierra (#47): con el servidor en mantenimiento o sin red, se conserva
+    if (err instanceof ApiError && err.status === 401) {
+      authErrorSignal.value = err.message;
+      logout();
+    }
     return false;
   } finally {
     authLoadingSignal.value = false;

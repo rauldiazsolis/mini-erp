@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
+import { noteMaintenanceResponse } from './maintenance-state.ts';
 
 export type BulkTab = 'prices' | 'interests' | 'io';
 export type RoundingStrategy = 'none' | '10' | '50' | '100';
@@ -207,6 +208,7 @@ export async function downloadExport(entity: 'products' | 'customers' | 'stock',
     });
 
     if (!res.ok) {
+      await noteMaintenanceResponse(res);
       throw new Error(`HTTP ${String(res.status)}: ${res.statusText}`);
     }
 

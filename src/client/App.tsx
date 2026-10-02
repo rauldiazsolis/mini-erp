@@ -25,6 +25,8 @@ import { initRouting, routeSignal } from './state/route-state.ts';
 import { initLinkPageFromUrl } from './state/link-pages-state.ts';
 import { InvitationView } from './components/links/InvitationView.tsx';
 import { ResetPasswordView } from './components/links/ResetPasswordView.tsx';
+import { maintenanceSignal } from './state/maintenance-state.ts';
+import { MaintenanceView } from './components/maintenance/MaintenanceView.tsx';
 
 // Ruta del SPA (#9) y, en /alta, los parámetros del alta
 if (typeof window !== 'undefined') {
@@ -39,6 +41,11 @@ if (typeof window !== 'undefined' && tokenSignal.value && !currentUserSignal.val
 }
 
 export function App() {
+  // Servidor en mantenimiento (#47): tapa todo, incluidos el landing, el alta y los links
+  if (maintenanceSignal.value) {
+    return <MaintenanceView />;
+  }
+
   if (routeSignal.value === 'landing') {
     return <LandingView />;
   }
