@@ -1,6 +1,10 @@
 import { salesTabSignal, setTab, type SalesTab } from '../../state/sales-state.ts';
 
-export const TABS: Array<{ id: SalesTab; label: string }> = [{ id: 'sales', label: 'Ventas' }];
+export const TABS: Array<{ id: SalesTab; label: string }> = [
+  { id: 'sales', label: 'Ventas' },
+  { id: 'payments', label: 'Cobranzas' },
+  { id: 'movements', label: 'Movimientos de caja' },
+];
 
 export function SalesTabs() {
   const active = salesTabSignal.value;

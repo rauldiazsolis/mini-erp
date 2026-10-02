@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { formatDay, formatMoney, formatQty } from '../src/client/format.ts';
-import { customerLabel, methodLabel, parseRegisterKey, registerKey, registerLabel } from '../src/client/state/sales-labels.ts';
+import { countLabel, customerLabel, methodLabel, parseRegisterKey, registerKey, registerLabel } from '../src/client/state/sales-labels.ts';
 import {
   buildQuery, endpointFor, loadTab, openSalesWith, openTicket, presetRange, rangeSignal, registerSignal,
   salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, pageSignal, type SalesQueryInput,
+  openPayment, closePayment, paymentsListSignal, paymentDetailSignal,
 } from '../src/client/state/sales-state.ts';
 import { activeViewSignal } from '../src/client/state/navigation-state.ts';
 import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
@@ -48,6 +49,8 @@ describe('etiquetas (#20)', () => {
     expect(customerLabel(undefined)).toBe('Consumidor final');
     expect(customerLabel({ id: 'c9' })).toBe('Cliente desconocido (c9)');
     expect(customerLabel({ id: 'c1', name: 'Ana' })).toBe('Ana');
+    expect(countLabel(1, 'ticket', 'tickets')).toBe('1 ticket');
+    expect(countLabel(0, 'ticket', 'tickets')).toBe('0 tickets');
   });
 
   it('la clave de una caja ida y vuelta, con el vacío como "sin dato"', () => {
@@ -102,5 +105,26 @@ describe('estado de Ventas & Caja (#20)', () => {
     expect(registerSignal.value).toEqual({ branch: 'CENTRAL' });
     expect(salesFiltersSignal.value).toEqual({ status: 'valid', productId: 'p1' });
     expect(pageSignal.value).toBe(1);
+  });
+});
+
+describe('cobranzas en el cliente (#20)', () => {
+  it('abre una cobranza de la página y navega a su anulación', () => {
+    const base = { day: '2026-10-01', createdAt: '2026-10-01T15:00:00.000Z', branch: 'CENTRAL', pointOfSale: 'Caja 1', customer: { id: 'c1', name: 'Ana' } };
+    paymentsListSignal.value = {
+      items: [
+        { ...base, id: 'cp2', payments: [{ method: 'cash', amount: -700 }], total: -700, voided: false, voidsPaymentId: 'cp1' },
+        { ...base, id: 'cp1', payments: [{ method: 'cash', amount: 700 }], total: 700, voided: true, voidedBy: 'cp2' },
+      ],
+      count: 2, page: 1, pageSize: 50, netTotal: 0,
+    };
+    openPayment('cp1');
+    expect(paymentDetailSignal.value?.id).toBe('cp1');
+    openPayment(paymentDetailSignal.value?.voidedBy ?? '');
+    expect(paymentDetailSignal.value?.id).toBe('cp2');
+    openPayment('no-está');
+    expect(paymentDetailSignal.value?.id).toBe('cp2');
+    closePayment();
+    expect(paymentDetailSignal.value).toBeNull();
   });
 });

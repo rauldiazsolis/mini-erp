@@ -1,5 +1,8 @@
 import { salesErrorSignal, salesTabSignal } from '../../state/sales-state.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
+import { CashMovementsTable } from './CashMovementsTable.tsx';
+import { PaymentDrawer } from './PaymentDrawer.tsx';
+import { PaymentsTable } from './PaymentsTable.tsx';
 import { SalesRangeBar } from './SalesRangeBar.tsx';
 import { SalesTable } from './SalesTable.tsx';
 import { SalesTabs } from './SalesTabs.tsx';
@@ -17,7 +20,10 @@ export function SalesView() {
         <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-sm text-rose-600 dark:text-rose-400">{error}</div>
       )}
       {tab === 'sales' && <SalesTable />}
-      {/* El ticket va último: se abre también desde el resumen del día (Tarea 10) */}
+      {tab === 'payments' && <PaymentsTable />}
+      {tab === 'movements' && <CashMovementsTable />}
+      <PaymentDrawer />
+      {/* El ticket va último: se abre también desde el resumen del día */}
       <TicketDrawer />
     </div>
   );

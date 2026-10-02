@@ -1,7 +1,7 @@
 import { PAYMENT_METHODS } from '../../../shared/payment-methods.ts';
 import type { DocStatus, SaleKind } from '../../../shared/sales-types.ts';
 import { formatDateTime, formatMoney } from '../../format.ts';
-import { customerLabel, methodLabel, registerLabel } from '../../state/sales-labels.ts';
+import { countLabel, customerLabel, methodLabel, registerLabel } from '../../state/sales-labels.ts';
 import { openTicket, pageSignal, salesFiltersSignal, salesListSignal, salesLoadingSignal, setPage, setSalesFilters } from '../../state/sales-state.ts';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 import { Pagination } from '../ui/Pagination.tsx';
@@ -69,7 +69,7 @@ export function SalesTable() {
 
       <TableContainer>
         <div class="px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
-          {list === null ? 'Cargando…' : `${String(list.count)} tickets · Total neto ${formatMoney(list.netTotal)}`}
+          {list === null ? 'Cargando…' : `${countLabel(list.count, 'ticket', 'tickets')} · Total neto ${formatMoney(list.netTotal)}`}
           {salesLoadingSignal.value && list !== null && <span class="ml-2 text-xs text-slate-400">Actualizando…</span>}
         </div>
         <Table>

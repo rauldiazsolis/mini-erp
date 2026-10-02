@@ -166,6 +166,16 @@ export function closeTicket(): void {
   ticketSignal.value = null;
 }
 
+/** El recibo se abre con los datos de la lista; una cobranza fuera de la página no se abre. */
+export function openPayment(id: string): void {
+  const found = paymentsListSignal.value?.items.find((p) => p.id === id);
+  if (found !== undefined) paymentDetailSignal.value = found;
+}
+
+export function closePayment(): void {
+  paymentDetailSignal.value = null;
+}
+
 // Cambiar un filtro vuelve a la primera página
 export function setTab(tab: SalesTab): void {
   salesTabSignal.value = tab;

@@ -16,6 +16,11 @@ export function methodLabel(method: string): string {
   return METHOD_LABELS[methodKey(method)];
 }
 
+/** "1 ticket", "3 tickets": el encabezado de cada lista. */
+export function countLabel(count: number, singular: string, plural: string): string {
+  return `${String(count)} ${count === 1 ? singular : plural}`;
+}
+
 export const KIND_LABELS: Record<SaleKind, string> = { sale: 'Venta', return: 'Devolución', void: 'Anulación' };
 
 /** La caja como la ve el comerciante; la cobranza cargada en el admin es "Admin". */

@@ -4449,7 +4449,7 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
 
   // Filtro de anuladas: solo el ticket 1
   await page.getByLabel('Estado').selectOption('voided');
-  await expect(page.getByText(/^1 tickets/)).toBeVisible();
+  await expect(page.getByText(/^1 ticket ·/)).toBeVisible();
 
   // Cobranzas: la de Ana
   await page.getByRole('tab', { name: 'Cobranzas' }).click();
