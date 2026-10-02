@@ -4,6 +4,9 @@ import { migrateDb, readVersion } from '../src/server/db/migrations/migrate.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
 import { createDbAtVersion } from './helpers/db-at-version.ts';
 
+/** Solo hasta la v2: cada test de migración prueba la suya. */
+const HASTA_V2 = { ...TENANT_SCHEMA, migrations: TENANT_SCHEMA.migrations.filter((m) => m.version <= 2) };
+
 const TABLAS = [
   'branches', 'products', 'stock', 'customers', 'account_holds', 'account_movements', 'sales',
   'stock_movements', 'cash_movements', 'customer_payments', 'push_lots', 'idempotency_keys', 'tenant_settings',
@@ -36,7 +39,7 @@ describe('comercio v2 indices (#47)', () => {
     const antes = contar(db);
     expect(Object.values(antes).every((n) => n === 1)).toBe(true);
 
-    expect(migrateDb(db, TENANT_SCHEMA)).toEqual({ from: 1, to: 2, applied: ['v2 indices'] });
+    expect(migrateDb(db, HASTA_V2)).toEqual({ from: 1, to: 2, applied: ['v2 indices'] });
     expect(readVersion(db)).toBe(2);
     expect(contar(db)).toEqual(antes);
     expect(db.prepare('SELECT notes FROM stock_movements').get()).toEqual({ notes: 'nota' });
@@ -44,7 +47,7 @@ describe('comercio v2 indices (#47)', () => {
 
   it('crea los índices y las consultas los usan', () => {
     const db = createDbAtVersion(TENANT_SCHEMA, 1);
-    migrateDb(db, TENANT_SCHEMA);
+    migrateDb(db, HASTA_V2);
     const indices = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name").all() as { name: string }[]).map((r) => r.name);
     expect(indices).toEqual([
       'idx_account_holds_customer',

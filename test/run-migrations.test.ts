@@ -8,10 +8,14 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { readVersion } from '../src/server/db/migrations/migrate.ts';
 import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
-import type { Schema } from '../src/server/db/migrations/types.ts';
+import { currentVersion, type Schema } from '../src/server/db/migrations/types.ts';
 import { MigrationRunError, PRE_MIGRATION_DIR, restoreRun, runMigrations, type MigrationProgress } from '../src/server/db/migrations/run-migrations.ts';
 
 let root = '';
+
+/** Versiones de hoy y las de prueba (una más): el test no depende de cuántas migraciones reales haya. */
+const S = currentVersion(SYSTEM_SCHEMA);
+const T = currentVersion(TENANT_SCHEMA);
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
@@ -19,12 +23,12 @@ afterEach(() => {
 /** Schemas de prueba: sistema v5 y comercio v3 sobre lo que crea el código de hoy. */
 function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { system: Schema; tenant: Schema } {
   return {
-    system: { ...SYSTEM_SCHEMA, migrations: [...SYSTEM_SCHEMA.migrations, { version: 5, name: 'prueba', up: (db) => { db.exec('CREATE TABLE prueba (id TEXT)'); } }] },
+    system: { ...SYSTEM_SCHEMA, migrations: [...SYSTEM_SCHEMA.migrations, { version: S + 1, name: 'prueba', up: (db) => { db.exec('CREATE TABLE prueba (id TEXT)'); } }] },
     tenant: {
       ...TENANT_SCHEMA,
       migrations: [
         ...TENANT_SCHEMA.migrations,
-        { version: 3, name: 'columna', up: tenantUp ?? ((db) => { db.exec('ALTER TABLE products ADD COLUMN prueba TEXT'); }) },
+        { version: T + 1, name: 'columna', up: tenantUp ?? ((db) => { db.exec('ALTER TABLE products ADD COLUMN prueba TEXT'); }) },
       ],
     },
   };
@@ -78,14 +82,14 @@ describe('runMigrations (#47)', () => {
     const result = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba(), onProgress: (p) => progreso.push(p) });
 
     expect(result.migrated).toEqual([
-      { file: 'system.sqlite', from: 4, to: 5 },
-      { file: 'tenants/demo-abc.sqlite', from: 2, to: 3 },
-      { file: 'tenants/kiosco-real.sqlite', from: 2, to: 3 },
+      { file: 'system.sqlite', from: S, to: S + 1 },
+      { file: 'tenants/demo-abc.sqlite', from: T, to: T + 1 },
+      { file: 'tenants/kiosco-real.sqlite', from: T, to: T + 1 },
     ]);
     expect(progreso.map((p) => `${p.file} ${String(p.done)}/${String(p.total)}`)).toEqual([
       'system.sqlite 1/3', 'tenants/demo-abc.sqlite 2/3', 'tenants/kiosco-real.sqlite 3/3',
     ]);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(5);
+    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S + 1);
     const kiosco = new DatabaseSync(join(dataDir, 'tenants', 'kiosco-real.sqlite'));
     expect(kiosco.prepare('SELECT name, prueba FROM products').all()).toEqual([{ name: 'Yerba', prueba: null }]);
     kiosco.close();
@@ -95,8 +99,8 @@ describe('runMigrations (#47)', () => {
     const dataDir = sembrar();
     const { runDir } = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() });
     expect(runDir).toBe(join(dataDir, PRE_MIGRATION_DIR, '2026-10-02T14-30-00'));
-    expect(versionDe(join(runDir ?? '', 'system.sqlite'))).toBe(4);
-    expect(versionDe(join(runDir ?? '', 'tenants', 'kiosco-real.sqlite'))).toBe(2);
+    expect(versionDe(join(runDir ?? '', 'system.sqlite'))).toBe(S);
+    expect(versionDe(join(runDir ?? '', 'tenants', 'kiosco-real.sqlite'))).toBe(T);
     expect(readdirSync(join(runDir ?? '', 'tenants')).sort()).toEqual(['demo-abc.sqlite', 'kiosco-real.sqlite']);
   });
 
@@ -117,7 +121,7 @@ describe('runMigrations (#47)', () => {
     kiosco.exec('PRAGMA user_version = 9');
     kiosco.close();
     expect(() => runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() })).toThrow(/kiosco-real.*más nueva/s);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(4);
+    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
     expect(existsSync(join(dataDir, PRE_MIGRATION_DIR))).toBe(false);
   });
 
@@ -134,9 +138,9 @@ describe('runMigrations (#47)', () => {
     });
 
     expect(() => runMigrations({ dataDir, now: NOW, schemas })).toThrow(MigrationRunError);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(4);
-    expect(versionDe(join(dataDir, 'tenants', 'a-ok.sqlite'))).toBe(2);
-    expect(versionDe(join(dataDir, 'tenants', 'b-falla.sqlite'))).toBe(2);
+    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
+    expect(versionDe(join(dataDir, 'tenants', 'a-ok.sqlite'))).toBe(T);
+    expect(versionDe(join(dataDir, 'tenants', 'b-falla.sqlite'))).toBe(T);
     const system = new DatabaseSync(join(dataDir, 'system.sqlite'));
     expect(system.prepare("SELECT name FROM sqlite_master WHERE name = 'prueba'").get()).toBeUndefined();
     system.close();
@@ -147,9 +151,9 @@ describe('runMigrations (#47)', () => {
     const schemas = schemasDePrueba(() => { throw new Error('pedido de romper'); });
     // Orden: sistema, b-falla, demo-abc. Falla b-falla y el sistema vuelve a v4
     expect(() => runMigrations({ dataDir, now: NOW, schemas })).toThrow(
-      'tenants/b-falla.sqlite, migración v3 columna: pedido de romper',
+      `tenants/b-falla.sqlite, migración v${String(T + 1)} columna: pedido de romper`,
     );
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(4);
+    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
   });
 
   it('restoreRun copia encima y borra -wal y -shm', () => {
@@ -159,7 +163,7 @@ describe('runMigrations (#47)', () => {
     writeFileSync(`${file}-wal`, 'basura');
     writeFileSync(`${file}-shm`, 'basura');
     restoreRun(runDir ?? '', dataDir, ['system.sqlite']);
-    expect(versionDe(file)).toBe(4);
+    expect(versionDe(file)).toBe(S);
     expect(existsSync(`${file}-wal`)).toBe(false);
     expect(existsSync(`${file}-shm`)).toBe(false);
   });

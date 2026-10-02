@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
+import { currentVersion } from '../src/server/db/migrations/types.ts';
 import { readVersion } from '../src/server/db/migrations/migrate.ts';
 import type { MigrationProgress } from '../src/server/db/migrations/run-migrations.ts';
 import { runMigrationsInWorker } from '../src/server/db/migrations/worker-runner.ts';
@@ -37,11 +38,11 @@ describe('runMigrationsInWorker (#47)', () => {
     const progreso: MigrationProgress[] = [];
     const result = await runMigrationsInWorker(dataDir, (p) => { progreso.push(p); });
 
-    expect(result.migrated).toEqual([{ file: 'tenants/kiosco.sqlite', from: 1, to: 2 }]);
+    expect(result.migrated).toEqual([{ file: 'tenants/kiosco.sqlite', from: 1, to: currentVersion(TENANT_SCHEMA) }]);
     expect(result.runDir).toBeDefined();
     expect(progreso).toEqual([{ file: 'tenants/kiosco.sqlite', done: 1, total: 1 }]);
     const db = new DatabaseSync(join(dataDir, 'tenants', 'kiosco.sqlite'));
-    expect(readVersion(db)).toBe(2);
+    expect(readVersion(db)).toBe(currentVersion(TENANT_SCHEMA));
     expect(db.prepare('SELECT name FROM products').all()).toEqual([{ name: 'Yerba' }]);
     db.close();
   });
