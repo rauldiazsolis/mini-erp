@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { applyPendingFor } from '../discrepancy/discrepancies.ts';
+import { saveCustomerPayment } from '../sales/records.ts';
 
 export type CustomerRecord = {
   id: string;
@@ -311,24 +312,25 @@ export class CustomerService {
       )
       .run(movId, customerId, 'payment', -input.amount, newBalance, description, now);
 
-    // 2. Registro formal en customer_payments
-    this.db
-      .prepare(
-        `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, created_at)
-         VALUES (?, ?, ?, 'admin_panel', 'ADMIN', 'Oficina', ?)`,
-      )
-      .run(
-        paymentId,
+    // 2. Registro formal en customer_payments, con la forma del contrato (#20)
+    saveCustomerPayment(
+      this.db,
+      {
+        id: paymentId,
         customerId,
-        JSON.stringify({
-          id: paymentId,
-          customerId,
-          total: input.amount,
-          method: input.method ?? 'cash',
-          reference: input.reference ?? null,
-        }),
-        now,
-      );
+        payments: [
+          {
+            method: input.method ?? 'cash',
+            amount: input.amount,
+            ...(input.reference === undefined ? {} : { reference: input.reference }),
+          },
+        ],
+        total: input.amount,
+        createdAt: now,
+      },
+      { deviceId: 'admin_panel', branch: 'ADMIN', pointOfSale: 'Oficina' },
+      now,
+    );
 
     // 3. Actualizar saldo del cliente y updated_at
     this.db

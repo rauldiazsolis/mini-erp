@@ -26,7 +26,10 @@ const paymentSchema = z
   .object({ method: z.string(), amount: z.number(), reference: z.string().optional() })
   .passthrough();
 
-/** Venta: total, cliente, anulación, pagos y el número de ticket (4.1.0). */
+/** Número de ticket (4.1.0) o de recibo (4.2.0) en su día. */
+const numberedSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) });
+
+/** Venta: total, cliente, anulación, pagos, el número de ticket (4.1.0) y su `createdAt` (el día, #20). */
 const saleSchema = z
   .object({
     id: z.string().min(1),
@@ -34,9 +37,8 @@ const saleSchema = z
     customerId: z.string().optional(),
     voidsSaleId: z.string().optional(),
     payments: z.array(paymentSchema),
-    ticket: z
-      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) })
-      .optional(),
+    ticket: numberedSchema.optional(),
+    createdAt: z.string().optional(),
   })
   .passthrough();
 
@@ -64,16 +66,18 @@ const customerSchema = z
   })
   .passthrough();
 
-/** Movimiento de caja: el mini-erp lo guarda completo; solo necesita el id. */
-const cashMovementSchema = z.object({ id: z.string().min(1) }).passthrough();
+/** Movimiento de caja: el mini-erp lo guarda completo; necesita el id y su `createdAt` (el día, #20). */
+const cashMovementSchema = z.object({ id: z.string().min(1), createdAt: z.string().optional() }).passthrough();
 
-/** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). */
+/** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). El recibo y `createdAt` dan su día (#20). */
 const customerPaymentSchema = z
   .object({
     id: z.string().min(1),
     customerId: z.string().min(1),
     total: z.number(),
     voidsPaymentId: z.string().min(1).optional(),
+    receipt: numberedSchema.optional(),
+    createdAt: z.string().optional(),
   })
   .passthrough();
 

@@ -4,6 +4,7 @@ import { parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts
 import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
 import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.ts';
 import { noticesFor } from '../notices/notice-service.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale } from '../sales/records.ts';
 
 export type { LotIssue };
 
@@ -110,27 +111,13 @@ export class ConnectorService {
     const originBranch = event.origin?.branch ?? (defaultBranchId ? defaultBranchId : null);
     const originPos = event.origin?.pointOfSale ?? null;
     const where = { deviceId, branch: originBranch, pointOfSale: originPos };
+    // Ventas, cobranzas y movimientos de caja con sus columnas derivadas (#20)
+    const receivedAt = event.createdAt ?? now;
 
     switch (event.type) {
       case 'sale': {
         const sale = event.sale;
-
-        this.tenantDb
-          .prepare(
-            `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload`,
-          )
-          .run(
-            sale.id,
-            JSON.stringify(sale),
-            deviceId,
-            originBranch,
-            originPos,
-            sale.total,
-            sale.voidsSaleId ?? null,
-            event.createdAt ?? now,
-          );
+        saveSale(this.tenantDb, sale, where, receivedAt);
 
         // Si fue a cuenta corriente sin hold (fiado offline o acreditación por anulación)
         if (sale.customerId !== undefined) {
@@ -254,27 +241,13 @@ export class ConnectorService {
       }
 
       case 'cash-movement': {
-        const movement = event.movement;
-        this.tenantDb
-          .prepare(
-            `INSERT INTO cash_movements (id, payload, device_id, branch, point_of_sale, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload`,
-          )
-          .run(movement.id, JSON.stringify(movement), deviceId, originBranch, originPos, event.createdAt ?? now);
+        saveCashMovement(this.tenantDb, event.movement, where, receivedAt);
         return undefined;
       }
 
       case 'customer-payment': {
         const payment = event.payment;
-        const inserted = this.tenantDb
-          .prepare(
-            `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, voids_payment_id, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO NOTHING`,
-          )
-          .run(payment.id, payment.customerId, JSON.stringify(payment), deviceId, originBranch, originPos, payment.voidsPaymentId ?? null, event.createdAt ?? now);
-        if (inserted.changes === 0) {
+        if (!saveCustomerPayment(this.tenantDb, payment, where, receivedAt)) {
           return undefined;
         }
         const ref = { type: 'customer-payment' as const, id: payment.id };
