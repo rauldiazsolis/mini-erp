@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { dataDir } from '../src/server/db/data-dir.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
-import { passwordSchema } from '../src/shared/password.ts';
+import { PASSWORD_MIN_LENGTH, passwordSchema } from '../src/shared/password.ts';
 
 const rootSchema = z.object({
   email: z.string().trim().email('Email inválido'),
@@ -60,7 +60,7 @@ const rl = createInterface({ input: process.stdin, output: process.stdout });
 const email = await rl.question('Email del root: ');
 const name = await rl.question('Nombre: ');
 rl.close();
-const password = await askHidden('Contraseña (mínimo 12 caracteres): ');
+const password = await askHidden(`Contraseña (mínimo ${String(PASSWORD_MIN_LENGTH)} caracteres): `);
 const again = await askHidden('Repetila: ');
 if (password !== again) {
   console.error('Las contraseñas no coinciden');
