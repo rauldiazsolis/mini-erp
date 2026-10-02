@@ -1,0 +1,94 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { DatabaseSync } from 'node:sqlite';
+import { createApp } from '../src/server/app.ts';
+import { initSystemDb } from '../src/server/db/system-db.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
+
+const at = '2026-10-02T12:00:00.000Z';
+const origin = { branch: 'CENTRAL', pointOfSale: 'POS-01' };
+
+describe('reglas de evolución del contrato 4.4.0 (#2)', () => {
+  let app: ReturnType<typeof createApp>['app'];
+  let tenantManager: TenantManager;
+  let apiKey: string;
+  const tenantId = 'kiosco';
+
+  beforeEach(async () => {
+    const systemDb = new DatabaseSync(':memory:');
+    initSystemDb(systemDb);
+    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    const bundle = createApp({ systemDb, tenantManager });
+    app = bundle.app;
+    const { token, user } = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
+    const key = await request(app)
+      .post(`/api/tenants/${tenantId}/api-keys`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
+    apiKey = (key.body as { rawKey: string }).rawKey;
+  });
+
+  const count = (sql: string): number =>
+    (tenantManager.getTenantDb(tenantId).prepare(sql).get() as { n: number }).n;
+
+  function push(lotId: string, events: unknown[]) {
+    return request(app)
+      .post('/connector/sync/push')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.4.0')
+      .set('Idempotency-Key', lotId)
+      .send({ deviceId: 'dev-1', events });
+  }
+
+  it('un tipo de evento desconocido queda como issue y el resto se aplica', async () => {
+    await push('l1', [
+      { id: 'e1', type: 'loyalty-points', createdAt: at, origin, points: 10 },
+      { id: 'e2', type: 'sale', createdAt: at, origin, sale: { id: 'v1', total: 10, payments: [{ method: 'cash', amount: 10 }] } },
+    ]);
+    expect(count("SELECT COUNT(*) AS n FROM sales WHERE id = 'v1'")).toBe(1);
+    const issues = JSON.parse((tenantManager.getTenantDb(tenantId).prepare("SELECT issues FROM push_lots WHERE id = 'l1'").get() as { issues: string }).issues) as { eventId?: string }[];
+    expect(issues.map((i) => i.eventId)).toEqual(['e1']);
+  });
+
+  it('un medio de pago desconocido se guarda, en una venta y en una cobranza', async () => {
+    await push('l1', [
+      { id: 'e0', type: 'customer', createdAt: at, origin, customer: { id: 'c1', name: 'Ana' } },
+      { id: 'e1', type: 'sale', createdAt: at, origin, sale: { id: 'v1', total: 10, payments: [{ method: 'crypto', amount: 10 }] } },
+      { id: 'e2', type: 'customer-payment', createdAt: at, origin, payment: { id: 'p1', customerId: 'c1', total: 10, payments: [{ method: 'crypto', amount: 10 }], createdAt: at } },
+    ]);
+    expect(count("SELECT COUNT(*) AS n FROM push_lots WHERE id = 'l1' AND status = 'ok'")).toBe(1);
+    expect(count("SELECT COUNT(*) AS n FROM sales WHERE json_extract(payload, '$.payments[0].method') = 'crypto'")).toBe(1);
+  });
+
+  it('ignora campos desconocidos en el lote, el evento y la venta', async () => {
+    const res = await request(app)
+      .post('/connector/sync/push')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.4.0')
+      .set('Idempotency-Key', 'l1')
+      .send({ deviceId: 'dev-1', futuro: true, events: [
+        { id: 'e1', type: 'sale', createdAt: at, origin, prioridad: 'alta', sale: { id: 'v1', total: 10, payments: [{ method: 'cash', amount: 10, cuotas: 3 }], propina: 2 } },
+      ] });
+    expect(res.status).toBe(200);
+    expect(count("SELECT COUNT(*) AS n FROM push_lots WHERE id = 'l1' AND status = 'ok'")).toBe(1);
+  });
+
+  it('acepta tickets y recibos con huecos', async () => {
+    await push('l1', [
+      { id: 'e1', type: 'sale', createdAt: at, origin, sale: { id: 'v1', total: 10, payments: [{ method: 'cash', amount: 10 }], ticket: { date: '2026-10-02', number: 1 } } },
+      { id: 'e2', type: 'sale', createdAt: at, origin, sale: { id: 'v2', total: 10, payments: [{ method: 'cash', amount: 10 }], ticket: { date: '2026-10-02', number: 7 } } },
+    ]);
+    expect(count('SELECT COUNT(*) AS n FROM sales')).toBe(2);
+  });
+
+  it('la foto completa no se recorta', async () => {
+    const db = tenantManager.getTenantDb(tenantId);
+    const insert = db.prepare('INSERT INTO products (id, sku, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)');
+    for (let i = 0; i < 1200; i++) {
+      insert.run(`p${String(i)}`, `SKU${String(i)}`, `Producto ${String(i)}`, at, at);
+    }
+    const res = await request(app).post('/connector/sync/pull').set('Authorization', `Bearer ${apiKey}`).send({ cursors: {}, pendingLotIds: [] });
+    expect((res.body as { products: { items: unknown[] } }).products.items).toHaveLength(1200);
+  });
+});

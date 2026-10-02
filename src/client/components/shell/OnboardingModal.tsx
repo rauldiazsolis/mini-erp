@@ -262,7 +262,7 @@ export function OnboardingModal() {
 
                 <div>
                   <div class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                    API Key del POS (v4.2.0)
+                    API Key del POS (v4.4.0)
                   </div>
                   <div class="flex items-center gap-2">
                     <input

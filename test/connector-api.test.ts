@@ -65,7 +65,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('responde 200 con la versión 4.2.0 del contrato y estado ok', async () => {
+    it('responde 200 con la versión 4.4.0 del contrato y estado ok', async () => {
       const res = await request(app)
         .get('/connector/info')
         .set('Authorization', `Bearer ${rawApiKey}`);
@@ -76,7 +76,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
         status: string;
         backend: { name: string; version: string };
       };
-      expect(body.contractVersion).toBe('4.2.0');
+      expect(body.contractVersion).toBe('4.4.0');
       expect(body.status).toBe('ok');
       expect(body.backend.name).toBe('mini-erp');
       // La versión del backend es la de package.json (#40), no un literal
@@ -96,7 +96,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       expect(res.status).toBe(409);
       expect(res.body).toEqual({
         code: 'incompatible-contract',
-        contractVersion: '4.2.0',
+        contractVersion: '4.4.0',
       });
     });
 

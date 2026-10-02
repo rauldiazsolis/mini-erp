@@ -124,7 +124,7 @@ export function createApp(deps?: AppDependencies): {
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 
-  // Rutas para terminales POS (Connector API 4.2.0 más la capacidad demo-sessions de 4.4.0)
+  // Rutas para terminales POS (Connector API 4.4.0, #2)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit));
 
   // Manejador centralizado de errores

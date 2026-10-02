@@ -99,7 +99,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
 
     expect(infoRes.status).toBe(200);
     const infoBody = infoRes.body as unknown as ConnectorInfoResponse;
-    expect(infoBody.contractVersion).toBe('4.2.0');
+    expect(infoBody.contractVersion).toBe('4.4.0');
     expect(infoBody.status).toBe('ok');
     expect(infoBody.backend.name).toBe('mini-erp');
 
@@ -113,7 +113,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     expect(incompatibleRes.status).toBe(409);
     const incompBody = incompatibleRes.body as unknown as { code: string; contractVersion: string };
     expect(incompBody.code).toBe('incompatible-contract');
-    expect(incompBody.contractVersion).toBe('4.2.0');
+    expect(incompBody.contractVersion).toBe('4.4.0');
 
     // =========================================================================
     // PASO 2: Pull Inicial de Catálogo, Clientes y Stock de la Sucursal
