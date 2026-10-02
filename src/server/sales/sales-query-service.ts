@@ -2,11 +2,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import { argentinaDay, daysBetween } from '../../shared/argentina-day.ts';
 import { PAYMENT_METHODS } from '../../shared/payment-methods.ts';
 import type {
-  DocStatus, ListResult, RegisterItem, SaleDetail, SaleDetailLine, SaleKind, SaleListItem,
+  CashMovementItem, CustomerPaymentItem, DocStatus, ListResult, RegisterItem, SaleDetail, SaleDetailLine, SaleKind,
+  SaleListItem,
 } from '../../shared/sales-types.ts';
 import { lineTotal, roundAmount } from '../dashboard/sale-lines.ts';
 import { DomainError } from '../errors.ts';
-import { readSale } from './stored-documents.ts';
+import { readCashMovement, readCustomerPayment, readSale } from './stored-documents.ts';
 
 export type RegisterFilter = { branch?: string | undefined; pointOfSale?: string | undefined };
 export type DayRange = { from: string; to: string };
@@ -17,6 +18,15 @@ export type SalesFilter = DayRange & RegisterFilter & {
   productId?: string | undefined;
   kind?: SaleKind | undefined;
   status?: DocStatus | undefined;
+};
+export type PaymentsFilter = DayRange & RegisterFilter & {
+  method?: string | undefined;
+  customerId?: string | undefined;
+  status?: DocStatus | undefined;
+};
+export type MovementsFilter = DayRange & RegisterFilter & {
+  direction?: 'in' | 'out' | undefined;
+  source?: 'manual' | 'count-adjustment' | undefined;
 };
 
 type Params = Array<string | number>;
@@ -36,8 +46,42 @@ type SaleRow = {
   voided_by: string | null;
 };
 
+type PaymentRow = {
+  id: string;
+  payload: string;
+  branch: string | null;
+  point_of_sale: string | null;
+  customer_id: string;
+  customer_name: string | null;
+  voids_payment_id: string | null;
+  created_at: string;
+  day: string | null;
+  total: number;
+  voided_by: string | null;
+};
+
+type MovementRow = { id: string; payload: string; branch: string | null; point_of_sale: string | null; created_at: string; day: string | null };
+
 /** El payload, o `{}` si no es JSON: así `json_each` nunca tira "malformed JSON". */
 export const safePayload = (alias: string): string => `CASE WHEN json_valid(${alias}.payload) THEN ${alias}.payload ELSE '{}' END`;
+
+const PAYMENT_COLUMNS = `cp.id, cp.payload, cp.branch, cp.point_of_sale, cp.customer_id, c.name AS customer_name, cp.voids_payment_id,
+  cp.created_at, cp.day, COALESCE(json_extract(${safePayload('cp')}, '$.total'), 0) AS total,
+  (SELECT v.id FROM customer_payments v WHERE v.voids_payment_id = cp.id ORDER BY v.created_at LIMIT 1) AS voided_by`;
+
+/** El importe con signo de un movimiento de caja: ingreso suma, egreso resta. */
+const signedAmount = (alias: string): string =>
+  `CASE json_extract(${safePayload(alias)}, '$.direction')
+     WHEN 'in' THEN json_extract(${safePayload(alias)}, '$.amount')
+     WHEN 'out' THEN -json_extract(${safePayload(alias)}, '$.amount')
+     ELSE 0 END`;
+
+/** `LIMIT`/`OFFSET` de una página; sin página, todas las filas (para los resúmenes). */
+function paged(paging: Paging | undefined, params: Params): { limit: string; params: Params } {
+  return paging === undefined
+    ? { limit: '', params }
+    : { limit: ' LIMIT ? OFFSET ?', params: [...params, paging.pageSize, (paging.page - 1) * paging.pageSize] };
+}
 
 const KNOWN_METHODS = PAYMENT_METHODS.map((method) => `'${method}'`).join(', ');
 
@@ -157,15 +201,14 @@ export class SalesQueryService {
   /** Las filas del filtro; sin `paging`, todas (para los resúmenes). */
   protected saleRows(filter: SalesFilter, paging?: Paging): SaleRow[] {
     const where = this.salesWhere(filter);
-    const limit = paging === undefined ? '' : ' LIMIT ? OFFSET ?';
-    const params = paging === undefined ? where.params : [...where.params, paging.pageSize, (paging.page - 1) * paging.pageSize];
+    const page = paged(paging, where.params);
     return this.db
       .prepare(
         `SELECT ${SALE_COLUMNS} FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
          WHERE ${where.clauses.join(' AND ')}
-         ORDER BY s.day DESC, s.created_at DESC, s.id DESC${limit}`,
+         ORDER BY s.day DESC, s.created_at DESC, s.id DESC${page.limit}`,
       )
-      .all(...params) as unknown as SaleRow[];
+      .all(...page.params) as unknown as SaleRow[];
   }
 
   protected toSaleItem(row: SaleRow): SaleListItem {
@@ -188,6 +231,121 @@ export class SalesQueryService {
       ...(row.voided_by === null ? {} : { voidedBy: row.voided_by }),
       ...(row.voids_sale_id === null ? {} : { voidsSaleId: row.voids_sale_id }),
     };
+  }
+
+  listCustomerPayments(filter: PaymentsFilter, paging: Paging): ListResult<CustomerPaymentItem> {
+    assertRange(filter);
+    const where = this.paymentsWhere(filter);
+    const totals = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count, COALESCE(SUM(json_extract(${safePayload('cp')}, '$.total')), 0) AS net
+         FROM customer_payments cp WHERE ${where.clauses.join(' AND ')}`,
+      )
+      .get(...where.params) as { count: number; net: number };
+    return {
+      items: this.paymentRows(filter, paging).map((row) => this.toPaymentItem(row)),
+      count: totals.count,
+      page: paging.page,
+      pageSize: paging.pageSize,
+      netTotal: roundAmount(totals.net),
+    };
+  }
+
+  listCashMovements(filter: MovementsFilter, paging: Paging): ListResult<CashMovementItem> {
+    assertRange(filter);
+    const where = this.movementsWhere(filter);
+    const totals = this.db
+      .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(${signedAmount('m')}), 0) AS net FROM cash_movements m WHERE ${where.clauses.join(' AND ')}`)
+      .get(...where.params) as { count: number; net: number };
+    return {
+      items: this.movementRows(filter, paging).map((row) => this.toMovementItem(row)),
+      count: totals.count,
+      page: paging.page,
+      pageSize: paging.pageSize,
+      netTotal: roundAmount(totals.net),
+    };
+  }
+
+  protected paymentRows(filter: PaymentsFilter, paging?: Paging): PaymentRow[] {
+    const where = this.paymentsWhere(filter);
+    const page = paged(paging, where.params);
+    return this.db
+      .prepare(
+        `SELECT ${PAYMENT_COLUMNS} FROM customer_payments cp LEFT JOIN customers c ON c.id = cp.customer_id
+         WHERE ${where.clauses.join(' AND ')}
+         ORDER BY cp.day DESC, cp.created_at DESC, cp.id DESC${page.limit}`,
+      )
+      .all(...page.params) as unknown as PaymentRow[];
+  }
+
+  protected toPaymentItem(row: PaymentRow): CustomerPaymentItem {
+    const stored = readCustomerPayment(row.payload);
+    const createdAt = stored.createdAt ?? row.created_at;
+    return {
+      id: row.id,
+      day: row.day ?? argentinaDay(createdAt) ?? '',
+      createdAt,
+      ...(stored.receipt === undefined ? {} : { receipt: stored.receipt }),
+      branch: row.branch,
+      pointOfSale: row.point_of_sale,
+      customer: { id: row.customer_id, ...(row.customer_name === null ? {} : { name: row.customer_name }) },
+      payments: stored.payments,
+      total: row.total,
+      voided: row.voided_by !== null,
+      ...(row.voided_by === null ? {} : { voidedBy: row.voided_by }),
+      ...(row.voids_payment_id === null ? {} : { voidsPaymentId: row.voids_payment_id }),
+    };
+  }
+
+  protected movementRows(filter: MovementsFilter, paging?: Paging): MovementRow[] {
+    const where = this.movementsWhere(filter);
+    const page = paged(paging, where.params);
+    return this.db
+      .prepare(
+        `SELECT m.id, m.payload, m.branch, m.point_of_sale, m.created_at, m.day FROM cash_movements m
+         WHERE ${where.clauses.join(' AND ')}
+         ORDER BY m.day DESC, m.created_at DESC, m.id DESC${page.limit}`,
+      )
+      .all(...page.params) as unknown as MovementRow[];
+  }
+
+  protected toMovementItem(row: MovementRow): CashMovementItem {
+    const { createdAt: storedAt, ...movement } = readCashMovement(row.payload);
+    const createdAt = storedAt ?? row.created_at;
+    return {
+      id: row.id,
+      day: row.day ?? argentinaDay(createdAt) ?? '',
+      createdAt,
+      branch: row.branch,
+      pointOfSale: row.point_of_sale,
+      ...movement,
+    };
+  }
+
+  private paymentsWhere(filter: PaymentsFilter): Where {
+    const where = rangeAndRegister('cp', filter);
+    if (filter.method !== undefined) addMethod(where, 'cp', filter.method);
+    if (filter.customerId !== undefined) {
+      where.clauses.push('cp.customer_id = ?');
+      where.params.push(filter.customerId);
+    }
+    const voided = 'EXISTS (SELECT 1 FROM customer_payments v WHERE v.voids_payment_id = cp.id)';
+    if (filter.status === 'voided') where.clauses.push(voided);
+    if (filter.status === 'valid') where.clauses.push(`cp.voids_payment_id IS NULL AND NOT ${voided}`);
+    return where;
+  }
+
+  private movementsWhere(filter: MovementsFilter): Where {
+    const where = rangeAndRegister('m', filter);
+    if (filter.direction !== undefined) {
+      where.clauses.push(`json_extract(${safePayload('m')}, '$.direction') = ?`);
+      where.params.push(filter.direction);
+    }
+    if (filter.source !== undefined) {
+      where.clauses.push(`json_extract(${safePayload('m')}, '$.source') = ?`);
+      where.params.push(filter.source);
+    }
+    return where;
   }
 
   private salesWhere(filter: SalesFilter): Where {

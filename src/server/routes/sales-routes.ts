@@ -26,6 +26,15 @@ export const salesQuerySchema = z.object({
   status,
 });
 
+export const paymentsQuerySchema = z.object({ ...base, ...paging, method: optionalText, customerId: optionalText, status });
+
+export const movementsQuerySchema = z.object({
+  ...base,
+  ...paging,
+  direction: z.enum(['in', 'out']).optional(),
+  source: z.enum(['manual', 'count-adjustment']).optional(),
+});
+
 function getService(req: AuthenticatedAdminRequest): SalesQueryService {
   if (req.tenantScope === undefined) {
     throw new Error('Scope del comercio no inicializado en la petición');
@@ -63,6 +72,16 @@ export function createSalesRoutes(): Router {
       sendError(res, err, 500);
     }
   });
+  router.get(
+    '/customer-payments',
+    use,
+    handle(paymentsQuerySchema, (service, q) => service.listCustomerPayments(q, { page: q.page, pageSize: q.pageSize })),
+  );
+  router.get(
+    '/cash-movements',
+    use,
+    handle(movementsQuerySchema, (service, q) => service.listCashMovements(q, { page: q.page, pageSize: q.pageSize })),
+  );
 
   return router;
 }

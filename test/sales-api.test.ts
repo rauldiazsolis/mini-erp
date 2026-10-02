@@ -3,7 +3,8 @@ import request from 'supertest';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
-import type { ListResult, SaleDetail, SaleListItem } from '../src/shared/sales-types.ts';
+import type { CashMovementItem, CustomerPaymentItem, ListResult, SaleDetail, SaleListItem } from '../src/shared/sales-types.ts';
+import { argentinaToday } from '../src/shared/argentina-day.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
 
 describe('API de Ventas & Caja (#20)', () => {
@@ -91,6 +92,50 @@ describe('API de Ventas & Caja (#20)', () => {
       [`/sales?from=${D1}&to=${D2}&status=raro`],
     ])('%s da 400', async (path) => {
       expect((await get(path)).status).toBe(400);
+    });
+  });
+
+  describe('cobranzas y movimientos', () => {
+    it('cobranzas con recibo, cliente y anulación', async () => {
+      const list = (await get(`/customer-payments?from=${D1}&to=${D2}`)).body as ListResult<CustomerPaymentItem>;
+      expect(ids(list)).toEqual(['cp2', 'cp1']);
+      expect(list).toMatchObject({ count: 2, netTotal: 0 });
+      expect(list.items[1]).toEqual({
+        id: 'cp1', day: D1, createdAt: `${D1}T15:00:00.000Z`, receipt: { date: D1, number: 1 }, branch: 'CENTRAL', pointOfSale: 'Caja 1',
+        customer: { id: 'c1', name: 'Ana' }, payments: [{ method: 'cash', amount: 700 }], total: 700, voided: true, voidedBy: 'cp2',
+      });
+      expect(list.items[0]).toMatchObject({ voidsPaymentId: 'cp1', voided: false });
+      const filtered = async (q: string) => ids((await get(`/customer-payments?from=${D1}&to=${D2}${q}`)).body as ListResult<CustomerPaymentItem>);
+      expect(await filtered('&status=voided')).toEqual(['cp1']);
+      expect(await filtered('&status=valid')).toEqual([]);
+      expect(await filtered('&method=transfer')).toEqual([]);
+      expect(await filtered('&customerId=c1')).toEqual(['cp2', 'cp1']);
+    });
+
+    it('la cobranza del admin aparece en la caja ADMIN', async () => {
+      await request(app).post(`/api/tenants/${tenantId}/customers/c1/payments`).set('Authorization', `Bearer ${token}`).send({ amount: 100, method: 'transfer' });
+      const today = argentinaToday(new Date());
+      const list = (await get(`/customer-payments?from=${today}&to=${today}`)).body as ListResult<CustomerPaymentItem>;
+      // Si hoy es D2, en la lista también está cp2: se busca por la caja
+      const admin = list.items.find((p) => p.branch === 'ADMIN');
+      expect(admin).toMatchObject({ pointOfSale: 'Oficina', payments: [{ method: 'transfer', amount: 100 }], total: 100 });
+      expect(admin?.receipt).toBeUndefined();
+      expect((await get(`/customer-payments?from=${today}&to=${today}&branch=ADMIN`)).body).toMatchObject({ count: 1 });
+    });
+
+    it('movimientos de caja con arqueo y total neto con signo', async () => {
+      const list = (await get(`/cash-movements?from=${D1}&to=${D2}`)).body as ListResult<CashMovementItem>;
+      expect(ids(list)).toEqual(['m3', 'm2', 'm1']);
+      expect(list).toMatchObject({ count: 3, netTotal: 1350 });
+      expect(list.items[0]).toEqual({
+        id: 'm3', day: D1, createdAt: `${D1}T21:00:00.000Z`, branch: 'CENTRAL', pointOfSale: 'Caja 1', direction: 'out', amount: 150,
+        concept: 'Ajuste por arqueo', source: 'count-adjustment', count: { expected: 3200, counted: 3050 },
+      });
+      const filtered = async (q: string) => ids((await get(`/cash-movements?from=${D1}&to=${D2}${q}`)).body as ListResult<CashMovementItem>);
+      expect(await filtered('&direction=in')).toEqual(['m1']);
+      expect(await filtered('&source=count-adjustment')).toEqual(['m3']);
+      expect(await filtered('&source=manual&direction=out')).toEqual(['m2']);
+      expect((await get(`/cash-movements?from=${D1}&to=${D2}&direction=lateral`)).status).toBe(400);
     });
   });
 });
