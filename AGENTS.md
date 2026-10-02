@@ -256,7 +256,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Versión única** (#40): la de `package.json`, sin literales en el código (`src/server/app-version.ts`
   para `/health` y `GET /connector/info`; `appVersionDefine` en `vite.config.ts` para el cliente). Se
   sube en el PR de cada etapa (`pnpm version minor --no-git-tag-version`; `patch` para arreglos) y el
-  tag `v*` se crea después del merge desde `package.json` (comando en `deploy/README.md`).
+  tag `v*` se crea después del merge desde `package.json` con `pnpm release:tag` (#49, verifica
+  `main` limpio, al día y un tag nuevo).
   `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
   `/health` responda la versión subida.
 - Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con

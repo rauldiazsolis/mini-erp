@@ -18,7 +18,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "contract:update": "node scripts/contract-update.ts",
-    "pos:mirror": "node scripts/pos-mirror.ts"
+    "pos:mirror": "node scripts/pos-mirror.ts",
+    "release:tag": "node scripts/tag-release.ts"
   },
   "dependencies": {
     "@preact/signals": "^2.11.2",

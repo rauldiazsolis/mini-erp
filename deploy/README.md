@@ -216,14 +216,24 @@ landing, y la informan `/health` y `GET /connector/info`. Para publicar una:
 
 1. En el PR de la etapa, subí la versión: `pnpm version minor --no-git-tag-version` para una etapa,
    `pnpm version patch --no-git-tag-version` para un arreglo. Cambia solo `package.json`.
-2. Después del merge, desde `main` actualizado, creá el tag **desde `package.json`** y subilo:
+2. Después del merge, desde `main` actualizado, creá el tag **desde `package.json`** y subilo, en
+   PowerShell, en la carpeta del repo:
 
    ```bash
-   V="v$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' package.json)" && echo "$V" && git tag -a "$V" -m "$V" && git push origin "$V"
+   git checkout main
    ```
 
-   Lee la versión con `sed` y no con `node`: en Git Bash, `node` es un alias a `winpty` que dentro
-   de `$(...)` se corta con "stdout is not a tty" y no crea el tag.
+   ```bash
+   git pull
+   ```
+
+   ```bash
+   pnpm release:tag
+   ```
+
+   Tiene que terminar con `Tag vX.Y.Z creado y subido: el deploy arranca solo`. Antes de crear nada,
+   verifica que estés en `main`, sin cambios sin commitear, igual que `origin/main` y con un tag que
+   todavía no existe. Si algo no cierra, se frena y dice qué hacer (#49).
 
 También se puede publicar a mano desde GitHub: pestaña **Actions** → **Deploy** → **Run workflow**
 (sobre `main`). Despliega la versión que diga `package.json`.
