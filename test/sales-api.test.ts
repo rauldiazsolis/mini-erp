@@ -3,7 +3,9 @@ import request from 'supertest';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
-import type { CashMovementItem, CustomerPaymentItem, ListResult, SaleDetail, SaleListItem } from '../src/shared/sales-types.ts';
+import type {
+  CashMovementItem, CashSummaryResult, CustomerPaymentItem, DaySummaryResult, ListResult, SaleDetail, SaleListItem,
+} from '../src/shared/sales-types.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
 
@@ -136,6 +138,40 @@ describe('API de Ventas & Caja (#20)', () => {
       expect(await filtered('&source=count-adjustment')).toEqual(['m3']);
       expect(await filtered('&source=manual&direction=out')).toEqual(['m2']);
       expect((await get(`/cash-movements?from=${D1}&to=${D2}&direction=lateral`)).status).toBe(400);
+    });
+  });
+
+  describe('resumen por caja y día', () => {
+    it('una fila por día y caja, con totales', async () => {
+      const res = (await get(`/cash-summary?from=${D1}&to=${D2}`)).body as CashSummaryResult;
+      expect(res.rows).toEqual([
+        { day: D2, branch: 'CENTRAL', pointOfSale: 'Caja 1', totalSold: -1200, ticketCount: 2, voidedCount: 0, collectionsTotal: -700, cashIncome: 0, cashExpense: 0, cashCountAdjustments: 0, cashNet: -1900 },
+        { day: D1, branch: 'CENTRAL', pointOfSale: 'Caja 1', totalSold: 1450, ticketCount: 2, voidedCount: 1, collectionsTotal: 700, cashIncome: 2000, cashExpense: 500, cashCountAdjustments: -150, cashNet: 3050 },
+        { day: D1, branch: 'CENTRAL', pointOfSale: 'Caja 2', totalSold: 300, ticketCount: 1, voidedCount: 0, collectionsTotal: 0, cashIncome: 0, cashExpense: 0, cashCountAdjustments: 0, cashNet: 0 },
+      ]);
+      expect(res.totals).toEqual({ totalSold: 550, ticketCount: 5, voidedCount: 1, collectionsTotal: 0, cashIncome: 2000, cashExpense: 500, cashCountAdjustments: -150, cashNet: 1150 });
+      const soloCaja2 = (await get(`/cash-summary?from=${D1}&to=${D2}&pointOfSale=Caja%202`)).body as CashSummaryResult;
+      expect(soloCaja2.rows).toHaveLength(1);
+    });
+
+    it('el día de una caja cuadra con el /RESUMEN y trae sus movimientos', async () => {
+      const res = (await get(`/cash-summary/day?day=${D1}&branch=CENTRAL&pointOfSale=Caja%201`)).body as DaySummaryResult;
+      // Calculado a mano con las reglas del /RESUMEN: s1 + s2 (la anulación de s1 es de D2), cp1, m1, m2 y m3
+      expect(res.summary).toEqual({
+        totalSold: 1450,
+        ticketCount: 2,
+        voidedCount: 1,
+        adjustmentTotal: -50,
+        totalsByMethod: { cash: 1000, debit: 450, credit: 0, transfer: 0, qr: 0, account: 0, other: 0 },
+        otherPayments: 450,
+        cash: { sales: 1000, income: 2000, expense: 500, countAdjustments: -150, collections: 700 },
+        collections: { total: 700, count: 1, voidedCount: 1 },
+        collectionsByMethod: { cash: 700, debit: 0, credit: 0, transfer: 0, qr: 0, account: 0, other: 0 },
+      });
+      expect(res.entries.map((e) => `${e.kind}:${e.kind === 'sale' ? e.sale.id : e.kind === 'movement' ? e.movement.id : e.payment.id}`)).toEqual([
+        'movement:m3', 'movement:m2', 'collection:cp1', 'sale:s2', 'sale:s1', 'movement:m1',
+      ]);
+      expect((await get('/cash-summary/day?day=ayer')).status).toBe(400);
     });
   });
 });

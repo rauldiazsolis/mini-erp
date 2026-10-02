@@ -35,6 +35,9 @@ export const movementsQuerySchema = z.object({
   source: z.enum(['manual', 'count-adjustment']).optional(),
 });
 
+export const summaryQuerySchema = z.object(base);
+export const dayQuerySchema = z.object({ day, branch: optionalText, pointOfSale: optionalText });
+
 function getService(req: AuthenticatedAdminRequest): SalesQueryService {
   if (req.tenantScope === undefined) {
     throw new Error('Scope del comercio no inicializado en la petición');
@@ -82,6 +85,8 @@ export function createSalesRoutes(): Router {
     use,
     handle(movementsQuerySchema, (service, q) => service.listCashMovements(q, { page: q.page, pageSize: q.pageSize })),
   );
+  router.get('/cash-summary', use, handle(summaryQuerySchema, (service, q) => service.cashSummary(q)));
+  router.get('/cash-summary/day', use, handle(dayQuerySchema, (service, q) => service.daySummary(q)));
 
   return router;
 }

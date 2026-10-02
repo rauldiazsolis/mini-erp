@@ -2,11 +2,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import { argentinaDay, daysBetween } from '../../shared/argentina-day.ts';
 import { PAYMENT_METHODS } from '../../shared/payment-methods.ts';
 import type {
-  CashMovementItem, CustomerPaymentItem, DocStatus, ListResult, RegisterItem, SaleDetail, SaleDetailLine, SaleKind,
-  SaleListItem,
+  CashMovementItem, CashSummaryResult, CashSummaryRow, CashSummaryTotals, CustomerPaymentItem, DayEntry, DaySummary,
+  DaySummaryResult, DocStatus, ListResult, RegisterItem, SaleDetail, SaleDetailLine, SaleKind, SaleListItem,
 } from '../../shared/sales-types.ts';
 import { lineTotal, roundAmount } from '../dashboard/sale-lines.ts';
 import { DomainError } from '../errors.ts';
+import { calculateDaySummary, type SummaryCollection, type SummaryMovement, type SummarySale } from './day-summary.ts';
 import { readCashMovement, readCustomerPayment, readSale } from './stored-documents.ts';
 
 export type RegisterFilter = { branch?: string | undefined; pointOfSale?: string | undefined };
@@ -75,6 +76,34 @@ const signedAmount = (alias: string): string =>
      WHEN 'in' THEN json_extract(${safePayload(alias)}, '$.amount')
      WHEN 'out' THEN -json_extract(${safePayload(alias)}, '$.amount')
      ELSE 0 END`;
+
+type Documents = { sales: SaleRow[]; payments: PaymentRow[]; movements: MovementRow[] };
+
+function emptyTotals(): CashSummaryTotals {
+  return { totalSold: 0, ticketCount: 0, voidedCount: 0, collectionsTotal: 0, cashIncome: 0, cashExpense: 0, cashCountAdjustments: 0, cashNet: 0 };
+}
+
+function addTotals(a: CashSummaryTotals, b: CashSummaryTotals): CashSummaryTotals {
+  return {
+    totalSold: roundAmount(a.totalSold + b.totalSold),
+    ticketCount: a.ticketCount + b.ticketCount,
+    voidedCount: a.voidedCount + b.voidedCount,
+    collectionsTotal: roundAmount(a.collectionsTotal + b.collectionsTotal),
+    cashIncome: roundAmount(a.cashIncome + b.cashIncome),
+    cashExpense: roundAmount(a.cashExpense + b.cashExpense),
+    cashCountAdjustments: roundAmount(a.cashCountAdjustments + b.cashCountAdjustments),
+    cashNet: roundAmount(a.cashNet + b.cashNet),
+  };
+}
+
+/** Orden de las filas: día descendente; dentro del día, la caja ascendente (sin dato primero). */
+function compareRows(a: CashSummaryRow, b: CashSummaryRow): number {
+  return (
+    b.day.localeCompare(a.day) ||
+    (a.branch ?? '').localeCompare(b.branch ?? '') ||
+    (a.pointOfSale ?? '').localeCompare(b.pointOfSale ?? '')
+  );
+}
 
 /** `LIMIT`/`OFFSET` de una página; sin página, todas las filas (para los resúmenes). */
 function paged(paging: Paging | undefined, params: Params): { limit: string; params: Params } {
@@ -263,6 +292,93 @@ export class SalesQueryService {
       page: paging.page,
       pageSize: paging.pageSize,
       netTotal: roundAmount(totals.net),
+    };
+  }
+
+  /** Una fila por día y caja, con los números del `/RESUMEN` de esa caja ese día, y los totales. */
+  cashSummary(filter: DayRange & RegisterFilter): CashSummaryResult {
+    assertRange(filter);
+    const docs = this.documents(filter);
+    type Group = { day: string; branch: string | null; pointOfSale: string | null } & Documents;
+    const groups = new Map<string, Group>();
+    const groupOf = (day: string | null, branch: string | null, pointOfSale: string | null): Group => {
+      const key = JSON.stringify([day, branch, pointOfSale]);
+      const existing = groups.get(key);
+      if (existing !== undefined) return existing;
+      const fresh: Group = { day: day ?? '', branch, pointOfSale, sales: [], payments: [], movements: [] };
+      groups.set(key, fresh);
+      return fresh;
+    };
+    for (const row of docs.sales) groupOf(row.day, row.branch, row.point_of_sale).sales.push(row);
+    for (const row of docs.payments) groupOf(row.day, row.branch, row.point_of_sale).payments.push(row);
+    for (const row of docs.movements) groupOf(row.day, row.branch, row.point_of_sale).movements.push(row);
+
+    const rows = [...groups.values()]
+      .map((group): CashSummaryRow => ({ day: group.day, branch: group.branch, pointOfSale: group.pointOfSale, ...this.rowTotals(group) }))
+      .sort(compareRows);
+    const totals = rows.reduce<CashSummaryTotals>((sum, row) => addTotals(sum, row), emptyTotals());
+    return { rows, totals };
+  }
+
+  /** El `/RESUMEN` de un día (de una caja, si se filtra) y sus movimientos, lo más nuevo primero. */
+  daySummary(filter: { day: string } & RegisterFilter): DaySummaryResult {
+    const docs = this.documents({ from: filter.day, to: filter.day, branch: filter.branch, pointOfSale: filter.pointOfSale });
+    const entries: DayEntry[] = [
+      ...docs.sales.map((row): DayEntry => {
+        const sale = this.toSaleItem(row);
+        return { kind: 'sale', at: sale.createdAt, sale };
+      }),
+      ...docs.movements.map((row): DayEntry => {
+        const movement = this.toMovementItem(row);
+        return { kind: 'movement', at: movement.createdAt, movement };
+      }),
+      ...docs.payments.map((row): DayEntry => {
+        const payment = this.toPaymentItem(row);
+        return { kind: 'collection', at: payment.createdAt, payment };
+      }),
+    ].sort((a, b) => b.at.localeCompare(a.at));
+    return { day: filter.day, summary: this.summaryOf(docs), entries };
+  }
+
+  private documents(filter: DayRange & RegisterFilter): Documents {
+    return { sales: this.saleRows(filter), payments: this.paymentRows(filter), movements: this.movementRows(filter) };
+  }
+
+  private summaryOf(docs: Documents): DaySummary {
+    const sales: SummarySale[] = docs.sales.map((row) => {
+      const stored = readSale(row.payload);
+      return { id: row.id, total: row.total, lines: stored.lines, payments: stored.payments };
+    });
+    const movements: SummaryMovement[] = docs.movements.map((row) => {
+      const stored = readCashMovement(row.payload);
+      return { direction: stored.direction, amount: stored.amount, source: stored.source };
+    });
+    const collections: SummaryCollection[] = docs.payments.map((row) => ({
+      id: row.id,
+      total: row.total,
+      payments: readCustomerPayment(row.payload).payments,
+    }));
+    // La anulación se busca en toda la tabla: una venta anulada otro día cuenta como anulada en el suyo
+    return calculateDaySummary({
+      sales,
+      movements,
+      collections,
+      voidedSaleIds: new Set(docs.sales.flatMap((row) => (row.voided_by === null ? [] : [row.id]))),
+      voidedPaymentIds: new Set(docs.payments.flatMap((row) => (row.voided_by === null ? [] : [row.id]))),
+    });
+  }
+
+  private rowTotals(docs: Documents): CashSummaryTotals {
+    const s = this.summaryOf(docs);
+    return {
+      totalSold: s.totalSold,
+      ticketCount: s.ticketCount,
+      voidedCount: s.voidedCount,
+      collectionsTotal: s.collections.total,
+      cashIncome: s.cash.income,
+      cashExpense: s.cash.expense,
+      cashCountAdjustments: s.cash.countAdjustments,
+      cashNet: roundAmount(s.cash.sales + s.cash.income - s.cash.expense + s.cash.countAdjustments + s.cash.collections),
     };
   }
 
