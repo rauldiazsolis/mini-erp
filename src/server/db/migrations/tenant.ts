@@ -1,4 +1,5 @@
 import type { Schema } from './types.ts';
+import { v2Indices } from './tenant/v2-indices.ts';
 
 /** Base de cada comercio (#47): línea de base 1 (con `notes`, que antes era un ALTER suelto). */
 export const TENANT_SCHEMA: Schema = {
@@ -141,5 +142,5 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   value TEXT NOT NULL
 );
 `,
-  migrations: [],
+  migrations: [v2Indices],
 };
