@@ -120,6 +120,30 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     API keys de terminales.
   - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
     ventas y lotes de sincronización.
+- **Migraciones de esquema** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`):
+  - **Ninguna etapa cambia el esquema sin una migración.** Producción tiene datos: nunca se borra ni
+    se reinicia una base.
+  - Por tipo de base, en `src/server/db/migrations/`: `system.ts` y `tenant.ts` tienen la línea de
+    base (sistema 4, comercio 1), que **no se toca nunca más**, y la lista de migraciones;
+    `PRAGMA user_version` es el puntero.
+  - Una migración nueva: un archivo `migrations/<tipo>/v<N>-<nombre>.ts` con
+    `{ version: N, name, up(db) }` (N = la última + 1), agregado al final de la lista. `up` no abre
+    transacciones (la abre `migrateDb`, una por migración) y no depende de datos de fuera de su base.
+  - Su test parte de una base de la versión anterior **con datos** (`createDbAtVersion` en
+    `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`).
+  - Solo el arranque migra bases con datos (`runMigrations`, en un worker): antes copia lo que va a
+    migrar a `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas.
+    `openSystemDb` y `openTenantDb` crean bases nuevas y verifican las existentes (`checkDb`), nunca
+    migran.
+  - Una base anterior a la línea de base o más nueva que el código (un rollback) no arranca.
+- **Arranque en dos fases** (`src/server/startup.ts`): el servidor escucha enseguida con el app de
+  mantenimiento (`src/server/maintenance/`, sin bases), migra y recién ahí monta el app completo.
+  - Mientras tanto, `/health` da `503 maintenance` (o `migration-failed`, y el proceso sigue vivo),
+    `/connector/info` da `status: maintenance` sin key, el resto del Connector API y `/api` dan `503`
+    con `Retry-After: 30`, y las páginas, la de actualización.
+  - El cliente muestra `MaintenanceView` con un `503 maintenance` y recarga cuando `/health` vuelve.
+  - Un 503 en `account-holds` hoy hace fallar el cobro a cuenta corriente en el POS
+    (rauldiazsolis/offline-pos#187).
 - **Auth propia**: sin servicios externos; `node:crypto` (`scryptSync`, comparación timing-safe). Las
   cuentas nacen siempre como `user`; el `root` sale de `AuthService.ensureRoot`, que usan el comando
   `scripts/create-root.ts` (una vez, en el servidor) y el seed de desarrollo. `root` y `support`
@@ -142,7 +166,6 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - Auditoría en `audit_log` (`AuditLog`, de sistema): usuarios, roles, invitaciones y contraseñas.
     La ve el owner en Usuarios → Actividad.
   - Los errores de negocio son `DomainError` con su estado HTTP (`src/server/errors.ts`).
-  - Esquema de sistema 4, sin migraciones: una base vieja no arranca ("borrá el directorio de datos").
 - **Arranque** en `src/server/bootstrap.ts`: el barrido de demos siempre; el seed de desarrollo
   (`ensureDevData`: admin root, `tienda-demo` con un admin y un empleado para probar los roles, y una
   key fija, todo en el repo) **solo fuera de
@@ -226,8 +249,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   `/var/lib/mini-erp`, entorno en `/etc/mini-erp/env`); `deploy` recibe las versiones y solo puede
   reiniciar el servicio.
 - `.github/workflows/deploy.yml`, por tag `v*` o manual: corre el CI entero (`ci.yml` con
-  `workflow_call`), sube un tarball por SSH y lo activa con `deploy/deploy.sh`, que vuelve a la
-  versión anterior si `/health` no responde. Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment
+  `workflow_call`), sube un tarball por SSH y lo activa con `deploy/deploy.sh`, que espera la
+  migración (hasta 15 min, `/health` en `maintenance`) y vuelve a la versión anterior si `/health` no
+  responde o la migración falla. Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment
   `production`: los carga el usuario, nunca el agente.
 - **Versión única** (#40): la de `package.json`, sin literales en el código (`src/server/app-version.ts`
   para `/health` y `GET /connector/info`; `appVersionDefine` en `vite.config.ts` para el cliente). Se
