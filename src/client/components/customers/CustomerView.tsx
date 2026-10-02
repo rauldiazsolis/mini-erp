@@ -5,6 +5,8 @@ import { CustomerModal } from './CustomerModal.tsx';
 import { PaymentModal } from './PaymentModal.tsx';
 import { BalanceAdjustModal } from './BalanceAdjustModal.tsx';
 import { AccountStatementDrawer } from './AccountStatementDrawer.tsx';
+import { DiscrepancyBanner } from './DiscrepancyBanner.tsx';
+import { DiscrepancyDrawer } from './DiscrepancyDrawer.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
 
 export function CustomerView() {
@@ -20,6 +22,9 @@ export function CustomerView() {
       {/* Tarjetas KPI de Estado de Cuenta y Deuda */}
       <CustomerStatsBar />
 
+      {/* Movimientos de las cajas para revisar (#2) */}
+      <DiscrepancyBanner />
+
       {/* Barra de Filtros y Búsqueda */}
       <CustomerToolbar />
 
@@ -31,6 +36,7 @@ export function CustomerView() {
       <PaymentModal />
       <BalanceAdjustModal />
       <AccountStatementDrawer />
+      <DiscrepancyDrawer />
     </div>
   );
 }
