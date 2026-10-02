@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { methodKey, type MethodKey } from '../../shared/payment-methods.ts';
 import type { CustomerRef, SaleKind } from '../../shared/sales-types.ts';
 
+/** Los mismos textos que el POS (`PAYMENT_METHOD_LABELS` de offline-pos), más "Otro". */
 const METHOD_LABELS: Record<MethodKey, string> = {
   cash: 'Efectivo',
-  debit: 'Débito',
-  credit: 'Crédito',
+  debit: 'Tarjeta de Débito',
+  credit: 'Tarjeta de Crédito',
   transfer: 'Transferencia',
-  qr: 'QR',
+  qr: 'Código QR',
   account: 'Cuenta corriente',
   other: 'Otro',
 };

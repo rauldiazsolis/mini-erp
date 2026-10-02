@@ -1,6 +1,8 @@
 import { salesErrorSignal, salesTabSignal } from '../../state/sales-state.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { CashMovementsTable } from './CashMovementsTable.tsx';
+import { CashSummaryTable } from './CashSummaryTable.tsx';
+import { DaySummaryDrawer } from './DaySummaryDrawer.tsx';
 import { PaymentDrawer } from './PaymentDrawer.tsx';
 import { PaymentsTable } from './PaymentsTable.tsx';
 import { SalesRangeBar } from './SalesRangeBar.tsx';
@@ -22,7 +24,9 @@ export function SalesView() {
       {tab === 'sales' && <SalesTable />}
       {tab === 'payments' && <PaymentsTable />}
       {tab === 'movements' && <CashMovementsTable />}
+      {tab === 'summary' && <CashSummaryTable />}
       <PaymentDrawer />
+      <DaySummaryDrawer />
       {/* El ticket va último: se abre también desde el resumen del día */}
       <TicketDrawer />
     </div>

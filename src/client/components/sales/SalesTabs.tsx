@@ -4,6 +4,7 @@ export const TABS: Array<{ id: SalesTab; label: string }> = [
   { id: 'sales', label: 'Ventas' },
   { id: 'payments', label: 'Cobranzas' },
   { id: 'movements', label: 'Movimientos de caja' },
+  { id: 'summary', label: 'Resumen' },
 ];
 
 export function SalesTabs() {

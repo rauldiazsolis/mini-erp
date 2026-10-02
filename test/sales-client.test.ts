@@ -5,6 +5,7 @@ import {
   buildQuery, endpointFor, loadTab, openSalesWith, openTicket, presetRange, rangeSignal, registerSignal,
   salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, pageSignal, type SalesQueryInput,
   openPayment, closePayment, paymentsListSignal, paymentDetailSignal,
+  openDaySummary, daySummarySignal,
 } from '../src/client/state/sales-state.ts';
 import { activeViewSignal } from '../src/client/state/navigation-state.ts';
 import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
@@ -42,6 +43,8 @@ describe('formato según el navegador (#20, #51)', () => {
 describe('etiquetas (#20)', () => {
   it('medios, cajas y clientes', () => {
     expect(methodLabel('cash')).toBe('Efectivo');
+    expect(methodLabel('debit')).toBe('Tarjeta de Débito');
+    expect(methodLabel('qr')).toBe('Código QR');
     expect(methodLabel('crypto')).toBe('Otro');
     expect(registerLabel('CENTRAL', 'Caja 1')).toBe('CENTRAL · Caja 1');
     expect(registerLabel('CENTRAL', null)).toBe('CENTRAL · Sin punto de venta');
@@ -126,5 +129,15 @@ describe('cobranzas en el cliente (#20)', () => {
     expect(paymentDetailSignal.value?.id).toBe('cp2');
     closePayment();
     expect(paymentDetailSignal.value).toBeNull();
+  });
+});
+
+describe('resumen del día en el cliente (#20)', () => {
+  it('pide el día de esa caja; sin punto de venta va vacío', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json(200, { day: '2026-10-01', summary: {}, entries: [] }));
+    globalThis.fetch = fetchMock;
+    await openDaySummary({ day: '2026-10-01', branch: 'CENTRAL', pointOfSale: null });
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe('/api/tenants/t1/cash-summary/day?day=2026-10-01&branch=CENTRAL&pointOfSale=');
+    expect(daySummarySignal.value?.day).toBe('2026-10-01');
   });
 });

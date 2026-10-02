@@ -176,6 +176,22 @@ export function closePayment(): void {
   paymentDetailSignal.value = null;
 }
 
+/** El resumen de una caja y un día; un campo sin dato va vacío (filtra "sin sucursal" o "sin punto de venta"). */
+export async function openDaySummary(row: { day: string; branch: string | null; pointOfSale: string | null }): Promise<void> {
+  const s = session();
+  if (s === null) return;
+  const query = buildQuery({ day: row.day, branch: row.branch ?? '', pointOfSale: row.pointOfSale ?? '' });
+  try {
+    daySummarySignal.value = await apiFetch<DaySummaryResult>(`tenants/${s.tenantId}/cash-summary/day?${query}`, { token: s.token });
+  } catch (err: unknown) {
+    salesErrorSignal.value = errorMessage(err);
+  }
+}
+
+export function closeDaySummary(): void {
+  daySummarySignal.value = null;
+}
+
 // Cambiar un filtro vuelve a la primera página
 export function setTab(tab: SalesTab): void {
   salesTabSignal.value = tab;
