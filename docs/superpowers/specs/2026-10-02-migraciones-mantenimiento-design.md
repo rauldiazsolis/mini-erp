@@ -92,7 +92,10 @@ dice "tiene migraciones pendientes (vN → vM): se migran al arrancar el servido
 - `openSystemDb(path)`, `openTenantDb(path)` y el `:memory:` de `TenantManager` usan `checkDb`: nunca
   migran datos. Así `create-root.ts`, los scripts y un comercio que se abre después del arranque no
   migran sin copia.
-- `initSystemDb` e `initTenantDb` se reemplazan por `checkDb` con el schema correspondiente.
+- `initSystemDb` e `initTenantDb` quedan como envolturas de `checkDb` con su schema (los usan muchos
+  tests).
+- `SYSTEM_DB_PATH` se va (nadie lo usa): la base de sistema es siempre `<DATA_DIR>/system.sqlite`, la
+  misma que migra el arranque.
 - Solo `runMigrations` migra bases con datos.
 
 ### `runMigrations({ dataDir, now, keepRuns = 3, onProgress })` (`run-migrations.ts`)
@@ -110,14 +113,15 @@ Es síncrona. La llama el worker.
    `<dataDir>/pre-migracion/<AAAA-MM-DDTHH-MM-SS>/system.sqlite` y `…/tenants/<id>.sqlite`, y borra
    las corridas viejas: deja `keepRuns`.
 6. Migra sistema y después cada comercio. Cierra cada base al terminar. Avisa el progreso con
-   `onProgress({ db, done, total })`.
+   `onProgress({ file, done, total })` (`file` relativo a `dataDir`: `system.sqlite`,
+   `tenants/<id>.sqlite`).
 7. Si una base falla, cierra la que estaba abierta y restaura desde la copia las que ya había migrado
    en esta corrida (`restoreRun`). Después tira un `MigrationRunError` con la base, la migración y la
    causa. La que falló no se restaura: su transacción ya la dejó como estaba.
 
-Devuelve `{ runDir, migrated: [{ db, from, to }] }`.
+Devuelve `{ runDir, migrated: [{ file, from, to }] }` (`runDir` solo si hubo migraciones).
 
-`restoreRun(runDir, dataDir, dbs)` copia cada archivo de la corrida encima del original y borra sus
+`restoreRun(runDir, dataDir, files)` copia cada archivo de la corrida encima del original y borra sus
 `-wal` y `-shm`. La usan `runMigrations` y el arranque.
 
 El backup nocturno (`backup.ts`) no se toca: solo lee `system.sqlite` y `tenants/`.
@@ -127,7 +131,7 @@ El backup nocturno (`backup.ts`) no se toca: solo lee `system.sqlite` y `tenants
 ### Orquestación (`src/server/startup.ts`)
 
 ```typescript
-startServer({ port, env, runner, createReadyHandler, log }): StartedServer
+startServer({ port, dataDir, demos, runner, createReadyHandler, log }): Promise<StartedServer>
 ```
 
 1. `http.createServer((req, res) => current(req, res))`. `current` arranca en el **app de
@@ -195,9 +199,9 @@ entra en mantenimiento.
     `200`, `location.reload()`. Los efectos (`fetch`, `reload`, el reloj) son inyectables para los
     tests.
 - `apiFetch` (`api/client.ts`): con un 503 de mantenimiento llama a `enterMaintenance()` y tira el
-  `ApiError` igual. Los dos `fetch` sueltos (el export de `bulk-state.ts` y `/connector/info` de
-  `settings-state.ts`) hacen lo mismo. `/connector/info` en mantenimiento da `200` con
-  `status: 'maintenance'`, y el estado de la conexión en Configuración lo muestra como venga.
+  `ApiError` igual. El `fetch` suelto del export (`bulk-state.ts`) hace lo mismo con
+  `noteMaintenanceResponse(res)`. El de `/connector/info` (`settings-state.ts`) no cambia: en
+  mantenimiento da `200` con `status: 'maintenance'` y Configuración lo muestra como venga.
 - `components/MaintenanceView.tsx`: logo, "Estamos actualizando mini contax", "Vuelve sola en cuanto
   termine; no hace falta recargar" y el `ThemeToggle`. En `App.tsx`, antes del ruteo:
   `if (maintenanceSignal.value) return <MaintenanceView />`.
@@ -208,7 +212,8 @@ entra en mantenimiento.
 ## 4. Deploy
 
 `deploy/deploy.sh`: `healthy` se reemplaza por `wait_ready`, que lee el código HTTP y el `status` de
-`/health` (`curl -s -o "$tmp" -w '%{http_code}'`; el `status` con `jq -r '.status // empty'`):
+`/health` (`curl -s -o "$tmp" -w '%{http_code}'`; el `status` con `grep -o '"status":"[^"]*"'`, sin
+depender de `jq`):
 
 | `/health` | Qué hace |
 |---|---|
@@ -218,8 +223,7 @@ entra en mantenimiento.
 | Sin respuesta durante 30 s seguidos | Vuelve a la versión anterior y sale con 1, como hoy |
 | Tope vencido, migrando todavía | **No vuelve atrás**: cortar una migración puede dejar bases en versiones distintas. Sale con 1 y avisa: "la migración sigue corriendo: revisá `journalctl -u mini-erp`" |
 
-`deploy.yml` no cambia: al final sigue comprobando que `/health` responda la versión subida. Hay que
-verificar que `jq` esté en la instancia (si no, se agrega a `deploy/setup.sh` y a la guía).
+`deploy.yml` no cambia: al final sigue comprobando que `/health` responda la versión subida.
 
 ## 5. POS (offline-pos, sin cambios acá)
 
