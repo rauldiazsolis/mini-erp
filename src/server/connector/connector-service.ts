@@ -36,40 +36,51 @@ export class ConnectorService {
       };
     }
 
-    // Registrar lote en cola
-    this.tenantDb
-      .prepare(
-        'INSERT INTO push_lots (id, device_id, status, events, issues, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(id) DO NOTHING',
-      )
-      .run(params.lotId, params.deviceId, 'processing', JSON.stringify(params.events), now, now);
-
     const issues: LotIssue[] = [];
-    const resolvedBranchId = this.resolveBranchId(params.defaultBranchId);
+    // Todo el lote en una transacción y cada evento en un SAVEPOINT (#2): un evento que falla se
+    // deshace solo y queda como issue; el lote nunca queda en `processing` con efectos a medias.
+    this.tenantDb.exec('BEGIN');
+    try {
+      this.tenantDb
+        .prepare(
+          'INSERT INTO push_lots (id, device_id, status, events, issues, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(id) DO NOTHING',
+        )
+        .run(params.lotId, params.deviceId, 'processing', JSON.stringify(params.events), now, now);
 
-    // Procesar cada evento atómicamente
-    for (const raw of params.events) {
-      const parsed = parseBatchEvent(raw);
-      if (!parsed.ok) {
-        issues.push(parsed.issue);
-        continue;
+      const resolvedBranchId = this.resolveBranchId(params.defaultBranchId);
+      for (const raw of params.events) {
+        const parsed = parseBatchEvent(raw);
+        if (!parsed.ok) {
+          issues.push(parsed.issue);
+          continue;
+        }
+        this.tenantDb.exec('SAVEPOINT evento');
+        try {
+          const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now);
+          this.tenantDb.exec('RELEASE evento');
+          if (issue !== undefined) {
+            issues.push(issue);
+          }
+        } catch (err: unknown) {
+          this.tenantDb.exec('ROLLBACK TO evento');
+          this.tenantDb.exec('RELEASE evento');
+          const detail = err instanceof Error ? err.message : String(err);
+          issues.push({ eventId: parsed.event.id, message: `No se pudo aplicar: ${detail}` });
+        }
       }
-      const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now);
-      if (issue !== undefined) {
-        issues.push(issue);
-      }
+
+      const finalStatus: 'ok' | 'issues' = issues.length > 0 ? 'issues' : 'ok';
+      this.tenantDb
+        .prepare('UPDATE push_lots SET status = ?, issues = ?, updated_at = ? WHERE id = ?')
+        .run(finalStatus, issues.length > 0 ? JSON.stringify(issues) : null, now, params.lotId);
+      this.tenantDb.exec('COMMIT');
+    } catch (err: unknown) {
+      this.tenantDb.exec('ROLLBACK');
+      throw err;
     }
 
-    const finalStatus: 'ok' | 'issues' = issues.length > 0 ? 'issues' : 'ok';
-    const issuesJson = issues.length > 0 ? JSON.stringify(issues) : null;
-
-    this.tenantDb
-      .prepare(
-        'UPDATE push_lots SET status = ?, issues = ?, updated_at = ? WHERE id = ?',
-      )
-      .run(finalStatus, issuesJson, now, params.lotId);
-
     return {
-      status: finalStatus,
+      status: issues.length > 0 ? 'issues' : 'ok',
       ...(issues.length > 0 ? { issues } : {}),
     };
   }
