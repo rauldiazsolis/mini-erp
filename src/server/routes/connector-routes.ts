@@ -7,9 +7,7 @@ import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
-import { APP_VERSION } from '../app-version.ts';
-
-const CONTRACT_VERSION = '4.2.0';
+import { backendInfo, CONTRACT_VERSION } from '../connector/backend-info.ts';
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   if (req.tenantScope !== undefined) {
@@ -101,15 +99,7 @@ export function createConnectorRoutes(
 
   // GET /info (nunca responde 409, informa versión y estado)
   router.get('/info', (_req: AuthenticatedPosRequest, res: Response) => {
-    res.status(200).json({
-      contractVersion: CONTRACT_VERSION,
-      status: 'ok',
-      backend: {
-        name: 'mini-erp',
-        version: APP_VERSION,
-      },
-      ...(demoSessions.enabled() ? { capabilities: ['demo-sessions'] } : {}),
-    });
+    res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled() }));
   });
 
   // El resto de los endpoints validan la versión del contrato

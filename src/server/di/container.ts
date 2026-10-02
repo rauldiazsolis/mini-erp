@@ -24,12 +24,11 @@ import { PasswordResetService } from '../users/password-reset-service.ts';
 // --- DEFINICIONES DE BASE DE DATOS ---
 
 /**
- * Definición singleton para la base de datos del sistema.
- * Por defecto abre SYSTEM_DB_PATH o `<DATA_DIR>/system.sqlite`, y puede ser
- * sobreescrito con toValue() en createRootContainer (ej. en tests con :memory:).
+ * Definición singleton para la base de datos del sistema: `<DATA_DIR>/system.sqlite`, la misma que
+ * migra el arranque (#47). En tests se sobreescribe con toValue() en createRootContainer.
  */
 export const systemDbDef = fn.singleton<DatabaseSync>(() => {
-  return openSystemDb(process.env['SYSTEM_DB_PATH'] ?? join(dataDir(), 'system.sqlite'));
+  return openSystemDb(join(dataDir(), 'system.sqlite'));
 });
 export const masterDbDef = systemDbDef;
 

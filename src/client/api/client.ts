@@ -1,3 +1,5 @@
+import { enterMaintenance, isMaintenanceResponse } from '../state/maintenance-state.ts';
+
 export class ApiError extends Error {
   public status: number;
   public data: unknown;
@@ -55,6 +57,11 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
     responseData = await res.json();
   } else {
     responseData = await res.text();
+  }
+
+  // Mantenimiento (#47): la pantalla de actualización; el error sigue su camino
+  if (isMaintenanceResponse(res.status, responseData)) {
+    enterMaintenance();
   }
 
   if (!res.ok) {
