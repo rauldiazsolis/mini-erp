@@ -95,6 +95,7 @@ export const altaServiceDef = fn.singleton(
       tenants: c.use(tenantManagerDef),
       apiKeys: c.use(apiKeyServiceDef),
       audit: c.use(auditLogDef),
+      billing: c.use(billingServiceDef),
     }),
 );
 

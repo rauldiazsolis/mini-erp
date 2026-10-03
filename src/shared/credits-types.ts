@@ -17,6 +17,20 @@ export type BillingSummary = {
   dailyBurn: number;
 };
 
+/** Un pago registrado por la plataforma, a mano o con la planilla. */
+export type PlatformPaymentItem = {
+  id: string;
+  day: string;
+  amount: number;
+  info: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  holderName: string;
+  createdByName: string | null;
+  createdAt: string;
+  fromSheet: boolean;
+};
+
 /** Configuración de cobro, solo para root. */
 export type BillingSettings = {
   pricePerRegisterDay: number;

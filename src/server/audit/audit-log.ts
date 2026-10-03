@@ -16,7 +16,14 @@ export type AuditAction =
   | 'register.key_rotated'
   | 'register.transferred'
   | 'register.unbound'
-  | 'register.deactivated';
+  | 'register.deactivated'
+  | 'billing.payment_registered'
+  | 'billing.credits_granted'
+  | 'billing.credit_voided'
+  | 'billing.grace_extended'
+  | 'billing.refund'
+  | 'billing.holder_changed'
+  | 'billing.settings_updated';
 
 export type AuditEntry = {
   id: string;

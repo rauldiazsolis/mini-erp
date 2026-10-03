@@ -22,6 +22,7 @@ import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { createRegisterRoutes } from './routes/register-routes.ts';
+import { createPlatformRoutes } from './routes/platform-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
@@ -135,6 +136,9 @@ export function createApp(deps?: AppDependencies): {
     createRegisterRoutes(registers, auditLog),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
+
+  // Plataforma de cobro (#21): root y soporte
+  app.use('/api/platform', requireAdmin, createPlatformRoutes({ billing, audit: auditLog }));
 
   // Rutas para terminales POS (Connector API 4.4.0, #2)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing }));

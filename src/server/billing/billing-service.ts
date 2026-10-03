@@ -1,11 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { allocateCharge, type GiftBalance } from './allocation.ts';
-import { readBillingSettings } from './settings.ts';
+import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
+import { DomainError } from '../errors.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import type { BillingSummary } from '../../shared/credits-types.ts';
+import type { BillingSettings, BillingSummary, PlatformPaymentItem } from '../../shared/credits-types.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function requirePositive(amount: number): void {
+  if (!(amount > 0)) throw new DomainError(400, 'El importe tiene que ser mayor que 0');
+}
 
 type DatedGift = GiftBalance & { expiresAt: string };
 
@@ -93,7 +98,174 @@ export class BillingService {
     return id;
   }
 
+  // --- plataforma ---
+
+  /** Un pago al titular del comercio: cancela primero la deuda de sus comercios, del cargo más antiguo; el resto queda de saldo. */
+  registerPayment(p: {
+    tenantId: string;
+    day: string;
+    amount: number;
+    info?: string | undefined;
+    actorUserId: string;
+    paymentRef?: string | undefined;
+  }): { movementId: string; settled: number } {
+    const holder = this.requireHolder(p.tenantId);
+    requirePositive(p.amount);
+    if (p.paymentRef !== undefined && this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(p.paymentRef) !== undefined) {
+      throw new DomainError(409, 'Ese pago ya estaba registrado');
+    }
+    const at = this.now().toISOString();
+    const movementId = `pm_${randomUUID()}`;
+    let settled = 0;
+    this.db.exec('BEGIN');
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, payment_ref, day, info, created_by, created_at) VALUES (?, ?, 'payment', ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(movementId, holder, p.amount, p.tenantId, p.paymentRef ?? null, p.day, p.info ?? null, p.actorUserId, at);
+      const debts = this.db
+        .prepare(
+          `SELECT c.id, c.tenant_id, c.day, c.debt_amount FROM charges c JOIN tenants t ON t.id = c.tenant_id
+           WHERE t.holder_user_id = ? AND c.debt_amount > 0 ORDER BY c.day, c.created_at, c.id`,
+        )
+        .all(holder) as { id: string; tenant_id: string; day: string; debt_amount: number }[];
+      let left = p.amount;
+      for (const debt of debts) {
+        if (left <= 0) break;
+        const x = Math.min(left, debt.debt_amount);
+        this.db
+          .prepare(
+            `UPDATE charges SET debt_amount = debt_amount - ?, paid_amount = paid_amount + ?,
+               debt_settled_at = CASE WHEN debt_amount - ? <= 0 THEN ? ELSE NULL END
+             WHERE id = ?`,
+          )
+          .run(x, x, x, at, debt.id);
+        this.db
+          .prepare(
+            "INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, charge_id, day, created_by, created_at) VALUES (?, ?, 'debt-settlement', ?, ?, ?, ?, ?, ?)",
+          )
+          .run(`pm_${randomUUID()}`, holder, -x, debt.tenant_id, debt.id, debt.day, p.actorUserId, at);
+        left -= x;
+        settled += x;
+      }
+      this.db.exec('COMMIT');
+    } catch (err: unknown) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+    return { movementId, settled };
+  }
+
+  /** Créditos regalados por root o soporte: vencen al terminar el día argentino `expiresOn`. */
+  grantCredits(p: { tenantId: string; amount: number; expiresOn: string; reason?: string | undefined; actorUserId: string }): string {
+    this.requireTenant(p.tenantId);
+    requirePositive(p.amount);
+    const id = `gift_${randomUUID()}`;
+    const expiresAt = `${shiftDay(p.expiresOn, 1)}T03:00:00.000Z`;
+    this.db
+      .prepare("INSERT INTO gift_credits (id, tenant_id, amount, expires_at, origin, granted_by, reason, created_at) VALUES (?, ?, ?, ?, 'grant', ?, ?, ?)")
+      .run(id, p.tenantId, p.amount, expiresAt, p.actorUserId, p.reason ?? null, this.now().toISOString());
+    return id;
+  }
+
+  /** Anula el remanente de un crédito regalado (lo consumido queda como está). */
+  voidCredit(p: { tenantId: string; creditId: string; reason: string; actorUserId: string }): void {
+    const res = this.db
+      .prepare('UPDATE gift_credits SET voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ? AND tenant_id = ? AND voided_at IS NULL')
+      .run(this.now().toISOString(), p.actorUserId, p.reason, p.creditId, p.tenantId);
+    if (res.changes === 0) throw new DomainError(404, 'Crédito no encontrado');
+  }
+
+  setGrace(p: { tenantId: string; until: string }): void {
+    this.requireTenant(p.tenantId);
+    this.db.prepare('UPDATE tenants SET grace_until = ? WHERE id = ?').run(p.until, p.tenantId);
+  }
+
+  /** Devolución del saldo pagado del titular (solo root): nunca más que el saldo. */
+  refund(p: { tenantId: string; amount: number; info?: string | undefined; actorUserId: string }): string {
+    const holder = this.requireHolder(p.tenantId);
+    requirePositive(p.amount);
+    if (p.amount > this.paidBalance(holder)) throw new DomainError(400, 'La devolución supera el saldo pagado');
+    const id = `pm_${randomUUID()}`;
+    const at = this.now();
+    this.db
+      .prepare("INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, day, info, created_by, created_at) VALUES (?, ?, 'refund', ?, ?, ?, ?, ?, ?)")
+      .run(id, holder, -p.amount, p.tenantId, argentinaToday(at), p.info ?? null, p.actorUserId, at.toISOString());
+    return id;
+  }
+
+  /** Cambia el titular: tiene que ser un owner activo. El saldo pagado es de la persona y no se mueve. */
+  setHolder(p: { tenantId: string; userId: string }): void {
+    this.requireTenant(p.tenantId);
+    const owner = this.db
+      .prepare("SELECT 1 FROM memberships WHERE tenant_id = ? AND user_id = ? AND role = 'owner' AND status = 'active'")
+      .get(p.tenantId, p.userId);
+    if (owner === undefined) throw new DomainError(400, 'El titular tiene que ser un owner activo del comercio');
+    this.db.prepare('UPDATE tenants SET holder_user_id = ? WHERE id = ?').run(p.userId, p.tenantId);
+  }
+
+  settings(): BillingSettings {
+    return readBillingSettings(this.db);
+  }
+
+  updateSettings(patch: BillingSettingsPatch, actorUserId: string): BillingSettings {
+    return writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
+  }
+
+  /** Los pagos registrados, del más nuevo al más viejo. */
+  listPayments(limit = 200): PlatformPaymentItem[] {
+    const rows = this.db
+      .prepare(
+        `SELECT p.id, p.day, p.amount, p.info, p.tenant_id, t.name AS tenant_name, h.name AS holder_name,
+                c.name AS created_by_name, p.created_at, p.payment_ref
+         FROM paid_movements p
+         JOIN users h ON h.id = p.user_id
+         LEFT JOIN tenants t ON t.id = p.tenant_id
+         LEFT JOIN users c ON c.id = p.created_by
+         WHERE p.kind = 'payment'
+         ORDER BY p.created_at DESC, p.id DESC
+         LIMIT ?`,
+      )
+      .all(limit) as {
+      id: string;
+      day: string;
+      amount: number;
+      info: string | null;
+      tenant_id: string | null;
+      tenant_name: string | null;
+      holder_name: string;
+      created_by_name: string | null;
+      created_at: string;
+      payment_ref: string | null;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      day: r.day,
+      amount: r.amount,
+      info: r.info,
+      tenantId: r.tenant_id,
+      tenantName: r.tenant_name,
+      holderName: r.holder_name,
+      createdByName: r.created_by_name,
+      createdAt: r.created_at,
+      fromSheet: r.payment_ref !== null,
+    }));
+  }
+
   // --- internos ---
+
+  private requireTenant(tenantId: string): void {
+    const row = this.db.prepare('SELECT 1 FROM tenants WHERE id = ? AND id NOT IN (SELECT tenant_id FROM demo_sessions)').get(tenantId);
+    if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
+  }
+
+  private requireHolder(tenantId: string): string {
+    this.requireTenant(tenantId);
+    const holder = this.holderOf(tenantId);
+    if (holder === null) throw new DomainError(400, 'El comercio no tiene titular');
+    return holder;
+  }
 
   private holderOf(tenantId: string): string | null {
     const row = this.db.prepare('SELECT holder_user_id FROM tenants WHERE id = ?').get(tenantId) as
