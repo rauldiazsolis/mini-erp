@@ -340,8 +340,8 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ## 10. Detalle de Etapas: FASE 8 (Estrictez de TypeScript y Zod) [COMPLETADA]
 
-Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). Plan en
-`docs/superpowers/plans/2026-09-29-estrictez-typescript-zod.md`.
+Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). El plan quedó en
+el historial de git (`docs/superpowers/plans/2026-09-29-estrictez-typescript-zod.md`).
 
 - TypeScript 6.0.3 con `exactOptionalPropertyTypes`, `noUnusedLocals`, `noUnusedParameters` y
   `erasableSyntaxOnly` (`types` suma `vite/client` para el import del CSS).
@@ -355,8 +355,8 @@ Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). Plan en
 ## 11. Detalle de Etapas: FASE 9 (Demo y alta con el POS publicado 0.1.0) [COMPLETADA]
 
 Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
-`docs/superpowers/specs/2026-09-30-demo-y-alta-pos-publicado-design.md` y plan en
-`docs/superpowers/plans/2026-09-30-demo-y-alta-pos-publicado.md`.
+`docs/superpowers/specs/2026-09-30-demo-y-alta-pos-publicado-design.md`; el plan quedó en el historial
+de git (`docs/superpowers/plans/2026-09-30-demo-y-alta-pos-publicado.md`).
 
 - Un solo SPA con ruteo por path (`src/client/state/route-state.ts`): landing en `/` con "Probar la
   demo" (abre `https://offline-pos.pages.dev/<posVersion>/?demo=true&backend=<origen>/connector`, con
@@ -382,8 +382,8 @@ Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166)
 ## 12. Detalle de Etapas: FASE 10 (Deploy público) [COMPLETADA]
 
 Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
-`docs/superpowers/specs/2026-09-30-deploy-publico-design.md` y plan en
-`docs/superpowers/plans/2026-09-30-deploy-publico.md`.
+`docs/superpowers/specs/2026-09-30-deploy-publico-design.md`; el plan quedó en el historial de git
+(`docs/superpowers/plans/2026-09-30-deploy-publico.md`).
 
 - Antes de exponerlo: el registro crea siempre `user` y el root sale de `scripts/create-root.ts`; el
   seed de desarrollo no corre con `NODE_ENV=production` (`src/server/bootstrap.ts`); límite por IP en
@@ -404,8 +404,8 @@ Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166
 
 ## 13. MVP de mini contax: M1 (Marca y limpieza) [COMPLETADA]
 
-Issue #18 del epic #17. Spec del MVP en `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`
-y plan en `docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`.
+Issue #18 del epic #17. Spec del MVP en `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`;
+el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`).
 
 - Lo visible dice "mini contax": logo de ticket, favicon, título, landing para el comerciante con
   "powered by offline-pos", login, alta y admin. La versión de mini (`package.json`) va en el pie del
@@ -418,8 +418,8 @@ y plan en `docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`.
 
 ## 14. MVP de mini contax: M2 (Roles de comercio e invitaciones) [COMPLETADA]
 
-Issue #19 del epic #17. Spec en `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`
-y plan en `docs/superpowers/plans/2026-10-01-m2-roles-invitaciones.md`.
+Issue #19 del epic #17. Spec en `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`;
+el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m2-roles-invitaciones.md`).
 
 - Roles `owner`, `admin` y `member` aplicados con una matriz de capacidades compartida por servidor y
   cliente: cada ruta del comercio exige su capacidad (403 si no) y el admin esconde lo que el rol no

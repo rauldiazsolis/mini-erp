@@ -39,7 +39,8 @@ Claude Code y con Antigravity IDE); donde un agente hace algo distinto, se dice.
   plan que el usuario revisa y aprueba. Nada de código antes de esa aprobación. El plan se ejecuta
   **tarea por tarea**, en la misma conversación: al terminar cada tarea se verifica y se frena para
   que el usuario la revise antes de seguir (en Claude Code, con `superpowers:executing-plans`; nunca
-  un subagente por tarea). Specs y planes en `docs/superpowers/`.
+  un subagente por tarea). Specs y planes en `docs/superpowers/`. **El plan se borra en el PR que
+  cierra la etapa** (queda en el historial de git); la spec queda, porque explica las decisiones.
 - **Informe final con prueba manual**: al terminar, un informe con instrucciones paso a paso de qué
   hacer en la UI (o con `curl`) y qué se debería ver. La prueba la hace el usuario.
 - **Revisión sin cambios**: en una revisión no se toca código salvo pedido explícito en el momento; las
