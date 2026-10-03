@@ -116,8 +116,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Arquitectura
 
 - **DB por tenant** con `DatabaseSync` de `node:sqlite`:
-  - `data/system.sqlite`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`) y
-    API keys de terminales.
+  - `data/system.sqlite`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`),
+    cajas con sus keys y todo el cobro (cargos, pagados, regalados, configuración).
   - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
     ventas y lotes de sincronización.
 - **Migraciones de esquema** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`):
@@ -151,7 +151,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Roles de comercio e invitaciones** (#19, spec `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`):
   - Matriz en `src/shared/permissions.ts` (TS puro, la usan servidor y cliente): roles `owner`,
     `admin`, `member` y capacidades `tenant.use`, `bulk`, `settings.manage`, `users.manage`,
-    `owners.manage`. Permisos fijos. Root y support impersonando cuentan como `owner` hasta M7.
+    `owners.manage`, `credits.view`. Permisos fijos. Root y support impersonando cuentan como `owner` hasta M7.
   - `requireTenantContext` resuelve el rol (`MembershipService.resolveRole`, solo membresías
     activas) y **cada** ruta de `/api/tenants/:tenantId` lleva `requirePermission(<capacidad>)`.
     `test/permissions-api.test.ts` tiene la tabla de todas las rutas y falla si una ruta nueva no
@@ -204,7 +204,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     importación). Una anulación de cobranza inconsistente se aplica igual y queda para revisar. En el
     admin se ven en Clientes y las descartan owner y admin, con motivo.
   - Los `notices` del pull se calculan en el momento (`src/server/notices/`): hoy, las discrepancias
-    abiertas del equipo que las generó. M5 suma créditos y caja.
+    abiertas del equipo que las generó, los de créditos (`credits:low`, `credits:debt`,
+    `credits:restricted`, excluyentes, nunca en demos) y los de caja (`register:foreign-device` al
+    equipo que no es el ligado, `register:shared-key` al ligado).
   - `X-POS-Contract-Version`: `409 IncompatibleContract` si el major difiere (salvo en `/info`).
   - CORS `*` (sin cookies: el admin y el POS usan Bearer) y `Access-Control-Allow-Private-Network:
     true` en el preflight, para el POS publicado llamando a `localhost`
@@ -237,6 +239,31 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - **Anulaciones como en el POS**, también en el dashboard: el total es el neto de todos los tickets
     y la cantidad cuenta los vigentes (ni anulaciones ni anuladas).
   - Los tipos de la API están en `src/shared/sales-types.ts` (servidor y cliente).
+- **Créditos y cobro** (#21, spec `docs/superpowers/specs/2026-10-03-m5-creditos-cobro-design.md`):
+  - **Caja** (`registers`, de sistema; `src/server/registers/`): sucursal, punto de venta, nombre y
+    equipo ligado, con a lo sumo una key activa (rotarla no cambia la caja). Se liga al primer
+    `deviceId` que la usa; otro equipo con la misma key cobra aparte ("otro equipo") y sus ventas se
+    aplican igual. El alta, las demos y el admin crean cajas, nunca keys sueltas (`/api-keys` no
+    existe más; la sección es Configuración → Cajas, rutas `/pos-registers`).
+  - **Cargo** = caja (y equipo) por día con ventas que no son anulación, por `sales.day`: nace en el
+    push y el barrido (`startBillingSweeper`, al arrancar y cada 15 minutos) crea los que falten. Sin
+    cargos retroactivos (solo ventas con `register_id`) y nunca en demos.
+  - **Reparto** (`billing/allocation.ts`, puro): con saldo pagado del titular, la proporción
+    configurada (50 %) y el faltante de una fuente sale de la otra; sin pagado, todo regalado (por
+    vencimiento más próximo); lo que no cubre nada es deuda. Pesos enteros.
+  - **El pagado es de la persona** (el titular, `tenants.holder_user_id`, un owner activo): cambiar
+    el titular no mueve saldo y lo comparten sus comercios. **Los regalados son del comercio** (bono
+    de alta y créditos de plataforma, con vencimiento).
+  - **Deuda y gracia**: 10 días desde el cargo en deuda más antiguo (root o soporte la extienden).
+    Pasada, el comercio queda restringido: `createBillingRestriction` da `402 billing-restricted` salvo en
+    Créditos, `billing-status` y exportar; el POS sigue vendiendo y sincronizando, y root o soporte
+    impersonando no quedan restringidos. Un pago cancela primero la deuda; un regalado nuevo, no.
+  - Todo en `BillingService` (de sistema, reloj inyectable) y la configuración en
+    `billing_settings` (precio por caja y día, bono, proporción, gracia, umbral de saldo bajo, cómo
+    pagar). Rutas del comercio en `routes/credits-routes.ts` (`credits.view`: owner y admin) y de
+    plataforma en `routes/platform-routes.ts` (`requirePlatformRole`; devoluciones y configuración,
+    solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`).
+  - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
@@ -320,8 +347,8 @@ Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
 (roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
 las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
-(#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21) y M6
-importación (#22).
+(#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
+hecha) y M6 importación (#22).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
