@@ -76,7 +76,8 @@ Así está hoy:
 pasa a listarla):
 
 - **`registers`**: `id`, `tenant_id` (FK con cascade), `name`, `branch`, `point_of_sale`,
-  `device_id` (nulo hasta ligarse), `bound_at`, `active` y `created_at`.
+  `device_id` (nulo hasta ligarse), `bound_at`, `last_seen_at` (la última vez que se vio el equipo
+  ligado), `active` y `created_at`.
 - **`tenant_api_keys.register_id`**: cada key existente genera su caja, con su nombre, sucursal y
   punto de venta, activa si la key lo está. Sin equipo ligado.
 - **`register_devices`**: `register_id`, `device_id`, `first_seen_at`, `last_seen_at`; PK
@@ -102,13 +103,16 @@ pasa a listarla):
 
 ### Migración de comercio v6 `caja-de-venta`
 
-`src/server/db/migrations/tenant/v6-caja-de-venta.ts`: `sales.register_id TEXT` (nulo en las ventas
-anteriores) e índice `(register_id, day)`. Test desde una base v5 con ventas.
+`src/server/db/migrations/tenant/v6-caja-de-venta.ts`: `sales.register_id TEXT` y
+`sales.charge_device TEXT` (a qué equipo se cobró la venta al recibirla: `''` = la caja, si no el
+equipo ajeno; así el barrido no confunde un equipo que después pasó a ser el ligado), nulos en las
+ventas anteriores, e índice `(register_id, charge_device, day)`. Test desde una base v5 con ventas.
 
 ### Escritura
 
-`DocumentOrigin` suma `registerId: string | null`. El push lo completa con la caja de la key;
-`saveSale` lo guarda (en el `ON CONFLICT` no se pisa un `register_id` ya puesto). La cobranza del
+`DocumentOrigin` suma `registerId: string | null` y `chargeDevice: string | null`. El push los
+completa con la caja de la key y el resultado del ligado; `saveSale` los guarda (en el `ON CONFLICT`
+no se pisan si ya estaban). La cobranza del
 admin y la semilla lo dejan nulo.
 
 ## Cajas (`src/server/registers/`)
@@ -147,8 +151,9 @@ Todo cambio de caja queda en `audit_log`.
 los días con ventas no anulación de ese lote (`register_id`, `device_id`, `day`) y llama a `charge`.
 `ConnectorService.processPushLot` devuelve esos días.
 
-**Barrido** (en `startDemoSweeper`, renombrado a un barrido general, al arrancar y cada 15 minutos):
-para cada comercio con titular, los días con ventas con caja de los últimos 7 días sin cargo → `charge`.
+**Barrido** (`startBillingSweeper`, un timer propio al lado del de demos, al arrancar y cada 15
+minutos): para cada comercio con titular, los `(register_id, charge_device, day)` de sus ventas no
+anulación sin cargo → `charge`.
 
 **Días cubiertos**: disponible (pagado del titular + regalados vigentes del comercio) ÷ (precio ×
 cajas o equipos con cargos en los últimos 7 días, mínimo 1). `low` si es menor que el umbral (7).
@@ -194,11 +199,11 @@ Capacidad nueva `credits.view` (owner, admin) en `src/shared/permissions.ts`.
 | `GET /credits/movements` | `credits.view` | Pagos, devoluciones y créditos otorgados o anulados del comercio |
 | `GET /credits/gifts` | `credits.view` | Regalados con origen, quién, motivo, vencimiento y remanente |
 | `GET /billing-status` | `tenant.use` | `{ state, debt, deadline }` para la franja |
-| `GET /registers` | `settings.manage` | Cajas (sección "Cajas") |
-| `POST /registers` | `settings.manage` | Crea caja y devuelve la key una vez |
-| `POST /registers/:id/rotate-key` | `settings.manage` | Key nueva, una vez |
-| `POST /registers/:id/transfer` | `settings.manage` | `{ deviceId }` de un equipo visto |
-| `POST /registers/:id/unbind`, `DELETE /registers/:id` | `settings.manage` | Desligar y desactivar |
+| `GET /pos-registers` | `settings.manage` | Cajas (sección "Cajas"); `/registers` ya es la lista de cajas de Ventas & Caja (M4) |
+| `POST /pos-registers` | `settings.manage` | Crea caja y devuelve la key una vez |
+| `POST /pos-registers/:id/rotate-key` | `settings.manage` | Key nueva, una vez |
+| `POST /pos-registers/:id/transfer` | `settings.manage` | `{ deviceId }` de un equipo visto |
+| `POST /pos-registers/:id/unbind`, `DELETE /pos-registers/:id` | `settings.manage` | Desligar y desactivar |
 
 `/api-keys` se va (lo usa solo el cliente).
 
@@ -221,7 +226,7 @@ Middleware `requirePlatformRole(...roles)`. Todo queda en `audit_log`.
 | `POST /tenants/:id/grace` (`{ until }`) | root, soporte |
 | `POST /tenants/:id/refunds` (`{ amount, info? }`; ≤ saldo) | root |
 | `PUT /tenants/:id/holder` (`{ userId }`, owner activo) | root, soporte |
-| `POST /payments/import[?dryRun=1]` (CSV) | root, soporte |
+| `POST /payments/import[?dryRun=1]` (JSON `{ csv }`) | root, soporte |
 | `GET /payments` | root, soporte |
 | `GET /settings` / `PUT /settings` | root y soporte / root |
 
@@ -275,7 +280,7 @@ el motivo. Las filas son independientes.
 ## Etapas
 
 1. Migraciones de sistema v5 y de comercio v6.
-2. Cajas: servicio, ligado en push y pull, `register_id` en `records.ts`, rutas `/registers`.
+2. Cajas: servicio, ligado en push y pull, `register_id` y `charge_device` en `records.ts`, rutas `/pos-registers`.
 3. `BillingService`: reparto, cargo después del push, deuda, gracia, estado y barrido.
 4. Pagos, otorgamientos, devoluciones, gracia, titular y configuración (rutas de plataforma con
    auditoría); bono en el alta.
