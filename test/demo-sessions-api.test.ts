@@ -128,7 +128,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
       .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana', businessName: 'Tienda', template: 'empty' });
     const token = (alta.body as { token: string }).token;
     const key = await request(app)
-      .post('/api/tenants/tienda/api-keys')
+      .post('/api/tenants/tienda/pos-registers')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     const info = await request(app)

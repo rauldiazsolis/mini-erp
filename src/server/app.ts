@@ -8,7 +8,6 @@ import { createAdminAuthMiddleware, createPosAuthMiddleware } from './middleware
 import { createTenantContextMiddleware } from './middleware/tenant-context-middleware.ts';
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
-import { createApiKeyRoutes } from './routes/api-key-routes.ts';
 import { createAltaRoutes } from './routes/alta-routes.ts';
 import { createUserRoutes } from './routes/user-routes.ts';
 import { createInvitationLinkRoutes, createPasswordResetLinkRoutes } from './routes/link-routes.ts';
@@ -135,7 +134,6 @@ export function createApp(deps?: AppDependencies): {
     createIoRoutes(),
     createDashboardRoutes(),
     createSalesRoutes(),
-    createApiKeyRoutes(apiKeyService),
     createRegisterRoutes(registers, auditLog),
     createCreditsRoutes(billing),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),

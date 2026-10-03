@@ -83,7 +83,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
 
     // 3. Generar API Key para la terminal POS
     const keyRes = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: posName, branch: branchName, pointOfSale: posName });
 

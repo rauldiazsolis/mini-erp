@@ -25,7 +25,7 @@ describe('discrepancias del push (#2)', () => {
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
     bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
     apiKey = (key.body as { rawKey: string }).rawKey;

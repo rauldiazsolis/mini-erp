@@ -335,7 +335,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
     it('un ajuste de saldo en ERP altera inmediatamente el margen de crédito disponible en /connector/account-holds', async () => {
       // 1. Crear API Key de POS
       const keyRes = await request(app)
-        .post(`/api/tenants/${tenantId}/api-keys`)
+        .post(`/api/tenants/${tenantId}/pos-registers`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
       const keyBody = keyRes.body as unknown as { rawKey: string };

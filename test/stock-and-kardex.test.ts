@@ -344,7 +344,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     it('ajuste en ERP se refleja en el pull del POS, y una venta del POS aparece en el Kardex del ERP', async () => {
       // 1. Crear API Key de POS
       const keyRes = await request(app)
-        .post(`/api/tenants/${tenantId}/api-keys`)
+        .post(`/api/tenants/${tenantId}/pos-registers`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Terminal 1',

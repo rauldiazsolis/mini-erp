@@ -44,9 +44,6 @@ const RUTAS: Record<string, Capability> = {
   'GET /export/:entity': 'bulk',
   'POST /import/:entity': 'bulk',
   'GET /dashboard/summary': 'tenant.use',
-  'GET /api-keys': 'settings.manage',
-  'POST /api-keys': 'settings.manage',
-  'DELETE /api-keys/:keyId': 'settings.manage',
   'GET /pos-registers': 'settings.manage',
   'POST /pos-registers': 'settings.manage',
   'POST /pos-registers/:registerId/rotate-key': 'settings.manage',
@@ -119,8 +116,8 @@ describe('permisos del comercio en la API (#19)', () => {
     expect((await request(app).post(`/api/tenants/${tenantId}/bulk/prices`).set(auth).send({ action: 'percentage', value: 10 })).status).toBe(403);
     expect((await request(app).get(`/api/tenants/${tenantId}/export/products`).set(auth)).status).toBe(403);
     expect((await request(app).post(`/api/tenants/${tenantId}/branches`).set(auth).send({ name: 'Otra', code: 'OTRA' })).status).toBe(403);
-    expect((await request(app).get(`/api/tenants/${tenantId}/api-keys`).set(auth)).status).toBe(403);
-    const res = await request(app).post(`/api/tenants/${tenantId}/api-keys`).set(auth).send({ name: 'Caja 2', branch: 'CENTRAL', pointOfSale: 'Caja 2' });
+    expect((await request(app).get(`/api/tenants/${tenantId}/pos-registers`).set(auth)).status).toBe(403);
+    const res = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(auth).send({ name: 'Caja 2', branch: 'CENTRAL', pointOfSale: 'Caja 2' });
     expect(res.status).toBe(403);
     expect((res.body as { error: string }).error).toBe('No tenés permiso para esto');
   });
@@ -134,7 +131,7 @@ describe('permisos del comercio en la API (#19)', () => {
 
   it('el admin maneja keys y masivas', async () => {
     const auth = { Authorization: `Bearer ${tokens.admin}` };
-    expect((await request(app).get(`/api/tenants/${tenantId}/api-keys`).set(auth)).status).toBe(200);
+    expect((await request(app).get(`/api/tenants/${tenantId}/pos-registers`).set(auth)).status).toBe(200);
     expect((await request(app).get(`/api/tenants/${tenantId}/export/products`).set(auth)).status).toBe(200);
   });
 

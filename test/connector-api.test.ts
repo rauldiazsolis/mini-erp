@@ -28,7 +28,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
 
     // Crear API Key para la terminal POS
     const keyRes = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
 

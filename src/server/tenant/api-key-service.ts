@@ -2,17 +2,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { generatePosApiKey, hashApiKey } from '../auth/crypto.ts';
 
-export type PosApiKeyRecord = {
-  id: string;
-  tenantId: string;
-  name: string;
-  keyPrefix: string;
-  branch: string;
-  pointOfSale: string;
-  active: boolean;
-  createdAt: string;
-};
-
 export type ValidatedPosKey = {
   tenantId: string;
   branch: string;
@@ -93,43 +82,5 @@ export class ApiKeyService {
       pointOfSale: row.point_of_sale,
       registerId: row.register_id,
     };
-  }
-
-  listApiKeys(tenantId: string): PosApiKeyRecord[] {
-    const rows = this.systemDb
-      .prepare(
-        `SELECT id, tenant_id, name, key_prefix, branch, point_of_sale, active, created_at 
-         FROM tenant_api_keys 
-         WHERE tenant_id = ? 
-         ORDER BY created_at DESC`,
-      )
-      .all(tenantId) as {
-      id: string;
-      tenant_id: string;
-      name: string;
-      key_prefix: string;
-      branch: string;
-      point_of_sale: string;
-      active: number;
-      created_at: string;
-    }[];
-
-    return rows.map((r) => ({
-      id: r.id,
-      tenantId: r.tenant_id,
-      name: r.name,
-      keyPrefix: r.key_prefix,
-      branch: r.branch,
-      pointOfSale: r.point_of_sale,
-      active: r.active === 1,
-      createdAt: r.created_at,
-    }));
-  }
-
-  revokeApiKey(id: string, tenantId: string): boolean {
-    const res = this.systemDb
-      .prepare('UPDATE tenant_api_keys SET active = 0 WHERE id = ? AND tenant_id = ?')
-      .run(id, tenantId);
-    return res.changes > 0;
   }
 }

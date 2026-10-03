@@ -30,7 +30,7 @@ describe('API de discrepancias (#2)', () => {
     ownerToken = owner.token;
     memberToken = member.token;
     const key = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
     apiKey = (key.body as { rawKey: string }).rawKey;
