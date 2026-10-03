@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 
-export type ActiveNavView = 'dashboard' | 'sales' | 'catalog' | 'stock' | 'customers' | 'bulk' | 'users' | 'settings';
+export type ActiveNavView = 'dashboard' | 'sales' | 'catalog' | 'stock' | 'customers' | 'bulk' | 'users' | 'settings' | 'credits' | 'platform';
 
 export const activeViewSignal = signal<ActiveNavView>('dashboard');
 export const mobileMenuOpenSignal = signal<boolean>(false);

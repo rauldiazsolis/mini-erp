@@ -34,8 +34,8 @@ describe('comercio v5: ventas y caja (#20)', () => {
     caja.run('m1', JSON.stringify({ id: 'm1', direction: 'in', amount: 2000, concept: 'Fondo', source: 'manual', createdAt: '2026-10-02T02:00:00.000Z' }), 'dev', 'CENTRAL', 'Caja 1', at);
     caja.run('m2', JSON.stringify({ id: 'm2', type: 'float-in', amount: 15000, timestamp: at }), 'dev', 'CENTRAL', 'Caja 1', at);
 
-    expect(migrateDb(db, TENANT_SCHEMA)).toEqual({ from: 4, to: 5, applied: ['v5 ventas-y-caja'] });
-    expect(readVersion(db)).toBe(5);
+    expect(migrateDb(db, TENANT_SCHEMA)).toEqual({ from: 4, to: 6, applied: ['v5 ventas-y-caja', 'v6 caja-de-venta'] });
+    expect(readVersion(db)).toBe(6);
 
     expect(db.prepare('SELECT id, day, customer_id, ticket_date, ticket_number FROM sales ORDER BY id').all()).toEqual([
       { id: 'v1', day: '2026-10-01', customer_id: 'c1', ticket_date: '2026-10-01', ticket_number: 7 },

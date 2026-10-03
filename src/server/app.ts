@@ -8,7 +8,6 @@ import { createAdminAuthMiddleware, createPosAuthMiddleware } from './middleware
 import { createTenantContextMiddleware } from './middleware/tenant-context-middleware.ts';
 import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
-import { createApiKeyRoutes } from './routes/api-key-routes.ts';
 import { createAltaRoutes } from './routes/alta-routes.ts';
 import { createUserRoutes } from './routes/user-routes.ts';
 import { createInvitationLinkRoutes, createPasswordResetLinkRoutes } from './routes/link-routes.ts';
@@ -21,6 +20,10 @@ import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
+import { createRegisterRoutes } from './routes/register-routes.ts';
+import { createPlatformRoutes } from './routes/platform-routes.ts';
+import { createCreditsRoutes } from './routes/credits-routes.ts';
+import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
@@ -39,7 +42,10 @@ import {
   auditLogDef,
   invitationServiceDef,
   passwordResetServiceDef,
+  registerServiceDef,
+  billingServiceDef,
 } from './di/container.ts';
+import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
 import { APP_VERSION } from './app-version.ts';
@@ -60,6 +66,7 @@ export function createApp(deps?: AppDependencies): {
   authService: AuthService;
   apiKeyService: ApiKeyService;
   demoSessions: DemoSessionService;
+  billing: BillingService;
   rootContainer: Container;
 } {
   const app = express();
@@ -82,6 +89,8 @@ export function createApp(deps?: AppDependencies): {
   const invitationService = rootContainer.use(invitationServiceDef);
   const auditLog = rootContainer.use(auditLogDef);
   const passwordResetService = rootContainer.use(passwordResetServiceDef);
+  const registers = rootContainer.use(registerServiceDef);
+  const billing = rootContainer.use(billingServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -116,6 +125,7 @@ export function createApp(deps?: AppDependencies): {
     '/api/tenants/:tenantId',
     requireAdmin,
     requireTenantContext,
+    createBillingRestriction(billing),
     createCatalogRoutes(),
     createStockRoutes(),
     createCustomerRoutes(),
@@ -124,12 +134,16 @@ export function createApp(deps?: AppDependencies): {
     createIoRoutes(),
     createDashboardRoutes(),
     createSalesRoutes(),
-    createApiKeyRoutes(apiKeyService),
+    createRegisterRoutes(registers, auditLog),
+    createCreditsRoutes(billing),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 
+  // Plataforma de cobro (#21): root y soporte
+  app.use('/api/platform', requireAdmin, createPlatformRoutes({ billing, audit: auditLog }));
+
   // Rutas para terminales POS (Connector API 4.4.0, #2)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -145,6 +159,7 @@ export function createApp(deps?: AppDependencies): {
     authService,
     apiKeyService,
     demoSessions,
+    billing,
     rootContainer,
   };
 }

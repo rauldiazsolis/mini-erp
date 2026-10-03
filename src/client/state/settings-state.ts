@@ -1,51 +1,13 @@
 import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
-import { can, effectiveTenantRole } from '../../shared/permissions.ts';
 import { showToast } from './toast-state.ts';
 import type { BranchItem } from './stock-state.ts';
 
 export type SettingsTab = 'pos' | 'branches' | 'connection' | 'appearance' | 'account';
 
-
-export type PosApiKeyItem = {
-  id: string;
-  tenantId: string;
-  name: string;
-  keyPrefix: string;
-  branch: string;
-  pointOfSale: string;
-  active: boolean;
-  createdAt: string;
-};
-
-export type CreatedSecretKey = {
-  id: string;
-  rawKey: string;
-  name: string;
-  branch: string;
-  pointOfSale: string;
-};
-
 // Pestaña activa
 export const activeSettingsTabSignal = signal<SettingsTab>('pos');
-
-// API Keys
-export const apiKeysSignal = signal<PosApiKeyItem[]>([]);
-export const apiKeysLoadingSignal = signal<boolean>(false);
-export const createKeyModalOpenSignal = signal<boolean>(false);
-export const createKeyFormSignal = signal<{
-  name: string;
-  branch: string;
-  pointOfSale: string;
-}>({
-  name: 'Caja Principal',
-  branch: 'CENTRAL',
-  pointOfSale: 'Caja 1',
-});
-export const isCreatingKeySignal = signal<boolean>(false);
-export const createKeyErrorSignal = signal<string | null>(null);
-export const createdSecretKeySignal = signal<CreatedSecretKey | null>(null);
 
 // Sucursales
 export const settingsBranchesSignal = signal<BranchItem[]>([]);
@@ -69,128 +31,6 @@ export const connectorInfoSignal = signal<{
   checkedAt: string;
 } | null>(null);
 export const connectorCheckingSignal = signal<boolean>(false);
-
-// --- API KEYS ---
-
-export async function fetchApiKeys(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    apiKeysLoadingSignal.value = true;
-    const keys = await apiFetch<PosApiKeyItem[]>(`tenants/${tenantId}/api-keys`, { token });
-    apiKeysSignal.value = keys;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar API Keys';
-    showToast({ type: 'error', title: 'Error de terminales POS', message: msg });
-  } finally {
-    apiKeysLoadingSignal.value = false;
-  }
-}
-
-export function openCreateKeyModal(): void {
-  const branches = settingsBranchesSignal.value;
-  const defaultBranchCode = branches[0]?.code ?? 'CENTRAL';
-
-  createKeyFormSignal.value = {
-    name: `Caja ${String(apiKeysSignal.value.length + 1)}`,
-    branch: defaultBranchCode,
-    pointOfSale: `Caja ${String(apiKeysSignal.value.length + 1)}`,
-  };
-  createKeyErrorSignal.value = null;
-  createKeyModalOpenSignal.value = true;
-}
-
-export function closeCreateKeyModal(): void {
-  createKeyModalOpenSignal.value = false;
-  createKeyErrorSignal.value = null;
-}
-
-export async function submitCreateApiKey(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  const form = createKeyFormSignal.value;
-  if (!form.name.trim() || !form.branch.trim() || !form.pointOfSale.trim()) {
-    createKeyErrorSignal.value = 'Completa todos los campos obligatorios';
-    return;
-  }
-
-  try {
-    isCreatingKeySignal.value = true;
-    createKeyErrorSignal.value = null;
-
-    const res = await apiFetch<{
-      id: string;
-      rawKey?: string;
-      key?: string;
-      keyPrefix: string;
-    }>(`tenants/${tenantId}/api-keys`, {
-      method: 'POST',
-      body: {
-        name: form.name.trim(),
-        branch: form.branch.trim().toUpperCase(),
-        pointOfSale: form.pointOfSale.trim(),
-      },
-      token,
-    });
-
-    const secretKey = res.rawKey ?? res.key ?? '';
-    createdSecretKeySignal.value = {
-      id: res.id,
-      rawKey: secretKey,
-      name: form.name,
-      branch: form.branch.toUpperCase(),
-      pointOfSale: form.pointOfSale,
-    };
-
-    closeCreateKeyModal();
-    await fetchApiKeys();
-
-    showToast({
-      type: 'success',
-      title: 'API Key Generada',
-      message: `Nueva credencial creada para "${form.name}"`,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al generar API Key';
-    createKeyErrorSignal.value = msg;
-  } finally {
-    isCreatingKeySignal.value = false;
-  }
-}
-
-export function dismissSecretKeyModal(): void {
-  createdSecretKeySignal.value = null;
-}
-
-export async function revokeApiKey(keyId: string, name: string): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  const confirmed = typeof window !== 'undefined' ? window.confirm(`¿Estás seguro de revocar la llave de "${name}"? El POS perderá la sincronización hasta recibir una nueva clave.`) : true;
-  if (!confirmed) return;
-
-  try {
-    await apiFetch(`tenants/${tenantId}/api-keys/${keyId}`, {
-      method: 'DELETE',
-      token,
-    });
-
-    apiKeysSignal.value = apiKeysSignal.value.filter((k) => k.id !== keyId);
-    showToast({
-      type: 'warning',
-      title: 'API Key Revocada',
-      message: `La llave de "${name}" fue desactivada`,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al revocar API Key';
-    showToast({ type: 'error', title: 'Error', message: msg });
-  }
-}
 
 // --- SUCURSALES ---
 
@@ -319,17 +159,14 @@ export async function checkConnectorStatus(): Promise<void> {
   }
 }
 
-// Auto-cargar configuración de sucursales y llaves al cambiar tenant
+// Auto-cargar las sucursales al cambiar de comercio
 if (typeof window !== 'undefined') {
   effect(() => {
     const tenantId = effectiveTenantIdSignal.value;
     const token = tokenSignal.value;
     const tenant = activeTenantSignal.value;
-    if (tenantId && token) {
-      // Las keys son de owner y admin (#19); las sucursales las ve cualquiera
-      if (tenant !== null && can(effectiveTenantRole(tenant.role), 'settings.manage')) {
-        void fetchApiKeys();
-      }
+    if (tenantId && token && tenant !== null) {
+      // Las sucursales las ve cualquiera; las cajas cargan en registers-state (#21)
       void fetchSettingsBranches();
     }
   });

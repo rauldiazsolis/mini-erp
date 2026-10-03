@@ -11,7 +11,19 @@ export type AuditAction =
   | 'member.enabled'
   | 'password.reset_link_created'
   | 'password.reset'
-  | 'password.changed';
+  | 'password.changed'
+  | 'register.created'
+  | 'register.key_rotated'
+  | 'register.transferred'
+  | 'register.unbound'
+  | 'register.deactivated'
+  | 'billing.payment_registered'
+  | 'billing.credits_granted'
+  | 'billing.credit_voided'
+  | 'billing.grace_extended'
+  | 'billing.refund'
+  | 'billing.holder_changed'
+  | 'billing.settings_updated';
 
 export type AuditEntry = {
   id: string;

@@ -15,9 +15,9 @@ describe('comercio v3 y v4 (#2)', () => {
       .run('p2', 'c1', JSON.stringify({ id: 'p2', customerId: 'c1', total: -500, voidsPaymentId: 'p1' }), at);
 
     expect(migrateDb(db, TENANT_SCHEMA)).toEqual({
-      from: 2, to: 5, applied: ['v3 anulacion-cobranzas', 'v4 discrepancias', 'v5 ventas-y-caja'],
+      from: 2, to: 6, applied: ['v3 anulacion-cobranzas', 'v4 discrepancias', 'v5 ventas-y-caja', 'v6 caja-de-venta'],
     });
-    expect(readVersion(db)).toBe(5);
+    expect(readVersion(db)).toBe(6);
     expect(db.prepare('SELECT id, voids_payment_id FROM customer_payments ORDER BY id').all()).toEqual([
       { id: 'p1', voids_payment_id: null },
       { id: 'p2', voids_payment_id: 'p1' },

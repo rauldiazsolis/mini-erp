@@ -9,6 +9,7 @@ describe('matriz de capacidades (#19)', () => {
     'settings.manage': { owner: true, admin: true, member: false },
     'users.manage': { owner: true, admin: true, member: false },
     'owners.manage': { owner: true, admin: false, member: false },
+    'credits.view': { owner: true, admin: true, member: false },
   };
 
   for (const [cap, roles] of Object.entries(tabla) as [Capability, Record<TenantRole, boolean>][]) {

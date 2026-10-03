@@ -25,6 +25,13 @@ export function setOnUnauthorized(callback: () => void): void {
   onUnauthorizedCallback = callback;
 }
 
+let onPaymentRequiredCallback: ((data: unknown) => void) | null = null;
+
+/** Un 402 (#21: comercio restringido por deuda) se avisa antes de tirar el error. */
+export function setOnPaymentRequired(callback: (data: unknown) => void): void {
+  onPaymentRequiredCallback = callback;
+}
+
 export async function apiFetch<T>(endpoint: string, options?: RequestOptions): Promise<T> {
   const method = options?.method ?? 'GET';
   const headers: Record<string, string> = {
@@ -62,6 +69,10 @@ export async function apiFetch<T>(endpoint: string, options?: RequestOptions): P
   // Mantenimiento (#47): la pantalla de actualización; el error sigue su camino
   if (isMaintenanceResponse(res.status, responseData)) {
     enterMaintenance();
+  }
+
+  if (res.status === 402 && onPaymentRequiredCallback !== null) {
+    onPaymentRequiredCallback(responseData);
   }
 
   if (!res.ok) {

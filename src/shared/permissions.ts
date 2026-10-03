@@ -5,7 +5,7 @@
 export const TENANT_ROLES = ['owner', 'admin', 'member'] as const;
 export type TenantRole = (typeof TENANT_ROLES)[number];
 export type MembershipRole = TenantRole | 'root_impersonator' | 'support_impersonator';
-export type Capability = 'tenant.use' | 'bulk' | 'settings.manage' | 'users.manage' | 'owners.manage';
+export type Capability = 'tenant.use' | 'bulk' | 'settings.manage' | 'users.manage' | 'owners.manage' | 'credits.view';
 
 const MATRIX: Record<Capability, readonly TenantRole[]> = {
   'tenant.use': ['owner', 'admin', 'member'],
@@ -13,6 +13,8 @@ const MATRIX: Record<Capability, readonly TenantRole[]> = {
   'settings.manage': ['owner', 'admin'],
   'users.manage': ['owner', 'admin'],
   'owners.manage': ['owner'],
+  // Créditos y cobro (#21): saldos, consumo y cómo pagar
+  'credits.view': ['owner', 'admin'],
 };
 
 export function can(role: TenantRole, capability: Capability): boolean {

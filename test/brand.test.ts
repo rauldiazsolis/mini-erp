@@ -33,7 +33,7 @@ describe('Marca mini contax (#18)', () => {
 
 describe('Login sin datos de desarrollo en producción (#18)', () => {
   it('precarga el admin del seed solo en desarrollo', () => {
-    expect(devLoginDefaults(true)).toEqual({ email: 'admin@local.test', password: 'admin123' });
+    expect(devLoginDefaults(true)).toEqual({ email: 'root@local.test', password: 'admin123' });
     expect(devLoginDefaults(false)).toEqual({ email: '', password: '' });
   });
 });

@@ -64,6 +64,8 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       ownerUserId: registerRes.user.id,
       seedDemoData: false,
     });
+    // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
+    created.billing.grantSignupBonus(tenantId, registerRes.user.id);
 
     // 3. Obtener sucursal central por defecto
     const branchesRes = await request(app)
@@ -342,7 +344,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     it('ajuste en ERP se refleja en el pull del POS, y una venta del POS aparece en el Kardex del ERP', async () => {
       // 1. Crear API Key de POS
       const keyRes = await request(app)
-        .post(`/api/tenants/${tenantId}/api-keys`)
+        .post(`/api/tenants/${tenantId}/pos-registers`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Terminal 1',

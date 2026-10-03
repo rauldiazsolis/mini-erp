@@ -24,7 +24,7 @@ function setup(overrides: Partial<DemoConfig> = {}) {
   const advance = (ms: number): void => {
     clock.now = new Date(clock.now.getTime() + ms);
   };
-  return { service, tenantManager, apiKeyService, advance };
+  return { service, tenantManager, apiKeyService, advance, systemDb };
 }
 
 describe('readDemoConfig (#9)', () => {
@@ -58,7 +58,7 @@ describe('DemoSessionService (#9)', () => {
 
     expect(session).toMatchObject({ branch: 'CENTRAL', pointOfSale: 'Caja 1', template: 'almacen' });
     expect(session.tenantId).toMatch(/^demo-/);
-    expect(apiKeyService.validateApiKey(session.apiKey)).toEqual({
+    expect(apiKeyService.validateApiKey(session.apiKey)).toMatchObject({
       tenantId: session.tenantId,
       branch: 'CENTRAL',
       pointOfSale: 'Caja 1',
@@ -77,7 +77,7 @@ describe('DemoSessionService (#9)', () => {
   });
 
   it('barre solo las demos sin uso por más del vencimiento', () => {
-    const { service, tenantManager, advance } = setup();
+    const { service, tenantManager, advance, systemDb } = setup();
     const vieja = service.create('kiosco');
     const usada = service.create('kiosco');
     advance(23 * HOUR);
@@ -86,6 +86,8 @@ describe('DemoSessionService (#9)', () => {
 
     expect(service.sweepExpired()).toBe(1);
     expect(tenantManager.tenantExists(vieja.tenantId)).toBe(false);
+    // Sus cajas se van con ella (#21)
+    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM registers WHERE tenant_id = ?').get(vieja.tenantId)).toEqual({ n: 0 });
     expect(tenantManager.tenantExists(usada.tenantId)).toBe(true);
     expect(service.countActive()).toBe(1);
   });

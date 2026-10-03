@@ -25,8 +25,10 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
     const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;
     tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
+    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     const key = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     apiKey = (key.body as { rawKey: string }).rawKey;
@@ -40,6 +42,35 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
       .set('X-POS-Contract-Version', '4.4.0')
       .set('Idempotency-Key', lotId)
       .send({ deviceId: 'dev-1', events });
+
+  const pushWith = (lotId: string, deviceId: string, events: unknown[]) =>
+    request(app)
+      .post('/connector/sync/push')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.4.0')
+      .set('Idempotency-Key', lotId)
+      .send({ deviceId, events });
+  const venta = (eventId: string, saleId: string, createdAt: string) => ({
+    id: eventId, type: 'sale', createdAt, origin,
+    sale: { id: saleId, status: 'closed', total: 100, createdAt, lines: [], payments: [{ method: 'cash', amount: 100 }] },
+  });
+
+  it('el push guarda la caja de la key y a qué equipo se cobra (#21)', async () => {
+    await pushWith('l-a', 'dev-1', [venta('ev-a', 'va', '2026-10-01T13:00:00.000Z')]);
+    await pushWith('l-b', 'dev-2', [venta('ev-b', 'vb', '2026-10-01T14:00:00.000Z')]);
+    const rows = db().prepare('SELECT id, register_id, charge_device FROM sales ORDER BY id').all() as {
+      id: string; register_id: string | null; charge_device: string | null;
+    }[];
+    expect(rows[0]).toMatchObject({ id: 'va', charge_device: '' });
+    expect(rows[0]?.register_id).toMatch(/^reg_/);
+    expect(rows[1]).toMatchObject({ id: 'vb', charge_device: 'dev-2', register_id: rows[0]?.register_id });
+  });
+
+  it('reenviar una venta no le cambia la caja ni el equipo cobrado (#21)', async () => {
+    await pushWith('l-a', 'dev-1', [venta('ev-a', 'va', '2026-10-01T13:00:00.000Z')]);
+    await pushWith('l-b', 'dev-2', [venta('ev-a2', 'va', '2026-10-01T13:00:00.000Z')]);
+    expect(db().prepare('SELECT charge_device FROM sales').get()).toEqual({ charge_device: '' });
+  });
 
   it('el push completa día, cliente y números', async () => {
     await push('l1', [

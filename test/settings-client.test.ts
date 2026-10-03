@@ -1,15 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   activeSettingsTabSignal,
-  apiKeysSignal,
-  createKeyModalOpenSignal,
-  createKeyFormSignal,
-  createdSecretKeySignal,
-  openCreateKeyModal,
-  closeCreateKeyModal,
-  submitCreateApiKey,
-  dismissSecretKeyModal,
-  revokeApiKey,
   settingsBranchesSignal,
   branchModalOpenSignal,
   editingBranchSignal,
@@ -30,21 +21,6 @@ import {
 describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () => {
   beforeEach(() => {
     activeSettingsTabSignal.value = 'pos';
-    apiKeysSignal.value = [
-      {
-        id: 'key-1',
-        tenantId: 'tienda-test',
-        name: 'Caja Mostrador 1',
-        keyPrefix: 'mpos_live_ab12',
-        branch: 'CENTRAL',
-        pointOfSale: 'Caja 1',
-        active: true,
-        createdAt: '2026-09-25T10:00:00Z',
-      },
-    ];
-    createKeyModalOpenSignal.value = false;
-    createdSecretKeySignal.value = null;
-
     settingsBranchesSignal.value = [
       { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
     ];
@@ -72,91 +48,6 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
 
       activeSettingsTabSignal.value = 'appearance';
       expect(activeSettingsTabSignal.value).toBe('appearance');
-    });
-  });
-
-  describe('Gestión de API Keys para Terminales POS', () => {
-    it('openCreateKeyModal inicializa el formulario con sucursal por defecto', () => {
-      openCreateKeyModal();
-      expect(createKeyModalOpenSignal.value).toBe(true);
-      expect(createKeyFormSignal.value.branch).toBe('CENTRAL');
-
-      closeCreateKeyModal();
-      expect(createKeyModalOpenSignal.value).toBe(false);
-    });
-
-    it('submitCreateApiKey emite una nueva llave y expone la clave secreta para copia única', async () => {
-      openCreateKeyModal();
-      createKeyFormSignal.value = {
-        name: 'Terminal Tablet Patio',
-        branch: 'CENTRAL',
-        pointOfSale: 'Tablet 1',
-      };
-
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-        if (init?.method === 'POST') {
-          return Promise.resolve(new Response(
-            JSON.stringify({
-              id: 'key-2',
-              rawKey: 'mpos_live_secret_full_key_998877',
-              keyPrefix: 'mpos_live_se99',
-            }),
-            { status: 201, headers: { 'content-type': 'application/json' } },
-          ));
-        }
-
-        if (url.includes('/api-keys')) {
-          return Promise.resolve(new Response(
-            JSON.stringify([
-              ...apiKeysSignal.value,
-              {
-                id: 'key-2',
-                tenantId: 'tienda-test',
-                name: 'Terminal Tablet Patio',
-                keyPrefix: 'mpos_live_se99',
-                branch: 'CENTRAL',
-                pointOfSale: 'Tablet 1',
-                active: true,
-                createdAt: '2026-09-25T12:00:00Z',
-              },
-            ]),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          ));
-        }
-        return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
-      });
-
-      try {
-        await submitCreateApiKey();
-
-        expect(createKeyModalOpenSignal.value).toBe(false);
-        expect(createdSecretKeySignal.value).not.toBeNull();
-        expect(createdSecretKeySignal.value?.rawKey).toBe('mpos_live_secret_full_key_998877');
-        expect(apiKeysSignal.value.length).toBe(2);
-
-        dismissSecretKeyModal();
-        expect(createdSecretKeySignal.value).toBeNull();
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-
-    it('revokeApiKey desactiva la llave seleccionada', async () => {
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = vi.fn().mockImplementation(() => {
-        return Promise.resolve(new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }));
-      });
-
-      try {
-        await revokeApiKey('key-1', 'Caja Mostrador 1');
-        expect(apiKeysSignal.value.length).toBe(0);
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
     });
   });
 

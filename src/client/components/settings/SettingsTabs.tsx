@@ -5,7 +5,7 @@ import {
 import { isSettingsTabAllowed } from '../../state/permissions-state.ts';
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: string }> = [
-  { id: 'pos', label: 'Terminales POS & API Keys', icon: '📡' },
+  { id: 'pos', label: 'Cajas del POS', icon: '📡' },
   { id: 'branches', label: 'Gestión de Sucursales', icon: '🏢' },
   { id: 'connection', label: 'Guía de Sincronización Connector', icon: '🔌' },
   { id: 'account', label: 'Mi cuenta', icon: '🔑' },

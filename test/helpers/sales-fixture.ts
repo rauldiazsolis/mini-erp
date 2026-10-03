@@ -29,7 +29,7 @@ export async function seedSalesFixture(app: Express, token: string, tenantId: st
     .prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p1', 'ALF-1', 'Alfajor', 500, ?, ?)")
     .run(at, at);
   const key = await request(app)
-    .post(`/api/tenants/${tenantId}/api-keys`)
+    .post(`/api/tenants/${tenantId}/pos-registers`)
     .set('Authorization', `Bearer ${token}`)
     .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
   const apiKey = (key.body as { rawKey: string }).rawKey;
