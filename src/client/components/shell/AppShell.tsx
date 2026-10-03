@@ -13,6 +13,7 @@ import {
 import { openOnboardingModal } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
+import { CreditsBanner } from '../credits/CreditsBanner.tsx';
 
 export function AppShell(props: { children: ComponentChildren }) {
   const activeTenant = activeTenantSignal.value;
@@ -56,6 +57,9 @@ export function AppShell(props: { children: ComponentChildren }) {
             </button>
           </div>
         )}
+
+        {/* Franja de créditos (#21) */}
+        <CreditsBanner />
 
         {/* Header Superior */}
         <Header />

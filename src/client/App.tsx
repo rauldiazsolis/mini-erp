@@ -15,6 +15,9 @@ import { CustomerView } from './components/customers/CustomerView.tsx';
 import { BulkView } from './components/bulk/BulkView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
+import { CreditsView } from './components/credits/CreditsView.tsx';
+import { RestrictedView } from './components/credits/RestrictedView.tsx';
+import { isRestrictedSignal } from './state/credits-state.ts';
 
 import {
   merchantOnboardingActiveSignal,
@@ -70,6 +73,15 @@ export function App() {
 
   const currentView = activeViewSignal.value;
 
+  // Comercio restringido por deuda (#21): solo Créditos y Configuración (cuenta y apariencia)
+  if (isRestrictedSignal.value && currentView !== 'credits' && currentView !== 'settings') {
+    return (
+      <AppShell>
+        <RestrictedView />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       {/* Vista de Navegación Activa */}
@@ -88,6 +100,8 @@ export function App() {
       {currentView === 'users' && <UsersView />}
 
       {currentView === 'settings' && <SettingsView />}
+
+      {currentView === 'credits' && <CreditsView />}
     </AppShell>
   );
 }

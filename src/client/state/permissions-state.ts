@@ -39,6 +39,7 @@ const VIEW_CAPABILITY: Record<ActiveNavView, Capability> = {
   bulk: 'bulk',
   users: 'users.manage',
   settings: 'tenant.use',
+  credits: 'credits.view',
 };
 
 const TAB_CAPABILITY: Record<SettingsTab, Capability> = {
