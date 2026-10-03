@@ -94,6 +94,59 @@ describe('API de plataforma de cobro (#21)', () => {
     expect((await request(app).delete(`${base}/gift-credits/gift_nada`).set(as('root')).send({})).status).toBe(400);
   });
 
+  describe('planilla de cobranzas', () => {
+    const sheet = [
+      'fecha;comercio;importe;info',
+      '05/10/2026;kiosco;5.000,00;op 1',
+      '05/10/2026;nada;100;op 2',
+      '05/10/2026;kiosco;5000;op 1',
+      '05/10/2026;demo-x;100;op 3',
+      '31/02/2026;kiosco;100;op 4',
+    ].join('\n');
+    type SheetResponse = { applied: boolean; rows: { line: number; status: string; message?: string; tenantName?: string; amount?: number }[] };
+    const subir = (csv: string, dryRun: boolean, who: keyof typeof tokens = 'support') =>
+      request(app).post(`/api/platform/payments/import${dryRun ? '?dryRun=1' : ''}`).set(as(who)).send({ csv });
+
+    beforeEach(() => {
+      systemDb.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('demo-x', 'demo-x', 'Demo', '2026-10-01T00:00:00.000Z')").run();
+      systemDb.prepare("INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES ('demo-x', 'kiosco', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')").run();
+    });
+
+    it('la vista previa marca cada fila y no registra nada', async () => {
+      const res = await subir(sheet, true);
+      expect(res.status).toBe(200);
+      const body = res.body as SheetResponse;
+      expect(body.applied).toBe(false);
+      expect(body.rows.map((r) => [r.line, r.status, r.message ?? ''])).toEqual([
+        [2, 'ok', ''],
+        [3, 'error', 'Comercio no encontrado'],
+        [4, 'duplicate', 'Repetido en la planilla'],
+        [5, 'error', 'Las demos no se cobran'],
+        [6, 'error', 'Fecha inválida'],
+      ]);
+      expect(body.rows[0]).toMatchObject({ tenantName: 'Kiosco', amount: 5000 });
+      expect(billing.listPayments()).toEqual([]);
+    });
+
+    it('registra las filas buenas una sola vez: volver a subirla da "ya registrado"', async () => {
+      const first = (await subir(sheet, false)).body as SheetResponse;
+      expect(first.applied).toBe(true);
+      expect(first.rows[0]?.status).toBe('ok');
+      expect(billing.summary(tenantId).paidBalance).toBe(5000);
+      const again = (await subir(sheet, false)).body as SheetResponse;
+      expect(again.rows[0]).toMatchObject({ status: 'duplicate', message: 'Ya registrado' });
+      expect(billing.listPayments()).toHaveLength(1);
+      expect(billing.listPayments()[0]?.fromSheet).toBe(true);
+      expect(audit('billing.payment_registered')).toHaveLength(1);
+      expect(JSON.parse(audit('billing.payment_registered')[0]?.details ?? '{}')).toMatchObject({ fromSheet: true, line: 2 });
+    });
+
+    it('una planilla vacía da 400 y un owner común 403', async () => {
+      expect((await subir('', true)).status).toBe(400);
+      expect((await subir(sheet, true, 'owner')).status).toBe(403);
+    });
+  });
+
   it('la lista de pagos', async () => {
     await request(app).post(`${base}/payments`).set(as('support')).send({ day: '2026-10-05', amount: 5000, info: 'op 1' });
     const res = await request(app).get('/api/platform/payments').set(as('root'));

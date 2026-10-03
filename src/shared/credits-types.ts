@@ -31,6 +31,18 @@ export type PlatformPaymentItem = {
   fromSheet: boolean;
 };
 
+/** El resultado de una fila de la planilla de cobranzas. */
+export type SheetResultRow = {
+  line: number;
+  status: 'ok' | 'duplicate' | 'error';
+  message?: string;
+  tenantId?: string;
+  tenantName?: string;
+  day?: string;
+  amount?: number;
+  info?: string;
+};
+
 /** Configuración de cobro, solo para root. */
 export type BillingSettings = {
   pricePerRegisterDay: number;

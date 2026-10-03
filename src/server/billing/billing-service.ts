@@ -213,6 +213,18 @@ export class BillingService {
     return writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
   }
 
+  /** Un comercio por su identificador, para la planilla; `demo` si es una demo. */
+  findTenantBySlug(slug: string): { id: string; name: string; demo: boolean } | undefined {
+    const row = this.db
+      .prepare('SELECT id, name, id IN (SELECT tenant_id FROM demo_sessions) AS demo FROM tenants WHERE slug = ?')
+      .get(slug) as { id: string; name: string; demo: number } | undefined;
+    return row === undefined ? undefined : { id: row.id, name: row.name, demo: row.demo === 1 };
+  }
+
+  paymentRefExists(ref: string): boolean {
+    return this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(ref) !== undefined;
+  }
+
   /** Los pagos registrados, del más nuevo al más viejo. */
   listPayments(limit = 200): PlatformPaymentItem[] {
     const rows = this.db
