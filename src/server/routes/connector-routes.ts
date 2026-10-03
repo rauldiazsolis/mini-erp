@@ -192,6 +192,10 @@ export function createConnectorRoutes(
       pendingLotIds: parseResult.data.pendingLotIds,
       branchId: branch,
       deviceId: parseResult.data.deviceId,
+      notices: {
+        billing: deps.billing.summary(req.posContext.tenantId),
+        register: parseResult.data.deviceId === undefined ? undefined : deps.registers.noticeState(registerId, parseResult.data.deviceId),
+      },
     });
 
     // Logging detallado del pull

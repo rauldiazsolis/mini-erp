@@ -17,6 +17,53 @@ export type BillingSummary = {
   dailyBurn: number;
 };
 
+/** Un cargo de una caja (o de un equipo ajeno, con su `deviceId`) en un día. */
+export type ChargeItem = {
+  id: string;
+  day: string;
+  registerId: string;
+  registerName: string;
+  deviceId: string | null;
+  amount: number;
+  paidAmount: number;
+  giftAmount: number;
+  debtAmount: number;
+  createdAt: string;
+};
+
+export type ChargesPage = { items: ChargeItem[]; count: number; page: number; pageSize: number; total: number };
+
+/** Un movimiento de la cuenta del comercio: pagos, devoluciones, deuda cancelada y créditos regalados. */
+export type CreditMovementItem = {
+  id: string;
+  kind: 'payment' | 'refund' | 'debt-settlement' | 'gift-granted' | 'gift-voided';
+  day: string;
+  amount: number;
+  info: string | null;
+  byName: string | null;
+  createdAt: string;
+};
+
+export type GiftItem = {
+  id: string;
+  origin: 'signup' | 'grant';
+  amount: number;
+  remaining: number;
+  expiresAt: string;
+  status: 'active' | 'expired' | 'voided' | 'used';
+  grantedByName: string | null;
+  reason: string | null;
+  createdAt: string;
+};
+
+/** "Cómo pagar": lo configura root. */
+export type PaymentInfo = { alias: string; cbu: string; holder: string; supportWhatsapp: string };
+
+export type CreditsResponse = BillingSummary & { paymentInfo: PaymentInfo };
+
+/** Lo mínimo para la franja y la restricción; lo ven los tres roles. */
+export type BillingStatus = { state: BillingState; debt: number; deadline: string | null };
+
 /** Un pago registrado por la plataforma, a mano o con la planilla. */
 export type PlatformPaymentItem = {
   id: string;

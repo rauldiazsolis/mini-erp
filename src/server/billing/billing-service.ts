@@ -4,7 +4,15 @@ import { allocateCharge, type GiftBalance } from './allocation.ts';
 import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
 import { DomainError } from '../errors.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import type { BillingSettings, BillingSummary, PlatformPaymentItem } from '../../shared/credits-types.ts';
+import type {
+  BillingSettings,
+  BillingSummary,
+  ChargesPage,
+  CreditMovementItem,
+  GiftItem,
+  PaymentInfo,
+  PlatformPaymentItem,
+} from '../../shared/credits-types.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -96,6 +104,127 @@ export class BillingService {
       )
       .run(id, tenantId, settings.signupBonus, new Date(at.getTime() + settings.signupBonusDays * DAY_MS).toISOString(), actorUserId, at.toISOString());
     return id;
+  }
+
+  // --- consultas de la pantalla Créditos ---
+
+  /** Los cargos del comercio en el rango (días argentinos), del más nuevo al más viejo, con el total del filtro. */
+  listCharges(tenantId: string, q: { from?: string | undefined; to?: string | undefined; page: number; pageSize: number }): ChargesPage {
+    const where = ['c.tenant_id = ?'];
+    const args: string[] = [tenantId];
+    if (q.from !== undefined) {
+      where.push('c.day >= ?');
+      args.push(q.from);
+    }
+    if (q.to !== undefined) {
+      where.push('c.day <= ?');
+      args.push(q.to);
+    }
+    const filter = where.join(' AND ');
+    const totals = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(c.amount), 0) AS total FROM charges c WHERE ${filter}`).get(...args) as {
+      n: number;
+      total: number;
+    };
+    const rows = this.db
+      .prepare(
+        `SELECT c.id, c.day, c.register_id, COALESCE(r.name, 'Caja borrada') AS register_name, c.device_id, c.amount,
+                c.paid_amount, c.gift_amount, c.debt_amount, c.created_at
+         FROM charges c LEFT JOIN registers r ON r.id = c.register_id
+         WHERE ${filter}
+         ORDER BY c.day DESC, register_name, c.device_id
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...args, q.pageSize, (q.page - 1) * q.pageSize) as {
+      id: string;
+      day: string;
+      register_id: string;
+      register_name: string;
+      device_id: string;
+      amount: number;
+      paid_amount: number;
+      gift_amount: number;
+      debt_amount: number;
+      created_at: string;
+    }[];
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        day: r.day,
+        registerId: r.register_id,
+        registerName: r.register_name,
+        deviceId: r.device_id === '' ? null : r.device_id,
+        amount: r.amount,
+        paidAmount: r.paid_amount,
+        giftAmount: r.gift_amount,
+        debtAmount: r.debt_amount,
+        createdAt: r.created_at,
+      })),
+      count: totals.n,
+      page: q.page,
+      pageSize: q.pageSize,
+      total: totals.total,
+    };
+  }
+
+  /** Pagos, devoluciones, deuda cancelada y créditos otorgados o anulados del comercio, lo más nuevo primero. */
+  listMovements(tenantId: string): CreditMovementItem[] {
+    return this.db
+      .prepare(
+        `SELECT id, kind, day, amount, info, by_name AS byName, created_at AS createdAt FROM (
+           SELECT p.id, p.kind, p.day, p.amount, p.info, u.name AS by_name, p.created_at
+           FROM paid_movements p LEFT JOIN users u ON u.id = p.created_by
+           WHERE p.tenant_id = ? AND p.kind IN ('payment', 'refund', 'debt-settlement')
+           UNION ALL
+           SELECT g.id, 'gift-granted', substr(g.created_at, 1, 10), g.amount, g.reason, u.name, g.created_at
+           FROM gift_credits g LEFT JOIN users u ON u.id = g.granted_by
+           WHERE g.tenant_id = ?
+           UNION ALL
+           SELECT g.id || ':void', 'gift-voided', substr(g.voided_at, 1, 10), 0, g.void_reason, u.name, g.voided_at
+           FROM gift_credits g LEFT JOIN users u ON u.id = g.voided_by
+           WHERE g.tenant_id = ? AND g.voided_at IS NOT NULL
+         ) ORDER BY createdAt DESC, id DESC LIMIT 500`,
+      )
+      .all(tenantId, tenantId, tenantId) as CreditMovementItem[];
+  }
+
+  /** Los créditos regalados del comercio con su remanente y estado. */
+  listGifts(tenantId: string): GiftItem[] {
+    const nowIso = this.now().toISOString();
+    const rows = this.db
+      .prepare(
+        `SELECT g.id, g.origin, g.amount, g.expires_at, g.voided_at, g.reason, g.created_at, u.name AS granted_by_name,
+                g.amount - COALESCE((SELECT SUM(c.amount) FROM gift_consumptions c WHERE c.credit_id = g.id), 0) AS remaining
+         FROM gift_credits g LEFT JOIN users u ON u.id = g.granted_by
+         WHERE g.tenant_id = ?
+         ORDER BY g.created_at DESC, g.id DESC`,
+      )
+      .all(tenantId) as {
+      id: string;
+      origin: string;
+      amount: number;
+      expires_at: string;
+      voided_at: string | null;
+      reason: string | null;
+      created_at: string;
+      granted_by_name: string | null;
+      remaining: number;
+    }[];
+    return rows.map((r): GiftItem => ({
+      id: r.id,
+      origin: r.origin === 'signup' ? 'signup' : 'grant',
+      amount: r.amount,
+      remaining: r.voided_at !== null || r.expires_at <= nowIso ? 0 : Math.max(0, r.remaining),
+      expiresAt: r.expires_at,
+      status: r.voided_at !== null ? 'voided' : r.expires_at <= nowIso ? 'expired' : r.remaining <= 0 ? 'used' : 'active',
+      grantedByName: r.granted_by_name,
+      reason: r.reason,
+      createdAt: r.created_at,
+    }));
+  }
+
+  paymentInfo(): PaymentInfo {
+    const s = readBillingSettings(this.db);
+    return { alias: s.paymentAlias, cbu: s.paymentCbu, holder: s.paymentHolder, supportWhatsapp: s.supportWhatsapp };
   }
 
   // --- plataforma ---

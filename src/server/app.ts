@@ -23,6 +23,8 @@ import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { createRegisterRoutes } from './routes/register-routes.ts';
 import { createPlatformRoutes } from './routes/platform-routes.ts';
+import { createCreditsRoutes } from './routes/credits-routes.ts';
+import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
@@ -124,6 +126,7 @@ export function createApp(deps?: AppDependencies): {
     '/api/tenants/:tenantId',
     requireAdmin,
     requireTenantContext,
+    createBillingRestriction(billing),
     createCatalogRoutes(),
     createStockRoutes(),
     createCustomerRoutes(),
@@ -134,6 +137,7 @@ export function createApp(deps?: AppDependencies): {
     createSalesRoutes(),
     createApiKeyRoutes(apiKeyService),
     createRegisterRoutes(registers, auditLog),
+    createCreditsRoutes(billing),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 

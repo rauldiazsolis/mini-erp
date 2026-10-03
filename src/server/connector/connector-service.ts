@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts';
 import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
 import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.ts';
-import { noticesFor } from '../notices/notice-service.ts';
+import { noticesFor, type NoticeContext } from '../notices/notice-service.ts';
 import { saveCashMovement, saveCustomerPayment, saveSale } from '../sales/records.ts';
 
 export type { LotIssue };
@@ -360,6 +360,8 @@ export class ConnectorService {
     pendingLotIds: string[];
     branchId?: string;
     deviceId?: string | undefined;
+    /** Cobro y caja de la terminal, para sus avisos (#21). */
+    notices?: Omit<NoticeContext, 'deviceId'> | undefined;
   }) {
     // 1. Productos
     const productRows = (
@@ -476,7 +478,7 @@ export class ConnectorService {
       stock,
       lots,
       // Avisos de este equipo (4.4.0, #2): la lista vigente y completa, sin cursor
-      notices: noticesFor(this.tenantDb, params.deviceId),
+      notices: noticesFor(this.tenantDb, { deviceId: params.deviceId, ...params.notices }),
     };
   }
 
