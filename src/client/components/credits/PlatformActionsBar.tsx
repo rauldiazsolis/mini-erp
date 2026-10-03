@@ -229,29 +229,32 @@ export function GiftVoidAction(props: { gift: GiftItem }) {
 /** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Créditos. */
 export function PlatformActionsBar() {
   const isRoot = currentUserSignal.value?.globalRole === 'root';
+  // El modal va fuera del Card: su backdrop-blur haría que el fixed del modal se mida contra la tarjeta
   return (
-    <Card class="space-y-3 border-amber-300 dark:border-amber-500/30">
-      <h3 class="text-sm font-bold text-amber-700 dark:text-amber-300">Acciones de plataforma</h3>
-      <div class="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => { openAction('payment'); }}>
-          Registrar pago
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => { openAction('grant'); }}>
-          Otorgar créditos
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => { openAction('grace'); }}>
-          Extender gracia
-        </Button>
-        {isRoot && (
-          <Button size="sm" variant="secondary" onClick={() => { openAction('refund'); }}>
-            Devolución
+    <>
+      <Card class="space-y-3 border-amber-300 dark:border-amber-500/30">
+        <h3 class="text-sm font-bold text-amber-700 dark:text-amber-300">Acciones de plataforma</h3>
+        <div class="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => { openAction('payment'); }}>
+            Registrar pago
           </Button>
-        )}
-        <Button size="sm" variant="secondary" onClick={() => { openAction('holder'); }}>
-          Cambiar titular
-        </Button>
-      </div>
+          <Button size="sm" variant="secondary" onClick={() => { openAction('grant'); }}>
+            Otorgar créditos
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => { openAction('grace'); }}>
+            Extender gracia
+          </Button>
+          {isRoot && (
+            <Button size="sm" variant="secondary" onClick={() => { openAction('refund'); }}>
+              Devolución
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={() => { openAction('holder'); }}>
+            Cambiar titular
+          </Button>
+        </div>
+      </Card>
       <ActionModal />
-    </Card>
+    </>
   );
 }
