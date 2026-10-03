@@ -8,6 +8,7 @@ import { activeViewSignal } from './state/navigation-state.ts';
 import { AuthView } from './components/auth/AuthView.tsx';
 import { AppShell } from './components/shell/AppShell.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
+import { SalesView } from './components/sales/SalesView.tsx';
 import { CatalogView } from './components/catalog/CatalogView.tsx';
 import { StockView } from './components/stock/StockView.tsx';
 import { CustomerView } from './components/customers/CustomerView.tsx';
@@ -73,6 +74,8 @@ export function App() {
     <AppShell>
       {/* Vista de Navegación Activa */}
       {currentView === 'dashboard' && <DashboardView />}
+
+      {currentView === 'sales' && <SalesView />}
 
       {currentView === 'catalog' && <CatalogView />}
 

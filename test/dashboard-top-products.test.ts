@@ -4,6 +4,7 @@ import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { DashboardService } from '../src/server/dashboard/dashboard-service.ts';
 import { lineTotal, saleLineSchema } from '../src/server/dashboard/sale-lines.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
+import { argentinaToday } from '../src/shared/argentina-day.ts';
 
 function insertProduct(db: DatabaseSync, id: string, name: string, price: number): void {
   const now = new Date().toISOString();
@@ -19,9 +20,9 @@ function insertProduct(db: DatabaseSync, id: string, name: string, price: number
 
 function insertSale(db: DatabaseSync, id: string, payload: string, total: number): void {
   db.prepare(
-    `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at)
-     VALUES (?, ?, 'pos_1', 'CENTRAL', 'Caja 1', ?, NULL, ?)`,
-  ).run(id, payload, total, new Date().toISOString());
+    `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at, day)
+     VALUES (?, ?, 'pos_1', 'CENTRAL', 'Caja 1', ?, NULL, ?, ?)`,
+  ).run(id, payload, total, new Date().toISOString(), argentinaToday(new Date()));
 }
 
 describe('Total de línea como el POS (#15)', () => {

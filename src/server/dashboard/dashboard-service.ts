@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { lineTotal, parseSaleLines, roundAmount } from './sale-lines.ts';
+import { argentinaHour, argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
+import { readSale } from '../sales/stored-documents.ts';
 
 export type DashboardPeriod = 'today' | 'week' | 'month';
 
@@ -53,48 +55,60 @@ type SaleRow = {
   id: string;
   payload: string;
   total: number;
-  branch: string | null;
   created_at: string;
+  day: string;
+  voids_sale_id: string | null;
+  voided: number;
 };
+
+const PERIOD_DAYS: Record<DashboardPeriod, number> = { today: 1, week: 7, month: 30 };
+const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+/** Vigente: ni anulación ni anulada (#20). La cantidad de tickets y el promedio cuentan solo estos. */
+function isValid(sale: SaleRow): boolean {
+  return sale.voids_sale_id === null && sale.voided === 0;
+}
+
+function dayLabel(day: string, withWeekday: boolean): string {
+  const [, month = '', date = ''] = day.split('-');
+  const weekday = WEEKDAYS[new Date(`${day}T12:00:00.000Z`).getUTCDay()] ?? '';
+  return withWeekday ? `${weekday} ${date}/${month}` : `${date}/${month}`;
+}
 
 export class DashboardService {
   private db: DatabaseSync;
+  private now: () => Date;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: DatabaseSync, now: () => Date = () => new Date()) {
     this.db = db;
+    this.now = now;
   }
 
   public getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): DashboardSummaryResponse {
     const period: DashboardPeriod = options?.period ?? 'today';
     const branchId = options?.branchId;
 
-    const now = new Date();
-    const { startDate, endDate, prevStartDate, prevEndDate, timelineIntervals } = this.calculateDateRanges(now, period);
+    // Días argentinos (#20): hoy, y el bloque de la misma cantidad de días justo antes
+    const days = PERIOD_DAYS[period];
+    const today = argentinaToday(this.now());
+    const from = shiftDay(today, -(days - 1));
+    const sales = this.fetchSales(from, today, branchId);
+    const prevSales = this.fetchSales(shiftDay(from, -days), shiftDay(from, -1), branchId);
 
-    // Obtener ventas válidas (excluyendo ventas anuladas o anulaciones)
-    const validSales = this.fetchValidSales(startDate.toISOString(), endDate.toISOString(), branchId);
-    const prevSales = this.fetchValidSales(prevStartDate.toISOString(), prevEndDate.toISOString(), branchId);
-
-    const totalSales = validSales.reduce((acc, s) => acc + s.total, 0);
-    const salesCount = validSales.length;
-    const averageTicket = salesCount > 0 ? Math.round((totalSales / salesCount) * 100) / 100 : 0;
-
-    const previousTotalSales = prevSales.reduce((acc, s) => acc + s.total, 0);
+    // Como el POS: el total es el neto de todos los tickets; cantidad y promedio, de los vigentes
+    const valid = sales.filter(isValid);
+    const totalSales = roundAmount(sales.reduce((acc, s) => acc + s.total, 0));
+    const salesCount = valid.length;
+    const averageTicket = salesCount > 0 ? roundAmount(valid.reduce((acc, s) => acc + s.total, 0) / salesCount) : 0;
+    const previousTotalSales = roundAmount(prevSales.reduce((acc, s) => acc + s.total, 0));
     const changePercentage =
-      previousTotalSales > 0
-        ? Math.round(((totalSales - previousTotalSales) / previousTotalSales) * 1000) / 10
+      previousTotalSales !== 0
+        ? Math.round(((totalSales - previousTotalSales) / Math.abs(previousTotalSales)) * 1000) / 10
         : 0;
 
-    // Calcular Timeline
-    const timeline = this.buildTimeline(validSales, timelineIntervals);
-
-    // Calcular Top Products
-    const topProducts = this.calculateTopProducts(validSales);
-
-    // Calcular Cuentas Corrientes
+    const timeline = period === 'today' ? this.hourlyTimeline(sales, today) : this.dailyTimeline(sales, from, days, period === 'week');
+    const topProducts = this.calculateTopProducts(sales);
     const customerMetrics = this.calculateCustomerMetrics();
-
-    // Calcular Alertas de Stock
     const stockAlerts = this.calculateStockAlerts(branchId);
 
     return {
@@ -116,129 +130,47 @@ export class DashboardService {
     };
   }
 
-  private fetchValidSales(startIso: string, endIso: string, branchId?: string): SaleRow[] {
+  private fetchSales(from: string, to: string, branchId?: string): SaleRow[] {
     let sql = `
-      SELECT id, payload, total, branch, created_at
-      FROM sales
-      WHERE voids_sale_id IS NULL
-        AND id NOT IN (SELECT voids_sale_id FROM sales WHERE voids_sale_id IS NOT NULL)
-        AND created_at >= ?
-        AND created_at <= ?
-    `;
-    const params: string[] = [startIso, endIso];
-
+      SELECT s.id, s.payload, s.total, s.created_at, s.day, s.voids_sale_id,
+        EXISTS (SELECT 1 FROM sales v WHERE v.voids_sale_id = s.id) AS voided
+      FROM sales s
+      WHERE s.day BETWEEN ? AND ?`;
+    const params: string[] = [from, to];
     if (branchId !== undefined && branchId !== '') {
-      sql += ` AND branch = ?`;
+      sql += ' AND s.branch = ?';
       params.push(branchId);
     }
-
-    sql += ` ORDER BY created_at ASC`;
-
-    return this.db.prepare(sql).all(...params) as unknown as SaleRow[];
+    return this.db.prepare(`${sql} ORDER BY s.created_at ASC`).all(...params) as unknown as SaleRow[];
   }
 
-  private calculateDateRanges(
-    now: Date,
-    period: DashboardPeriod,
-  ): {
-    startDate: Date;
-    endDate: Date;
-    prevStartDate: Date;
-    prevEndDate: Date;
-    timelineIntervals: { start: Date; end: Date; label: string }[];
-  } {
-    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-    const endDate = now;
-
-    if (period === 'today') {
-      const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      const prevStartDate = new Date(startDate.getTime() - ONE_DAY_MS);
-      const prevEndDate = new Date(now.getTime() - ONE_DAY_MS);
-
-      // Fraccionamiento por tramos horarios (cada 3 horas: 00-03, 03-06, ..., 21-24)
-      const timelineIntervals: { start: Date; end: Date; label: string }[] = [];
-      for (let h = 0; h < 24; h += 3) {
-        const iStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), h, 0, 0, 0);
-        const iEnd = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), h + 3, 0, 0, 0);
-        const label = `${String(h).padStart(2, '0')}:00`;
-        timelineIntervals.push({ start: iStart, end: iEnd, label });
-      }
-
-      return { startDate, endDate, prevStartDate, prevEndDate, timelineIntervals };
+  /** "Hoy": tramos de 3 horas argentinas, sobre el `createdAt` de cada venta. */
+  private hourlyTimeline(sales: SaleRow[], today: string): TimelinePoint[] {
+    const points: TimelinePoint[] = [];
+    for (let h = 0; h < 24; h += 3) {
+      const inSlot = sales.filter((s) => {
+        const hour = argentinaHour(readSale(s.payload).createdAt ?? s.created_at);
+        return hour !== null && hour >= h && hour < h + 3;
+      });
+      points.push({
+        date: today,
+        label: `${String(h).padStart(2, '0')}:00`,
+        total: roundAmount(inSlot.reduce((acc, s) => acc + s.total, 0)),
+        count: inSlot.filter(isValid).length,
+      });
     }
-
-    if (period === 'week') {
-      // 7 días exactos: desde (now - 6 días a las 00:00:00) hasta now
-      const startDayBase = new Date(now.getTime() - 6 * ONE_DAY_MS);
-      const startDate = new Date(startDayBase.getFullYear(), startDayBase.getMonth(), startDayBase.getDate(), 0, 0, 0, 0);
-
-      const prevStartDayBase = new Date(now.getTime() - 13 * ONE_DAY_MS);
-      const prevStartDate = new Date(prevStartDayBase.getFullYear(), prevStartDayBase.getMonth(), prevStartDayBase.getDate(), 0, 0, 0, 0);
-      const prevEndDate = new Date(startDate.getTime() - 1);
-
-      const timelineIntervals: { start: Date; end: Date; label: string }[] = [];
-      const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
-      for (let d = 6; d >= 0; d--) {
-        const dayRef = new Date(now.getTime() - d * ONE_DAY_MS);
-        const iStart = new Date(dayRef.getFullYear(), dayRef.getMonth(), dayRef.getDate(), 0, 0, 0, 0);
-        const iEnd = new Date(dayRef.getFullYear(), dayRef.getMonth(), dayRef.getDate(), 23, 59, 59, 999);
-        const dayName = weekdays[iStart.getDay()] ?? '';
-        const dayNum = String(iStart.getDate()).padStart(2, '0');
-        const monthNum = String(iStart.getMonth() + 1).padStart(2, '0');
-        const label = `${dayName} ${dayNum}/${monthNum}`;
-        timelineIntervals.push({ start: iStart, end: iEnd, label });
-      }
-
-      return { startDate, endDate, prevStartDate, prevEndDate, timelineIntervals };
-    }
-
-    // Period === 'month' (30 días)
-    const startDayBase = new Date(now.getTime() - 29 * ONE_DAY_MS);
-    const startDate = new Date(startDayBase.getFullYear(), startDayBase.getMonth(), startDayBase.getDate(), 0, 0, 0, 0);
-
-    const prevStartDayBase = new Date(now.getTime() - 59 * ONE_DAY_MS);
-    const prevStartDate = new Date(prevStartDayBase.getFullYear(), prevStartDayBase.getMonth(), prevStartDayBase.getDate(), 0, 0, 0, 0);
-    const prevEndDate = new Date(startDate.getTime() - 1);
-
-    const timelineIntervals: { start: Date; end: Date; label: string }[] = [];
-    for (let d = 29; d >= 0; d--) {
-      const dayRef = new Date(now.getTime() - d * ONE_DAY_MS);
-      const iStart = new Date(dayRef.getFullYear(), dayRef.getMonth(), dayRef.getDate(), 0, 0, 0, 0);
-      const iEnd = new Date(dayRef.getFullYear(), dayRef.getMonth(), dayRef.getDate(), 23, 59, 59, 999);
-      const dayNum = String(iStart.getDate()).padStart(2, '0');
-      const monthNum = String(iStart.getMonth() + 1).padStart(2, '0');
-      const label = `${dayNum}/${monthNum}`;
-      timelineIntervals.push({ start: iStart, end: iEnd, label });
-    }
-
-    return { startDate, endDate, prevStartDate, prevEndDate, timelineIntervals };
+    return points;
   }
 
-  private buildTimeline(
-    sales: SaleRow[],
-    intervals: { start: Date; end: Date; label: string }[],
-  ): TimelinePoint[] {
-    return intervals.map((interval) => {
-      const startMs = interval.start.getTime();
-      const endMs = interval.end.getTime();
-
-      let total = 0;
-      let count = 0;
-
-      for (const sale of sales) {
-        const saleMs = new Date(sale.created_at).getTime();
-        if (saleMs >= startMs && saleMs <= endMs) {
-          total += sale.total;
-          count++;
-        }
-      }
-
+  private dailyTimeline(sales: SaleRow[], from: string, days: number, withWeekday: boolean): TimelinePoint[] {
+    return Array.from({ length: days }, (_, i) => {
+      const day = shiftDay(from, i);
+      const inDay = sales.filter((s) => s.day === day);
       return {
-        date: interval.start.toISOString().split('T')[0] ?? '',
-        label: interval.label,
-        total,
-        count,
+        date: day,
+        label: dayLabel(day, withWeekday),
+        total: roundAmount(inDay.reduce((acc, s) => acc + s.total, 0)),
+        count: inDay.filter(isValid).length,
       };
     });
   }
@@ -275,7 +207,9 @@ export class DashboardService {
       }
     }
 
+    // Neto de anulaciones (#20): un producto con unidades netas no positivas no entra al ranking
     const top = Array.from(entries.values())
+      .filter((e) => e.units > 0)
       .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
       .slice(0, 5);
     const names = this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));

@@ -1,5 +1,6 @@
 import { dashboardDataSignal, formatNumber } from '../../state/dashboard-state.ts';
 import { navigateTo } from '../../state/navigation-state.ts';
+import { drillToStockProduct } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
 
 export function StockAlertsCard() {
@@ -46,9 +47,12 @@ export function StockAlertsCard() {
             {lowProducts.map((p) => {
               const isOut = p.stock <= 0;
               return (
-                <div
+                <button
+                  type="button"
                   key={p.id}
-                  class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs"
+                  title="Ver en Stock"
+                  onClick={() => { drillToStockProduct(p.name); }}
+                  class="w-full text-left cursor-pointer p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 flex items-center justify-between text-xs"
                 >
                   <div class="truncate max-w-[70%]">
                     <span class="font-medium text-slate-800 dark:text-slate-200 block truncate">{p.name}</span>
@@ -66,7 +70,7 @@ export function StockAlertsCard() {
                       {isOut ? 'Agotado' : `${formatNumber(p.stock)} un.`}
                     </span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

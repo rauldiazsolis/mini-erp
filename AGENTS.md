@@ -211,6 +211,22 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - El barrido loguea `[demos] barrido: N …` al arrancar y cada vez que borra alguna.
   - El alta desde una demo crea un **comercio nuevo** (la demo vence sola); el rubro se preselecciona
     con el `template` que viaja en `onboarding.url`.
+- **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
+  - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
+    y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
+    vienen, como el `/RESUMEN` del POS. Nunca la hora del servidor (en Lightsail es UTC).
+  - **Escritura**: ventas, cobranzas y movimientos de caja se escriben solo con
+    `src/server/sales/records.ts`, que guarda el payload y completa las columnas derivadas (`day`,
+    `customer_id`, números de ticket y de recibo; migración de comercio v5). Lo usan el push, la
+    cobranza del admin y la semilla.
+  - **Caja** = sucursal + punto de venta del `origin`. La cobranza del admin es `ADMIN · Oficina`
+    ("Admin").
+  - **Consultas**: `SalesQueryService` (de comercio) y `routes/sales-routes.ts`, para los tres roles.
+    El resumen es una copia fiel de `calculateDaySummary` del POS (`sales/day-summary.ts`): si el POS
+    lo cambia, se copia el cambio. El cliente usa los mismos textos que el `/RESUMEN`.
+  - **Anulaciones como en el POS**, también en el dashboard: el total es el neto de todos los tickets
+    y la cantidad cuenta los vigentes (ni anulaciones ni anuladas).
+  - Los tipos de la API están en `src/shared/sales-types.ts` (servidor y cliente).
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
@@ -239,7 +255,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
   - **Fechas, horas y números según la configuración del navegador** (su locale y su preferencia de
     12 o 24 horas), nunca con un locale fijo. La moneda es siempre ARS; solo cambia cómo se escribe.
-    Hoy varios componentes fijan `es-AR`: unificarlo es #51.
+    Hoy varios componentes fijan `es-AR`: unificarlo es #51. Lo nuevo usa `src/client/format.ts`.
   - **Marca** (#18): lo visible dice "mini contax" (en minúsculas). Logo en `components/ui/Logo.tsx`
     (un ticket con la "c" de Contax) y favicon en `public/favicon.svg` (variante de ticket grande,
     legible a 16 px). La versión de mini sale de `package.json`: `appVersionDefine` en
@@ -294,7 +310,8 @@ Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
 (roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
 las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
-(#19, hecha), M3 contrato 4.4.0 (#2), M4 ventas y caja (#20), M5 créditos (#21) y M6 importación (#22).
+(#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21) y M6
+importación (#22).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 

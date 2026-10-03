@@ -1,8 +1,10 @@
+import type { HTMLAttributes } from 'preact';
 import {
   dashboardDataSignal,
   formatCurrency,
   formatNumber,
 } from '../../state/dashboard-state.ts';
+import { drillToSales } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
 
 export function TopProductsTable() {
@@ -28,9 +30,27 @@ export function TopProductsTable() {
             {products.map((item, idx) => {
               const ratio = Math.min(100, Math.round((item.unitsSold / maxUnits) * 100));
               const isTop3 = idx < 3;
+              // Drill-down (#20): un producto del catálogo lleva a sus tickets; una línea libre no tiene id
+              const productId = item.kind === 'product' ? item.productId : undefined;
+              const drill: HTMLAttributes<HTMLDivElement> =
+                productId === undefined
+                  ? {}
+                  : {
+                      role: 'button',
+                      tabIndex: 0,
+                      title: 'Ver sus tickets',
+                      onClick: () => { drillToSales({ productId }); },
+                      onKeyDown: (e: KeyboardEvent) => {
+                        if (e.key === 'Enter') drillToSales({ productId });
+                      },
+                    };
 
               return (
-                <div key={item.key} class="space-y-1">
+                <div
+                  key={item.key}
+                  class={`space-y-1${productId === undefined ? '' : ' cursor-pointer rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}
+                  {...drill}
+                >
                   <div class="flex items-center justify-between text-xs">
                     <div class="flex items-center gap-2.5 truncate max-w-[65%]">
                       <span

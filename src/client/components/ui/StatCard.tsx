@@ -1,4 +1,4 @@
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, HTMLAttributes } from 'preact';
 
 export type StatCardProps = {
   title: string;
@@ -6,10 +6,27 @@ export type StatCardProps = {
   subtitle?: ComponentChildren;
   icon?: ComponentChildren;
   variant?: 'default' | 'primary' | 'warning' | 'success' | 'danger';
+  /** Drill-down (#20): con `onClick`, la tarjeta es un botón que lleva al detalle. */
+  onClick?: (() => void) | undefined;
 };
 
 export function StatCard(props: StatCardProps) {
-  const { title, value, subtitle, icon, variant = 'default' } = props;
+  const { title, value, subtitle, icon, variant = 'default', onClick } = props;
+  const clickable: HTMLAttributes<HTMLDivElement> =
+    onClick === undefined
+      ? {}
+      : {
+          role: 'button',
+          tabIndex: 0,
+          title: 'Ver el detalle',
+          onClick,
+          onKeyDown: (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onClick();
+            }
+          },
+        };
 
   const variantBorder = {
     default: 'border-slate-200 dark:border-slate-800',
@@ -21,7 +38,10 @@ export function StatCard(props: StatCardProps) {
 
   return (
     <div
-      class={`bg-white dark:bg-slate-900/80 backdrop-blur border ${variantBorder} rounded-2xl p-5 shadow-sm dark:shadow-xl transition-all flex flex-col justify-between`}
+      class={`bg-white dark:bg-slate-900/80 backdrop-blur border ${variantBorder} rounded-2xl p-5 shadow-sm dark:shadow-xl transition-all flex flex-col justify-between${
+        onClick === undefined ? '' : ' cursor-pointer hover:ring-2 hover:ring-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+      }`}
+      {...clickable}
     >
       <div class="flex items-center justify-between gap-2 mb-3">
         <span class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
