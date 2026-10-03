@@ -137,6 +137,69 @@ export async function loadSheetFile(file: File): Promise<void> {
   sheetAppliedSignal.value = false;
 }
 
+/** "3 para registrar, 1 ya registrado, 1 con error" (o "registrados", una vez aplicada). */
+export function sheetSummary(rows: SheetResultRow[], applied: boolean): string {
+  const ok = rows.filter((r) => r.status === 'ok').length;
+  const dup = rows.filter((r) => r.status === 'duplicate').length;
+  const err = rows.filter((r) => r.status === 'error').length;
+  const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+  return [
+    `${String(ok)} ${applied ? plural(ok, 'registrado', 'registrados') : 'para registrar'}`,
+    ...(dup > 0 ? [`${String(dup)} ya ${plural(dup, 'registrado', 'registrados')}`] : []),
+    ...(err > 0 ? [`${String(err)} con error`] : []),
+  ].join(', ');
+}
+
+/** El formulario de configuración, todo en texto; el porcentaje pagado va de 0 a 100. */
+export type SettingsDraft = Record<keyof BillingSettings, string>;
+
+const NUMBER_FIELDS: Array<{ key: 'pricePerRegisterDay' | 'signupBonus' | 'signupBonusDays' | 'paidShare' | 'graceDays' | 'lowBalanceDays'; label: string }> = [
+  { key: 'pricePerRegisterDay', label: 'Precio por caja y día' },
+  { key: 'signupBonus', label: 'Bono de alta' },
+  { key: 'signupBonusDays', label: 'Días del bono' },
+  { key: 'paidShare', label: 'Porcentaje pagado' },
+  { key: 'graceDays', label: 'Días de gracia' },
+  { key: 'lowBalanceDays', label: 'Días del aviso' },
+];
+
+export function settingsToDraft(s: BillingSettings): SettingsDraft {
+  return {
+    pricePerRegisterDay: String(s.pricePerRegisterDay),
+    signupBonus: String(s.signupBonus),
+    signupBonusDays: String(s.signupBonusDays),
+    paidShare: String(Math.round(s.paidShare * 100)),
+    graceDays: String(s.graceDays),
+    lowBalanceDays: String(s.lowBalanceDays),
+    paymentAlias: s.paymentAlias,
+    paymentCbu: s.paymentCbu,
+    paymentHolder: s.paymentHolder,
+    supportWhatsapp: s.supportWhatsapp,
+  };
+}
+
+/** La configuración del formulario, o el error del primer número que no lo es (el resto lo valida el servidor). */
+export function draftToSettings(d: SettingsDraft): BillingSettings | string {
+  const n: Partial<Record<(typeof NUMBER_FIELDS)[number]['key'], number>> = {};
+  for (const f of NUMBER_FIELDS) {
+    const text = d[f.key].trim();
+    const value = Number(text);
+    if (text === '' || !Number.isFinite(value)) return `${f.label} tiene que ser un número`;
+    n[f.key] = value;
+  }
+  return {
+    pricePerRegisterDay: n.pricePerRegisterDay ?? 0,
+    signupBonus: n.signupBonus ?? 0,
+    signupBonusDays: n.signupBonusDays ?? 0,
+    paidShare: (n.paidShare ?? 0) / 100,
+    graceDays: n.graceDays ?? 0,
+    lowBalanceDays: n.lowBalanceDays ?? 0,
+    paymentAlias: d.paymentAlias.trim(),
+    paymentCbu: d.paymentCbu.trim(),
+    paymentHolder: d.paymentHolder.trim(),
+    supportWhatsapp: d.supportWhatsapp.trim(),
+  };
+}
+
 export async function fetchPlatformPayments(): Promise<void> {
   const t = token();
   if (t === null) return;

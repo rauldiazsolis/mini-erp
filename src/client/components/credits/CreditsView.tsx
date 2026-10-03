@@ -1,4 +1,3 @@
-import type { ComponentChildren } from 'preact';
 import {
   creditsSignal,
   chargesSignal,
@@ -10,7 +9,7 @@ import {
   whatsappPayUrl,
   type CreditsTab,
 } from '../../state/credits-state.ts';
-import { activeTenantSignal } from '../../state/auth-state.ts';
+import { activeTenantSignal, isRootOrSupportSignal } from '../../state/auth-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { formatDateTime, formatDay, formatMoney } from '../../format.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
@@ -20,6 +19,7 @@ import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Pagination } from '../ui/Pagination.tsx';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
+import { PlatformActionsBar, GiftVoidAction } from './PlatformActionsBar.tsx';
 import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types.ts';
 
 const TABS: Array<{ id: CreditsTab; label: string }> = [
@@ -193,8 +193,9 @@ function MovementsTab() {
   );
 }
 
-function GiftsTab(props: { renderActions?: ((gift: GiftItem) => ComponentChildren) | undefined }) {
+function GiftsTab() {
   const items = giftsSignal.value;
+  const withActions = isRootOrSupportSignal.value;
   return (
     <TableContainer>
       {items.length === 0 ? (
@@ -211,7 +212,7 @@ function GiftsTab(props: { renderActions?: ((gift: GiftItem) => ComponentChildre
                 <Th>Estado</Th>
                 <Th>Otorgó</Th>
                 <Th>Motivo</Th>
-                {props.renderActions !== undefined && <Th />}
+                {withActions && <Th />}
               </Tr>
             </Thead>
             <Tbody>
@@ -224,7 +225,11 @@ function GiftsTab(props: { renderActions?: ((gift: GiftItem) => ComponentChildre
                   <Td>{GIFT_STATUS[g.status]}</Td>
                   <Td>{g.grantedByName ?? ''}</Td>
                   <Td>{g.reason ?? ''}</Td>
-                  {props.renderActions !== undefined && <Td class="text-right">{props.renderActions(g)}</Td>}
+                  {withActions && (
+                    <Td class="text-right">
+                      <GiftVoidAction gift={g} />
+                    </Td>
+                  )}
                 </Tr>
               ))}
             </Tbody>
@@ -237,18 +242,15 @@ function GiftsTab(props: { renderActions?: ((gift: GiftItem) => ComponentChildre
 
 /**
  * Créditos (#21), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
- * regalados. `platform` es la barra de acciones de root y soporte; `giftActions`, sus acciones por crédito.
+ * regalados. Root y soporte suman las acciones de plataforma sobre el comercio.
  */
-export function CreditsView(props: {
-  platform?: ComponentChildren;
-  giftActions?: ((gift: GiftItem) => ComponentChildren) | undefined;
-}) {
+export function CreditsView() {
   const credits = creditsSignal.value;
   const tab = creditsTabSignal.value;
   return (
     <div class="space-y-6">
       <PageHeader title="Créditos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
-      {props.platform}
+      {isRootOrSupportSignal.value && <PlatformActionsBar />}
       {credits !== null && (
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -298,7 +300,7 @@ export function CreditsView(props: {
       </div>
       {tab === 'charges' && <ChargesTab />}
       {tab === 'movements' && <MovementsTab />}
-      {tab === 'gifts' && <GiftsTab renderActions={props.giftActions} />}
+      {tab === 'gifts' && <GiftsTab />}
     </div>
   );
 }

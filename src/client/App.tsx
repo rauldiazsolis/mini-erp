@@ -17,6 +17,7 @@ import { SettingsView } from './components/settings/SettingsView.tsx';
 import { UsersView } from './components/users/UsersView.tsx';
 import { CreditsView } from './components/credits/CreditsView.tsx';
 import { RestrictedView } from './components/credits/RestrictedView.tsx';
+import { PlatformView } from './components/platform/PlatformView.tsx';
 import { isRestrictedSignal } from './state/credits-state.ts';
 
 import {
@@ -73,8 +74,8 @@ export function App() {
 
   const currentView = activeViewSignal.value;
 
-  // Comercio restringido por deuda (#21): solo Créditos y Configuración (cuenta y apariencia)
-  if (isRestrictedSignal.value && currentView !== 'credits' && currentView !== 'settings') {
+  // Comercio restringido por deuda (#21): solo Créditos y Configuración (cuenta y apariencia); Plataforma no es del comercio
+  if (isRestrictedSignal.value && currentView !== 'credits' && currentView !== 'settings' && currentView !== 'platform') {
     return (
       <AppShell>
         <RestrictedView />
@@ -102,6 +103,8 @@ export function App() {
       {currentView === 'settings' && <SettingsView />}
 
       {currentView === 'credits' && <CreditsView />}
+
+      {currentView === 'platform' && <PlatformView />}
     </AppShell>
   );
 }

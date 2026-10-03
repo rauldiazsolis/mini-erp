@@ -18,6 +18,9 @@ import {
   fetchPlatformSettings,
   savePlatformSettings,
   platformSettingsSignal,
+  sheetSummary,
+  settingsToDraft,
+  draftToSettings,
 } from '../src/client/state/platform-state.ts';
 import { isViewAllowed } from '../src/client/state/permissions-state.ts';
 import { tokenSignal, activeTenantIdSignal, userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
@@ -124,5 +127,38 @@ describe('estado de la plataforma de cobro (#21)', () => {
     expect(isViewAllowed('platform')).toBe(true);
     currentUserSignal.value = { id: 'u', email: 'u@x.com', name: 'U', globalRole: 'user' };
     expect(isViewAllowed('platform')).toBe(false);
+  });
+
+  it('el resumen de la planilla', () => {
+    const rows = [
+      { line: 2, status: 'ok' as const },
+      { line: 3, status: 'ok' as const },
+      { line: 4, status: 'duplicate' as const },
+      { line: 5, status: 'error' as const, message: 'Comercio desconocido' },
+    ];
+    expect(sheetSummary(rows, false)).toBe('2 para registrar, 1 ya registrado, 1 con error');
+    expect(sheetSummary(rows.slice(0, 1), true)).toBe('1 registrado');
+    expect(sheetSummary([], false)).toBe('0 para registrar');
+  });
+
+  it('el formulario de configuración: el porcentaje pagado va de 0 a 100', () => {
+    const settings = {
+      pricePerRegisterDay: 1000,
+      signupBonus: 50000,
+      signupBonusDays: 90,
+      paidShare: 0.5,
+      graceDays: 10,
+      lowBalanceDays: 7,
+      paymentAlias: 'mini.contax',
+      paymentCbu: '',
+      paymentHolder: 'Contax',
+      supportWhatsapp: '+54 9 11 5555-1234',
+    };
+    const draft = settingsToDraft(settings);
+    expect(draft.paidShare).toBe('50');
+    expect(draft.pricePerRegisterDay).toBe('1000');
+    expect(draftToSettings(draft)).toEqual(settings);
+    expect(draftToSettings({ ...draft, paidShare: '75', pricePerRegisterDay: '1200' })).toEqual({ ...settings, paidShare: 0.75, pricePerRegisterDay: 1200 });
+    expect(draftToSettings({ ...draft, graceDays: 'diez' })).toBe('Días de gracia tiene que ser un número');
   });
 });
