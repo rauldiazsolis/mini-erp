@@ -24,11 +24,13 @@ describe('API de discrepancias (#2)', () => {
     const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
+    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
     ownerToken = owner.token;
     memberToken = member.token;
     const key = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
     apiKey = (key.body as { rawKey: string }).rawKey;

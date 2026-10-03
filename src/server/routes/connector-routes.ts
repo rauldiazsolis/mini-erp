@@ -8,6 +8,11 @@ import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
 import { backendInfo, CONTRACT_VERSION } from '../connector/backend-info.ts';
+import type { RegisterService } from '../registers/register-service.ts';
+import type { BillingService } from '../billing/billing-service.ts';
+
+/** Servicios de sistema que usa el Connector API (#21). */
+export type ConnectorDeps = { registers: RegisterService; billing: BillingService };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   if (req.tenantScope !== undefined) {
@@ -56,6 +61,7 @@ export function createConnectorRoutes(
   requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
   demoSessions: DemoSessionService,
   demoLimit: RequestHandler,
+  deps: ConnectorDeps,
 ): Router {
   const router = Router();
 
@@ -123,15 +129,29 @@ export function createConnectorRoutes(
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-    const { branch, pointOfSale } = req.posContext;
+    const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
+    // La caja se liga al primer equipo; otro equipo con la misma key cobra aparte (#21)
+    const binding = deps.registers.seen(registerId, parseResult.data.deviceId);
+    const chargeDevice = binding === 'foreign' ? parseResult.data.deviceId : '';
 
     const result = connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
       events: parseResult.data.events,
       defaultBranchId: branch,
+      registerId,
+      chargeDevice,
     });
+
+    // El cargo por caja y día, después del commit del lote: nunca tumba el push; el barrido lo recupera (#21)
+    if (result.saleDays.length > 0) {
+      try {
+        deps.billing.charge({ tenantId: req.posContext.tenantId, registerId, chargeDevice, days: result.saleDays });
+      } catch (err: unknown) {
+        console.error('[cobro] no se pudo generar el cargo:', err);
+      }
+    }
 
     // Logging detallado del lote recibido
     const eventsForLog = parseResult.data.events.map(summarizeForLog);
@@ -161,14 +181,21 @@ export function createConnectorRoutes(
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-    const { branch, pointOfSale } = req.posContext;
+    const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
+    if (parseResult.data.deviceId !== undefined) {
+      deps.registers.seen(registerId, parseResult.data.deviceId);
+    }
 
     const pullResult = connector.pullCatalog({
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
       branchId: branch,
       deviceId: parseResult.data.deviceId,
+      notices: {
+        billing: deps.billing.summary(req.posContext.tenantId),
+        register: parseResult.data.deviceId === undefined ? undefined : deps.registers.noticeState(registerId, parseResult.data.deviceId),
+      },
     });
 
     // Logging detallado del pull

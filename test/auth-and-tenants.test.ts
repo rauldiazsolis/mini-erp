@@ -63,9 +63,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     const token = altaBody.token;
     expect(altaBody.tenant.id).toBe('kiosco-san-martin');
 
-    // Generar API Key para terminal POS
+    // Crear una caja con su key (#21)
     const keyRes = await request(app)
-      .post('/api/tenants/kiosco-san-martin/api-keys')
+      .post('/api/tenants/kiosco-san-martin/pos-registers')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1 Central', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
 
@@ -74,9 +74,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     expect(keyBody.rawKey).toMatch(/^mpos_/);
     expect(keyBody.keyPrefix).toBeDefined();
 
-    // Listar keys
+    // Listar las cajas
     const listRes = await request(app)
-      .get('/api/tenants/kiosco-san-martin/api-keys')
+      .get('/api/tenants/kiosco-san-martin/pos-registers')
       .set('Authorization', `Bearer ${token}`);
 
     expect(listRes.status).toBe(200);
@@ -84,15 +84,15 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     expect(listBody.length).toBe(2);
     expect(listBody.find((k) => k.id === keyBody.id)?.active).toBe(true);
 
-    // Revocar key
+    // Desactivar la caja
     const revokeRes = await request(app)
-      .delete(`/api/tenants/kiosco-san-martin/api-keys/${keyBody.id}`)
+      .delete(`/api/tenants/kiosco-san-martin/pos-registers/${keyBody.id}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(revokeRes.status).toBe(200);
 
     const listAfterRes = await request(app)
-      .get('/api/tenants/kiosco-san-martin/api-keys')
+      .get('/api/tenants/kiosco-san-martin/pos-registers')
       .set('Authorization', `Bearer ${token}`);
 
     const listAfterBody = listAfterRes.body as unknown as Array<{ id: string; active: boolean }>;

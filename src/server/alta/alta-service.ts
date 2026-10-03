@@ -2,6 +2,7 @@ import type { AuthService, UserSession } from '../auth/auth-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { ApiKeyService } from '../tenant/api-key-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
+import type { BillingService } from '../billing/billing-service.ts';
 import { applyPreset } from '../seeds/index.ts';
 import { DomainError } from '../errors.ts';
 import { slugify } from './slug.ts';
@@ -28,12 +29,14 @@ export class AltaService {
   private tenants: TenantManager;
   private apiKeys: ApiKeyService;
   private audit: AuditLog;
+  private billing: BillingService;
 
-  constructor(deps: { auth: AuthService; tenants: TenantManager; apiKeys: ApiKeyService; audit: AuditLog }) {
+  constructor(deps: { auth: AuthService; tenants: TenantManager; apiKeys: ApiKeyService; audit: AuditLog; billing: BillingService }) {
     this.auth = deps.auth;
     this.tenants = deps.tenants;
     this.apiKeys = deps.apiKeys;
     this.audit = deps.audit;
+    this.billing = deps.billing;
   }
 
   create(params: {
@@ -67,6 +70,8 @@ export class AltaService {
         applyPreset(this.tenants.getTenantDb(tenant.id), params.template);
       }
       const key = this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
+      // El bono de alta (#21): créditos regalados del comercio, con vencimiento
+      this.billing.grantSignupBonus(tenant.id, user.id);
       this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { template: params.template } });
       return {
         ...(token === undefined ? {} : { token }),

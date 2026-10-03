@@ -22,6 +22,8 @@ describe('API de Ventas & Caja (#20)', () => {
     const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;
     tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
+    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     await seedSalesFixture(app, token, tenantId, tenantManager.getTenantDb(tenantId));
   });
 

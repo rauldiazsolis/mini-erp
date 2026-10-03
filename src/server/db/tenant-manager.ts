@@ -92,9 +92,10 @@ export class TenantManager {
 
     this.systemDb
       .prepare(
-        'INSERT INTO tenants (id, slug, name, status, created_at) VALUES (?, ?, ?, ?, ?)',
+        // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
+        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      .run(finalId, finalSlug, params.name, status, now);
+      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null);
 
     if (params.ownerUserId !== undefined) {
       this.systemDb
@@ -142,6 +143,8 @@ export class TenantManager {
 
     this.systemDb.exec('BEGIN');
     try {
+      this.systemDb.prepare('DELETE FROM register_devices WHERE register_id IN (SELECT id FROM registers WHERE tenant_id = ?)').run(id);
+      this.systemDb.prepare('DELETE FROM registers WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM demo_sessions WHERE tenant_id = ?').run(id);

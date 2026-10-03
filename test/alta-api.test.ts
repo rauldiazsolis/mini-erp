@@ -45,6 +45,14 @@ describe('alta atómica (#19)', () => {
     expect(audit.n).toBe(1);
   });
 
+  it('el comercio nace con titular y el bono de alta de $50.000 (#21)', async () => {
+    const body = (await request(app).post('/api/alta').send(alta)).body as AltaBody;
+    expect(systemDb.prepare('SELECT holder_user_id FROM tenants WHERE id = ?').get(body.tenant.id)).toEqual({ holder_user_id: body.user.id });
+    expect(systemDb.prepare('SELECT origin, amount, granted_by FROM gift_credits WHERE tenant_id = ?').all(body.tenant.id)).toEqual([
+      { origin: 'signup', amount: 50000, granted_by: body.user.id },
+    ]);
+  });
+
   it('con el rubro "empty" el comercio arranca sin productos', async () => {
     const body = (await request(app).post('/api/alta').send({ ...alta, template: 'empty' })).body as AltaBody;
     const products = tenantManager.getTenantDb(body.tenant.id).prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };

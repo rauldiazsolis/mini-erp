@@ -353,7 +353,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
     it('un producto creado o modificado en el Admin ERP se refleja de inmediato en el pull del POS', async () => {
       // 1. Generar API Key para terminal POS
       const keyRes = await request(app)
-        .post(`/api/tenants/${tenantId}/api-keys`)
+        .post(`/api/tenants/${tenantId}/pos-registers`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Caja 1',

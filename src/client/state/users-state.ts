@@ -41,6 +41,17 @@ export const AUDIT_LABEL: Record<string, string> = {
   'password.reset_link_created': 'generó un link de restablecimiento para',
   'password.reset': 'restableció su contraseña',
   'password.changed': 'cambió su contraseña',
+  'register.created': 'creó una caja',
+  'register.key_rotated': 'generó una key nueva para una caja',
+  'register.transferred': 'pasó una caja a otro equipo',
+  'register.unbound': 'desligó el equipo de una caja',
+  'register.deactivated': 'desactivó una caja',
+  'billing.payment_registered': 'registró un pago',
+  'billing.credits_granted': 'otorgó créditos',
+  'billing.credit_voided': 'anuló créditos regalados',
+  'billing.grace_extended': 'extendió la gracia',
+  'billing.refund': 'registró una devolución',
+  'billing.holder_changed': 'cambió el titular a',
 };
 
 /** El token va en el fragmento: no llega al servidor ni a los logs. */

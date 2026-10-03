@@ -33,6 +33,15 @@ describe('permisos en el cliente (#19)', () => {
     expect(canDo('owners.manage')).toBe(false);
   });
 
+  it('Créditos lo ven owner y admin, no el member (#21)', () => {
+    como('owner');
+    expect(isViewAllowed('credits')).toBe(true);
+    como('admin');
+    expect(isViewAllowed('credits')).toBe(true);
+    como('member');
+    expect(isViewAllowed('credits')).toBe(false);
+  });
+
   it('root impersonando opera como owner', () => {
     como('root_impersonator');
     expect(activeRoleSignal.value).toBe('owner');

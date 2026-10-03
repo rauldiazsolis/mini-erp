@@ -12,18 +12,22 @@ describe('notices en el pull (#2)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let apiKey: string;
+  let systemDb: DatabaseSync;
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = new DatabaseSync(':memory:');
+    systemDb = new DatabaseSync(':memory:');
     initSystemDb(systemDb);
     tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    // Reloj fijo: la deuda y su fecha límite no dependen del día en que corre el test
+    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
     app = bundle.app;
     const { token, user } = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
+    // Con bono, para que los avisos de créditos no se mezclen con los de discrepancias (#21)
+    bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)
-      .post(`/api/tenants/${tenantId}/api-keys`)
+      .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'POS-01' });
     apiKey = (key.body as { rawKey: string }).rawKey;
@@ -60,8 +64,25 @@ describe('notices en el pull (#2)', () => {
       message: 'La venta a cuenta de $950 es de un cliente que mini contax todavía no tiene: se suma a su saldo cuando llegue el cliente.',
       ref: { type: 'sale', id: 'v1' },
     });
-    expect(await notices('dev-2')).toEqual([]);
+    // El otro equipo no ve la discrepancia (sí, el aviso de equipo ajeno: #21)
+    expect((await notices('dev-2')).filter((n) => n.id.startsWith('discrepancy:'))).toEqual([]);
     expect(await notices()).toEqual([]);
+  });
+
+  it('otro equipo con la key de la caja recibe el aviso de equipo ajeno; el ligado, el de key compartida (#21)', async () => {
+    await push('l1', [ventaACuenta]);
+    const ajeno = await notices('dev-2');
+    expect(ajeno.map((n) => [n.id, n.severity, n.ref?.type])).toEqual([['register:foreign-device', 'warning', 'register']]);
+    const ligado = await notices('dev-1');
+    expect(ligado.map((n) => n.id)).toEqual(['register:shared-key', expect.stringMatching(/^discrepancy:/)]);
+  });
+
+  it('sin créditos, todos los equipos reciben el aviso critical de deuda (#21)', async () => {
+    systemDb.prepare('DELETE FROM gift_credits').run();
+    await push('l1', [{ ...ventaACuenta, sale: { ...ventaACuenta.sale, customerId: undefined, payments: [{ method: 'cash', amount: 950 }] } }]);
+    const avisos = await notices('dev-1');
+    expect(avisos.map((n) => [n.id, n.severity])).toEqual([['credits:debt', 'critical']]);
+    expect(avisos[0]?.message).toMatch(/^mini contax: sin créditos, debés \$ 1\.000\. Pagá antes del \d\d\/\d\d/);
   });
 
   it('el aviso desaparece cuando la discrepancia se resuelve', async () => {
