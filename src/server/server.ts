@@ -1,5 +1,5 @@
 import { createApp } from './app.ts';
-import { DEV_ADMIN_PASS, DEV_BRANCH, DEV_POS } from './db/dev-seed.ts';
+import { DEV_BRANCH } from './seeds/dev-fixtures.ts';
 import { setupClient } from './client-middleware.ts';
 import { bootstrap, type DevInfo } from './bootstrap.ts';
 import { dataDir } from './db/data-dir.ts';
@@ -48,11 +48,10 @@ if ((await started.ready) === 'ready') {
   console.log(`📡 Connector API POS: ${url}/connector`);
   console.log(`🔧 Admin API:         ${url}/api`);
   if (devInfo !== undefined) {
-    console.log(`\n✨ Credenciales de desarrollo:`);
-    console.log(`   - Admin:    ${devInfo.email} (password: ${DEV_ADMIN_PASS})`);
-    console.log(`   - POS Key:  ${devInfo.rawKey}`);
-    console.log(`   - Sucursal: ${DEV_BRANCH}`);
-    console.log(`   - Caja:     ${DEV_POS}`);
+    console.log(`\n✨ Usuarios de desarrollo (contraseña: ${devInfo.password}):`);
+    for (const u of devInfo.users) console.log(`   - ${u.email.padEnd(24)} ${u.label}`);
+    console.log(`\n🔑 Keys del POS (sucursal ${DEV_BRANCH}):`);
+    for (const k of devInfo.keys) console.log(`   - ${k.rawKey.padEnd(28)} ${k.label}`);
   }
   console.log(`\n(Servidor en ejecución, presiona Ctrl+C para detener)`);
   console.log(`==================================================\n`);

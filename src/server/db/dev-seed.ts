@@ -3,96 +3,191 @@ import type { AuthService } from '../auth/auth-service.ts';
 import type { TenantManager } from './tenant-manager.ts';
 import { hashApiKey } from '../auth/crypto.ts';
 import type { BillingService } from '../billing/billing-service.ts';
+import type { DemoSessionService } from '../demo/demo-session-service.ts';
+import { generateHistoricalDemoActivity, seedDemoSession } from '../seeds/index.ts';
+import {
+  DEV_BRANCH,
+  DEV_DEMOS,
+  DEV_PASSWORD,
+  DEV_TENANTS,
+  DEV_USERS,
+  type DevTenant,
+  type DevUserKey,
+} from '../seeds/dev-fixtures.ts';
+import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 
-export const DEV_POS_API_KEY = 'mpos_dev_demo_key_12345';
-export const DEV_ADMIN_EMAIL = 'admin@local.test';
-export const DEV_ADMIN_PASS = 'admin123';
-export const DEV_TENANT_ID = 'tienda-demo';
-export const DEV_BRANCH = 'CENTRAL';
-export const DEV_POS = 'Caja 1';
-/** Usuarios para probar los roles a mano (#19), con la misma contraseña de desarrollo. */
-export const DEV_ADMIN2_EMAIL = 'admin2@local.test';
-export const DEV_MEMBER_EMAIL = 'empleado@local.test';
+/** Lo que el arranque muestra en el log: con qué entrar y qué keys conectar al POS. */
+export type DevInfo = {
+  password: string;
+  users: { email: string; label: string }[];
+  keys: { rawKey: string; label: string }[];
+};
 
-export function ensureDevData(params: {
+type Deps = {
   systemDb: DatabaseSync;
   authService: AuthService;
   tenantManager: TenantManager;
   billing: BillingService;
-}): { email: string; rawKey: string } {
-  const userRow = params.systemDb
-    .prepare('SELECT id, email FROM users WHERE email = ?')
-    .get(DEV_ADMIN_EMAIL) as { id: string; email: string } | undefined;
+  demoSessions: DemoSessionService;
+};
 
-  let ownerUserId: string;
+type UserIds = Record<DevUserKey, string>;
 
-  if (userRow === undefined) {
-    // 1. Crear el admin de desarrollo como root (#3: el registro ya no da root)
-    const { user } = params.authService.ensureRoot({
-      email: DEV_ADMIN_EMAIL,
-      password: DEV_ADMIN_PASS,
-      name: 'Admin Demo',
+/**
+ * Datos de desarrollo (#21): usuarios de cada rol, un comercio por rubro con un estado de créditos
+ * distinto y un par de demos. Idempotente: lo que ya existe no se toca; una demo vencida se vuelve
+ * a crear. Para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
+ */
+export function ensureDevData(deps: Deps): DevInfo {
+  const ids = ensureUsers(deps);
+  // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
+  for (const tenant of DEV_TENANTS) {
+    if (!deps.tenantManager.tenantExists(tenant.id)) seedTenant(deps, tenant, ids);
+  }
+  ensureDemos(deps);
+  return devInfo();
+}
+
+function ensureUsers(deps: Deps): UserIds {
+  const ids: Partial<UserIds> = {};
+  for (const [key, u] of Object.entries(DEV_USERS) as [DevUserKey, { email: string; name: string }][]) {
+    if (key === 'root') {
+      ids[key] = deps.authService.ensureRoot({ email: u.email, password: DEV_PASSWORD, name: u.name }).user.id;
+      continue;
+    }
+    const existing = deps.authService.findUserByEmail(u.email);
+    const id = existing?.id ?? deps.authService.createUser({ email: u.email, password: DEV_PASSWORD, name: u.name }).user.id;
+    // Las cuentas nacen como user: el soporte se marca acá, como lo haría root a mano
+    if (key === 'support') deps.systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(id);
+    ids[key] = id;
+  }
+  const { root, support, ownerA, ownerB, adminK, memberK } = ids;
+  if (root === undefined || support === undefined || ownerA === undefined || ownerB === undefined || adminK === undefined || memberK === undefined) {
+    throw new Error('Faltan usuarios de desarrollo');
+  }
+  return { root, support, ownerA, ownerB, adminK, memberK };
+}
+
+function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): void {
+  const now = new Date();
+  deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner] });
+  const db = deps.tenantManager.getTenantDb(t.id);
+  // El catálogo del rubro y los clientes, como una demo
+  seedDemoSession(db, t.preset);
+
+  const addMember = deps.systemDb.prepare(
+    "INSERT OR IGNORE INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)",
+  );
+  for (const s of t.staff) addMember.run(ids[s.user], t.id, s.role, now.toISOString());
+
+  const branchId = (db.prepare('SELECT id FROM branches ORDER BY created_at LIMIT 1').get() as { id: string }).id;
+  t.registers.forEach((r, index) => {
+    insertRegisterWithKey(deps.systemDb, t.id, r, now.toISOString());
+    // Las ventas quedan de su caja, sin equipo ligado: el primer POS que se conecte con la key la liga
+    generateHistoricalDemoActivity(db, branchId, now, {
+      days: r.historyDays,
+      idPrefix: index === 0 ? '' : `c${String(index + 1)}_`,
+      origin: { deviceId: `pos_caja_${String(index + 1)}`, branch: DEV_BRANCH, pointOfSale: r.pointOfSale, registerId: r.id, chargeDevice: '' },
     });
-    ownerUserId = user.id;
-  } else {
-    ownerUserId = userRow.id;
+  });
+
+  seedCredits(deps, t, ids, now);
+}
+
+function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevTenant['registers'][number], at: string): void {
+  systemDb
+    .prepare('INSERT OR IGNORE INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+    .run(r.id, tenantId, r.name, DEV_BRANCH, r.pointOfSale, at);
+  systemDb
+    .prepare(
+      `INSERT OR IGNORE INTO tenant_api_keys (id, tenant_id, name, key_hash, key_prefix, branch, point_of_sale, active, created_at, register_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    )
+    .run(r.keyId, tenantId, r.name, hashApiKey(r.rawKey), r.rawKey.slice(0, 10), DEV_BRANCH, r.pointOfSale, at, r.id);
+}
+
+/**
+ * El estado de créditos del comercio, armado con las mismas operaciones que usa la plataforma.
+ * Precio de 1000 por caja y día, mitad de lo pagado y mitad de lo regalado (configuración por defecto).
+ */
+function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): void {
+  const { billing } = deps;
+  const today = argentinaToday(now);
+  const db = deps.tenantManager.getTenantDb(t.id);
+  const bonusId = billing.grantSignupBonus(t.id, ids[t.owner]);
+
+  /** Un cargo por caja y día con ventas, entre `from` y `to` (inclusive). */
+  const chargeSales = (from: string, to: string): void => {
+    for (const r of t.registers) {
+      const days = db
+        .prepare('SELECT DISTINCT day FROM sales WHERE register_id = ? AND voids_sale_id IS NULL AND day BETWEEN ? AND ? ORDER BY day')
+        .all(r.id, from, to)
+        .map((row) => (row as { day: string }).day);
+      billing.charge({ tenantId: t.id, registerId: r.id, chargeDevice: '', days });
+    }
+  };
+  const all = { from: '0000-00-00', to: today };
+
+  switch (t.credits) {
+    case 'ok':
+      // Pagó hace 25 días y tuvo una promo (vence antes que el bono, se usa primero): le sobra regalado
+      billing.registerPayment({ tenantId: t.id, day: shiftDay(today, -25), amount: 22000, info: 'Transferencia', actorUserId: ids.root });
+      billing.grantCredits({ tenantId: t.id, amount: 10000, expiresOn: shiftDay(today, 60), reason: 'Promo de lanzamiento', actorUserId: ids.root });
+      chargeSales(all.from, all.to);
+      break;
+    case 'low':
+      // Usa lo que quedó del pago (compartido con el Kiosco), le anulan el bono y le queda un crédito chico
+      chargeSales(all.from, all.to);
+      billing.voidCredit({ tenantId: t.id, creditId: bonusId, reason: 'Bono duplicado', actorUserId: ids.root });
+      billing.grantCredits({ tenantId: t.id, amount: 4000, expiresOn: shiftDay(today, 15), reason: 'Crédito de cortesía', actorUserId: ids.root });
+      break;
+    case 'debt': {
+      // El bono venció hace 4 días y nunca pagó: lo de esos días es deuda, todavía en gracia
+      const cut = shiftDay(today, -4);
+      chargeSales(all.from, shiftDay(cut, -1));
+      deps.systemDb.prepare('UPDATE gift_credits SET expires_at = ? WHERE id = ?').run(`${cut}T03:00:00.000Z`, bonusId);
+      chargeSales(cut, today);
+      break;
+    }
   }
+}
 
-  // 2. Crear tenant con datos iniciales si no existe
-  const tenantRow = params.systemDb
-    .prepare('SELECT id FROM tenants WHERE id = ?')
-    .get(DEV_TENANT_ID) as { id: string } | undefined;
-
-  if (tenantRow === undefined) {
-    params.tenantManager.createTenant({
-      id: DEV_TENANT_ID,
-      slug: DEV_TENANT_ID,
-      name: 'Tienda Demo Central',
-      ownerUserId,
-      seedDemoData: true,
-    });
-    // Con el bono de alta, como un comercio nuevo (#21)
-    params.billing.grantSignupBonus(DEV_TENANT_ID, ownerUserId);
+/** Las demos con key fija: si no hay una viva con esa key, se crea y se le pone la key. */
+function ensureDemos(deps: Deps): void {
+  if (!deps.demoSessions.enabled()) return;
+  for (const d of DEV_DEMOS) {
+    const hash = hashApiKey(d.rawKey);
+    const alive = deps.systemDb
+      .prepare('SELECT 1 FROM tenant_api_keys k JOIN demo_sessions s ON s.tenant_id = k.tenant_id WHERE k.key_hash = ?')
+      .get(hash);
+    if (alive !== undefined) continue;
+    const session = deps.demoSessions.create(d.template);
+    deps.systemDb
+      .prepare('UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ? WHERE tenant_id = ?')
+      .run(hash, d.rawKey.slice(0, 10), session.tenantId);
   }
+}
 
-  // 3. Un admin y un empleado para probar los roles (#19)
-  for (const [email, name, role] of [
-    [DEV_ADMIN2_EMAIL, 'Admin Demo 2', 'admin'],
-    [DEV_MEMBER_EMAIL, 'Empleado Demo', 'member'],
-  ] as const) {
-    const existing = params.authService.findUserByEmail(email);
-    const userId = existing?.id ?? params.authService.createUser({ email, password: DEV_ADMIN_PASS, name }).user.id;
-    params.systemDb
-      .prepare("INSERT OR IGNORE INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)")
-      .run(userId, DEV_TENANT_ID, role, new Date().toISOString());
-  }
-
-  // 4. Asegurar API Key de desarrollo fija y conocida
-  const keyHash = hashApiKey(DEV_POS_API_KEY);
-  const keyRow = params.systemDb
-    .prepare('SELECT id FROM tenant_api_keys WHERE key_hash = ?')
-    .get(keyHash) as { id: string } | undefined;
-
-  if (keyRow === undefined) {
-    const now = new Date().toISOString();
-    // La caja de la key (#21), con el mismo id que le da la migración de sistema v5
-    const registerId = 'reg_key_dev_default';
-    params.systemDb
-      .prepare(
-        `INSERT OR IGNORE INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?)`,
-      )
-      .run(registerId, DEV_TENANT_ID, 'Caja Principal POS', DEV_BRANCH, DEV_POS, now);
-    params.systemDb
-      .prepare(
-        `INSERT INTO tenant_api_keys (id, tenant_id, name, key_hash, key_prefix, branch, point_of_sale, active, created_at, register_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-      )
-      .run('key_dev_default', DEV_TENANT_ID, 'Caja Principal POS', keyHash, 'mpos_dev_d', DEV_BRANCH, DEV_POS, now, registerId);
-  }
-
+function devInfo(): DevInfo {
+  const ownerOf = (key: DevUserKey): string => {
+    const names = DEV_TENANTS.filter((t) => t.owner === key).map((t) => t.name);
+    const staff = DEV_TENANTS.flatMap((t) => t.staff.filter((s) => s.user === key).map((s) => `${s.role} de ${t.name}`));
+    return [...(names.length > 0 ? [`owner de ${names.join(' y ')}`] : []), ...staff].join(', ');
+  };
+  const label: Record<DevUserKey, string> = {
+    root: 'root, sin comercios',
+    support: 'soporte, sin comercios',
+    ownerA: ownerOf('ownerA'),
+    ownerB: ownerOf('ownerB'),
+    adminK: ownerOf('adminK'),
+    memberK: ownerOf('memberK'),
+  };
   return {
-    email: DEV_ADMIN_EMAIL,
-    rawKey: DEV_POS_API_KEY,
+    password: DEV_PASSWORD,
+    users: (Object.keys(DEV_USERS) as DevUserKey[]).map((key) => ({ email: DEV_USERS[key].email, label: label[key] })),
+    keys: [
+      ...DEV_TENANTS.flatMap((t) => t.registers.map((r) => ({ rawKey: r.rawKey, label: `${t.name} · ${r.name}` }))),
+      ...DEV_DEMOS.map((d) => ({ rawKey: d.rawKey, label: `Demo ${d.template}` })),
+    ],
   };
 }

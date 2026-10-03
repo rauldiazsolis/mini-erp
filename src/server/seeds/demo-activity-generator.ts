@@ -14,8 +14,11 @@ function at(day: string, hour: number, minute: number): string {
   return new Date(`${day}T${hh}:${mm}:00.000-03:00`).toISOString();
 }
 
+/** La caja de los documentos, cuántos días y un prefijo para los ids (dos cajas en un mismo comercio). */
+export type DemoActivityOptions = { origin?: DocumentOrigin | undefined; days?: number | undefined; idPrefix?: string | undefined };
+
 /**
- * Historial de los últimos 7 días con la forma del contrato (#20): ventas numeradas por día (alguna a
+ * Historial de los últimos 7 días (o `days`) con la forma del contrato (#20): ventas numeradas por día (alguna a
  * cuenta corriente), una anulación ayer, una cobranza, ingresos, egresos y un ajuste por arqueo. Es
  * del seed de desarrollo y de los tests (las demos no tienen historial). Nada queda después de `now`.
  */
@@ -23,7 +26,11 @@ export function generateHistoricalDemoActivity(
   db: DatabaseSync,
   branchId: string,
   now: Date = new Date(),
+  options: DemoActivityOptions = {},
 ): { salesCreated: number; cashMovementsCreated: number } {
+  const origin = options.origin ?? CAJA;
+  const days = options.days ?? 7;
+  const px = options.idPrefix ?? '';
   const products = db
     .prepare('SELECT id, price FROM products ORDER BY id LIMIT 8')
     .all() as unknown as { id: string; price: number }[];
@@ -38,7 +45,7 @@ export function generateHistoricalDemoActivity(
 
   const moveStock = db.prepare(
     `INSERT INTO stock_movements (id, product_id, branch_id, delta, reason, sale_id, device_id, branch, point_of_sale, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'pos_caja_1', 'CENTRAL', 'Caja 1', ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO NOTHING`,
   );
   const updateStock = db.prepare(
@@ -46,17 +53,17 @@ export function generateHistoricalDemoActivity(
   );
   const applyLines = (saleId: string, lines: ProductLine[], reason: 'sale' | 'sale-void', when: string): void => {
     lines.forEach((line, index) => {
-      moveStock.run(`stk_${saleId}_${String(index)}`, line.productId, branchId, -line.qty, reason, saleId, when);
+      moveStock.run(`stk_${saleId}_${String(index)}`, line.productId, branchId, -line.qty, reason, saleId, origin.deviceId, origin.branch, origin.pointOfSale, when);
       updateStock.run(-line.qty, when, line.productId, branchId);
     });
   };
   const cash = (id: string, when: string, movement: Record<string, unknown>): void => {
     if (when > nowIso) return;
-    saveCashMovement(db, { ...movement, id, createdAt: when }, CAJA, when);
+    saveCashMovement(db, { ...movement, id: `${px}${id}`, createdAt: when }, origin, when);
     cashMovementsCreated++;
   };
 
-  for (let d = 6; d >= 0; d--) {
+  for (let d = days - 1; d >= 0; d--) {
     const day = shiftDay(today, -d);
     let ticket = 0;
 
@@ -69,7 +76,7 @@ export function generateHistoricalDemoActivity(
     for (let s = 0; s < salesCount; s++) {
       const saleAt = at(day, hours[s] ?? 14, (d * 7 + s * 11) % 50);
       if (saleAt > nowIso) continue;
-      const saleId = `sale_demo_d${String(d)}_s${String(s)}`;
+      const saleId = `${px}sale_demo_d${String(d)}_s${String(s)}`;
 
       const lines: ProductLine[] = [];
       const p1 = products[(d + s) % products.length];
@@ -93,7 +100,7 @@ export function generateHistoricalDemoActivity(
           ticket: { date: day, number: ticket },
           ...(isAccountSale ? { customerId: 'cust-juan' } : {}),
         },
-        CAJA,
+        origin,
         saleAt,
       );
       applyLines(saleId, lines, 'sale', saleAt);
@@ -123,7 +130,7 @@ export function generateHistoricalDemoActivity(
           voidsSaleId: firstSale.id,
           voidReason: 'Error de carga',
         },
-        CAJA,
+        origin,
         voidAt,
       );
       applyLines(voidId, voidLines, 'sale-void', voidAt);
@@ -133,11 +140,11 @@ export function generateHistoricalDemoActivity(
     // Anteayer: Juan paga $5.000 en efectivo
     const paymentAt = at(day, 18, 0);
     if (d === 2 && paymentAt <= nowIso) {
-      const paymentId = 'pay_demo_d2';
+      const paymentId = `${px}pay_demo_d2`;
       saveCustomerPayment(
         db,
         { id: paymentId, customerId: 'cust-juan', payments: [{ method: 'cash', amount: 5000 }], total: 5000, createdAt: paymentAt, receipt: { date: day, number: 1 } },
-        CAJA,
+        origin,
         paymentAt,
       );
       applyToBalance(db, 'cust-juan', { type: 'payment', delta: -5000, description: `Cobranza ${paymentId}` }, paymentAt);

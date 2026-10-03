@@ -1,9 +1,9 @@
 import type { createApp } from './app.ts';
-import { ensureDevData } from './db/dev-seed.ts';
+import { ensureDevData, type DevInfo } from './db/dev-seed.ts';
 import { startDemoSweeper } from './demo/demo-session-service.ts';
 import { startBillingSweeper } from './billing/reconcile.ts';
 
-export type DevInfo = { email: string; rawKey: string };
+export type { DevInfo };
 
 type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'billing'>;
 
@@ -33,6 +33,7 @@ export function bootstrap(params: {
     authService: bundle.authService,
     tenantManager: bundle.tenantManager,
     billing: bundle.billing,
+    demoSessions: bundle.demoSessions,
   });
   return { devInfo, sweeper, billingSweeper };
 }

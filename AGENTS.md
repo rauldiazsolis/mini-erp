@@ -166,9 +166,18 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     La ve el owner en Usuarios → Actividad.
   - Los errores de negocio son `DomainError` con su estado HTTP (`src/server/errors.ts`).
 - **Arranque** en `src/server/bootstrap.ts`: el barrido de demos siempre; el seed de desarrollo
-  (`ensureDevData`: admin root, `tienda-demo` con un admin y un empleado para probar los roles, y una
-  key fija, todo en el repo) **solo fuera de
-  `NODE_ENV=production`**.
+  (`ensureDevData` en `db/dev-seed.ts`, datos en `seeds/dev-fixtures.ts`, todo en el repo) **solo
+  fuera de `NODE_ENV=production`**:
+  - Usuarios con contraseña `admin123`: `root@local.test` y `soporte@local.test` sin comercios,
+    `dueno-a@local.test` (owner y titular de Kiosco y Almacén), `dueno-b@local.test` (de Ferretería),
+    `admin-k@local.test` y `empleado-k@local.test` (admin y member del Kiosco).
+  - Un comercio por rubro con el catálogo y los clientes de las demos, 30 días de ventas ligadas a su
+    caja y un estado de créditos distinto (ok, saldo bajo, deuda en gracia), armado con las mismas
+    operaciones de `BillingService`. Cada caja tiene una key fija; `mpos_dev_demo_key_12345` es la
+    Caja 1 del Kiosco.
+  - Dos demos con key fija, que se vuelven a crear al arrancar si vencieron.
+  - Es idempotente y no borra nada: para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
+    El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
   (`AUTH_RATE_LIMIT`, contador compartido); `429` con `Retry-After`. `trust proxy` en `loopback`:
