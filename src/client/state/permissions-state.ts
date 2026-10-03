@@ -6,7 +6,7 @@ import {
   type MembershipRole,
   type TenantRole,
 } from '../../shared/permissions.ts';
-import { activeTenantSignal } from './auth-state.ts';
+import { activeTenantSignal, isRootOrSupportSignal } from './auth-state.ts';
 import { activeViewSignal, type ActiveNavView } from './navigation-state.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
 
@@ -30,7 +30,7 @@ export const ROLE_LABEL: Record<MembershipRole, string> = {
   support_impersonator: 'Soporte',
 };
 
-const VIEW_CAPABILITY: Record<ActiveNavView, Capability> = {
+const VIEW_CAPABILITY: Record<Exclude<ActiveNavView, 'platform'>, Capability> = {
   dashboard: 'tenant.use',
   sales: 'tenant.use',
   catalog: 'tenant.use',
@@ -50,8 +50,9 @@ const TAB_CAPABILITY: Record<SettingsTab, Capability> = {
   account: 'tenant.use',
 };
 
+/** La vista Plataforma (#21) es de root y soporte, no del comercio. */
 export function isViewAllowed(view: ActiveNavView): boolean {
-  return canDo(VIEW_CAPABILITY[view]);
+  return view === 'platform' ? isRootOrSupportSignal.value : canDo(VIEW_CAPABILITY[view]);
 }
 
 export function isSettingsTabAllowed(tab: SettingsTab): boolean {

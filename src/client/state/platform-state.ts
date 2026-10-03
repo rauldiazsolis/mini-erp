@@ -1,0 +1,179 @@
+import { signal, effect } from '@preact/signals';
+import { apiFetch } from '../api/client.ts';
+import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { activeViewSignal } from './navigation-state.ts';
+import { showToast } from './toast-state.ts';
+import { refreshCredits } from './credits-state.ts';
+import type { MemberItem } from './users-state.ts';
+import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../../shared/credits-types.ts';
+
+/**
+ * Plataforma de cobro (#21), para root y soporte: las acciones sobre el comercio que se impersona
+ * (en su pantalla Créditos) y lo global (planilla de cobranzas, pagos y configuración).
+ */
+
+export type PlatformTab = 'payments' | 'settings';
+
+export const platformTabSignal = signal<PlatformTab>('payments');
+export const ownersSignal = signal<MemberItem[]>([]);
+export const sheetTextSignal = signal<string>('');
+export const sheetRowsSignal = signal<SheetResultRow[] | null>(null);
+export const sheetAppliedSignal = signal<boolean>(false);
+export const sheetBusySignal = signal<boolean>(false);
+export const platformPaymentsSignal = signal<PlatformPaymentItem[]>([]);
+export const platformSettingsSignal = signal<BillingSettings | null>(null);
+
+function token(): string | null {
+  return tokenSignal.value;
+}
+
+function tenantBase(): string | null {
+  const tenantId = effectiveTenantIdSignal.value;
+  return tenantId ? `/api/platform/tenants/${tenantId}` : null;
+}
+
+function fail(err: unknown, title: string): false {
+  showToast({ type: 'error', title, message: err instanceof Error ? err.message : 'Error inesperado' });
+  return false;
+}
+
+/** Una acción sobre el comercio activo: avisa, recarga Créditos y devuelve si salió bien. */
+async function tenantAction(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body: Record<string, unknown>,
+  done: string,
+): Promise<boolean> {
+  const base = tenantBase();
+  const t = token();
+  if (base === null || t === null) return false;
+  try {
+    await apiFetch(`${base}${path}`, { method, token: t, body });
+    showToast({ type: 'success', title: 'Listo', message: done });
+    await refreshCredits();
+    return true;
+  } catch (err: unknown) {
+    return fail(err, 'No se pudo completar');
+  }
+}
+
+/** Saca las claves sin valor: los opcionales vacíos no viajan. */
+function compact(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined && v !== ''));
+}
+
+export function registerPayment(input: { day: string; amount: number; info?: string | undefined }): Promise<boolean> {
+  return tenantAction('/payments', 'POST', compact(input), 'Pago registrado');
+}
+
+export function grantCredits(input: { amount: number; expiresOn: string; reason?: string | undefined }): Promise<boolean> {
+  return tenantAction('/gift-credits', 'POST', compact(input), 'Créditos otorgados');
+}
+
+export function voidCredit(creditId: string, reason: string): Promise<boolean> {
+  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Créditos anulados');
+}
+
+export function extendGrace(until: string): Promise<boolean> {
+  return tenantAction('/grace', 'POST', { until }, 'Gracia extendida');
+}
+
+export function registerRefund(input: { amount: number; info?: string | undefined }): Promise<boolean> {
+  return tenantAction('/refunds', 'POST', compact(input), 'Devolución registrada');
+}
+
+export function changeHolder(userId: string): Promise<boolean> {
+  return tenantAction('/holder', 'PUT', { userId }, 'Titular cambiado');
+}
+
+/** Los owners activos del comercio: los únicos que pueden ser titulares. */
+export async function fetchOwners(): Promise<void> {
+  const tenantId = effectiveTenantIdSignal.value;
+  const t = token();
+  if (!tenantId || t === null) return;
+  try {
+    const res = await apiFetch<{ members: MemberItem[] }>(`tenants/${tenantId}/users`, { token: t });
+    ownersSignal.value = res.members.filter((m) => m.role === 'owner' && m.status === 'active');
+  } catch (err: unknown) {
+    fail(err, 'No se pudieron cargar los owners');
+  }
+}
+
+async function sendSheet(dryRun: boolean): Promise<void> {
+  const t = token();
+  if (t === null) return;
+  try {
+    sheetBusySignal.value = true;
+    const res = await apiFetch<{ rows: SheetResultRow[]; applied: boolean }>(`/api/platform/payments/import${dryRun ? '?dryRun=1' : ''}`, {
+      method: 'POST',
+      token: t,
+      body: { csv: sheetTextSignal.value },
+    });
+    sheetRowsSignal.value = res.rows;
+    sheetAppliedSignal.value = res.applied;
+    if (res.applied) {
+      const ok = res.rows.filter((r) => r.status === 'ok').length;
+      showToast({ type: 'success', title: 'Planilla aplicada', message: `${String(ok)} pagos registrados` });
+      await fetchPlatformPayments();
+    }
+  } catch (err: unknown) {
+    fail(err, 'No se pudo procesar la planilla');
+  } finally {
+    sheetBusySignal.value = false;
+  }
+}
+
+export function previewSheet(): Promise<void> {
+  return sendSheet(true);
+}
+
+export function applySheet(): Promise<void> {
+  return sendSheet(false);
+}
+
+export async function loadSheetFile(file: File): Promise<void> {
+  sheetTextSignal.value = await file.text();
+  sheetRowsSignal.value = null;
+  sheetAppliedSignal.value = false;
+}
+
+export async function fetchPlatformPayments(): Promise<void> {
+  const t = token();
+  if (t === null) return;
+  try {
+    platformPaymentsSignal.value = await apiFetch<PlatformPaymentItem[]>('/api/platform/payments', { token: t });
+  } catch (err: unknown) {
+    fail(err, 'No se pudieron cargar los pagos');
+  }
+}
+
+export async function fetchPlatformSettings(): Promise<void> {
+  const t = token();
+  if (t === null) return;
+  try {
+    platformSettingsSignal.value = await apiFetch<BillingSettings>('/api/platform/settings', { token: t });
+  } catch (err: unknown) {
+    fail(err, 'No se pudo cargar la configuración');
+  }
+}
+
+export async function savePlatformSettings(patch: Partial<BillingSettings>): Promise<boolean> {
+  const t = token();
+  if (t === null) return false;
+  try {
+    platformSettingsSignal.value = await apiFetch<BillingSettings>('/api/platform/settings', { method: 'PUT', token: t, body: patch });
+    showToast({ type: 'success', title: 'Configuración guardada', message: 'Los cambios valen para los cargos nuevos' });
+    return true;
+  } catch (err: unknown) {
+    return fail(err, 'No se pudo guardar');
+  }
+}
+
+if (typeof window !== 'undefined') {
+  effect(() => {
+    if (activeViewSignal.value === 'platform' && tokenSignal.value) {
+      void fetchPlatformPayments();
+      void fetchPlatformSettings();
+    }
+  });
+}
