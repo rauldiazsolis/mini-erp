@@ -53,6 +53,19 @@ describe('TenantManager', () => {
     expect(customers.count).toBeGreaterThan(0);
   });
 
+  it('el owner que crea el comercio es su titular; sin owner (una demo), no hay titular (#21)', () => {
+    systemDb
+      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('user-9', 'titular@example.com', 'hash', 'Titular', 'user', new Date().toISOString());
+    manager.createTenant({ id: 'con-titular', slug: 'con-titular', name: 'Con titular', ownerUserId: 'user-9' });
+    manager.createTenant({ id: 'sin-titular', slug: 'sin-titular', name: 'Sin titular' });
+    const rows = systemDb.prepare('SELECT id, holder_user_id FROM tenants ORDER BY id').all();
+    expect(rows).toEqual([
+      { id: 'con-titular', holder_user_id: 'user-9' },
+      { id: 'sin-titular', holder_user_id: null },
+    ]);
+  });
+
   it('permite consultar stock consolidado por producto', () => {
     systemDb
       .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')

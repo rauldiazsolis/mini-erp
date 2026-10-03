@@ -19,6 +19,7 @@ function boot(env: NodeJS.ProcessEnv) {
   const bundle = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) });
   const result = bootstrap({ env, bundle });
   clearInterval(result.sweeper);
+  clearInterval(result.billingSweeper);
   const count = (sql: string, param: string): number => (systemDb.prepare(sql).get(param) as { n: number }).n;
   return {
     result,
@@ -53,6 +54,14 @@ describe('bootstrap (#3)', () => {
     expect([users, tenants, keys]).toEqual([1, 1, 1]);
   });
 
+  it('fuera de producción, tienda-demo tiene titular y bono de alta (#21)', () => {
+    const { systemDb } = boot({});
+    expect(systemDb.prepare("SELECT origin, amount FROM gift_credits WHERE tenant_id = ?").all(DEV_TENANT_ID)).toEqual([
+      { origin: 'signup', amount: 50000 },
+    ]);
+    expect(systemDb.prepare('SELECT holder_user_id IS NOT NULL AS ok FROM tenants WHERE id = ?').get(DEV_TENANT_ID)).toEqual({ ok: 1 });
+  });
+
   it('fuera de producción suma un admin y un empleado en tienda-demo, y no se duplican (#19)', () => {
     const { roleUsers, bundle } = boot({});
     expect(roleUsers).toEqual([
@@ -61,6 +70,7 @@ describe('bootstrap (#3)', () => {
     ]);
     const again = bootstrap({ env: {}, bundle });
     clearInterval(again.sweeper);
+    clearInterval(again.billingSweeper);
     expect(() => bundle.authService.login({ email: DEV_MEMBER_EMAIL, password: 'admin123' })).not.toThrow();
   });
 });

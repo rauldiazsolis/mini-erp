@@ -23,6 +23,7 @@ import { PasswordResetService } from '../users/password-reset-service.ts';
 import { DiscrepancyService } from '../discrepancy/discrepancy-service.ts';
 import { SalesQueryService } from '../sales/sales-query-service.ts';
 import { RegisterService } from '../registers/register-service.ts';
+import { BillingService } from '../billing/billing-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -68,6 +69,10 @@ export const demoSessionServiceDef = fn.singleton(
 // --- CAJAS (#21) ---
 
 export const registerServiceDef = fn.singleton((c) => new RegisterService(c.use(systemDbDef), c.use(clockDef)));
+
+// --- COBRO (#21) ---
+
+export const billingServiceDef = fn.singleton((c) => new BillingService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
 
 // --- USUARIOS Y AUDITORÍA (#19) ---
 

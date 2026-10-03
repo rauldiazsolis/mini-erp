@@ -92,9 +92,10 @@ export class TenantManager {
 
     this.systemDb
       .prepare(
-        'INSERT INTO tenants (id, slug, name, status, created_at) VALUES (?, ?, ?, ?, ?)',
+        // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
+        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      .run(finalId, finalSlug, params.name, status, now);
+      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null);
 
     if (params.ownerUserId !== undefined) {
       this.systemDb

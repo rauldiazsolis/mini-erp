@@ -41,7 +41,9 @@ import {
   invitationServiceDef,
   passwordResetServiceDef,
   registerServiceDef,
+  billingServiceDef,
 } from './di/container.ts';
+import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
 import { APP_VERSION } from './app-version.ts';
@@ -62,6 +64,7 @@ export function createApp(deps?: AppDependencies): {
   authService: AuthService;
   apiKeyService: ApiKeyService;
   demoSessions: DemoSessionService;
+  billing: BillingService;
   rootContainer: Container;
 } {
   const app = express();
@@ -85,6 +88,7 @@ export function createApp(deps?: AppDependencies): {
   const auditLog = rootContainer.use(auditLogDef);
   const passwordResetService = rootContainer.use(passwordResetServiceDef);
   const registers = rootContainer.use(registerServiceDef);
+  const billing = rootContainer.use(billingServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -133,7 +137,7 @@ export function createApp(deps?: AppDependencies): {
   );
 
   // Rutas para terminales POS (Connector API 4.4.0, #2)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers }));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -149,6 +153,7 @@ export function createApp(deps?: AppDependencies): {
     authService,
     apiKeyService,
     demoSessions,
+    billing,
     rootContainer,
   };
 }

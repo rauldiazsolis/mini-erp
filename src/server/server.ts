@@ -21,16 +21,16 @@ const started = await startServer({
   runner: runMigrationsInWorker,
   createReadyHandler: async () => {
     const bundle = createApp();
-    let sweeper: NodeJS.Timeout | undefined;
+    let sweepers: NodeJS.Timeout[] = [];
     try {
-      // Barrido de demos (#9) y datos de desarrollo solo fuera de producción (#3)
+      // Barridos de demos (#9) y de cobro (#21), y datos de desarrollo solo fuera de producción (#3)
       const booted = bootstrap({ env: process.env, bundle });
-      sweeper = booted.sweeper;
+      sweepers = [booted.sweeper, booted.billingSweeper];
       devInfo = booted.devInfo;
       await setupClient(bundle.app);
       return bundle.app;
     } catch (err: unknown) {
-      clearInterval(sweeper);
+      for (const timer of sweepers) clearInterval(timer);
       bundle.tenantManager.closeAll();
       bundle.systemDb.close();
       throw err;

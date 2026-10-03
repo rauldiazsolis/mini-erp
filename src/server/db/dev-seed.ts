@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { TenantManager } from './tenant-manager.ts';
 import { hashApiKey } from '../auth/crypto.ts';
+import type { BillingService } from '../billing/billing-service.ts';
 
 export const DEV_POS_API_KEY = 'mpos_dev_demo_key_12345';
 export const DEV_ADMIN_EMAIL = 'admin@local.test';
@@ -17,6 +18,7 @@ export function ensureDevData(params: {
   systemDb: DatabaseSync;
   authService: AuthService;
   tenantManager: TenantManager;
+  billing: BillingService;
 }): { email: string; rawKey: string } {
   const userRow = params.systemDb
     .prepare('SELECT id, email FROM users WHERE email = ?')
@@ -49,6 +51,8 @@ export function ensureDevData(params: {
       ownerUserId,
       seedDemoData: true,
     });
+    // Con el bono de alta, como un comercio nuevo (#21)
+    params.billing.grantSignupBonus(DEV_TENANT_ID, ownerUserId);
   }
 
   // 3. Un admin y un empleado para probar los roles (#19)
