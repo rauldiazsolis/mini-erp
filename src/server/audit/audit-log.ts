@@ -11,7 +11,12 @@ export type AuditAction =
   | 'member.enabled'
   | 'password.reset_link_created'
   | 'password.reset'
-  | 'password.changed';
+  | 'password.changed'
+  | 'register.created'
+  | 'register.key_rotated'
+  | 'register.transferred'
+  | 'register.unbound'
+  | 'register.deactivated';
 
 export type AuditEntry = {
   id: string;

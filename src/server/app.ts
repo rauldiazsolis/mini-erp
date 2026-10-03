@@ -21,6 +21,7 @@ import { createIoRoutes } from './routes/io-routes.ts';
 import { createDashboardRoutes } from './routes/dashboard-routes.ts';
 import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
+import { createRegisterRoutes } from './routes/register-routes.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
@@ -39,6 +40,7 @@ import {
   auditLogDef,
   invitationServiceDef,
   passwordResetServiceDef,
+  registerServiceDef,
 } from './di/container.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
@@ -82,6 +84,7 @@ export function createApp(deps?: AppDependencies): {
   const invitationService = rootContainer.use(invitationServiceDef);
   const auditLog = rootContainer.use(auditLogDef);
   const passwordResetService = rootContainer.use(passwordResetServiceDef);
+  const registers = rootContainer.use(registerServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -125,11 +128,12 @@ export function createApp(deps?: AppDependencies): {
     createDashboardRoutes(),
     createSalesRoutes(),
     createApiKeyRoutes(apiKeyService),
+    createRegisterRoutes(registers, auditLog),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
   );
 
   // Rutas para terminales POS (Connector API 4.4.0, #2)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -8,6 +8,10 @@ import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
 import { backendInfo, CONTRACT_VERSION } from '../connector/backend-info.ts';
+import type { RegisterService } from '../registers/register-service.ts';
+
+/** Servicios de sistema que usa el Connector API (#21). */
+export type ConnectorDeps = { registers: RegisterService };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   if (req.tenantScope !== undefined) {
@@ -56,6 +60,7 @@ export function createConnectorRoutes(
   requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
   demoSessions: DemoSessionService,
   demoLimit: RequestHandler,
+  deps: ConnectorDeps,
 ): Router {
   const router = Router();
 
@@ -123,14 +128,19 @@ export function createConnectorRoutes(
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-    const { branch, pointOfSale } = req.posContext;
+    const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
+    // La caja se liga al primer equipo; otro equipo con la misma key cobra aparte (#21)
+    const binding = deps.registers.seen(registerId, parseResult.data.deviceId);
+    const chargeDevice = binding === 'foreign' ? parseResult.data.deviceId : '';
 
     const result = connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
       events: parseResult.data.events,
       defaultBranchId: branch,
+      registerId,
+      chargeDevice,
     });
 
     // Logging detallado del lote recibido
@@ -161,8 +171,11 @@ export function createConnectorRoutes(
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-    const { branch, pointOfSale } = req.posContext;
+    const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
+    if (parseResult.data.deviceId !== undefined) {
+      deps.registers.seen(registerId, parseResult.data.deviceId);
+    }
 
     const pullResult = connector.pullCatalog({
       cursors: parseResult.data.cursors,

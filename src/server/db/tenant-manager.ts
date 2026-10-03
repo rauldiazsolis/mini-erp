@@ -142,6 +142,8 @@ export class TenantManager {
 
     this.systemDb.exec('BEGIN');
     try {
+      this.systemDb.prepare('DELETE FROM register_devices WHERE register_id IN (SELECT id FROM registers WHERE tenant_id = ?)').run(id);
+      this.systemDb.prepare('DELETE FROM registers WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM demo_sessions WHERE tenant_id = ?').run(id);

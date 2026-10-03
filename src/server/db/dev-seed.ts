@@ -71,12 +71,20 @@ export function ensureDevData(params: {
 
   if (keyRow === undefined) {
     const now = new Date().toISOString();
+    // La caja de la key (#21), con el mismo id que le da la migración de sistema v5
+    const registerId = 'reg_key_dev_default';
     params.systemDb
       .prepare(
-        `INSERT INTO tenant_api_keys (id, tenant_id, name, key_hash, key_prefix, branch, point_of_sale, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        `INSERT OR IGNORE INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`,
       )
-      .run('key_dev_default', DEV_TENANT_ID, 'Caja Principal POS', keyHash, 'mpos_dev_d', DEV_BRANCH, DEV_POS, now);
+      .run(registerId, DEV_TENANT_ID, 'Caja Principal POS', DEV_BRANCH, DEV_POS, now);
+    params.systemDb
+      .prepare(
+        `INSERT INTO tenant_api_keys (id, tenant_id, name, key_hash, key_prefix, branch, point_of_sale, active, created_at, register_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      )
+      .run('key_dev_default', DEV_TENANT_ID, 'Caja Principal POS', keyHash, 'mpos_dev_d', DEV_BRANCH, DEV_POS, now, registerId);
   }
 
   return {

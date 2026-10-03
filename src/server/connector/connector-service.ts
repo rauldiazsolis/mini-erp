@@ -11,6 +11,8 @@ export type { LotIssue };
 export type PushLotResult = {
   status: 'ok' | 'issues';
   issues?: LotIssue[];
+  /** Días de las ventas (no anulaciones) aplicadas en este lote: los que se cobran (#21). */
+  saleDays: string[];
 };
 
 export class ConnectorService {
@@ -25,6 +27,9 @@ export class ConnectorService {
     deviceId: string;
     events: unknown[];
     defaultBranchId?: string | undefined;
+    /** La caja de la key y a qué equipo se cobran las ventas (#21). */
+    registerId?: string | undefined;
+    chargeDevice?: string | undefined;
   }): PushLotResult {
     const now = new Date().toISOString();
 
@@ -37,10 +42,13 @@ export class ConnectorService {
       return {
         status: existing.status,
         ...(existing.issues ? { issues: JSON.parse(existing.issues) as LotIssue[] } : {}),
+        saleDays: [],
       };
     }
 
     const issues: LotIssue[] = [];
+    const saleDays = new Set<string>();
+    const register = { registerId: params.registerId ?? null, chargeDevice: params.chargeDevice ?? null };
     // Todo el lote en una transacción y cada evento en un SAVEPOINT (#2): un evento que falla se
     // deshace solo y queda como issue; el lote nunca queda en `processing` con efectos a medias.
     this.tenantDb.exec('BEGIN');
@@ -59,9 +67,16 @@ export class ConnectorService {
           continue;
         }
         this.tenantDb.exec('SAVEPOINT evento');
+        // El día de la venta se suma al lote solo si el evento se aplicó (su SAVEPOINT se liberó)
+        const eventDays: string[] = [];
         try {
-          const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now);
+          const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now, register, (day) => {
+            eventDays.push(day);
+          });
           this.tenantDb.exec('RELEASE evento');
+          for (const day of eventDays) {
+            saleDays.add(day);
+          }
           if (issue !== undefined) {
             issues.push(issue);
           }
@@ -86,6 +101,7 @@ export class ConnectorService {
     return {
       status: issues.length > 0 ? 'issues' : 'ok',
       ...(issues.length > 0 ? { issues } : {}),
+      saleDays: [...saleDays].sort(),
     };
   }
 
@@ -107,17 +123,23 @@ export class ConnectorService {
     deviceId: string,
     defaultBranchId: string,
     now: string,
+    register: { registerId: string | null; chargeDevice: string | null },
+    onSaleDay: (day: string) => void,
   ): LotIssue | undefined {
     const originBranch = event.origin?.branch ?? (defaultBranchId ? defaultBranchId : null);
     const originPos = event.origin?.pointOfSale ?? null;
-    const where = { deviceId, branch: originBranch, pointOfSale: originPos };
+    const where = { deviceId, branch: originBranch, pointOfSale: originPos, ...register };
     // Ventas, cobranzas y movimientos de caja con sus columnas derivadas (#20)
     const receivedAt = event.createdAt ?? now;
 
     switch (event.type) {
       case 'sale': {
         const sale = event.sale;
-        saveSale(this.tenantDb, sale, where, receivedAt);
+        const day = saveSale(this.tenantDb, sale, where, receivedAt);
+        // Una anulación no genera cargo; cualquier otro ticket, sí (#21)
+        if (sale.voidsSaleId === undefined && day !== null) {
+          onSaleDay(day);
+        }
 
         // Si fue a cuenta corriente sin hold (fiado offline o acreditación por anulación)
         if (sale.customerId !== undefined) {
