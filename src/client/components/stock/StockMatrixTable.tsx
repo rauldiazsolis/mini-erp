@@ -5,7 +5,6 @@ import {
   openAdjustModal,
   openKardex,
 } from '../../state/stock-state.ts';
-import { formatNumber } from '../../state/dashboard-state.ts';
 import {
   TableContainer,
   Table,
@@ -16,6 +15,7 @@ import {
   Td,
   TableEmptyState,
 } from '../ui/Table.tsx';
+import { formatQty } from '../../format.ts';
 
 export function StockMatrixTable() {
   const stockItems = filteredStockSignal.value;
@@ -135,7 +135,7 @@ export function StockMatrixTable() {
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
                           }`}
                         >
-                          {formatNumber(qty)}
+                          {formatQty(qty)}
                         </span>
                       )}
                     </Td>
@@ -156,7 +156,7 @@ export function StockMatrixTable() {
                           : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40'
                       }`}
                     >
-                      {formatNumber(item.totalStock)} un.
+                      {formatQty(item.totalStock)} un.
                     </span>
                   )}
                 </Td>

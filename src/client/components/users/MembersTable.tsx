@@ -10,7 +10,7 @@ import {
 } from '../../state/users-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
-import { formatDateTime } from './format.ts';
+import { formatDateTime } from '../../format.ts';
 
 function RoleCell(props: { member: MemberItem; isSelf: boolean }) {
   const { member, isSelf } = props;

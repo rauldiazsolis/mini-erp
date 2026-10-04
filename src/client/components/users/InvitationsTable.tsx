@@ -2,7 +2,7 @@ import { ROLE_LABEL } from '../../state/permissions-state.ts';
 import { invitationsSignal, reinvite, revokeInvitation } from '../../state/users-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
-import { formatDateTime } from './format.ts';
+import { formatDateTime } from '../../format.ts';
 
 export function InvitationsTable() {
   const invitations = invitationsSignal.value;

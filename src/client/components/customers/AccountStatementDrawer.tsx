@@ -6,25 +6,10 @@ import {
   closeAccountStatement,
   openPaymentModal,
 } from '../../state/customer-state.ts';
-import { formatCurrency } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Drawer } from '../ui/Drawer.tsx';
 import { movementLabel, movementTone } from '../../state/movement-style.ts';
-
-function formatDateTime(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return dateStr;
-  }
-}
+import { formatMoney, formatDateTime } from '../../format.ts';
 
 export function AccountStatementDrawer() {
   const isOpen = accountDrawerOpenSignal.value;
@@ -49,7 +34,7 @@ export function AccountStatementDrawer() {
           <div>
             <span class="text-slate-500 dark:text-slate-400">Límite asignado: </span>
             <strong class="text-slate-800 dark:text-slate-200 font-mono">
-              {customer.unrestricted ? 'Sin límite' : formatCurrency(customer.creditLimit)}
+              {customer.unrestricted ? 'Sin límite' : formatMoney(customer.creditLimit)}
             </strong>
           </div>
           <div class="flex items-center gap-2">
@@ -61,7 +46,7 @@ export function AccountStatementDrawer() {
                   : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
               }`}
             >
-              {formatCurrency(customer.balance)}
+              {formatMoney(customer.balance)}
             </span>
           </div>
         </div>
@@ -98,7 +83,7 @@ export function AccountStatementDrawer() {
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
-                        {m.amount > 0 ? `+${formatCurrency(m.amount)}` : formatCurrency(m.amount)}
+                        {m.amount > 0 ? `+${formatMoney(m.amount)}` : formatMoney(m.amount)}
                       </span>
 
                       <span class="text-xs font-semibold text-slate-900 dark:text-white">
@@ -119,7 +104,7 @@ export function AccountStatementDrawer() {
                     )}
 
                     <div class="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
-                      Saldo resultante: <strong class="text-slate-800 dark:text-slate-200 font-mono">{formatCurrency(m.balanceAfter)}</strong>
+                      Saldo resultante: <strong class="text-slate-800 dark:text-slate-200 font-mono">{formatMoney(m.balanceAfter)}</strong>
                     </div>
                   </div>
 

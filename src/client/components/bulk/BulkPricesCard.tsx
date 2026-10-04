@@ -10,11 +10,11 @@ import {
   type RoundingStrategy,
 } from '../../state/bulk-state.ts';
 import { categoriesSignal } from '../../state/catalog-state.ts';
-import { formatCurrency } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Select } from '../ui/Select.tsx';
 import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
+import { formatMoney } from '../../format.ts';
 
 const ROUNDING_OPTIONS: Array<{ value: RoundingStrategy; label: string }> = [
   { value: 'none', label: 'Sin redondeo (Centavos exactos)' },
@@ -184,12 +184,12 @@ export function BulkPricesCard() {
                     <Td class="font-mono text-[11px] text-slate-500 dark:text-slate-400">{item.sku}</Td>
                     <Td class="font-semibold text-slate-900 dark:text-white">{item.name}</Td>
                     <Td class="text-slate-600 dark:text-slate-300">{item.category}</Td>
-                    <Td class="text-right font-mono text-slate-500 dark:text-slate-400">{formatCurrency(item.oldPrice)}</Td>
+                    <Td class="text-right font-mono text-slate-500 dark:text-slate-400">{formatMoney(item.oldPrice)}</Td>
                     <Td class="text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(item.newPrice)}
+                      {formatMoney(item.newPrice)}
                     </Td>
                     <Td class="text-right font-mono text-[11px] text-indigo-600 dark:text-indigo-300">
-                      +{formatCurrency(item.diff)}
+                      +{formatMoney(item.diff)}
                     </Td>
                   </Tr>
                 ))}

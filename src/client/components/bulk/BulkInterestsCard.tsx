@@ -7,11 +7,11 @@ import {
   previewBulkInterests,
   applyBulkInterests,
 } from '../../state/bulk-state.ts';
-import { formatCurrency } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Card } from '../ui/Card.tsx';
 import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
+import { formatMoney } from '../../format.ts';
 
 export function BulkInterestsCard() {
   const percent = bulkInterestPercentSignal.value;
@@ -107,7 +107,7 @@ export function BulkInterestsCard() {
                 {preview.dryRun ? 'Simulación de Devengamiento Contable' : 'Intereses Asentados'}
               </span>
               <span class="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-mono text-[11px] font-bold">
-                {preview.affectedCount} cuentas • Total: {formatCurrency(preview.totalInterestAmount)}
+                {preview.affectedCount} cuentas • Total: {formatMoney(preview.totalInterestAmount)}
               </span>
             </div>
           </div>
@@ -127,13 +127,13 @@ export function BulkInterestsCard() {
                   <Tr key={item.customerId}>
                     <Td class="font-semibold text-slate-900 dark:text-white">{item.customerName}</Td>
                     <Td class="text-right font-mono text-slate-500 dark:text-slate-400">
-                      {formatCurrency(item.currentBalance)}
+                      {formatMoney(item.currentBalance)}
                     </Td>
                     <Td class="text-right font-mono font-bold text-amber-600 dark:text-amber-400">
-                      +{formatCurrency(item.interestAmount)}
+                      +{formatMoney(item.interestAmount)}
                     </Td>
                     <Td class="text-right font-mono font-bold text-rose-600 dark:text-rose-400">
-                      {formatCurrency(item.newBalance)}
+                      {formatMoney(item.newBalance)}
                     </Td>
                   </Tr>
                 ))}

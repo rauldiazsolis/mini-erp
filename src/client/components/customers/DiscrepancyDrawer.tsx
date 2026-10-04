@@ -6,17 +6,7 @@ import {
   closeDiscrepancies, discrepanciesSignal, discrepancyDrawerOpenSignal, dismissDiscrepancy, dismissingIdSignal,
   dismissNoteSignal, startDismiss,
 } from '../../state/discrepancy-state.ts';
-
-// 24 horas explícitas: sin hourCycle, algunos navegadores muestran "06:16" para las 18:16
-const fecha = (iso: string) =>
-  new Date(iso).toLocaleString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+import { formatDateTime } from '../../format.ts';
 
 /** Panel de discrepancias (#2): cada fila con su caja, cliente y monto; owner y admin las descartan. */
 export function DiscrepancyDrawer() {
@@ -33,7 +23,7 @@ export function DiscrepancyDrawer() {
           <div key={d.id} class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
             <p class="text-sm text-slate-900 dark:text-slate-100">{d.message}</p>
             <p class="text-xs text-slate-500 dark:text-slate-400">
-              {d.originPos ?? 'Caja sin nombre'} · {d.originBranch ?? 'Sin sucursal'} · {fecha(d.createdAt)} · cliente {d.customerId} ·{' '}
+              {d.originPos ?? 'Caja sin nombre'} · {d.originBranch ?? 'Sin sucursal'} · {formatDateTime(d.createdAt)} · cliente {d.customerId} ·{' '}
               {d.refType === 'sale' ? 'venta' : 'cobranza'} {d.refId}
             </p>
             {canDismiss && dismissingIdSignal.value !== d.id && (

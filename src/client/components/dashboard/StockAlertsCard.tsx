@@ -1,7 +1,8 @@
-import { dashboardDataSignal, formatNumber } from '../../state/dashboard-state.ts';
+import { dashboardDataSignal } from '../../state/dashboard-state.ts';
 import { navigateTo } from '../../state/navigation-state.ts';
 import { drillToStockProduct } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
+import { formatQty } from '../../format.ts';
 
 export function StockAlertsCard() {
   const data = dashboardDataSignal.value;
@@ -67,7 +68,7 @@ export function StockAlertsCard() {
                           : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                       }`}
                     >
-                      {isOut ? 'Agotado' : `${formatNumber(p.stock)} un.`}
+                      {isOut ? 'Agotado' : `${formatQty(p.stock)} un.`}
                     </span>
                   </div>
                 </button>

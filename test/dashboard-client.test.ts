@@ -5,8 +5,6 @@ import {
   dashboardDataSignal,
   dashboardLoadingSignal,
   dashboardErrorSignal,
-  formatCurrency,
-  formatNumber,
   type DashboardData,
 } from '../src/client/state/dashboard-state.ts';
 import { hoveredIndexSignal } from '../src/client/components/dashboard/SalesChart.tsx';
@@ -19,21 +17,6 @@ describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', ()
     dashboardLoadingSignal.value = false;
     dashboardErrorSignal.value = null;
     hoveredIndexSignal.value = null;
-  });
-
-  describe('Formateadores de Números y Moneda', () => {
-    it('formatea montos a moneda de forma legible', () => {
-      const formattedZero = formatCurrency(0);
-      expect(formattedZero).toContain('0');
-
-      const formattedAmount = formatCurrency(45800);
-      expect(formattedAmount).toContain('45.800');
-    });
-
-    it('formatea números enteros con separador de miles', () => {
-      expect(formatNumber(1250)).toBe('1.250');
-      expect(formatNumber(0)).toBe('0');
-    });
   });
 
   describe('Estado Reactivo de Filtros', () => {

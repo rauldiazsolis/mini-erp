@@ -10,7 +10,6 @@ import {
   openBlockModal,
   deleteProduct,
 } from '../../state/catalog-state.ts';
-import { formatCurrency, formatNumber } from '../../state/dashboard-state.ts';
 import {
   TableContainer,
   Table,
@@ -21,6 +20,7 @@ import {
   Td,
   TableEmptyState,
 } from '../ui/Table.tsx';
+import { formatMoney, formatQty } from '../../format.ts';
 
 export function CatalogGrid() {
   const products = filteredProductsSignal.value;
@@ -220,7 +220,7 @@ export function CatalogGrid() {
                     />
                   ) : (
                     <span class="text-emerald-600 dark:text-emerald-400 group-hover:underline decoration-emerald-500/50 underline-offset-2">
-                      {formatCurrency(p.price)}
+                      {formatMoney(p.price)}
                     </span>
                   )}
                 </Td>
@@ -246,7 +246,7 @@ export function CatalogGrid() {
                           : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                       }`}
                     >
-                      {formatNumber(stock)} un.
+                      {formatQty(stock)} un.
                     </span>
                   )}
                 </Td>

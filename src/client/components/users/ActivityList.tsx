@@ -1,6 +1,6 @@
 import { auditSignal, AUDIT_LABEL } from '../../state/users-state.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
-import { formatDateTime } from './format.ts';
+import { formatDateTime } from '../../format.ts';
 
 /** La auditoría del comercio (#19): solo la ve el owner. */
 export function ActivityList() {

@@ -17,18 +17,7 @@ import { Input } from '../ui/Input.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { TableContainer, Table, Thead, Tbody, Tr, Th, Td } from '../ui/Table.tsx';
-
-function formatDate(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } catch {
-    return dateStr;
-  }
-}
+import { formatDate } from '../../format.ts';
 
 export function BranchesSection() {
   const branches = settingsBranchesSignal.value;

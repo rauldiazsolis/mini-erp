@@ -1,6 +1,6 @@
 import { customerStatsSignal } from '../../state/customer-state.ts';
-import { formatCurrency, formatNumber } from '../../state/dashboard-state.ts';
 import { StatCard } from '../ui/StatCard.tsx';
+import { formatMoney, formatQty } from '../../format.ts';
 
 export function CustomerStatsBar() {
   const stats = customerStatsSignal.value;
@@ -11,7 +11,7 @@ export function CustomerStatsBar() {
       {/* Total Clientes */}
       <StatCard
         title="Total Clientes"
-        value={formatNumber(stats.totalCustomers)}
+        value={formatQty(stats.totalCustomers)}
         subtitle="En cartera registrada"
         icon={<span>👥</span>}
         variant="primary"
@@ -20,7 +20,7 @@ export function CustomerStatsBar() {
       {/* Clientes con Deuda */}
       <StatCard
         title="Clientes Deudores"
-        value={formatNumber(stats.totalDebtors)}
+        value={formatQty(stats.totalDebtors)}
         subtitle={`${String(debtorPercentage)}% de la cartera activa`}
         icon={<span>⚠️</span>}
         variant="warning"
@@ -29,7 +29,7 @@ export function CustomerStatsBar() {
       {/* Saldo Deudor Total Consolidado */}
       <StatCard
         title="Deuda Total en Cta. Cte."
-        value={formatCurrency(stats.totalDebtAmount)}
+        value={formatMoney(stats.totalDebtAmount)}
         subtitle="Saldo pendiente de cobro"
         icon={<span>💳</span>}
         variant="danger"

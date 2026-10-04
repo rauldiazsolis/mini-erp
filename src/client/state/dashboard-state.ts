@@ -65,18 +65,6 @@ export const dashboardLoadingSignal = signal<boolean>(false);
 export const dashboardErrorSignal = signal<string | null>(null);
 export const branchesListSignal = signal<BranchItem[]>([]);
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-export function formatNumber(value: number): string {
-  return new Intl.NumberFormat('es-AR').format(value);
-}
-
 export async function fetchBranches(): Promise<void> {
   const tenantId = effectiveTenantIdSignal.value;
   const token = tokenSignal.value;
