@@ -1,7 +1,8 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeSectionSignal, goTo } from './route-state.ts';
+import { activeSectionSignal, goTo, routeTab } from './route-state.ts';
+import type { TabId } from '../routing/admin-routes.ts';
 import { customersSignal, fetchCustomers } from './customer-state.ts';
 import type { RegisterChoice } from './sales-labels.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
@@ -10,7 +11,8 @@ import type {
   SaleDetail, SaleKind, SaleListItem,
 } from '../../shared/sales-types.ts';
 
-export type SalesTab = 'sales' | 'payments' | 'movements' | 'summary';
+export type SalesTab = TabId<'sales'>;
+const SALES_TABS: readonly SalesTab[] = ['sales', 'payments', 'movements', 'summary'];
 export type RangePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 export type DayRange = { from: string; to: string };
 export type SalesFilters = {
@@ -41,7 +43,7 @@ export function presetRange(preset: Exclude<RangePreset, 'custom'>, today: strin
 }
 
 // Filtros: rango y caja son compartidos por las cuatro solapas (#20)
-export const salesTabSignal = signal<SalesTab>('sales');
+export const salesTabSignal = computed<SalesTab>(() => routeTab('sales', SALES_TABS, 'sales'));
 export const rangePresetSignal = signal<RangePreset>('today');
 export const rangeSignal = signal<DayRange>(presetRange('today', argentinaToday(new Date())));
 export const registerSignal = signal<RegisterChoice>({});
@@ -194,7 +196,7 @@ export function closeDaySummary(): void {
 
 // Cambiar un filtro vuelve a la primera página
 export function setTab(tab: SalesTab): void {
-  salesTabSignal.value = tab;
+  goTo({ section: 'sales', tab });
   pageSignal.value = 1;
 }
 
@@ -243,7 +245,6 @@ export type SalesDrill = {
 };
 
 export function openSalesWith(drill: SalesDrill): void {
-  salesTabSignal.value = 'sales';
   rangePresetSignal.value = 'custom';
   rangeSignal.value = drill.range;
   registerSignal.value = drill.branch === undefined ? {} : { branch: drill.branch };

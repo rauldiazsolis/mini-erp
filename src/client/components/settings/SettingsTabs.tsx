@@ -3,6 +3,8 @@ import {
   type SettingsTab,
 } from '../../state/settings-state.ts';
 import { isSettingsTabAllowed } from '../../state/permissions-state.ts';
+import { tabUrl } from '../../state/route-state.ts';
+import { Link } from '../ui/Link.tsx';
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: string }> = [
   { id: 'pos', label: 'Cajas del POS', icon: '📡' },
@@ -20,10 +22,9 @@ export function SettingsTabs() {
       {TABS.filter((t) => isSettingsTabAllowed(t.id)).map((t) => {
         const isActive = activeTab === t.id;
         return (
-          <button
+          <Link
             key={t.id}
-            type="button"
-            onClick={() => (activeSettingsTabSignal.value = t.id)}
+            href={tabUrl('settings', t.id)}
             class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               isActive
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/40'
@@ -32,7 +33,7 @@ export function SettingsTabs() {
           >
             <span>{t.icon}</span>
             <span>{t.label}</span>
-          </button>
+          </Link>
         );
       })}
     </div>

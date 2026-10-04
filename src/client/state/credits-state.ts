@@ -1,7 +1,8 @@
 import { signal, computed, effect } from '@preact/signals';
 import { ApiError, apiFetch, setOnPaymentRequired } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, isImpersonatingSignal } from './auth-state.ts';
-import { activeSectionSignal } from './route-state.ts';
+import { activeSectionSignal, routeTab } from './route-state.ts';
+import type { TabId } from '../routing/admin-routes.ts';
 import { showToast } from './toast-state.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -17,13 +18,14 @@ import type {
  * (owner y admin), y el estado de cobro que muestran la franja y la pantalla restringida (los tres roles).
  */
 
-export type CreditsTab = 'charges' | 'movements' | 'gifts';
+export type CreditsTab = TabId<'credits'>;
+const CREDITS_TABS: readonly CreditsTab[] = ['charges', 'movements', 'gifts'];
 
 export const creditsSignal = signal<CreditsResponse | null>(null);
 export const chargesSignal = signal<ChargesPage | null>(null);
 export const movementsSignal = signal<CreditMovementItem[]>([]);
 export const giftsSignal = signal<GiftItem[]>([]);
-export const creditsTabSignal = signal<CreditsTab>('charges');
+export const creditsTabSignal = computed<CreditsTab>(() => routeTab('credits', CREDITS_TABS, 'charges'));
 export const creditsLoadingSignal = signal<boolean>(false);
 const today = argentinaToday(new Date());
 /** Por defecto, los últimos 30 días argentinos. */

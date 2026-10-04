@@ -114,6 +114,13 @@ export function switchTenantUrl(route: Route, tenantSlug: string): string {
   return buildUrl({ kind: 'admin', tenantSlug, section: route.section, tab: route.tab, params: {} });
 }
 
+/** La solapa de la URL si la pantalla activa es esa sección; si no (o si no es una de `tabs`), `first`. Reactiva. */
+export function routeTab<S extends TenantSection>(section: S, tabs: readonly TabId<S>[], first: TabId<S>): TabId<S> {
+  const route = routeSignal.value;
+  const current = route.kind === 'admin' && route.section === section ? tabs.find((t) => t === route.tab) : undefined;
+  return current ?? first;
+}
+
 /** El href de una solapa del comercio de la URL. Reactiva. */
 export function tabUrl<S extends TenantSection>(section: S, tab: TabId<S>, filters?: FiltersOf[S]): string {
   const slug = currentTenantSlugSignal.value;

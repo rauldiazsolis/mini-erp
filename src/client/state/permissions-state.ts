@@ -60,7 +60,10 @@ export function isSettingsTabAllowed(tab: SettingsTab): boolean {
   return canDo(TAB_CAPABILITY[tab]);
 }
 
-/** Una sección no permitida para el rol vuelve al dashboard; Plataforma sin ser root o soporte, a /admin (#59). */
+/**
+ * Una sección no permitida para el rol vuelve al dashboard, una solapa de Configuración no permitida a
+ * Apariencia y Plataforma sin ser root o soporte, a /admin (#59).
+ */
 export function registerPermissionEffects(): () => void {
   return effect(() => {
     const route = routeSignal.value;
@@ -69,16 +72,14 @@ export function registerPermissionEffects(): () => void {
       return;
     }
     if (route.kind !== 'admin' || route.tenantSlug === null || activeRoleSignal.value === null) return;
-    if (!isViewAllowed(route.section)) navigate(adminUrl(route.tenantSlug, 'dashboard'), { replace: true });
+    if (!isViewAllowed(route.section)) {
+      navigate(adminUrl(route.tenantSlug, 'dashboard'), { replace: true });
+    } else if (route.section === 'settings' && !isSettingsTabAllowed(activeSettingsTabSignal.value)) {
+      navigate(adminUrl(route.tenantSlug, 'settings', { tab: 'appearance' }), { replace: true });
+    }
   });
 }
 
-// Si al cambiar de comercio la solapa ya no está permitida, se vuelve a una que sí
 if (typeof window !== 'undefined') {
   registerPermissionEffects();
-  effect(() => {
-    if (activeRoleSignal.value !== null && !isSettingsTabAllowed(activeSettingsTabSignal.value)) {
-      activeSettingsTabSignal.value = 'appearance';
-    }
-  });
 }

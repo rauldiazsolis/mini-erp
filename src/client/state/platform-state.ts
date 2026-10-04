@@ -1,7 +1,8 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeSectionSignal } from './route-state.ts';
+import { activeSectionSignal, routeSignal } from './route-state.ts';
+import type { PlatformTabId } from '../routing/admin-routes.ts';
 import { showToast } from './toast-state.ts';
 import { refreshCredits } from './credits-state.ts';
 import type { MemberItem } from './users-state.ts';
@@ -12,9 +13,13 @@ import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../..
  * (en su pantalla Créditos) y lo global (planilla de cobranzas, pagos y configuración).
  */
 
-export type PlatformTab = 'payments' | 'settings';
+export type PlatformTab = PlatformTabId;
 
-export const platformTabSignal = signal<PlatformTab>('payments');
+/** La solapa de `/plataforma` (#59). */
+export const platformTabSignal = computed<PlatformTab>(() => {
+  const route = routeSignal.value;
+  return route.kind === 'plataforma' ? route.tab : 'payments';
+});
 export const ownersSignal = signal<MemberItem[]>([]);
 export const sheetTextSignal = signal<string>('');
 export const sheetRowsSignal = signal<SheetResultRow[] | null>(null);

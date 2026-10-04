@@ -23,7 +23,6 @@ import { atTenant } from './helpers/client-route.ts';
 
 describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
   beforeEach(() => {
-    activeBulkTabSignal.value = 'prices';
     bulkPriceActionSignal.value = 'percentage';
     bulkPriceValueSignal.value = 15;
     bulkPriceCategorySignal.value = 'all';
@@ -47,10 +46,10 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
     it('inicia en precios y permite cambiar a intereses e io', () => {
       expect(activeBulkTabSignal.value).toBe('prices');
 
-      activeBulkTabSignal.value = 'interests';
+      atTenant('tienda-test', 'masivas/intereses');
       expect(activeBulkTabSignal.value).toBe('interests');
 
-      activeBulkTabSignal.value = 'io';
+      atTenant('tienda-test', 'masivas/archivos');
       expect(activeBulkTabSignal.value).toBe('io');
     });
   });

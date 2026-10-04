@@ -20,7 +20,6 @@ import { atTenant } from './helpers/client-route.ts';
 
 describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () => {
   beforeEach(() => {
-    activeSettingsTabSignal.value = 'pos';
     settingsBranchesSignal.value = [
       { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
     ];
@@ -40,13 +39,13 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
     it('inicia en terminales pos y permite cambiar de solapa', () => {
       expect(activeSettingsTabSignal.value).toBe('pos');
 
-      activeSettingsTabSignal.value = 'branches';
+      atTenant('tienda-test', 'configuracion/sucursales');
       expect(activeSettingsTabSignal.value).toBe('branches');
 
-      activeSettingsTabSignal.value = 'connection';
+      atTenant('tienda-test', 'configuracion/conexion');
       expect(activeSettingsTabSignal.value).toBe('connection');
 
-      activeSettingsTabSignal.value = 'appearance';
+      atTenant('tienda-test', 'configuracion/apariencia');
       expect(activeSettingsTabSignal.value).toBe('appearance');
     });
   });

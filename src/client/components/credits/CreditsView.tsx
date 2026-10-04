@@ -18,6 +18,8 @@ import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Pagination } from '../ui/Pagination.tsx';
+import { Link } from '../ui/Link.tsx';
+import { tabUrl } from '../../state/route-state.ts';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
 import { PlatformActionsBar, GiftVoidAction } from './PlatformActionsBar.tsx';
 import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types.ts';
@@ -282,12 +284,11 @@ export function CreditsView() {
       <HowToPay />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {TABS.map((t) => (
-          <button
+          <Link
             key={t.id}
-            type="button"
+            href={tabUrl('credits', t.id)}
             role="tab"
             aria-selected={tab === t.id}
-            onClick={() => (creditsTabSignal.value = t.id)}
             class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === t.id
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -295,7 +296,7 @@ export function CreditsView() {
             }`}
           >
             {t.label}
-          </button>
+          </Link>
         ))}
       </div>
       {tab === 'charges' && <ChargesTab />}

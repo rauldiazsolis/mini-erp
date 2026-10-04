@@ -1,13 +1,16 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
 import type { BranchItem } from './stock-state.ts';
+import { routeTab } from './route-state.ts';
+import type { TabId } from '../routing/admin-routes.ts';
 
-export type SettingsTab = 'pos' | 'branches' | 'connection' | 'appearance' | 'account';
+export type SettingsTab = TabId<'settings'>;
+const SETTINGS_TABS: readonly SettingsTab[] = ['pos', 'branches', 'connection', 'account', 'appearance'];
 
-// Pestaña activa
-export const activeSettingsTabSignal = signal<SettingsTab>('pos');
+// Pestaña activa: la de la URL (#59)
+export const activeSettingsTabSignal = computed<SettingsTab>(() => routeTab('settings', SETTINGS_TABS, 'pos'));
 
 // Sucursales
 export const settingsBranchesSignal = signal<BranchItem[]>([]);
