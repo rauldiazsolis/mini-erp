@@ -15,17 +15,26 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
 
 - El contrato lo define y lo publica offline-pos. **Acá nunca se cambia**: si el mini-erp necesita
   algo del contrato, se abre un issue en offline-pos.
+- **El POS se publica en un canal por major del contrato** (#58): `https://pos.contax.ar/v4/` tiene
+  siempre el último POS que habla el contrato 4.x (es una PWA: el service worker le lleva las
+  versiones nuevas a las terminales). Ya no hay carpetas por versión (`/0.1.0/`).
 - **Contrato publicado**: la copia en `docs/connector-api.openapi.yaml`, con su procedencia en
-  `contract.json`. Hoy: POS `0.1.0`, contrato **4.4.0**, piso **4.0.0**.
-- **Contrato implementado**: **4.4.0** (#2). `GET /info` dice `4.4.0` y declara las capacidades
-  `customer-payment-void` (siempre: la anulación de una cobranza es otra cobranza, en negativo) y
-  `demo-sessions` (si las demos están prendidas: `POST /connector/demo-sessions` y la vuelta del
-  onboarding con `#connect` desde `/alta`, #9). El pull manda `notices` y el backend cumple las
-  reglas de evolución (tests en `test/contract-evolution.test.ts`).
-- **Actualizar la copia**: `pnpm contract:update <versión del POS>`. Siempre de una carpeta publicada
-  (`https://offline-pos.pages.dev/<versión>/`), nunca de `main` de offline-pos. El diff del OpenAPI
-  muestra qué cambió; implementarlo es trabajo aparte, con su issue.
-- La guía para integradores está publicada junto al OpenAPI (`/<versión>/docs/`).
+  `contract.json` (el canal y qué POS había al bajarla; ningún código lee esa versión). Hoy: canal
+  `v4`, POS `0.3.1`, contrato **4.5.0**, piso **4.0.0**.
+- **Contrato implementado**: **4.5.0** (#2, #58), en `src/shared/contract-version.ts`
+  (`CONTRACT_VERSION`; de su major salen el `409` y el canal del POS, `POS_CHANNEL`). `GET /info`
+  dice `4.5.0`, manda `company.name` (el nombre del comercio de la key; no va en mantenimiento ni
+  con el nombre vacío) y declara las capacidades `customer-payment-void` (siempre: la anulación de
+  una cobranza es otra cobranza, en negativo) y `demo-sessions` (si las demos están prendidas:
+  `POST /connector/demo-sessions` y la vuelta del onboarding con `#connect` desde `/alta`, #9). El
+  pull manda `notices` y el backend cumple las reglas de evolución (tests en
+  `test/contract-evolution.test.ts`). Una demo barrida da `401` a todo y puede ir igual al alta; la
+  revocación activa de demos es de M8 (#24).
+- **Actualizar la copia**: `pnpm contract:update [canal]`. Siempre del canal publicado
+  (`https://pos.contax.ar/<canal>/`, por defecto el del major implementado; otro, como `v5`, para
+  preparar una migración), nunca de `main` de offline-pos. El diff del OpenAPI muestra qué cambió;
+  implementarlo es trabajo aparte, con su issue.
+- La guía para integradores está publicada junto al OpenAPI (`https://pos.contax.ar/v4/docs/`).
 
 ## Cómo trabajamos
 
@@ -288,19 +297,24 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
-    en `/alta` (`/onboarding` se reescribe). La versión del POS del landing sale de `contract.json`;
-    el origen del POS publicado, de `VITE_POS_URL` al compilar (`publishedPosOrigin` en
+    en `/alta` (`/onboarding` se reescribe). El landing abre el POS en su **canal**, el major del
+    contrato implementado (`<POS_URL>/v4/`, sin fijar una versión: la PWA lleva el último POS
+    compatible); el origen, de `VITE_POS_URL` al compilar (`publishedPosOrigin` en
     `state/demo-link.ts`, #11), que `deploy.yml` toma de la variable `POS_URL` del environment
-    `production` (vacía: `https://offline-pos.pages.dev`). Mudar el POS es cambiar esa variable y
+    `production` (vacía: `https://pos.contax.ar`, #38). Mudar el POS es cambiar esa variable y
     correr el deploy.
-  - **POS híbrido** (#9): en desarrollo, el landing abre una **copia local del POS publicado** que el
-    mini-erp sirve en `/pos/<versión>/` (`src/server/pos-mirror/`, montada en `client-middleware.ts`
-    solo fuera de producción; `pnpm dev` la baja sola a `vendor/pos/` si falta, `pnpm pos:mirror` la
-    renueva). Mismo JS que el publicado, mismo origen que el mini-erp: sin CORS ni permiso de red
-    local, así el recorrido anda en cualquier navegador y en el e2e. En producción el landing abre
-    `<POS_URL>/<versión>/` (hoy `https://offline-pos.pages.dev`): la demo pública sigue probando la integración real
-    (CORS, `#connect` entre dominios). La copia se baja siempre de una carpeta publicada, nunca de
-    `main` de offline-pos, y no se commitea.
+  - **POS híbrido** (#9, #58): en desarrollo, el landing abre una **copia local del canal del POS
+    publicado** que el mini-erp sirve en `/pos/v4/` (`src/server/pos-mirror/`, montada en
+    `client-middleware.ts` solo fuera de producción; `pnpm dev` la baja sola a `vendor/pos/v4/` si
+    falta y loguea qué POS sirve, `pnpm pos:mirror [canal]` la renueva). Mismo JS que el publicado,
+    mismo origen que el mini-erp: sin CORS ni permiso de red local, así el recorrido anda en
+    cualquier navegador y en el e2e. Baja también el manifest y sus íconos, pero **nunca el service
+    worker** (`sw.js`): en desarrollo el POS corre sin modo offline y una copia renovada se ve al
+    recargar; la parte PWA se prueba contra el POS publicado. El e2e corre con
+    `serviceWorkers: 'block'`. En producción el landing abre `<POS_URL>/v4/` (hoy
+    `https://pos.contax.ar`): la demo pública sigue probando la integración real (CORS, `#connect`
+    entre dominios). La copia se baja siempre del canal publicado, nunca de `main` de offline-pos, y
+    no se commitea.
   - El alta vuelve al POS con `state/connect-return.ts`: la conexión va siempre en el fragmento
     (`#connect=`), nunca en la query.
   - Estado solo con signals (`signal`, `computed`, stores por dominio en `src/client/state/`). **Sin
@@ -325,7 +339,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Deploy (#3)
 
 - **AWS Lightsail** (plan de US$5, Ubuntu 24.04) con **Caddy** y HTTPS en **`https://mini.contax.ar`**
-  (marca Contax, producto mini contax; el POS irá en `pos.contax.ar`, rauldiazsolis/offline-pos#150).
+  (marca Contax, producto mini contax; el POS está en `pos.contax.ar`, rauldiazsolis/offline-pos#150).
   DNS en DreamHost: registros A a la IP estática. `mini.contax.com.ar` y el nombre viejo
   `52-203-224-101.sslip.io` redirigen con 308 desde Caddy (`deploy/set-host.sh`, #11): sirven para el
   navegador, la conexión del POS va siempre al principal. Todo lo del servidor está en `deploy/`; la
@@ -370,7 +384,9 @@ Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
 (#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
 hecha) y M6 importación (#22, hecha).
+Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0
+(#58 con #38, hecha), y después #51 → #59 → #56 → #6.
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
-En backlog, entre otros: #6 (Zod 4 y `@types/node` 24) y lo que quedó afuera del MVP (#28 a #36).
+En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).
