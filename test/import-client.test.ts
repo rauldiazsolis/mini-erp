@@ -14,6 +14,8 @@ import {
 } from '../src/client/state/import-state.ts';
 import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
 import type { ImportPreview } from '../src/shared/import-fields.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
 import { atTenant } from './helpers/client-route.ts';
 
 const preview = (over: Partial<ImportPreview> = {}): ImportPreview => ({
@@ -90,6 +92,18 @@ describe('asistente de importación (#22)', () => {
     expect(calls[1]?.body).toEqual({ csv: 'Nombre;Deuda\nAna;10\n', mapping: { '0': 'name', '1': 'balance' }, dryRun: false });
     expect(importStepSignal.value).toBe('done');
     expect(importPreviewSignal.value?.dryRun).toBe(false);
+  });
+
+  it.each([
+    ['customers', 'customers'],
+    ['products', 'stock'],
+  ] as const)('importar %s deja vieja la pantalla de %s (#59)', async (entity, domain) => {
+    queryClient.setQueryData(tenantKey('t1', domain), []);
+    importEntitySignal.value = entity;
+    mockFetch([preview({ entity }), preview({ entity, dryRun: false })]);
+    await loadImportText('c.csv', 'Nombre;Deuda\nAna;10\n');
+    await confirmImport();
+    expect(queryClient.getQueryState(tenantKey('t1', domain))?.isInvalidated).toBe(true);
   });
 
   it('un error del servidor queda a la vista y no avanza', async () => {

@@ -37,6 +37,8 @@ import {
 } from '../src/client/state/auth-state.ts';
 import { locationSignal, navigate } from '../src/client/state/route-state.ts';
 import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
 
 describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
   beforeEach(() => {
@@ -335,6 +337,15 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       await loadExampleCatalogOnSignup();
       expect(calls).toEqual([{ url: '/api/tenants/kiosco-marta/catalog/example', method: 'POST' }]);
       expect(merchantStepSignal.value).toBe(DONE_STEP);
+    });
+
+    it('el catálogo de ejemplo deja viejo el catálogo del comercio nuevo (#59)', async () => {
+      queryClient.setQueryData(tenantKey('kiosco-marta', 'products'), []);
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ productsCreated: 40 }), { status: 200, headers: { 'content-type': 'application/json' } })),
+      );
+      await loadExampleCatalogOnSignup();
+      expect(queryClient.getQueryState(tenantKey('kiosco-marta', 'products'))?.isInvalidated).toBe(true);
     });
 
     it('si falla, se queda en el paso con el error', async () => {

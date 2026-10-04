@@ -13,6 +13,7 @@ import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { buildConnectReturnUrl } from './connect-return.ts';
 import { resetImport } from './import-state.ts';
+import { invalidateAfter } from './invalidation.ts';
 import type { BusinessType } from '../../shared/business-type.ts';
 import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
 
@@ -339,6 +340,7 @@ export async function loadExampleCatalogOnSignup(): Promise<void> {
   errorMessageSignal.value = null;
   try {
     await apiFetch<{ productsCreated: number }>(`tenants/${res.tenantId}/catalog/example`, { method: 'POST', token });
+    void invalidateAfter('products-imported');
     merchantStepSignal.value = DONE_STEP;
   } catch (err: unknown) {
     errorMessageSignal.value = err instanceof Error ? err.message : 'No se pudo cargar el catálogo de ejemplo';
