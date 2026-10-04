@@ -12,26 +12,27 @@ import {
   checkConnectorStatus,
   connectorInfoSignal,
 } from '../src/client/state/settings-state.ts';
-import {
-  tokenSignal,
-  userTenantsSignal,
-} from '../src/client/state/auth-state.ts';
-import { atTenant } from './helpers/client-route.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
+
+const central = { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' };
 
 describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () => {
   beforeEach(() => {
-    settingsBranchesSignal.value = [
-      { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
-    ];
+    setHistoryForTests(null);
+    freshSession('mock-token');
     branchModalOpenSignal.value = false;
     editingBranchSignal.value = null;
     connectorInfoSignal.value = null;
 
-    tokenSignal.value = 'mock-token';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
     atTenant('tienda-test');
+    queryClient.setQueryData(tenantKey('tienda-test', 'branches'), [central]);
     vi.restoreAllMocks();
   });
 
@@ -94,6 +95,28 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
         expect(branchModalOpenSignal.value).toBe(false);
         expect(settingsBranchesSignal.value.length).toBe(2);
         expect(settingsBranchesSignal.value[1]?.code).toBe('SUC-SUR');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('guardar una sucursal deja viejos sucursales, stock y dashboard (#59)', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'stock'), []);
+      queryClient.setQueryData(tenantKey('tienda-test', 'dashboard', 'week', ''), {});
+      openNewBranchModal();
+      branchFormSignal.value = { name: 'Norte', code: 'norte' };
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => Promise.resolve(new Response(
+        JSON.stringify({ ...central, id: 'b-3', code: 'NORTE', name: 'Norte' }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      )));
+      try {
+        await submitBranchForm();
+        expect(settingsBranchesSignal.value.some((b) => b.code === 'NORTE')).toBe(true);
+        for (const domain of ['branches', 'stock'] as const) {
+          expect(queryClient.getQueryState(tenantKey('tienda-test', domain))?.isInvalidated, domain).toBe(true);
+        }
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'dashboard', 'week', ''))?.isInvalidated).toBe(true);
       } finally {
         globalThis.fetch = originalFetch;
       }

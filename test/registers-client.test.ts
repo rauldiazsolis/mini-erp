@@ -14,10 +14,12 @@ import {
   deactivateRegister,
   dismissRevealedKey,
 } from '../src/client/state/registers-state.ts';
-import { settingsBranchesSignal } from '../src/client/state/settings-state.ts';
-import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { setHistoryForTests } from '../src/client/state/route-state.ts';
 import type { RegisterItem } from '../src/shared/register-types.ts';
-import { atTenant } from './helpers/client-route.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const caja: RegisterItem = {
   id: 'reg-1',
@@ -39,11 +41,12 @@ describe('estado de las cajas del POS (#21)', () => {
   let calls: Call[];
 
   beforeEach(() => {
-    tokenSignal.value = 'mock-token';
+    setHistoryForTests(null);
+    freshSession('mock-token');
     userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' }];
     atTenant('tienda-test');
-    settingsBranchesSignal.value = [{ id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' }];
-    registersSignal.value = [caja];
+    queryClient.setQueryData(tenantKey('tienda-test', 'branches'), [{ id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' }]);
+    queryClient.setQueryData(tenantKey('tienda-test', 'pos-registers'), [caja]);
     revealedKeySignal.value = null;
     createRegisterModalOpenSignal.value = false;
     calls = [];
@@ -63,20 +66,37 @@ describe('estado de las cajas del POS (#21)', () => {
   });
 
   it('fetchRegisters trae las cajas del comercio', async () => {
-    registersSignal.value = [];
+    queryClient.setQueryData(tenantKey('tienda-test', 'pos-registers'), []);
     await fetchRegisters();
     expect(calls).toEqual([{ url: '/api/tenants/tienda-test/pos-registers', method: 'GET', body: undefined }]);
     expect(registersSignal.value).toEqual([caja]);
   });
 
-  it('crear una caja manda sucursal en mayúsculas, revela la key y recarga', async () => {
+  it('las cajas se piden en Configuración, solo para owner y admin (#59)', async () => {
+    atTenant('tienda-test', 'configuracion');
+    await vi.waitFor(() => { expect(calls.some((c) => c.url.endsWith('/pos-registers'))).toBe(true); });
+    calls = [];
+    freshSession('mock-token');
+    userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'member', status: 'active' }];
+    atTenant('tienda-test', 'configuracion');
+    await vi.waitFor(() => { expect(calls.some((c) => c.url.endsWith('/branches'))).toBe(true); });
+    expect(calls.some((c) => c.url.endsWith('/pos-registers'))).toBe(false);
+  });
+
+  it('una acción sobre una caja deja viejas las cajas y el estado de cobro (#59)', async () => {
+    queryClient.setQueryData(tenantKey('tienda-test', 'billing-status'), { state: 'ok' });
+    await unbindRegister(caja);
+    expect(queryClient.getQueryState(tenantKey('tienda-test', 'billing-status'))?.isInvalidated).toBe(true);
+  });
+
+  it('crear una caja manda sucursal en mayúsculas, revela la key y deja viejas las cajas', async () => {
     openCreateRegisterModal();
     expect(createRegisterModalOpenSignal.value).toBe(true);
     expect(createRegisterFormSignal.value).toEqual({ name: 'Caja 2', branch: 'CENTRAL', pointOfSale: 'Caja 2' });
     createRegisterFormSignal.value = { name: 'Caja Patio', branch: 'central', pointOfSale: 'Patio' };
     await submitCreateRegister();
     expect(calls[0]).toEqual({ url: '/api/tenants/tienda-test/pos-registers', method: 'POST', body: { name: 'Caja Patio', branch: 'CENTRAL', pointOfSale: 'Patio' } });
-    expect(calls[1]?.method).toBe('GET');
+    expect(queryClient.getQueryState(tenantKey('tienda-test', 'pos-registers'))?.isInvalidated).toBe(true);
     expect(revealedKeySignal.value).toEqual({ registerName: 'Caja Patio', rawKey: 'mpos_nueva' });
     expect(createRegisterModalOpenSignal.value).toBe(false);
     dismissRevealedKey();
@@ -91,14 +111,14 @@ describe('estado de las cajas del POS (#21)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('rotar la key la revela; pasar, desligar y desactivar pegan a su ruta y recargan', async () => {
+  it('rotar la key la revela; pasar, desligar y desactivar pegan a su ruta y dejan viejas las cajas', async () => {
     await rotateRegisterKey(caja);
     expect(calls[0]).toMatchObject({ url: '/api/tenants/tienda-test/pos-registers/reg-1/rotate-key', method: 'POST' });
     expect(revealedKeySignal.value).toEqual({ registerName: 'Caja 1', rawKey: 'mpos_nueva' });
     calls = [];
     await transferRegister(caja, 'dev-b');
     expect(calls[0]).toEqual({ url: '/api/tenants/tienda-test/pos-registers/reg-1/transfer', method: 'POST', body: { deviceId: 'dev-b' } });
-    expect(calls[1]?.method).toBe('GET');
+    expect(queryClient.getQueryState(tenantKey('tienda-test', 'pos-registers'))?.isInvalidated).toBe(true);
     calls = [];
     await unbindRegister(caja);
     expect(calls[0]).toMatchObject({ url: '/api/tenants/tienda-test/pos-registers/reg-1/unbind', method: 'POST' });
