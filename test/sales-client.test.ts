@@ -7,12 +7,13 @@ import {
   openPayment, closePayment, paymentsListSignal, paymentDetailSignal,
   openDaySummary, daySummarySignal,
 } from '../src/client/state/sales-state.ts';
-import { activeViewSignal } from '../src/client/state/navigation-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { activeSectionSignal } from '../src/client/state/route-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
 import { drillToDebtors, drillToSales, drillToStockProduct, periodRange } from '../src/client/state/dashboard-drill.ts';
 import { selectedBranchSignal, selectedPeriodSignal } from '../src/client/state/dashboard-state.ts';
 import { customerDebtorsOnlySignal } from '../src/client/state/customer-state.ts';
 import { stockSearchSignal } from '../src/client/state/stock-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const originalFetch = globalThis.fetch;
 const json = (status: number, body: unknown) =>
@@ -33,7 +34,7 @@ beforeEach(() => {
   globalThis.fetch = originalFetch;
   tokenSignal.value = 'tok';
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T', status: 'active', role: 'member' }];
-  activeTenantIdSignal.value = 't1';
+  atTenant('t1');
 });
 
 describe('formato según el navegador (#20, #51)', () => {
@@ -106,7 +107,7 @@ describe('estado de Ventas & Caja (#20)', () => {
   it('el drill-down pone los filtros y navega a la sección', () => {
     pageSignal.value = 3;
     openSalesWith({ range: { from: '2026-09-26', to: '2026-10-02' }, branch: 'CENTRAL', status: 'valid', productId: 'p1' });
-    expect(activeViewSignal.value).toBe('sales');
+    expect(activeSectionSignal.value).toBe('sales');
     expect(salesTabSignal.value).toBe('sales');
     expect(rangeSignal.value).toEqual({ from: '2026-09-26', to: '2026-10-02' });
     expect(registerSignal.value).toEqual({ branch: 'CENTRAL' });
@@ -157,7 +158,7 @@ describe('drill-down del dashboard (#20)', () => {
     selectedPeriodSignal.value = 'week';
     selectedBranchSignal.value = 'CENTRAL';
     drillToSales({ status: 'valid' }, '2026-10-02');
-    expect(activeViewSignal.value).toBe('sales');
+    expect(activeSectionSignal.value).toBe('sales');
     expect(rangeSignal.value).toEqual({ from: '2026-09-26', to: '2026-10-02' });
     expect(registerSignal.value).toEqual({ branch: 'CENTRAL' });
     expect(salesFiltersSignal.value).toEqual({ status: 'valid' });
@@ -174,10 +175,10 @@ describe('drill-down del dashboard (#20)', () => {
 
   it('deuda lleva a Clientes deudores; una alerta, a Stock con el producto', () => {
     drillToDebtors();
-    expect(activeViewSignal.value).toBe('customers');
+    expect(activeSectionSignal.value).toBe('customers');
     expect(customerDebtorsOnlySignal.value).toBe(true);
     drillToStockProduct('Alfajor');
-    expect(activeViewSignal.value).toBe('stock');
+    expect(activeSectionSignal.value).toBe('stock');
     expect(stockSearchSignal.value).toBe('Alfajor');
   });
 });

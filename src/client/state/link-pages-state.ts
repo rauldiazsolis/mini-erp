@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { adoptSession, setActiveTenant } from './auth-state.ts';
+import { adoptSession, rememberTenant } from './auth-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { PASSWORD_MIN_LENGTH, PASSWORD_MIN_MESSAGE } from '../../shared/password.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
@@ -65,7 +65,7 @@ export function initLinkPageFromUrl(): void {
   const route = routeFromPath(window.location.pathname);
   if (route !== 'invitacion' && route !== 'restablecer') return;
   linkTokenSignal.value = readLinkToken(window.location.hash);
-  window.history.replaceState(null, '', window.location.pathname);
+  navigate(window.location.pathname, { replace: true });
   if (linkTokenSignal.value === null) {
     linkErrorSignal.value = LINK_GONE;
     return;
@@ -106,7 +106,7 @@ export async function submitInvitation(): Promise<void> {
       body: { token: linkTokenSignal.value ?? '', password, ...(info.accountExists ? {} : { name: name.trim() }) },
     });
     await adoptSession(res.token);
-    setActiveTenant(res.tenantId);
+    rememberTenant(res.tenantId);
     navigate('/admin');
   } catch (err: unknown) {
     linkErrorSignal.value = message(err);

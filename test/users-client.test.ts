@@ -16,7 +16,8 @@ import {
   createResetLink,
   revokeInvitation,
 } from '../src/client/state/users-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -29,7 +30,7 @@ describe('vista Usuarios (#19)', () => {
     vi.restoreAllMocks();
     tokenSignal.value = 'tok';
     userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'Kiosco Ana', status: 'active', role: 'owner' }];
-    activeTenantIdSignal.value = 't1';
+    atTenant('t1');
     linkReadySignal.value = null;
     inviteErrorSignal.value = null;
     inviteModalOpenSignal.value = false;

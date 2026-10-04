@@ -12,8 +12,9 @@ import {
   importErrorSignal,
   PREVIEW_DELAY_MS,
 } from '../src/client/state/import-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
 import type { ImportPreview } from '../src/shared/import-fields.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const preview = (over: Partial<ImportPreview> = {}): ImportPreview => ({
   entity: 'customers',
@@ -49,8 +50,8 @@ describe('asistente de importación (#22)', () => {
   beforeEach(() => {
     resetImport();
     tokenSignal.value = 'tok';
-    activeTenantIdSignal.value = 't1';
     userTenantsSignal.value = [{ tenantId: 't1', name: 'T1', slug: 't1', role: 'owner', status: 'active' }];
+    atTenant('t1');
     importEntitySignal.value = 'customers';
     vi.restoreAllMocks();
   });

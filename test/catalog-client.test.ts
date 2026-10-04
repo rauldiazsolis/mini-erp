@@ -27,9 +27,9 @@ import {
 } from '../src/client/state/catalog-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const mockProductA: ProductItem = {
   id: 'prod-1',
@@ -88,10 +88,10 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
     targetProductToBlockSignal.value = null;
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 

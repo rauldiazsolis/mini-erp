@@ -17,9 +17,9 @@ import {
 } from '../src/client/state/bulk-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
   beforeEach(() => {
@@ -36,10 +36,10 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
     bulkInterestPreviewSignal.value = null;
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 

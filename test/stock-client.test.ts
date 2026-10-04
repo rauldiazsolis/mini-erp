@@ -23,9 +23,9 @@ import {
 } from '../src/client/state/stock-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const mockBranches: BranchItem[] = [
   { id: 'branch-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
@@ -92,10 +92,10 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
     kardexMovementsSignal.value = [];
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 

@@ -47,7 +47,7 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
     [token, tenant.id] as const,
   );
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'Ventas & Caja' }).click();
+  await page.getByRole('link', { name: 'Ventas & Caja' }).click();
 
   // Ventas de hoy: los tres tickets
   await expect(page.getByText(/^3 tickets/)).toBeVisible();
@@ -73,7 +73,7 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
 
   // Drill-down: Facturación del dashboard lleva a la lista
   await page.getByRole('button', { name: 'Cerrar panel' }).click();
-  await page.getByRole('button', { name: 'Dashboard' }).click();
+  await page.getByRole('link', { name: 'Dashboard' }).click();
   await page.getByRole('button', { name: /Facturación Total/ }).click();
   await expect(page.getByText(/^3 tickets/)).toBeVisible();
 });

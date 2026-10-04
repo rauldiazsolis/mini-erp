@@ -14,9 +14,9 @@ import {
 } from '../src/client/state/settings-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () => {
   beforeEach(() => {
@@ -29,10 +29,10 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
     connectorInfoSignal.value = null;
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 

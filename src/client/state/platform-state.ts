@@ -1,7 +1,7 @@
 import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { activeSectionSignal } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { refreshCredits } from './credits-state.ts';
 import type { MemberItem } from './users-state.ts';
@@ -234,7 +234,7 @@ export async function savePlatformSettings(patch: Partial<BillingSettings>): Pro
 
 if (typeof window !== 'undefined') {
   effect(() => {
-    if (activeViewSignal.value === 'platform' && tokenSignal.value) {
+    if (activeSectionSignal.value === 'platform' && tokenSignal.value) {
       void fetchPlatformPayments();
       void fetchPlatformSettings();
     }

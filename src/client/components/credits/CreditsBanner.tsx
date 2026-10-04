@@ -1,7 +1,7 @@
 import { billingStatusSignal } from '../../state/credits-state.ts';
 import { isImpersonatingSignal } from '../../state/auth-state.ts';
 import { canDo } from '../../state/permissions-state.ts';
-import { navigateTo } from '../../state/navigation-state.ts';
+import { goTo } from '../../state/route-state.ts';
 import { formatDay, formatMoney } from '../../format.ts';
 
 const TONE = {
@@ -39,7 +39,7 @@ export function CreditsBanner() {
       {canSee && (
         <button
           type="button"
-          onClick={() => { navigateTo('credits'); }}
+          onClick={() => { goTo({ section: 'credits' }); }}
           class="px-2.5 py-1 rounded-lg font-semibold bg-white/40 dark:bg-black/20 hover:bg-white/60 dark:hover:bg-black/30 cursor-pointer"
         >
           {status.state === 'low' ? 'Ver créditos' : 'Cómo pagar'}

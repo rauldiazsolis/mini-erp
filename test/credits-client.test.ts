@@ -12,7 +12,8 @@ import {
   whatsappPayUrl,
 } from '../src/client/state/credits-state.ts';
 import { ApiError, apiFetch } from '../src/client/api/client.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal, impersonatedTenantIdSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal, impersonationSignal } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 type Call = { url: string; method: string };
 
@@ -22,9 +23,9 @@ describe('estado de Créditos (#21)', () => {
 
   beforeEach(() => {
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
-    impersonatedTenantIdSignal.value = null;
+    impersonationSignal.value = null;
     userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' }];
+    atTenant('tienda-test');
     creditsSignal.value = null;
     chargesSignal.value = null;
     billingStatusSignal.value = null;
@@ -61,7 +62,7 @@ describe('estado de Créditos (#21)', () => {
     await fetchBillingStatus();
     expect(calls[0]?.url).toBe('/api/tenants/tienda-test/billing-status');
     expect(isRestrictedSignal.value).toBe(true);
-    impersonatedTenantIdSignal.value = 'tienda-test';
+    impersonationSignal.value = { slug: 'tienda-test', fromSlug: null };
     expect(isRestrictedSignal.value).toBe(false);
   });
 

@@ -15,8 +15,9 @@ import {
   dismissRevealedKey,
 } from '../src/client/state/registers-state.ts';
 import { settingsBranchesSignal } from '../src/client/state/settings-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
 import type { RegisterItem } from '../src/shared/register-types.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const caja: RegisterItem = {
   id: 'reg-1',
@@ -39,8 +40,8 @@ describe('estado de las cajas del POS (#21)', () => {
 
   beforeEach(() => {
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' }];
+    atTenant('tienda-test');
     settingsBranchesSignal.value = [{ id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' }];
     registersSignal.value = [caja];
     revealedKeySignal.value = null;

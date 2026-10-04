@@ -1,7 +1,7 @@
 import { signal, computed, effect } from '@preact/signals';
 import { ApiError, apiFetch, setOnPaymentRequired } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, isImpersonatingSignal } from './auth-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { activeSectionSignal } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -142,7 +142,7 @@ if (typeof window !== 'undefined') {
   }, STATUS_REFRESH_MS);
   // La pantalla Créditos se carga al entrar
   effect(() => {
-    if (activeViewSignal.value === 'credits' && effectiveTenantIdSignal.value && tokenSignal.value) {
+    if (activeSectionSignal.value === 'credits' && effectiveTenantIdSignal.value && tokenSignal.value) {
       void refreshCredits();
     }
   });

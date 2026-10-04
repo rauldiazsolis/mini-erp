@@ -4,7 +4,8 @@ import {
   discrepanciesSignal, discrepancyDrawerOpenSignal, dismissNoteSignal, fetchDiscrepancies, dismissDiscrepancy, openDiscrepancies,
   type DiscrepancyItem,
 } from '../src/client/state/discrepancy-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const originalFetch = globalThis.fetch;
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -14,7 +15,7 @@ beforeEach(() => {
   globalThis.fetch = originalFetch;
   tokenSignal.value = 'tok';
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T', status: 'active', role: 'owner' }];
-  activeTenantIdSignal.value = 't1';
+  atTenant('t1');
   discrepanciesSignal.value = [];
 });
 

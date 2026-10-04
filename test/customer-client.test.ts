@@ -32,9 +32,9 @@ import {
 } from '../src/client/state/customer-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const mockCustomerA: CustomerItem = {
   id: 'cust-1',
@@ -101,10 +101,10 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
     accountMovementsSignal.value = [];
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 

@@ -6,12 +6,13 @@ vi.mock('../src/client/api/client.ts', async (importOriginal) => ({
 }));
 
 import { apiFetch } from '../src/client/api/client.ts';
-import { activeTenantIdSignal, tokenSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal } from '../src/client/state/auth-state.ts';
 import {
   registerDashboardEffects,
   selectedPeriodSignal,
   selectedBranchSignal,
 } from '../src/client/state/dashboard-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const calls = (fragment: string): number =>
   vi.mocked(apiFetch).mock.calls.filter(([endpoint]) => endpoint.includes(fragment)).length;
@@ -26,7 +27,7 @@ describe('Recargas del dashboard (#7)', () => {
 
   it('carga una vez al entrar, una vez el resumen por filtro y las sucursales solo por tenant', () => {
     tokenSignal.value = 'token';
-    activeTenantIdSignal.value = 'kiosco';
+    atTenant('kiosco');
     selectedPeriodSignal.value = 'week';
     selectedBranchSignal.value = '';
     dispose = registerDashboardEffects();
@@ -44,7 +45,7 @@ describe('Recargas del dashboard (#7)', () => {
     expect(calls('/branches')).toBe(0);
 
     vi.mocked(apiFetch).mockClear();
-    activeTenantIdSignal.value = 'almacen';
+    atTenant('almacen');
     expect(calls('/dashboard/summary')).toBe(1);
     expect(calls('/branches')).toBe(1);
   });

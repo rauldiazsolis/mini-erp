@@ -1,7 +1,7 @@
 import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { activeSectionSignal } from './route-state.ts';
 import { canDo } from './permissions-state.ts';
 import { showToast } from './toast-state.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
@@ -213,7 +213,7 @@ export async function createResetLink(member: MemberItem): Promise<void> {
 // Carga al entrar a Usuarios o al cambiar de comercio estando ahí
 if (typeof window !== 'undefined') {
   effect(() => {
-    if (activeViewSignal.value === 'users' && effectiveTenantIdSignal.value && tokenSignal.value && canDo('users.manage')) {
+    if (activeSectionSignal.value === 'users' && effectiveTenantIdSignal.value && tokenSignal.value && canDo('users.manage')) {
       void loadUsers();
       if (canDo('owners.manage')) void loadAudit();
     }

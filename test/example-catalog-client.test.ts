@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { exampleCatalogSignal, fetchExampleCatalog, applyExampleCatalog } from '../src/client/state/example-catalog-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 const json = (body: unknown) =>
   Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
@@ -8,8 +9,8 @@ const json = (body: unknown) =>
 describe('catálogo de ejemplo en Operaciones masivas (#22)', () => {
   beforeEach(() => {
     tokenSignal.value = 'tok';
-    activeTenantIdSignal.value = 't1';
     userTenantsSignal.value = [{ tenantId: 't1', name: 'T1', slug: 't1', role: 'owner', status: 'active' }];
+    atTenant('t1');
     exampleCatalogSignal.value = null;
     vi.restoreAllMocks();
   });

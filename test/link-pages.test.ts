@@ -11,7 +11,7 @@ import {
   submitInvitation,
   submitReset,
 } from '../src/client/state/link-pages-state.ts';
-import { tokenSignal, activeTenantIdSignal, logout } from '../src/client/state/auth-state.ts';
+import { tokenSignal, lastTenantIdSignal, logout } from '../src/client/state/auth-state.ts';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -81,7 +81,7 @@ describe('páginas de links (#19)', () => {
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ token: 'tk', password: 'clave-juan-1', name: 'Juan' }));
     expect(linkErrorSignal.value).toBeNull();
     expect(tokenSignal.value).toBe('sesion');
-    expect(activeTenantIdSignal.value).toBe('t1');
+    expect(lastTenantIdSignal.value).toBe('t1');
   });
 
   it('con cuenta existente manda solo la contraseña, y una contraseña mala no cierra nada', async () => {

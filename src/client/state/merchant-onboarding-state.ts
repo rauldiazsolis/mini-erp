@@ -5,11 +5,10 @@ import {
   isAuthenticatedSignal,
   fetchProfile,
   adoptSession,
-  setActiveTenant,
+  rememberTenant,
   login,
 } from './auth-state.ts';
 import { PASSWORD_MIN_LENGTH, PASSWORD_MIN_MESSAGE } from '../../shared/password.ts';
-import { navigateTo } from './navigation-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { buildConnectReturnUrl } from './connect-return.ts';
@@ -261,7 +260,7 @@ export async function executeMerchantProvisioning(): Promise<void> {
       await fetchProfile();
     }
     const tenantId = res.tenant.id;
-    setActiveTenant(tenantId);
+    rememberTenant(tenantId);
     const apiKey = res.posKey.key;
     const branchCode = res.posKey.branch;
     const posTerminalName = res.posKey.pointOfSale;
@@ -354,11 +353,10 @@ export async function loadExampleCatalogOnSignup(): Promise<void> {
 export function enterDashboardFromOnboarding(): void {
   const res = merchantResultSignal.value;
   if (res) {
-    setActiveTenant(res.tenantId);
+    rememberTenant(res.tenantId);
   }
   merchantOnboardingActiveSignal.value = false;
   navigate('/admin');
-  navigateTo('dashboard');
 }
 
 /**

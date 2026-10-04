@@ -23,7 +23,8 @@ import {
   draftToSettings,
 } from '../src/client/state/platform-state.ts';
 import { isViewAllowed } from '../src/client/state/permissions-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
+import { tokenSignal, userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -33,8 +34,8 @@ describe('estado de la plataforma de cobro (#21)', () => {
 
   beforeEach(() => {
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'root_impersonator', status: 'active' }];
+    atTenant('tienda-test');
     currentUserSignal.value = { id: 'root', email: 'root@x.com', name: 'Root', globalRole: 'root' };
     sheetRowsSignal.value = null;
     sheetAppliedSignal.value = false;

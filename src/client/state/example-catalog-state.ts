@@ -2,7 +2,7 @@ import { effect, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { activeSectionSignal } from './route-state.ts';
 import { activeBulkTabSignal } from './bulk-state.ts';
 import { importStepSignal } from './import-state.ts';
 import type { BusinessType } from '../../shared/business-type.ts';
@@ -51,7 +51,7 @@ if (typeof window !== 'undefined') {
   effect(() => {
     // Mientras se mapea un archivo no cambia nada; al terminar, quizás ya hay productos
     const mapping = importStepSignal.value === 'mapping';
-    const onImportTab = activeViewSignal.value === 'bulk' && activeBulkTabSignal.value === 'io';
+    const onImportTab = activeSectionSignal.value === 'bulk' && activeBulkTabSignal.value === 'io';
     if (!mapping && onImportTab && effectiveTenantIdSignal.value && tokenSignal.value) {
       void fetchExampleCatalog();
     }

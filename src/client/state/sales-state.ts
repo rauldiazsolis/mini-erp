@@ -1,7 +1,7 @@
 import { signal, effect } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeViewSignal, navigateTo } from './navigation-state.ts';
+import { activeSectionSignal, goTo } from './route-state.ts';
 import { customersSignal, fetchCustomers } from './customer-state.ts';
 import type { RegisterChoice } from './sales-labels.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
@@ -252,7 +252,7 @@ export function openSalesWith(drill: SalesDrill): void {
     ...(drill.productId === undefined ? {} : { productId: drill.productId }),
   };
   pageSignal.value = 1;
-  navigateTo('sales');
+  goTo({ section: 'sales' });
 }
 
 /**
@@ -261,7 +261,7 @@ export function openSalesWith(drill: SalesDrill): void {
  */
 export function registerSalesEffects(): () => void {
   const disposeRegisters = effect(() => {
-    if (activeViewSignal.value === 'sales' && session() !== null) {
+    if (activeSectionSignal.value === 'sales' && session() !== null) {
       void fetchRegisters();
       if (customersSignal.peek().length === 0) void fetchCustomers();
     }
@@ -276,7 +276,7 @@ export function registerSalesEffects(): () => void {
       movements: movementsFiltersSignal.value,
       page: pageSignal.value,
     };
-    if (activeViewSignal.value === 'sales' && session() !== null) {
+    if (activeSectionSignal.value === 'sales' && session() !== null) {
       void loadTab(input);
     }
   });

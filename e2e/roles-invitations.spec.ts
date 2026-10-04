@@ -23,7 +23,7 @@ test('el owner invita a un empleado; el empleado entra y no ve usuarios ni opera
     [token, tenant.id] as const,
   );
   await page.goto('/admin');
-  await page.getByRole('button', { name: 'Usuarios' }).click();
+  await page.getByRole('link', { name: 'Usuarios' }).click();
   await page.getByRole('button', { name: 'Invitar' }).click();
   await page.getByLabel('Correo').fill(`empleado-${id}@local.test`);
   await page.getByRole('button', { name: 'Crear link' }).click();
@@ -41,8 +41,8 @@ test('el owner invita a un empleado; el empleado entra y no ve usuarios ni opera
   await emp.getByLabel('Repetir contraseña').fill('clave-emp-12');
   await emp.getByRole('button', { name: 'Aceptar invitación' }).click();
 
-  await expect(emp.getByRole('button', { name: 'Catálogo & Precios' })).toBeVisible();
-  await expect(emp.getByRole('button', { name: 'Usuarios' })).toHaveCount(0);
-  await expect(emp.getByRole('button', { name: 'Operaciones Masivas' })).toHaveCount(0);
+  await expect(emp.getByRole('link', { name: 'Catálogo & Precios' })).toBeVisible();
+  await expect(emp.getByRole('link', { name: 'Usuarios' })).toHaveCount(0);
+  await expect(emp.getByRole('link', { name: 'Operaciones Masivas' })).toHaveCount(0);
   await other.close();
 });
