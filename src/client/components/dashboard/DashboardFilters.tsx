@@ -55,7 +55,7 @@ export function DashboardFilters() {
             >
               <option value="">Todas las sucursales</option>
               {branches.map((b) => (
-                <option key={b.id} value={b.name}>
+                <option key={b.id} value={b.code}>
                   {b.name}
                 </option>
               ))}

@@ -141,6 +141,29 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
     expect(emptyBody.summary.totalSales).toBe(0);
   });
 
+  it('la sucursal es su código, también para las alertas de stock (#59)', async () => {
+    const tenantDb = tenantManager.getTenantDb(tenantId);
+    const now = new Date().toISOString();
+    const central = tenantDb.prepare("SELECT id FROM branches WHERE code = 'CENTRAL'").get() as { id: string };
+    tenantDb.prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)').run('branch-norte', 'Sucursal Norte', 'NORTE', now);
+    tenantDb
+      .prepare('INSERT INTO products (id, sku, name, price, category, tracks_stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+      .run('p-solo-norte', 'SOLO-NORTE', 'Solo en Norte', 100, 'General', now, now);
+    tenantDb.prepare('INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)').run('p-solo-norte', central.id, 0, now);
+    tenantDb.prepare('INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)').run('p-solo-norte', 'branch-norte', 50, now);
+
+    const alerted = async (query: string): Promise<boolean> => {
+      const res = await request(app).get(`/api/tenants/${tenantId}/dashboard/summary?period=week${query}`).set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as { stockAlerts: { lowStockProducts: Array<{ id: string }> } };
+      return body.stockAlerts.lowStockProducts.some((p) => p.id === 'p-solo-norte');
+    };
+
+    expect(await alerted('')).toBe(false);
+    expect(await alerted('&branchId=CENTRAL')).toBe(true);
+    expect(await alerted('&branchId=NORTE')).toBe(false);
+  });
+
   it('excluye ventas anuladas de los totales y del ranking de más vendidos', async () => {
     const tenantDb = tenantManager.getTenantDb(tenantId);
     const nowIso = new Date().toISOString();
