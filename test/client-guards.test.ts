@@ -22,6 +22,11 @@ describe('Guardianes del cliente (#59)', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('solo query-client crea el QueryClient y los observers', () => {
+    const offenders = files.filter((f) => f !== 'api/query-client.ts' && /new (QueryClient|QueryObserver)\b/.test(read(f)));
+    expect(offenders).toEqual([]);
+  });
+
   it('un link navega solo con el clic izquierdo sin teclas', () => {
     const base = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, defaultPrevented: false };
     expect(isPlainLeftClick(base)).toBe(true);

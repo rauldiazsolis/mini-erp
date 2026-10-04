@@ -134,11 +134,10 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
 
   describe('createSignalQuery (TanStack Query + Signals)', () => {
     it('encapsula consultas y actualiza señales reactivas sin hooks', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({ items: ['prod-1', 'prod-2'] });
+      const mockFetch = vi.fn(() => Promise.resolve({ items: ['prod-1', 'prod-2'] }));
 
       const query = createSignalQuery({
-        queryKey: ['mock-items-key'],
-        queryFn: mockFetch,
+        source: () => ({ key: ['mock-items-key'], fn: mockFetch }),
       });
 
       expect(query.isLoading.value).toBe(true);
@@ -149,9 +148,9 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
 
       expect(query.isLoading.value).toBe(false);
       expect(query.data.value).toEqual({ items: ['prod-1', 'prod-2'] });
-      expect(query.isError.value).toBe(false);
+      expect(query.error.value).toBeNull();
 
-      query.unsubscribe();
+      query.dispose();
     });
   });
 
