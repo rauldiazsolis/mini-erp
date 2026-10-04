@@ -1,8 +1,12 @@
 import { signal, computed } from '@preact/signals';
-import { loadOnTenantAndView } from './view-loader.ts';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
+import { createTenantQuery } from './query-keys.ts';
+import { categoriesQuery, stockMatrixQuery } from './shared-queries.ts';
+import { inSection, routeFilters, setFilters } from './route-state.ts';
+import { invalidateAfter } from './invalidation.ts';
+import type { CatalogFilters } from '../routing/admin-routes.ts';
 
 export type ProductItem = {
   id: string;
@@ -18,15 +22,6 @@ export type ProductItem = {
   updatedAt: string;
 };
 
-export type StockMatrixItem = {
-  productId: string;
-  sku: string;
-  name: string;
-  category: string;
-  totalQuantity: number;
-  branches: Record<string, number>;
-};
-
 export type ProductFormData = {
   id?: string;
   sku: string;
@@ -39,17 +34,37 @@ export type ProductFormData = {
   blockedReason?: string | null;
 };
 
-// Señales principales de catálogo
-export const productsSignal = signal<ProductItem[]>([]);
-export const categoriesSignal = signal<string[]>([]);
-export const stockMapSignal = signal<Record<string, number>>({});
-export const catalogLoadingSignal = signal<boolean>(false);
-export const catalogErrorSignal = signal<string | null>(null);
+// Datos del catálogo: en la caché de TanStack Query (#59)
+const productsQuery = createTenantQuery<ProductItem[]>({
+  domain: 'products',
+  enabled: () => inSection('catalog'),
+  onError: (err) => {
+    showToast({ type: 'error', title: 'Error de catálogo', message: err.message });
+  },
+  fn: ({ tenantId, token }) => apiFetch<ProductItem[]>(`tenants/${tenantId}/products`, { token }),
+});
 
-// Señales de filtrado y búsqueda
-export const catalogSearchSignal = signal<string>('');
-export const catalogCategoryFilterSignal = signal<string>('all');
-export const catalogBlockedFilterSignal = signal<'all' | 'active' | 'blocked'>('all');
+export const productsSignal = computed<ProductItem[]>(() => productsQuery.data.value ?? []);
+export const categoriesSignal = computed<string[]>(() => categoriesQuery.data.value ?? []);
+export const stockMapSignal = computed<Record<string, number>>(() =>
+  Object.fromEntries((stockMatrixQuery.data.value ?? []).map((item) => [item.productId, item.totalStock])),
+);
+export const catalogLoadingSignal = productsQuery.isLoading;
+export const catalogErrorSignal = computed<string | null>(() => productsQuery.error.value?.message ?? null);
+
+// Filtros: en la URL (#59)
+export const catalogFiltersSignal = computed<CatalogFilters>(() => routeFilters('catalog'));
+export const catalogSearchSignal = computed(() => catalogFiltersSignal.value.q);
+export const catalogCategoryFilterSignal = computed(() => catalogFiltersSignal.value.category);
+export const catalogBlockedFilterSignal = computed(() => catalogFiltersSignal.value.blocked);
+
+export function setCatalogFilters(patch: Partial<CatalogFilters>): void {
+  setFilters('catalog', patch);
+}
+
+function setProducts(update: (list: ProductItem[]) => ProductItem[]): void {
+  productsQuery.setData((previous) => update(previous ?? []));
+}
 
 // Señales de edición inline tipo Excel/Sheets
 export const inlineEditingSignal = signal<{
@@ -78,71 +93,28 @@ export const blockModalOpenSignal = signal<boolean>(false);
 export const targetProductToBlockSignal = signal<ProductItem | null>(null);
 export const blockReasonSignal = signal<string>('');
 
-// Productos filtrados computados
-export const filteredProductsSignal = computed<ProductItem[]>(() => {
-  const search = catalogSearchSignal.value.trim().toLowerCase();
-  const category = catalogCategoryFilterSignal.value;
-  const blockedFilter = catalogBlockedFilterSignal.value;
-
-  return productsSignal.value.filter((p) => {
-    // Filtro de búsqueda
+// Productos filtrados
+export function filterProducts(products: ProductItem[], filters: CatalogFilters): ProductItem[] {
+  const search = filters.q.trim().toLowerCase();
+  return products.filter((p) => {
     if (search) {
       const matchName = p.name.toLowerCase().includes(search);
       const matchSku = p.sku.toLowerCase().includes(search);
       const matchBarcode = p.barcodes.some((b) => b.toLowerCase().includes(search));
-      if (!matchName && !matchSku && !matchBarcode) {
-        return false;
-      }
+      if (!matchName && !matchSku && !matchBarcode) return false;
     }
-
-    // Filtro por categoría
-    if (category !== 'all' && p.category !== category) {
-      return false;
-    }
-
-    // Filtro por estado
-    if (blockedFilter === 'active' && p.blockedReason !== null) {
-      return false;
-    }
-    if (blockedFilter === 'blocked' && p.blockedReason === null) {
-      return false;
-    }
-
+    if (filters.category !== 'all' && p.category !== filters.category) return false;
+    if (filters.blocked === 'active' && p.blockedReason !== null) return false;
+    if (filters.blocked === 'blocked' && p.blockedReason === null) return false;
     return true;
   });
-});
+}
 
+export const filteredProductsSignal = computed<ProductItem[]>(() => filterProducts(productsSignal.value, catalogFiltersSignal.value));
+
+/** El botón "Actualizar". */
 export async function fetchCatalog(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    catalogLoadingSignal.value = true;
-    catalogErrorSignal.value = null;
-
-    // Ejecutar en paralelo la consulta de productos, categorías y stock consolidado
-    const [products, categories, stockMatrix] = await Promise.all([
-      apiFetch<ProductItem[]>(`tenants/${tenantId}/products`, { token }),
-      apiFetch<string[]>(`tenants/${tenantId}/categories`, { token }).catch(() => []),
-      apiFetch<StockMatrixItem[]>(`tenants/${tenantId}/stock`, { token }).catch(() => []),
-    ]);
-
-    productsSignal.value = products;
-    categoriesSignal.value = categories;
-
-    const map: Record<string, number> = {};
-    for (const item of stockMatrix) {
-      map[item.productId] = item.totalQuantity;
-    }
-    stockMapSignal.value = map;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar catálogo';
-    catalogErrorSignal.value = msg;
-    showToast({ type: 'error', title: 'Error de catálogo', message: msg });
-  } finally {
-    catalogLoadingSignal.value = false;
-  }
+  await Promise.all([productsQuery.refetch(), categoriesQuery.refetch(), stockMatrixQuery.refetch()]);
 }
 
 // Edición Inline tipo hoja de cálculo
@@ -214,7 +186,7 @@ export async function saveInlineEdit(productId: string, field: 'name' | 'price' 
 
   // Actualización optimista inmediata en la grilla
   const previousProducts = [...productsSignal.value];
-  productsSignal.value = productsSignal.value.map((p) => (p.id === productId ? { ...p, ...updatePayload } : p));
+  setProducts((list) => list.map((p) => (p.id === productId ? { ...p, ...updatePayload } : p)));
   cancelInlineEdit();
 
   try {
@@ -224,15 +196,16 @@ export async function saveInlineEdit(productId: string, field: 'name' | 'price' 
       token,
     });
     // Confirmar producto actualizado del backend
-    productsSignal.value = productsSignal.value.map((p) => (p.id === productId ? updated : p));
+    setProducts((list) => list.map((p) => (p.id === productId ? updated : p)));
     showToast({
       type: 'success',
       title: 'Actualizado',
       message: `"${updated.name}" actualizado en catálogo`,
     });
+    void invalidateAfter('product-saved');
   } catch (err: unknown) {
     // Revertir ante error
-    productsSignal.value = previousProducts;
+    setProducts(() => previousProducts);
     const msg = err instanceof Error ? err.message : 'Error al guardar cambio';
     showToast({ type: 'error', title: 'Error al actualizar', message: msg });
   }
@@ -313,14 +286,14 @@ export async function submitProductForm(): Promise<void> {
     });
 
     if (isEdit) {
-      productsSignal.value = productsSignal.value.map((p) => (p.id === saved.id ? saved : p));
+      setProducts((list) => list.map((p) => (p.id === saved.id ? saved : p)));
       showToast({
         type: 'success',
         title: 'Producto Modificado',
         message: `"${saved.name}" fue actualizado correctamente`,
       });
     } else {
-      productsSignal.value = [saved, ...productsSignal.value];
+      setProducts((list) => [saved, ...list]);
       showToast({
         type: 'success',
         title: 'Producto Creado',
@@ -328,10 +301,12 @@ export async function submitProductForm(): Promise<void> {
       });
     }
 
-    // Actualizar lista de categorías si es una nueva
-    if (!categoriesSignal.value.includes(saved.category)) {
-      categoriesSignal.value = [...categoriesSignal.value, saved.category].sort();
-    }
+    // Una categoría nueva se ve enseguida, antes de que llegue la lista del servidor
+    categoriesQuery.setData((previous) => {
+      const list = previous ?? [];
+      return list.includes(saved.category) ? list : [...list, saved.category].sort();
+    });
+    void invalidateAfter('product-saved');
 
     closeProductModal();
   } catch (err: unknown) {
@@ -371,7 +346,8 @@ export async function confirmToggleBlock(): Promise<void> {
       token,
     });
 
-    productsSignal.value = productsSignal.value.map((p) => (p.id === updated.id ? updated : p));
+    setProducts((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+    void invalidateAfter('product-saved');
     showToast({
       type: isCurrentlyBlocked ? 'success' : 'warning',
       title: isCurrentlyBlocked ? 'Producto Desbloqueado' : 'Producto Bloqueado',
@@ -400,7 +376,8 @@ export async function deleteProduct(product: ProductItem): Promise<void> {
       token,
     });
 
-    productsSignal.value = productsSignal.value.filter((p) => p.id !== product.id);
+    setProducts((list) => list.filter((p) => p.id !== product.id));
+    void invalidateAfter('product-saved');
     showToast({
       type: 'info',
       title: 'Producto Eliminado',
@@ -410,9 +387,4 @@ export async function deleteProduct(product: ProductItem): Promise<void> {
     const msg = err instanceof Error ? err.message : 'Error al eliminar producto';
     showToast({ type: 'error', title: 'Error', message: msg });
   }
-}
-
-if (typeof window !== 'undefined') {
-  // Al cambiar de comercio y al entrar a la pantalla (#22)
-  loadOnTenantAndView('catalog', fetchCatalog);
 }

@@ -3,9 +3,9 @@ import {
   productsSignal,
   categoriesSignal,
   stockMapSignal,
-  catalogSearchSignal,
-  catalogCategoryFilterSignal,
-  catalogBlockedFilterSignal,
+  catalogFiltersSignal,
+  filterProducts,
+  setCatalogFilters,
   filteredProductsSignal,
   inlineEditingSignal,
   startInlineEdit,
@@ -25,11 +25,11 @@ import {
   deleteProduct,
   type ProductItem,
 } from '../src/client/state/catalog-state.ts';
-import {
-  tokenSignal,
-  userTenantsSignal,
-} from '../src/client/state/auth-state.ts';
-import { atTenant } from './helpers/client-route.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { locationSignal, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const mockProductA: ProductItem = {
   id: 'prod-1',
@@ -75,60 +75,50 @@ const mockProductC: ProductItem = {
 
 describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
   beforeEach(() => {
-    productsSignal.value = [mockProductA, mockProductB, mockProductC];
-    categoriesSignal.value = ['Bebidas', 'Golosinas'];
-    stockMapSignal.value = { 'prod-1': 24, 'prod-2': 0 };
-    catalogSearchSignal.value = '';
-    catalogCategoryFilterSignal.value = 'all';
-    catalogBlockedFilterSignal.value = 'all';
+    setHistoryForTests(null);
+    freshSession('mock-token');
     inlineEditingSignal.value = null;
     productModalOpenSignal.value = false;
     editingProductSignal.value = null;
     blockModalOpenSignal.value = false;
     targetProductToBlockSignal.value = null;
 
-    tokenSignal.value = 'mock-token';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
     atTenant('tienda-test');
+    queryClient.setQueryData(tenantKey('tienda-test', 'products'), [mockProductA, mockProductB, mockProductC]);
+    queryClient.setQueryData(tenantKey('tienda-test', 'categories'), ['Bebidas', 'Golosinas']);
+    queryClient.setQueryData(tenantKey('tienda-test', 'stock'), [
+      { productId: 'prod-1', sku: 'COCA-500', name: 'Coca Cola 500ml', category: 'Bebidas', tracksStock: true, totalStock: 24, branches: {}, updatedAt: '' },
+      { productId: 'prod-2', sku: 'ALF-JOR', name: 'Alfajor Triple', category: 'Golosinas', tracksStock: true, totalStock: 0, branches: {}, updatedAt: '' },
+    ]);
     vi.restoreAllMocks();
   });
 
   describe('Filtros y Búsqueda en Memoria', () => {
+    const all = [mockProductA, mockProductB, mockProductC];
+    const ids = (q: string, category = 'all', blocked: 'all' | 'active' | 'blocked' = 'all'): string[] =>
+      filterProducts(all, { q, category, blocked }).map((p) => p.id);
+
     it('devuelve todos los productos cuando no hay filtros aplicados', () => {
       expect(filteredProductsSignal.value.length).toBe(3);
     });
 
     it('filtra por texto de búsqueda en nombre, SKU y código de barras', () => {
-      catalogSearchSignal.value = 'coca';
-      expect(filteredProductsSignal.value.map((p) => p.id)).toEqual(['prod-1']);
-
-      catalogSearchSignal.value = 'ALF-JOR';
-      expect(filteredProductsSignal.value.map((p) => p.id)).toEqual(['prod-2']);
-
-      catalogSearchSignal.value = '779333';
-      expect(filteredProductsSignal.value.map((p) => p.id)).toEqual(['prod-3']);
+      expect(ids('coca')).toEqual(['prod-1']);
+      expect(ids('ALF-JOR')).toEqual(['prod-2']);
+      expect(ids('779333')).toEqual(['prod-3']);
     });
 
     it('filtra por categoría', () => {
-      catalogCategoryFilterSignal.value = 'Bebidas';
-      expect(filteredProductsSignal.value.length).toBe(2);
-      expect(filteredProductsSignal.value.every((p) => p.category === 'Bebidas')).toBe(true);
-
-      catalogCategoryFilterSignal.value = 'Golosinas';
-      expect(filteredProductsSignal.value.length).toBe(1);
-      expect(filteredProductsSignal.value[0]?.id).toBe('prod-2');
+      expect(ids('', 'Bebidas')).toEqual(['prod-1', 'prod-3']);
+      expect(ids('', 'Golosinas')).toEqual(['prod-2']);
     });
 
     it('filtra por estado de bloqueo (activo vs bloqueado)', () => {
-      catalogBlockedFilterSignal.value = 'active';
-      expect(filteredProductsSignal.value.length).toBe(2);
-      expect(filteredProductsSignal.value.every((p) => p.blockedReason === null)).toBe(true);
-
-      catalogBlockedFilterSignal.value = 'blocked';
-      expect(filteredProductsSignal.value.length).toBe(1);
-      expect(filteredProductsSignal.value[0]?.id).toBe('prod-2');
+      expect(ids('', 'all', 'active')).toEqual(['prod-1', 'prod-3']);
+      expect(ids('', 'all', 'blocked')).toEqual(['prod-2']);
     });
   });
 
@@ -303,6 +293,51 @@ describe('Módulo de Catálogo & Precios (Etapa 4.1)', () => {
         expect(productsSignal.value.some((p) => p.id === 'prod-2')).toBe(false);
       } finally {
         globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe('Catálogo con URL y caché (#59)', () => {
+    it('el stock del catálogo sale de totalStock', () => {
+      expect(stockMapSignal.value).toEqual({ 'prod-1': 24, 'prod-2': 0 });
+    });
+
+    it('los filtros salen de la URL y se escriben en ella', () => {
+      atTenant('tienda-test', 'catalogo?q=coca&estado=activos');
+      expect(catalogFiltersSignal.value).toEqual({ q: 'coca', category: 'all', blocked: 'active' });
+      expect(filteredProductsSignal.value.map((p) => p.id)).toEqual(['prod-1']);
+      setCatalogFilters({ category: 'Bebidas' });
+      expect(locationSignal.value.search).toBe('?q=coca&categoria=Bebidas&estado=activos');
+    });
+
+    it('al entrar a Catálogo pide productos, categorías y stock', async () => {
+      const urls: string[] = [];
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+        urls.push(input instanceof Request ? input.url : input.toString());
+        return Promise.resolve(new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }));
+      });
+      try {
+        atTenant('tienda-test', 'catalogo');
+        await vi.waitFor(() => { expect(urls).toHaveLength(3); });
+        expect(urls.sort()).toEqual(['/api/tenants/tienda-test/categories', '/api/tenants/tienda-test/products', '/api/tenants/tienda-test/stock']);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('guardar un producto deja viejos catálogo, stock, categorías y dashboard', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'dashboard', 'week', ''), {});
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ...mockProductA, price: 1850 }), { status: 200, headers: { 'content-type': 'application/json' } })));
+      try {
+        await saveInlineEdit('prod-1', 'price', '1850');
+        for (const domain of ['products', 'stock', 'categories'] as const) {
+          expect(queryClient.getQueryState(tenantKey('tienda-test', domain))?.isInvalidated, domain).toBe(true);
+        }
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'dashboard', 'week', ''))?.isInvalidated).toBe(true);
+      } finally {
+        globalThis.fetch = original;
       }
     });
   });

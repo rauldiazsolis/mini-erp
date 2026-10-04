@@ -8,6 +8,7 @@ import {
   catalogLoadingSignal,
   fetchCatalog,
   openNewProductModal,
+  setCatalogFilters,
 } from '../../state/catalog-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
@@ -43,13 +44,13 @@ export function CatalogToolbar() {
             type="text"
             placeholder="Buscar por nombre, SKU o código de barra..."
             value={search}
-            onInput={(e) => (catalogSearchSignal.value = (e.target as HTMLInputElement).value)}
+            onInput={(e) => { setCatalogFilters({ q: (e.target as HTMLInputElement).value }); }}
             class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           />
           {search && (
             <button
               type="button"
-              onClick={() => (catalogSearchSignal.value = '')}
+              onClick={() => { setCatalogFilters({ q: '' }); }}
               class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
             >
               ✕
@@ -98,7 +99,7 @@ export function CatalogToolbar() {
             <span class="text-slate-500 dark:text-slate-400 font-medium">Categoría:</span>
             <select
               value={selectedCategory}
-              onChange={(e) => (catalogCategoryFilterSignal.value = (e.target as HTMLSelectElement).value)}
+              onChange={(e) => { setCatalogFilters({ category: (e.target as HTMLSelectElement).value }); }}
               class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="all">Todas ({totalCount})</option>
@@ -116,7 +117,7 @@ export function CatalogToolbar() {
             <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => (catalogBlockedFilterSignal.value = 'all')}
+                onClick={() => { setCatalogFilters({ blocked: 'all' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   selectedBlocked === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
@@ -127,7 +128,7 @@ export function CatalogToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (catalogBlockedFilterSignal.value = 'active')}
+                onClick={() => { setCatalogFilters({ blocked: 'active' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   selectedBlocked === 'active'
                     ? 'bg-emerald-600 text-white shadow-xs'
@@ -138,7 +139,7 @@ export function CatalogToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (catalogBlockedFilterSignal.value = 'blocked')}
+                onClick={() => { setCatalogFilters({ blocked: 'blocked' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   selectedBlocked === 'blocked'
                     ? 'bg-rose-600 text-white shadow-xs'

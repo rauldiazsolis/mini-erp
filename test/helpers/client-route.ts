@@ -1,5 +1,6 @@
 import { navigate } from '../../src/client/state/route-state.ts';
-import { profileLoadedSignal, userTenantsSignal } from '../../src/client/state/auth-state.ts';
+import { profileLoadedSignal, tokenSignal, userTenantsSignal } from '../../src/client/state/auth-state.ts';
+import { queryClient } from '../../src/client/api/query-client.ts';
 import type { MembershipRole } from '../../src/shared/permissions.ts';
 
 /**
@@ -13,4 +14,17 @@ export function atTenant(idOrSlug: string, path = 'dashboard', role: MembershipR
   }
   profileLoadedSignal.value = true;
   navigate(`/admin/${found?.slug ?? idOrSlug}/${path}`);
+}
+
+/**
+ * Caché vacía y una sesión con ese token, como después de un login (#59). Solo `queryClient.clear()`
+ * no alcanza: las consultas ya creadas siguen mirando la entrada borrada hasta que algo de su clave
+ * cambie; en la app, `login` y `logout` borran la caché y cambian el token. Sale del admin antes, para
+ * que ninguna consulta de la pantalla del test anterior pida con el `fetch` real.
+ */
+export function freshSession(token = 'tok'): void {
+  navigate('/');
+  tokenSignal.value = null;
+  queryClient.clear();
+  tokenSignal.value = token;
 }
