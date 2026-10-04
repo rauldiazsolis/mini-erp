@@ -5,7 +5,8 @@ import {
   giftsSignal,
   creditsTabSignal,
   chargesRangeSignal,
-  fetchCharges,
+  setChargesPage,
+  setChargesRange,
   whatsappPayUrl,
   type CreditsTab,
 } from '../../state/credits-state.ts';
@@ -107,8 +108,7 @@ function ChargesTab() {
   const page = chargesSignal.value;
   const range = chargesRangeSignal.value;
   const setRange = (next: { from: string; to: string }) => {
-    chargesRangeSignal.value = next;
-    void fetchCharges();
+    setChargesRange(next);
   };
   const items = page?.items ?? [];
   return (
@@ -152,7 +152,7 @@ function ChargesTab() {
           </div>
         )}
         {page !== null && page.count > page.pageSize && (
-          <Pagination page={page.page} pageSize={page.pageSize} count={page.count} onPage={(p) => void fetchCharges(p)} />
+          <Pagination page={page.page} pageSize={page.pageSize} count={page.count} onPage={(p) => { setChargesPage(p); }} />
         )}
       </TableContainer>
     </div>
@@ -243,7 +243,7 @@ function GiftsTab() {
 }
 
 /**
- * Créditos (#21), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
+ * Uso y pagos (#21, #55), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
  * regalados. Root y soporte suman las acciones de plataforma sobre el comercio.
  */
 export function CreditsView() {
@@ -251,7 +251,7 @@ export function CreditsView() {
   const tab = creditsTabSignal.value;
   return (
     <div class="space-y-6">
-      <PageHeader title="Créditos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
+      <PageHeader title="Uso y pagos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
       {isRootOrSupportSignal.value && <PlatformActionsBar />}
       {credits !== null && (
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

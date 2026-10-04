@@ -42,7 +42,7 @@ export function CreditsBanner() {
           onClick={() => { goTo({ section: 'credits' }); }}
           class="px-2.5 py-1 rounded-lg font-semibold bg-white/40 dark:bg-black/20 hover:bg-white/60 dark:hover:bg-black/30 cursor-pointer"
         >
-          {status.state === 'low' ? 'Ver créditos' : 'Cómo pagar'}
+          {status.state === 'low' ? 'Ver uso y pagos' : 'Cómo pagar'}
         </button>
       )}
     </div>

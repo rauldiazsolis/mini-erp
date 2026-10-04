@@ -10,7 +10,7 @@ import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../..
 
 /**
  * Plataforma de cobro (#21), para root y soporte: las acciones sobre el comercio que se impersona
- * (en su pantalla Créditos) y lo global (planilla de cobranzas, pagos y configuración).
+ * (en su pantalla Uso y pagos) y lo global (planilla de cobranzas, pagos y configuración).
  */
 
 export type PlatformTab = PlatformTabId;
@@ -42,7 +42,7 @@ function fail(err: unknown, title: string): false {
   return false;
 }
 
-/** Una acción sobre el comercio activo: avisa, recarga Créditos y devuelve si salió bien. */
+/** Una acción sobre el comercio activo: avisa, deja viejo Uso y pagos y devuelve si salió bien. */
 async function tenantAction(
   path: string,
   method: 'POST' | 'PUT' | 'DELETE',

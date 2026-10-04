@@ -226,7 +226,7 @@ export function GiftVoidAction(props: { gift: GiftItem }) {
   );
 }
 
-/** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Créditos. */
+/** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Uso y pagos. */
 export function PlatformActionsBar() {
   const isRoot = currentUserSignal.value?.globalRole === 'root';
   // El modal va fuera del Card: su backdrop-blur haría que el fixed del modal se mida contra la tarjeta

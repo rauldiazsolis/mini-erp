@@ -166,7 +166,7 @@ export const navItems: NavItem[] = [
   },
   {
     id: 'credits',
-    label: 'Créditos',
+    label: 'Uso y pagos',
     icon: (active) => (
       <svg
         class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
@@ -178,7 +178,7 @@ export const navItems: NavItem[] = [
           stroke-linecap="round"
           stroke-linejoin="round"
           stroke-width="2"
-          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+          d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2v-5m0-4h-5a2 2 0 000 4h5m-4-2h.01"
         />
       </svg>
     ),

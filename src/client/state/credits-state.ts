@@ -1,8 +1,10 @@
-import { signal, computed, effect } from '@preact/signals';
+import { computed } from '@preact/signals';
 import { ApiError, apiFetch, setOnPaymentRequired } from '../api/client.ts';
-import { tokenSignal, effectiveTenantIdSignal, isImpersonatingSignal } from './auth-state.ts';
-import { activeSectionSignal, routeTab } from './route-state.ts';
-import type { TabId } from '../routing/admin-routes.ts';
+import { isImpersonatingSignal } from './auth-state.ts';
+import { inSection, routeFilters, routeTab, setFilters } from './route-state.ts';
+import type { CreditsFilters, TabId } from '../routing/admin-routes.ts';
+import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { invalidateAfter } from './invalidation.ts';
 import { showToast } from './toast-state.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -14,96 +16,100 @@ import type {
 } from '../../shared/credits-types.ts';
 
 /**
- * Créditos del comercio (#21): saldos, consumo por caja y día, movimientos, regalados y "Cómo pagar"
+ * Uso y pagos (#21, #55): saldos, consumo por caja y día, movimientos, regalados y "Cómo pagar"
  * (owner y admin), y el estado de cobro que muestran la franja y la pantalla restringida (los tres roles).
  */
 
 export type CreditsTab = TabId<'credits'>;
 const CREDITS_TABS: readonly CreditsTab[] = ['charges', 'movements', 'gifts'];
 
-export const creditsSignal = signal<CreditsResponse | null>(null);
-export const chargesSignal = signal<ChargesPage | null>(null);
-export const movementsSignal = signal<CreditMovementItem[]>([]);
-export const giftsSignal = signal<GiftItem[]>([]);
 export const creditsTabSignal = computed<CreditsTab>(() => routeTab('credits', CREDITS_TABS, 'charges'));
-export const creditsLoadingSignal = signal<boolean>(false);
-const today = argentinaToday(new Date());
-/** Por defecto, los últimos 30 días argentinos. */
-export const chargesRangeSignal = signal<{ from: string; to: string }>({ from: shiftDay(today, -29), to: today });
 
-export const billingStatusSignal = signal<BillingStatus | null>(null);
+const STATUS_REFRESH_MS = 5 * 60 * 1000;
+
+/** El estado de cobro (franja y restricción): siempre que haya comercio, y cada 5 minutos. */
+const billingStatusQuery = createTenantQuery<BillingStatus>({
+  domain: 'billing-status',
+  refetchInterval: STATUS_REFRESH_MS,
+  fn: ({ tenantId, token }) => apiFetch<BillingStatus>(`tenants/${tenantId}/billing-status`, { token }),
+});
+export const billingStatusSignal = computed<BillingStatus | null>(() => billingStatusQuery.data.value ?? null);
 
 /** Restringido para quien usa el comercio; root y soporte impersonando siguen viendo todo. */
 export const isRestrictedSignal = computed<boolean>(() => billingStatusSignal.value?.state === 'restricted' && !isImpersonatingSignal.value);
 
-function base(): { path: string; token: string } | null {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  return tenantId && token ? { path: `tenants/${tenantId}`, token } : null;
+export const creditsFiltersSignal = computed<CreditsFilters>(() => routeFilters('credits'));
+
+/** Por defecto, los últimos 30 días argentinos. */
+export const chargesRangeSignal = computed<{ from: string; to: string }>(() => {
+  const { from, to } = creditsFiltersSignal.value;
+  if (from !== undefined && to !== undefined) return { from, to };
+  const today = argentinaToday(new Date());
+  return { from: shiftDay(today, -29), to: today };
+});
+
+/** Cambiar el rango vuelve a la primera página. */
+export function setChargesRange(range: { from: string; to: string }): void {
+  setFilters('credits', { from: range.from, to: range.to, page: 1 });
 }
 
-function warn(err: unknown, title: string): void {
-  showToast({ type: 'error', title, message: err instanceof Error ? err.message : 'Error inesperado' });
+export function setChargesPage(page: number): void {
+  setFilters('credits', { page });
 }
 
-export async function fetchCredits(): Promise<void> {
-  const ctx = base();
-  if (ctx === null) return;
-  try {
-    creditsLoadingSignal.value = true;
-    creditsSignal.value = await apiFetch<CreditsResponse>(`${ctx.path}/credits`, { token: ctx.token });
-  } catch (err: unknown) {
-    warn(err, 'No se pudieron cargar los créditos');
-  } finally {
-    creditsLoadingSignal.value = false;
-  }
-}
+const onCredits = (): boolean => inSection('credits');
+const warnWith = (title: string) => (err: Error): void => {
+  showToast({ type: 'error', title, message: err.message });
+};
 
-export async function fetchCharges(page = 1): Promise<void> {
-  const ctx = base();
-  if (ctx === null) return;
-  const range = chargesRangeSignal.value;
-  const query = new URLSearchParams({ from: range.from, to: range.to, page: String(page), pageSize: '50' });
-  try {
-    chargesSignal.value = await apiFetch<ChargesPage>(`${ctx.path}/credits/charges?${query.toString()}`, { token: ctx.token });
-  } catch (err: unknown) {
-    warn(err, 'No se pudo cargar el consumo');
-  }
-}
+const creditsQuery = createTenantParamQuery<CreditsResponse, readonly ['summary']>({
+  domain: 'credits',
+  params: () => ['summary'],
+  enabled: onCredits,
+  onError: warnWith('No se pudieron cargar los créditos'),
+  fn: ({ tenantId, token }) => apiFetch<CreditsResponse>(`tenants/${tenantId}/credits`, { token }),
+});
 
-export async function fetchMovements(): Promise<void> {
-  const ctx = base();
-  if (ctx === null) return;
-  try {
-    movementsSignal.value = await apiFetch<CreditMovementItem[]>(`${ctx.path}/credits/movements`, { token: ctx.token });
-  } catch (err: unknown) {
-    warn(err, 'No se pudieron cargar los movimientos');
-  }
-}
+const chargesQuery = createTenantParamQuery<ChargesPage, readonly ['charges', string, string, number]>({
+  domain: 'credits',
+  params: () => ['charges', chargesRangeSignal.value.from, chargesRangeSignal.value.to, creditsFiltersSignal.value.page],
+  enabled: () => onCredits() && creditsTabSignal.value === 'charges',
+  onError: warnWith('No se pudo cargar el consumo'),
+  fn: ({ tenantId, token, params: [, from, to, page] }) => {
+    const query = new URLSearchParams({ from, to, page: String(page), pageSize: '50' });
+    return apiFetch<ChargesPage>(`tenants/${tenantId}/credits/charges?${query.toString()}`, { token });
+  },
+});
 
-export async function fetchGifts(): Promise<void> {
-  const ctx = base();
-  if (ctx === null) return;
-  try {
-    giftsSignal.value = await apiFetch<GiftItem[]>(`${ctx.path}/credits/gifts`, { token: ctx.token });
-  } catch (err: unknown) {
-    warn(err, 'No se pudieron cargar los créditos regalados');
-  }
-}
+const movementsQuery = createTenantParamQuery<CreditMovementItem[], readonly ['movements']>({
+  domain: 'credits',
+  params: () => ['movements'],
+  enabled: () => onCredits() && creditsTabSignal.value === 'movements',
+  onError: warnWith('No se pudieron cargar los movimientos'),
+  fn: ({ tenantId, token }) => apiFetch<CreditMovementItem[]>(`tenants/${tenantId}/credits/movements`, { token }),
+});
 
-/** Todo lo de la pantalla Créditos. */
+const giftsQuery = createTenantParamQuery<GiftItem[], readonly ['gifts']>({
+  domain: 'credits',
+  params: () => ['gifts'],
+  enabled: () => onCredits() && creditsTabSignal.value === 'gifts',
+  onError: warnWith('No se pudieron cargar los créditos regalados'),
+  fn: ({ tenantId, token }) => apiFetch<GiftItem[]>(`tenants/${tenantId}/credits/gifts`, { token }),
+});
+
+export const creditsSignal = computed<CreditsResponse | null>(() => creditsQuery.data.value ?? null);
+export const chargesSignal = computed<ChargesPage | null>(() => chargesQuery.data.value ?? null);
+export const movementsSignal = computed<CreditMovementItem[]>(() => movementsQuery.data.value ?? []);
+export const giftsSignal = computed<GiftItem[]>(() => giftsQuery.data.value ?? []);
+export const creditsLoadingSignal = creditsQuery.isLoading;
+
+/** Todo lo de Uso y pagos y el estado de cobro (después de una acción de plataforma). */
 export async function refreshCredits(): Promise<void> {
-  await Promise.all([fetchCredits(), fetchCharges(), fetchMovements(), fetchGifts(), fetchBillingStatus()]);
+  await invalidateAfter('platform-changed');
 }
 
 export async function fetchBillingStatus(): Promise<void> {
-  const ctx = base();
-  if (ctx === null) return;
-  try {
-    billingStatusSignal.value = await apiFetch<BillingStatus>(`${ctx.path}/billing-status`, { token: ctx.token });
-  } catch {
-    // Sin estado no se muestra la franja: no hace falta avisar
-  }
+  await billingStatusQuery.refetch();
 }
 
 /** Un `402 billing-restricted` deja el comercio como restringido. */
@@ -113,7 +119,7 @@ export function markRestrictedFromError(err: unknown): boolean {
   if (typeof data !== 'object' || data === null || !('code' in data) || data.code !== 'billing-restricted') return false;
   const debt = 'debt' in data && typeof data.debt === 'number' ? data.debt : 0;
   const deadline = 'deadline' in data && typeof data.deadline === 'string' ? data.deadline : null;
-  billingStatusSignal.value = { state: 'restricted', debt, deadline };
+  billingStatusQuery.setData(() => ({ state: 'restricted', debt, deadline }));
   return true;
 }
 
@@ -126,26 +132,4 @@ export function whatsappPayUrl(p: { phone: string; tenantName: string }): string
   const digits = p.phone.replace(/\D/g, '');
   const text = `Hola, soy de ${p.tenantName}. Ya transferí para cargar saldo en mini contax.`;
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-}
-
-const STATUS_REFRESH_MS = 5 * 60 * 1000;
-
-if (typeof window !== 'undefined') {
-  // El estado de cobro: al cambiar de comercio y cada 5 minutos
-  effect(() => {
-    if (effectiveTenantIdSignal.value && tokenSignal.value) {
-      void fetchBillingStatus();
-    } else {
-      billingStatusSignal.value = null;
-    }
-  });
-  setInterval(() => {
-    void fetchBillingStatus();
-  }, STATUS_REFRESH_MS);
-  // La pantalla Créditos se carga al entrar
-  effect(() => {
-    if (activeSectionSignal.value === 'credits' && effectiveTenantIdSignal.value && tokenSignal.value) {
-      void refreshCredits();
-    }
-  });
 }

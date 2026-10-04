@@ -38,7 +38,7 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
 
   it('low: warning con los días', () => {
     expect(noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'low', daysCovered: 4 } })).toEqual([
-      { id: 'credits:low', severity: 'warning', message: 'Te quedan créditos para unos 4 días. Cargá saldo desde mini → Créditos.' },
+      { id: 'credits:low', severity: 'warning', message: 'Te quedan créditos para unos 4 días. Cargá saldo desde mini → Uso y pagos.' },
     ]);
   });
 
@@ -57,7 +57,7 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
       {
         id: 'credits:restricted',
         severity: 'critical',
-        message: 'mini contax está restringido por deuda de $ 1.000. El POS sigue vendiendo y sincronizando. Pagá desde mini → Créditos.',
+        message: 'mini contax está restringido por deuda de $ 1.000. El POS sigue vendiendo y sincronizando. Pagá desde mini → Uso y pagos.',
       },
     ]);
   });

@@ -24,6 +24,8 @@ import {
 } from '../src/client/state/platform-state.ts';
 import { isViewAllowed } from '../src/client/state/permissions-state.ts';
 import { tokenSignal, userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
 import { atTenant } from './helpers/client-route.ts';
 
 type Call = { url: string; method: string; body: unknown };
@@ -54,11 +56,12 @@ describe('estado de la plataforma de cobro (#21)', () => {
 
   const writes = () => calls.filter((c) => c.method !== 'GET');
 
-  it('registrar un pago pega a la plataforma con el comercio activo y recarga Créditos', async () => {
+  it('registrar un pago pega a la plataforma con el comercio activo y deja viejo Uso y pagos', async () => {
     reply.body = { movementId: 'pm-1', settled: 0 };
+    queryClient.setQueryData(tenantKey('tienda-test', 'credits', 'summary'), {});
     expect(await registerPayment({ day: '2026-10-05', amount: 5000, info: 'op 1' })).toBe(true);
     expect(writes()).toEqual([{ url: '/api/platform/tenants/tienda-test/payments', method: 'POST', body: { day: '2026-10-05', amount: 5000, info: 'op 1' } }]);
-    expect(calls.some((c) => c.url === '/api/tenants/tienda-test/credits')).toBe(true);
+    expect(queryClient.getQueryState(tenantKey('tienda-test', 'credits', 'summary'))?.isInvalidated).toBe(true);
   });
 
   it('un error devuelve false', async () => {
