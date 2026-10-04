@@ -11,6 +11,11 @@ export function formatMoneyRounded(amount: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount);
 }
 
+/** Abreviado ("$25 k", "ARS 25K"), para el eje del gráfico del dashboard. */
+export function formatMoneyCompact(amount: number, locale?: string): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'ARS', notation: 'compact' }).format(amount);
+}
+
 export function formatQty(qty: number, locale?: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(qty);
 }

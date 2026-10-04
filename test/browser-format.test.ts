@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { formatDate, formatDateTime, formatMoneyRounded, formatQty } from '../src/client/format.ts';
+import { formatDate, formatDateTime, formatMoneyCompact, formatMoneyRounded, formatQty } from '../src/client/format.ts';
 
 // Intl separa con espacios duros (U+00A0, U+202F): los tests comparan con espacios comunes.
 const SPACES = /\s/g;
@@ -10,6 +10,12 @@ describe('format.ts: formatos según el navegador (#51)', () => {
   it('formatMoneyRounded redondea a pesos enteros, en ARS', () => {
     expect(formatMoneyRounded(45800.6, 'es-AR').replace(SPACES, ' ')).toBe('$ 45.801');
     expect(formatMoneyRounded(45800.6, 'en-US').replace(SPACES, ' ')).toBe('ARS 45,801');
+  });
+
+  it('formatMoneyCompact abrevia los montos del eje del gráfico, en ARS', () => {
+    expect(formatMoneyCompact(25000, 'en-US').replace(SPACES, ' ')).toBe('ARS 25K');
+    expect(formatMoneyCompact(25000, 'es-AR').replace(SPACES, ' ')).toBe('$25 k');
+    expect(formatMoneyCompact(0, 'en-US').replace(SPACES, ' ')).toBe('ARS 0');
   });
 
   it('formatDate muestra solo la fecha de un instante, en la zona del navegador', () => {

@@ -4,7 +4,7 @@ import {
 } from '../../state/dashboard-state.ts';
 import { drillToSales } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
-import { formatMoneyRounded, formatQty } from '../../format.ts';
+import { formatMoneyCompact, formatMoneyRounded, formatQty } from '../../format.ts';
 
 export const hoveredIndexSignal = signal<number | null>(null);
 
@@ -26,7 +26,7 @@ export function SalesChart() {
   // Dimensiones del canvas SVG
   const width = 800;
   const height = 260;
-  const paddingLeft = 60;
+  const paddingLeft = 72;
   const paddingRight = 30;
   const paddingTop = 25;
   const paddingBottom = 40;
@@ -111,7 +111,7 @@ export function SalesChart() {
                 text-anchor="end"
                 font-family="monospace"
               >
-                ${(tick.val / 1000).toFixed(0)}k
+                {formatMoneyCompact(tick.val)}
               </text>
             </g>
           ))}

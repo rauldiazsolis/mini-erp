@@ -54,8 +54,9 @@ export function StatCard(props: StatCardProps) {
         )}
       </div>
 
-      <div>
-        <div class="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+      {/* El tamaño sigue al ancho de la tarjeta: un monto en otro locale ("ARS 112,400") no se corta (#51) */}
+      <div class="@container">
+        <div class="text-xl @[10rem]:text-2xl @[14rem]:text-3xl font-black text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
           {value}
         </div>
         {subtitle && (
