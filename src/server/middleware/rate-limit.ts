@@ -13,11 +13,20 @@ export function readRateLimitConfig(env: NodeJS.ProcessEnv): RateLimitConfig {
 
 type Window = { count: number; resetAt: number };
 
+const RATE_LIMITED_MESSAGE = 'Demasiados pedidos; probá más tarde';
+
 /**
  * Ventana fija por IP, en memoria: un reinicio la pone en cero. Pasado el límite responde 429 con
- * `Retry-After`. Las entradas vencidas se descartan al pasar, sin timers.
+ * `Retry-After`. Las entradas vencidas se descartan al pasar, sin timers. El texto va donde lo lee
+ * cada cliente: `message` en el Connector API (`ErrorBody` del contrato 4.6.0, #63) y `error` en
+ * `/api`, como el resto de sus errores.
  */
-export function createRateLimit(options: { limit: number; windowMs: number; now: () => Date }): RequestHandler {
+export function createRateLimit(options: {
+  limit: number;
+  windowMs: number;
+  now: () => Date;
+  body: 'connector' | 'api';
+}): RequestHandler {
   const windows = new Map<string, Window>();
   return (req, res, next) => {
     const now = options.now().getTime();
@@ -32,7 +41,13 @@ export function createRateLimit(options: { limit: number; windowMs: number; now:
     windows.set(key, current);
     if (current.count > options.limit) {
       res.setHeader('Retry-After', String(Math.ceil((current.resetAt - now) / 1000)));
-      res.status(429).json({ code: 'rate-limited', error: 'Demasiados pedidos; probá más tarde' });
+      res
+        .status(429)
+        .json(
+          options.body === 'connector'
+            ? { code: 'rate-limited', message: RATE_LIMITED_MESSAGE }
+            : { code: 'rate-limited', error: RATE_LIMITED_MESSAGE },
+        );
       return;
     }
     next();

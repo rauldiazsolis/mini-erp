@@ -1,9 +1,9 @@
 /**
- * Versión del contrato que implementa el mini-erp (#2, #58) y el canal del POS publicado que la habla.
+ * Versión del contrato que implementa el mini-erp (#2, #58, #63) y el canal del POS publicado que la habla.
  * TS puro: la usan el servidor, el cliente y los scripts. El canal es el major (`/v4/`): al
  * implementar el contrato 5, los links, el espejo y `contract:update` pasan a `/v5/` solos.
  */
-export const CONTRACT_VERSION = '4.5.0';
+export const CONTRACT_VERSION = '4.6.0';
 
 /** El major de una versión x.y.z, como texto (`'4'`). */
 export function majorOf(version: string): string {

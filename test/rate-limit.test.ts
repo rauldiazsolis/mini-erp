@@ -47,8 +47,9 @@ describe('límite de pedidos (#3)', () => {
     }
     const blocked = await demo(app);
     expect(blocked.status).toBe(429);
-    expect(blocked.body).toMatchObject({ code: 'rate-limited' });
+    expect(blocked.body).toEqual({ code: 'rate-limited', message: 'Demasiados pedidos; probá más tarde' });
     expect(blocked.headers['retry-after']).toBe('3600');
+    expect(blocked.headers['access-control-expose-headers']).toBe('Retry-After');
     expect((await demo(app, '198.51.100.7')).status).toBe(201);
   });
 
@@ -72,5 +73,7 @@ describe('límite de pedidos (#3)', () => {
     const blocked = await login(app);
     expect(blocked.status).toBe(429);
     expect(blocked.headers['retry-after']).toBe('900');
+    // El admin muestra `error`, como en el resto de /api
+    expect(blocked.body).toEqual({ code: 'rate-limited', error: 'Demasiados pedidos; probá más tarde' });
   });
 });
