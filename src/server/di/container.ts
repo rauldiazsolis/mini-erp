@@ -11,6 +11,7 @@ import { StockService } from '../stock/stock-service.ts';
 import { CustomerService } from '../customer/customer-service.ts';
 import { BulkService } from '../bulk/bulk-service.ts';
 import { ImportExportService } from '../io/import-export-service.ts';
+import { ImportService } from '../io/import-service.ts';
 import { DashboardService } from '../dashboard/dashboard-service.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
 import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
@@ -117,6 +118,7 @@ export const stockServiceDef = fn.scoped((c) => new StockService(c.use(tenantDbD
 export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(tenantDbDef)));
 export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(tenantDbDef)));
 export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(tenantDbDef)));
+export const importServiceDef = fn.scoped((c) => new ImportService(c.use(tenantDbDef)));
 export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(tenantDbDef), c.use(clockDef)));
 export const dashboardServiceDef = dashboardSummaryServiceDef;
 export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(tenantDbDef)));
