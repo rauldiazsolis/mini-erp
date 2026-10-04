@@ -98,11 +98,11 @@ export function registerPayment(input: { day: string; amount: number; info?: str
 }
 
 export function grantCredits(input: { amount: number; expiresOn: string; reason?: string | undefined }): Promise<boolean> {
-  return tenantAction('/gift-credits', 'POST', compact(input), 'Créditos otorgados');
+  return tenantAction('/gift-credits', 'POST', compact(input), 'Bono otorgado');
 }
 
 export function voidCredit(creditId: string, reason: string): Promise<boolean> {
-  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Créditos anulados');
+  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Bono anulado');
 }
 
 export function extendGrace(until: string): Promise<boolean> {

@@ -46,7 +46,8 @@ function clientUiFiles(dir: string): string[] {
   });
 }
 
-const FORBIDDEN: RegExp[] = [/mini-erp/i, /\bExpress\b/, /Multitenant/i, /Connector v\d/, /Puerto: \d/, /\bTPV\b/];
+// Los créditos regalados se muestran como "bonos"
+const FORBIDDEN: RegExp[] = [/mini-erp/i, /\bExpress\b/, /Multitenant/i, /Connector v\d/, /Puerto: \d/, /\bTPV\b/, /regalad/i];
 
 describe('Sin la marca vieja en la UI (#18)', () => {
   it.each(clientUiFiles('src/client'))('%s', (file) => {

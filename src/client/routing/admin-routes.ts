@@ -36,7 +36,7 @@ export const SECTION_TABS = {
   bulk: [{ id: 'prices', slug: '' }, { id: 'interests', slug: 'intereses' }, { id: 'io', slug: 'archivos' }],
   users: [{ id: 'main', slug: '' }],
   settings: [{ id: 'pos', slug: '' }, { id: 'branches', slug: 'sucursales' }, { id: 'connection', slug: 'conexion' }, { id: 'account', slug: 'cuenta' }, { id: 'appearance', slug: 'apariencia' }],
-  credits: [{ id: 'charges', slug: '' }, { id: 'movements', slug: 'movimientos' }, { id: 'gifts', slug: 'regalados' }],
+  credits: [{ id: 'charges', slug: '' }, { id: 'movements', slug: 'movimientos' }, { id: 'gifts', slug: 'bonos' }],
 } as const;
 
 export const PLATFORM_TABS = [{ id: 'payments', slug: '' }, { id: 'settings', slug: 'configuracion' }] as const;

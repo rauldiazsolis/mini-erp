@@ -16,7 +16,7 @@ import type {
 } from '../../shared/credits-types.ts';
 
 /**
- * Uso y pagos (#21, #55): saldos, consumo por caja y día, movimientos, regalados y "Cómo pagar"
+ * Uso y pagos (#21, #55): saldos, consumo por caja y día, movimientos, bonos y "Cómo pagar"
  * (owner y admin), y el estado de cobro que muestran la franja y la pantalla restringida (los tres roles).
  */
 
@@ -93,7 +93,7 @@ const giftsQuery = createTenantParamQuery<GiftItem[], readonly ['gifts']>({
   domain: 'credits',
   params: () => ['gifts'],
   enabled: () => onCredits() && creditsTabSignal.value === 'gifts',
-  onError: warnWith('No se pudieron cargar los créditos regalados'),
+  onError: warnWith('No se pudieron cargar los bonos'),
   fn: ({ tenantId, token }) => apiFetch<GiftItem[]>(`tenants/${tenantId}/credits/gifts`, { token }),
 });
 

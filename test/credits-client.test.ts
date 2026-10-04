@@ -67,12 +67,12 @@ describe('estado de Uso y pagos (#21, #55)', () => {
     expect(chargesSignal.value?.page).toBe(2);
   });
 
-  it('movimientos y regalados se piden en su solapa', async () => {
+  it('movimientos y bonos se piden en su solapa', async () => {
     reply.body = [];
     atTenant('tienda-test', 'uso-y-pagos/movimientos');
     await vi.waitFor(() => { expect(calls.some((c) => c.url.endsWith('/credits/movements'))).toBe(true); });
     expect(calls.some((c) => c.url.includes('/credits/charges'))).toBe(false);
-    atTenant('tienda-test', 'uso-y-pagos/regalados');
+    atTenant('tienda-test', 'uso-y-pagos/bonos');
     await vi.waitFor(() => { expect(calls.some((c) => c.url.endsWith('/credits/gifts'))).toBe(true); });
   });
 

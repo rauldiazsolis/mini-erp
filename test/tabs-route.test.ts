@@ -17,7 +17,7 @@ describe('Solapas en la URL (#59)', () => {
     expect(activeSettingsTabSignal.value).toBe('branches');
     atTenant('k', 'masivas/archivos');
     expect(activeBulkTabSignal.value).toBe('io');
-    atTenant('k', 'uso-y-pagos/regalados');
+    atTenant('k', 'uso-y-pagos/bonos');
     expect(creditsTabSignal.value).toBe('gifts');
     atTenant('k', 'dashboard');
     expect(salesTabSignal.value).toBe('sales');

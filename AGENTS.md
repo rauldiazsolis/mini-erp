@@ -279,7 +279,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     plataforma en `routes/platform-routes.ts` (`requirePlatformRole`; devoluciones y configuración,
     solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`).
   - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
-  - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55).
+  - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55) y los
+    créditos regalados se muestran como **bonos** (solapa `/uso-y-pagos/bonos`).
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,

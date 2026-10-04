@@ -28,15 +28,15 @@ import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types
 const TABS: Array<{ id: CreditsTab; label: string }> = [
   { id: 'charges', label: 'Consumo' },
   { id: 'movements', label: 'Movimientos' },
-  { id: 'gifts', label: 'Regalados' },
+  { id: 'gifts', label: 'Bonos' },
 ];
 
 const MOVEMENT_LABEL: Record<CreditMovementItem['kind'], string> = {
   payment: 'Pago',
   refund: 'Devolución',
   'debt-settlement': 'Deuda cancelada',
-  'gift-granted': 'Créditos regalados',
-  'gift-voided': 'Regalados anulados',
+  'gift-granted': 'Bono otorgado',
+  'gift-voided': 'Bono anulado',
 };
 
 const GIFT_STATUS: Record<GiftItem['status'], string> = {
@@ -132,7 +132,7 @@ function ChargesTab() {
                   <Th>Caja</Th>
                   <Th class="text-right">Importe</Th>
                   <Th class="text-right">Pagado</Th>
-                  <Th class="text-right">Regalado</Th>
+                  <Th class="text-right">Bonos</Th>
                   <Th class="text-right">Deuda</Th>
                 </Tr>
               </Thead>
@@ -201,7 +201,7 @@ function GiftsTab() {
   return (
     <TableContainer>
       {items.length === 0 ? (
-        <TableEmptyState message="Sin créditos regalados" />
+        <TableEmptyState message="Sin bonos" />
       ) : (
         <div class="overflow-x-auto">
           <Table>
@@ -244,7 +244,7 @@ function GiftsTab() {
 
 /**
  * Uso y pagos (#21, #55), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
- * regalados. Root y soporte suman las acciones de plataforma sobre el comercio.
+ * bonos. Root y soporte suman las acciones de plataforma sobre el comercio.
  */
 export function CreditsView() {
   const credits = creditsSignal.value;
@@ -262,9 +262,9 @@ export function CreditsView() {
             variant="primary"
           />
           <StatCard
-            title="Créditos regalados"
+            title="Bonos"
             value={formatMoney(credits.giftBalance)}
-            subtitle={credits.nextGiftExpiry === null ? 'Sin créditos vigentes' : `El próximo vence el ${formatDateTime(credits.nextGiftExpiry)}`}
+            subtitle={credits.nextGiftExpiry === null ? 'Sin bonos vigentes' : `El próximo vence el ${formatDateTime(credits.nextGiftExpiry)}`}
             variant="success"
           />
           <StatCard

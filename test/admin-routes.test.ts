@@ -42,7 +42,7 @@ describe('Rutas del admin (#59)', () => {
     expect(adminUrl('k', 'bulk', { tab: 'io' })).toBe('/admin/k/masivas/archivos');
     expect(adminUrl('k', 'settings', { tab: 'pos' })).toBe('/admin/k/configuracion');
     expect(adminUrl('k', 'settings', { tab: 'appearance' })).toBe('/admin/k/configuracion/apariencia');
-    expect(adminUrl('k', 'credits', { tab: 'gifts' })).toBe('/admin/k/uso-y-pagos/regalados');
+    expect(adminUrl('k', 'credits', { tab: 'gifts' })).toBe('/admin/k/uso-y-pagos/bonos');
     expect(buildUrl({ kind: 'plataforma', tab: 'settings' })).toBe('/plataforma/configuracion');
   });
 
