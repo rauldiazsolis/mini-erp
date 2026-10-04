@@ -85,6 +85,20 @@ describe('seed de desarrollo (#21)', () => {
     ]);
   });
 
+  it('cada comercio tiene su rubro, también si se sembró antes de M6 (#22)', () => {
+    const { systemDb, run } = boot({});
+    const rubros = () => systemDb.prepare('SELECT id, business_type FROM tenants WHERE business_type IS NOT NULL ORDER BY id').all();
+    const expected = [
+      { id: almacen.id, business_type: 'almacen' },
+      { id: ferreteria.id, business_type: 'ferreteria' },
+      { id: kiosco.id, business_type: 'kiosco' },
+    ];
+    expect(rubros().map((r) => ({ ...r }))).toEqual(expected);
+    systemDb.prepare('UPDATE tenants SET business_type = NULL').run();
+    run();
+    expect(rubros().map((r) => ({ ...r }))).toEqual(expected);
+  });
+
   it('cada caja tiene su key fija, y la key de siempre es la Caja 1 del Kiosco', () => {
     const { systemDb } = boot({});
     for (const t of DEV_TENANTS) {

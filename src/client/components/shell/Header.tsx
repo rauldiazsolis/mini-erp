@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals';
+import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 import {
   currentUserSignal,
   activeTenantSignal,
@@ -11,7 +12,6 @@ import {
 import {
   toggleMobileMenu,
   openImpersonationModal,
-  openOnboardingModal,
 } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
@@ -140,7 +140,7 @@ export function Header() {
                   type="button"
                   onClick={() => {
                     closeTenantDropdown();
-                    openOnboardingModal();
+                    openMerchantOnboarding();
                   }}
                   class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
                 >

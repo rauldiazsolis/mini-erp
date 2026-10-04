@@ -28,6 +28,7 @@ describe('extracto por signo (#2)', () => {
     expect(movementLabel('sale')).toBe('Compra en POS (Cuenta Corriente)');
     expect(movementLabel('adjustment')).toBe('Ajuste de saldo');
     expect(movementLabel('interest')).toBe('Interés');
+    expect(movementLabel('opening')).toBe('Saldo inicial');
     expect(movementLabel('credit_adjustment')).toBe('Credit adjustment');
   });
 });

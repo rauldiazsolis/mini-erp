@@ -9,7 +9,7 @@ test('el owner invita a un empleado; el empleado entra y no ve usuarios ni opera
   // Un reintento reusa el servidor y la base: correos propios por corrida
   const id = randomUUID().slice(0, 8);
   const alta = await request.post('/api/alta', {
-    data: { name: 'Owner E2E', email: `owner-${id}@local.test`, password: 'clave-owner-1', businessName: `Kiosco Roles ${id}`, template: 'kiosco' },
+    data: { name: 'Owner E2E', email: `owner-${id}@local.test`, password: 'clave-owner-1', businessName: `Kiosco Roles ${id}`, businessType: 'kiosco', whatsapp: '1155550000' },
   });
   expect(alta.status()).toBe(201);
   const { token, tenant } = (await alta.json()) as { token: string; tenant: { id: string } };

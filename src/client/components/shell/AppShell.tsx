@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { Sidebar } from './Sidebar.tsx';
 import { Header } from './Header.tsx';
 import { ImpersonationModal } from './ImpersonationModal.tsx';
-import { OnboardingModal } from './OnboardingModal.tsx';
+import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 import { ToastContainer } from '../ui/ToastContainer.tsx';
 import {
   isImpersonatingSignal,
@@ -10,7 +10,7 @@ import {
   userTenantsSignal,
   stopImpersonation,
 } from '../../state/auth-state.ts';
-import { openOnboardingModal, activeViewSignal } from '../../state/navigation-state.ts';
+import { activeViewSignal } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { CreditsBanner } from '../credits/CreditsBanner.tsx';
@@ -78,7 +78,13 @@ export function AppShell(props: { children: ComponentChildren }) {
                   tus métricas en tiempo real.
                 </p>
               </div>
-              <Button onClick={openOnboardingModal}>Crear Primer Comercio 🚀</Button>
+              <Button
+                onClick={() => {
+                  openMerchantOnboarding();
+                }}
+              >
+                Crear mi comercio
+              </Button>
             </div>
           ) : (
             props.children
@@ -88,7 +94,6 @@ export function AppShell(props: { children: ComponentChildren }) {
 
       {/* Modales */}
       <ImpersonationModal />
-      <OnboardingModal />
 
       {/* Contenedor de Notificaciones Toast */}
       <ToastContainer />

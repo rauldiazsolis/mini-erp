@@ -5,7 +5,6 @@ export type ActiveNavView = 'dashboard' | 'sales' | 'catalog' | 'stock' | 'custo
 export const activeViewSignal = signal<ActiveNavView>('dashboard');
 export const mobileMenuOpenSignal = signal<boolean>(false);
 export const impersonationModalOpenSignal = signal<boolean>(false);
-export const onboardingModalOpenSignal = signal<boolean>(false);
 
 export function navigateTo(view: ActiveNavView): void {
   activeViewSignal.value = view;
@@ -22,12 +21,4 @@ export function openImpersonationModal(): void {
 
 export function closeImpersonationModal(): void {
   impersonationModalOpenSignal.value = false;
-}
-
-export function openOnboardingModal(): void {
-  onboardingModalOpenSignal.value = true;
-}
-
-export function closeOnboardingModal(): void {
-  onboardingModalOpenSignal.value = false;
 }

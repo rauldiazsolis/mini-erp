@@ -14,12 +14,6 @@ import {
   bulkInterestPreviewSignal,
   previewBulkInterests,
   applyBulkInterests,
-  ioSelectedEntitySignal,
-  ioUpdateExistingSignal,
-  ioCsvContentSignal,
-  ioImportPreviewSignal,
-  previewImport,
-  applyImport,
 } from '../src/client/state/bulk-state.ts';
 import {
   tokenSignal,
@@ -40,11 +34,6 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
     bulkInterestDescriptionSignal.value = 'Interés mensual';
     bulkInterestMinBalanceSignal.value = 1000;
     bulkInterestPreviewSignal.value = null;
-
-    ioSelectedEntitySignal.value = 'products';
-    ioUpdateExistingSignal.value = true;
-    ioCsvContentSignal.value = '';
-    ioImportPreviewSignal.value = null;
 
     tokenSignal.value = 'mock-token';
     activeTenantIdSignal.value = 'tienda-test';
@@ -225,77 +214,6 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
         });
 
         expect(bulkInterestPreviewSignal.value?.dryRun).toBe(false);
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-  });
-
-  describe('Importación CSV', () => {
-    it('previewImport envía contenido CSV en modo simulación (dryRun: true)', async () => {
-      ioCsvContentSignal.value = 'sku,name,price\nPROD-1,Coca Cola,1500';
-      let sentBody: unknown = null;
-      const originalFetch = globalThis.fetch;
-
-      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
-        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
-        return Promise.resolve(new Response(
-          JSON.stringify({
-            dryRun: true,
-            importedCount: 1,
-            updatedCount: 0,
-            skippedCount: 0,
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ));
-      });
-
-      try {
-        await previewImport();
-
-        expect(sentBody).toEqual({
-          csv: 'sku,name,price\nPROD-1,Coca Cola,1500',
-          updateExisting: true,
-          dryRun: true,
-        });
-
-        expect(ioImportPreviewSignal.value?.importedCount).toBe(1);
-        expect(ioImportPreviewSignal.value?.dryRun).toBe(true);
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-
-    it('applyImport aplica la importación real en base de datos', async () => {
-      ioCsvContentSignal.value = 'sku,name,price\nPROD-1,Coca Cola,1500';
-      let sentBody: unknown = null;
-      const originalFetch = globalThis.fetch;
-
-      globalThis.fetch = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
-        sentBody = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
-        return Promise.resolve(new Response(
-          JSON.stringify({
-            dryRun: false,
-            importedCount: 1,
-            updatedCount: 0,
-            skippedCount: 0,
-            errors: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ));
-      });
-
-      try {
-        await applyImport();
-
-        expect(sentBody).toEqual({
-          csv: 'sku,name,price\nPROD-1,Coca Cola,1500',
-          updateExisting: true,
-          dryRun: false,
-        });
-
-        expect(ioImportPreviewSignal.value?.dryRun).toBe(false);
       } finally {
         globalThis.fetch = originalFetch;
       }

@@ -3,14 +3,27 @@ import { z } from 'zod';
 import { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
-import { importExportServiceDef } from '../di/container.ts';
+import { importExportServiceDef, importServiceDef } from '../di/container.ts';
+import { DomainError, sendError } from '../errors.ts';
+import { isImportFieldName, type ImportMapping } from '../../shared/import-fields.ts';
+import { hasExampleCatalog } from '../../shared/business-type.ts';
+import type { TenantManager } from '../db/tenant-manager.ts';
 
 const importBodySchema = z.object({
-  items: z.array(z.record(z.unknown())).optional(),
-  csv: z.string().optional(),
-  updateExisting: z.boolean().optional(),
-  dryRun: z.boolean().optional(),
+  csv: z.string({ required_error: 'Falta el contenido del archivo' }),
+  mapping: z.record(z.string().nullable()).optional(),
+  dryRun: z.boolean({ required_error: 'Falta indicar si es una vista previa' }),
 });
+
+/** El mapeo que manda el cliente, con nombres de campo conocidos (el servicio valida el resto). */
+function toMapping(raw: Record<string, string | null>): ImportMapping {
+  const out: ImportMapping = {};
+  for (const [column, field] of Object.entries(raw)) {
+    if (field !== null && !isImportFieldName(field)) throw new DomainError(400, `Campo desconocido: ${field}`);
+    out[column] = field;
+  }
+  return out;
+}
 
 function getImportExportService(req: AuthenticatedAdminRequest): ImportExportService {
   if (req.tenantScope !== undefined) {
@@ -22,7 +35,7 @@ function getImportExportService(req: AuthenticatedAdminRequest): ImportExportSer
   throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
-export function createIoRoutes(): Router {
+export function createIoRoutes(tenants: TenantManager): Router {
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
@@ -63,35 +76,51 @@ export function createIoRoutes(): Router {
     }
   });
 
-  // POST /import/:entity - Importar datos en lote con preview (dryRun)
+  // POST /import/:entity - CSV con mapeo de columnas (#22): vista previa (dryRun) o confirmación
   router.post('/import/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
     const entity = req.params['entity'];
-
-    const parseResult = importBodySchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de importación inválidos' });
+    if (entity !== 'customers' && entity !== 'products') {
+      res.status(400).json({ error: "Entidad de importación inválida. Debe ser 'products' o 'customers'" });
       return;
     }
-
+    const parsed = importBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos de importación inválidos' });
+      return;
+    }
     try {
-      const service = getImportExportService(req);
-
-      if (entity === 'products') {
-        const result = service.importProducts(parseResult.data);
-        res.status(200).json(result);
-        return;
-      }
-
-      if (entity === 'customers') {
-        const result = service.importCustomers(parseResult.data);
-        res.status(200).json(result);
-        return;
-      }
-
-      res.status(400).json({ error: "Entidad de importación inválida. Debe ser 'products' o 'customers'" });
+      const service = req.tenantScope?.use(importServiceDef);
+      if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
+      const { csv, mapping, dryRun } = parsed.data;
+      res.status(200).json(service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) }));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al importar datos';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 500);
+    }
+  });
+
+  // Catálogo de ejemplo del rubro (#22): el alta crea el comercio vacío; se ofrece mientras no tenga productos
+  router.get('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      const available = hasExampleCatalog(businessType) && getImportExportService(req).countProducts() === 0;
+      res.status(200).json({ businessType, available });
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.post('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      if (!hasExampleCatalog(businessType)) {
+        res.status(409).json({ error: 'Tu rubro no tiene catálogo de ejemplo' });
+        return;
+      }
+      // Idempotente: el preset saltea los SKU que ya existen
+      const { productsCreated } = getImportExportService(req).applyBusinessPreset(businessType);
+      res.status(200).json({ productsCreated });
+    } catch (err: unknown) {
+      sendError(res, err, 500);
     }
   });
 

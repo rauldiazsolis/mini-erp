@@ -24,9 +24,16 @@ describe('alta atómica (#19)', () => {
     app = createApp({ systemDb, tenantManager }).app;
   });
 
-  const alta = { name: 'Marta', email: 'marta@kiosco.com', password: 'clave-segura', businessName: 'Kiosco Marta', template: 'kiosco' };
+  const alta = {
+    name: 'Marta',
+    email: 'marta@kiosco.com',
+    password: 'clave-segura',
+    whatsapp: '+54 9 11 5555-1234',
+    businessName: 'Kiosco Marta',
+    businessType: 'kiosco',
+  };
 
-  it('crea cuenta, comercio con catálogo, owner y key de Caja 1, y registra la auditoría', async () => {
+  it('crea cuenta (con WhatsApp), comercio vacío con su rubro, owner y key de Caja 1, y registra la auditoría', async () => {
     const res = await request(app).post('/api/alta').send(alta);
     expect(res.status).toBe(201);
     const body = res.body as AltaBody;
@@ -40,7 +47,9 @@ describe('alta atómica (#19)', () => {
       expect.objectContaining({ tenantId: 'kiosco-marta', role: 'owner' }),
     ]);
     const products = tenantManager.getTenantDb('kiosco-marta').prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
-    expect(products.n).toBeGreaterThan(0);
+    expect(products.n).toBe(0);
+    expect(systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get('kiosco-marta')).toEqual({ business_type: 'kiosco' });
+    expect(systemDb.prepare('SELECT whatsapp FROM users WHERE email = ?').get('marta@kiosco.com')).toEqual({ whatsapp: '5491155551234' });
     const audit = systemDb.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'tenant.created'").get() as { n: number };
     expect(audit.n).toBe(1);
   });
@@ -53,10 +62,20 @@ describe('alta atómica (#19)', () => {
     ]);
   });
 
-  it('con el rubro "empty" el comercio arranca sin productos', async () => {
-    const body = (await request(app).post('/api/alta').send({ ...alta, template: 'empty' })).body as AltaBody;
-    const products = tenantManager.getTenantDb(body.tenant.id).prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
-    expect(products.n).toBe(0);
+  it('un rubro desconocido da 400 y no crea nada', async () => {
+    const res = await request(app).post('/api/alta').send({ ...alta, businessType: 'empty' });
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error).toBe('Elegí el rubro de tu comercio');
+    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM tenants').get()).toEqual({ n: 0 });
+  });
+
+  it('sin WhatsApp o con uno inválido: 400 y no crea nada', async () => {
+    for (const whatsapp of [undefined, '', '123', 'abc12345678']) {
+      const res = await request(app).post('/api/alta').send({ ...alta, whatsapp });
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toBe('Escribí un WhatsApp con código de área (8 a 15 números)');
+    }
+    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM users').get()).toEqual({ n: 0 });
   });
 
   it('con sesión crea otro comercio para la misma cuenta, sin token nuevo', async () => {
@@ -64,7 +83,7 @@ describe('alta atómica (#19)', () => {
     const res = await request(app)
       .post('/api/alta')
       .set('Authorization', `Bearer ${first.token ?? ''}`)
-      .send({ businessName: 'Ferretería Marta', template: 'ferreteria' });
+      .send({ businessName: 'Ferretería Marta', businessType: 'ferreteria' });
     expect(res.status).toBe(201);
     const body = res.body as AltaBody;
     expect(body.token).toBeUndefined();

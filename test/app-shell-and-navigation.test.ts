@@ -7,9 +7,6 @@ import {
   impersonationModalOpenSignal,
   openImpersonationModal,
   closeImpersonationModal,
-  onboardingModalOpenSignal,
-  openOnboardingModal,
-  closeOnboardingModal,
 } from '../src/client/state/navigation-state.ts';
 import {
   toastsSignal,
@@ -35,7 +32,6 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
     navigateTo('dashboard');
     mobileMenuOpenSignal.value = false;
     impersonationModalOpenSignal.value = false;
-    onboardingModalOpenSignal.value = false;
     toastsSignal.value = [];
   });
 
@@ -76,11 +72,6 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
       expect(impersonationModalOpenSignal.value).toBe(true);
       closeImpersonationModal();
       expect(impersonationModalOpenSignal.value).toBe(false);
-
-      openOnboardingModal();
-      expect(onboardingModalOpenSignal.value).toBe(true);
-      closeOnboardingModal();
-      expect(onboardingModalOpenSignal.value).toBe(false);
     });
   });
 

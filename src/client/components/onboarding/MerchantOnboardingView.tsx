@@ -5,7 +5,14 @@ import {
   userEmailSignal,
   userPasswordSignal,
   businessNameSignal,
-  selectedMerchantPresetSignal,
+  selectedBusinessTypeSignal,
+  userWhatsappSignal,
+  loadModeSignal,
+  LOAD_STEP,
+  DONE_STEP,
+  chooseUploadFiles,
+  skipLoadStep,
+  loadExampleCatalogOnSignup,
   isSubmittingSignal,
   progressStepMessageSignal,
   errorMessageSignal,
@@ -25,45 +32,10 @@ import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { Logo } from '../ui/Logo.tsx';
-import type { BusinessPreset } from '../../state/onboarding-state.ts';
+import { ImportWizard } from '../import/ImportWizard.tsx';
+import { BUSINESS_TYPE_OPTIONS } from './business-type-options.ts';
+import { BUSINESS_TYPE_LABELS, hasExampleCatalog } from '../../../shared/business-type.ts';
 import { PASSWORD_MIN_LENGTH } from '../../../shared/password.ts';
-
-const PRESETS: Array<{
-  id: BusinessPreset;
-  title: string;
-  badge: string;
-  description: string;
-  icon: string;
-}> = [
-  {
-    id: 'kiosco',
-    title: 'Kiosco / Drugstore',
-    badge: 'Popular',
-    description: 'Bebidas, snacks, golosinas y cigarrillos precargados con precios y stock de referencia.',
-    icon: '🏪',
-  },
-  {
-    id: 'ferreteria',
-    title: 'Ferretería / Corralón',
-    badge: 'Industrial',
-    description: 'Tornillería, herramientas manuales, pinturas y electricidad listos para vender.',
-    icon: '🔧',
-  },
-  {
-    id: 'almacen',
-    title: 'Almacén / Minimarket',
-    badge: 'Comestibles',
-    description: 'Lácteos, fiambres, panificados, artículos de almacén y limpieza.',
-    icon: '🛒',
-  },
-  {
-    id: 'empty',
-    title: 'En Blanco (Personalizado)',
-    badge: 'Sin datos',
-    description: 'Inicia con un catálogo completamente vacío para cargar tus propios productos desde cero.',
-    icon: '📄',
-  },
-];
 
 export function MerchantOnboardingView() {
   const step = merchantStepSignal.value;
@@ -127,12 +99,13 @@ export function MerchantOnboardingView() {
           {/* Stepper Bar */}
           <div class="px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 flex items-center justify-between text-xs">
             {[
-              { num: 1, label: '1. Tu Cuenta' },
-              { num: 2, label: '2. Tu Negocio & Rubro' },
-              { num: 3, label: '3. Aprovisionando' },
-              { num: 4, label: '4. ¡Listo!' },
+              { num: 1, show: 1, label: 'Tu cuenta' },
+              { num: 2, show: 2, label: 'Tu comercio' },
+              { num: LOAD_STEP, show: 3, label: 'Cargá tus datos' },
+              { num: DONE_STEP, show: 4, label: '¡Listo!' },
             ].map((s) => {
-              const isActive = step === s.num;
+              // El paso 3 (creando el comercio) es una pantalla de espera, sin lugar propio en la barra
+              const isActive = step === s.num || (s.num === LOAD_STEP && step === 3);
               const isDone = step > s.num;
               return (
                 <div
@@ -154,7 +127,7 @@ export function MerchantOnboardingView() {
                         : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
                     }`}
                   >
-                    {isDone ? '✓' : s.num}
+                    {isDone ? '✓' : s.show}
                   </div>
                   <span class="hidden sm:inline">{s.label}</span>
                 </div>
@@ -231,6 +204,18 @@ export function MerchantOnboardingView() {
                       onInput={(e) => (userPasswordSignal.value = (e.target as HTMLInputElement).value)}
                       helperText="Utiliza una contraseña segura para acceder a tus reportes y ventas"
                     />
+
+                    {!isExistingAccount && (
+                      <Input
+                        label="WhatsApp"
+                        type="tel"
+                        autocomplete="tel"
+                        placeholder="Ej: 11 5555-1234"
+                        value={userWhatsappSignal.value}
+                        onInput={(e) => (userWhatsappSignal.value = (e.target as HTMLInputElement).value)}
+                        helperText="Con código de área. Para ayudarte a empezar: no mandamos mensajes automáticos."
+                      />
+                    )}
                   </>
                 )}
               </div>
@@ -240,9 +225,9 @@ export function MerchantOnboardingView() {
             {step === 2 && (
               <div class="space-y-6 animate-in fade-in duration-200">
                 <div>
-                  <h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Cuéntanos sobre tu comercio</h2>
+                  <h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Tu comercio</h2>
                   <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Configuraremos automáticamente tu base de datos y dejaremos tu caja lista para operar.
+                    Creamos tu comercio y dejamos tu caja lista para conectar. Tus productos y clientes los cargás en el paso siguiente.
                   </p>
                 </div>
 
@@ -257,40 +242,32 @@ export function MerchantOnboardingView() {
 
                 <div class="space-y-2">
                   <label class="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Rubro comercial (plantilla inicial sugerida)
+                    Rubro
                   </label>
-                  <p class="text-xs text-slate-500 dark:text-slate-400">
-                    Puedes precargar artículos modelo listos para vender o comenzar en blanco. Podrás modificarlos cuando quieras.
-                  </p>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-                    {PRESETS.map((p) => {
-                      const isSelected = selectedMerchantPresetSignal.value === p.id;
+                    {BUSINESS_TYPE_OPTIONS.map((p) => {
+                      const isSelected = selectedBusinessTypeSignal.value === p.id;
                       return (
-                        <div
+                        <button
                           key={p.id}
-                          onClick={() => (selectedMerchantPresetSignal.value = p.id)}
-                          class={`p-4 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            selectedBusinessTypeSignal.value = p.id;
+                          }}
+                          class={`p-4 rounded-2xl border transition-all cursor-pointer text-left flex items-start gap-3 ${
                             isSelected
                               ? 'bg-indigo-600/10 border-indigo-500 shadow-lg shadow-indigo-600/10 ring-2 ring-indigo-500/40'
                               : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                           }`}
                         >
-                          <div class="flex items-start justify-between mb-2">
-                            <span class="text-2xl">{p.icon}</span>
-                            <span
-                              class={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                isSelected
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
-                              }`}
-                            >
-                              {p.badge}
-                            </span>
-                          </div>
-                          <div class="font-bold text-sm text-slate-900 dark:text-white mb-1">{p.title}</div>
-                          <div class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{p.description}</div>
-                        </div>
+                          <span class="text-2xl">{p.icon}</span>
+                          <span>
+                            <span class="block font-bold text-sm text-slate-900 dark:text-white">{p.title}</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{p.description}</span>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
@@ -314,8 +291,84 @@ export function MerchantOnboardingView() {
               </div>
             )}
 
-            {/* PASO 4: ÉXITO Y CONEXIÓN */}
-            {step === 4 && result && (
+            {/* PASO 4: CARGÁ TUS DATOS (#22) */}
+            {step === LOAD_STEP && result && loadModeSignal.value === 'choose' && (
+              <div class="space-y-5 animate-in fade-in duration-200">
+                <div>
+                  <h2 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Cargá tus datos</h2>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    "{result.name}" ya existe. Elegí cómo empezar: lo podés cambiar después desde Operaciones masivas.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 gap-3">
+                  <button
+                    type="button"
+                    onClick={chooseUploadFiles}
+                    class="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-400 text-left cursor-pointer"
+                  >
+                    <span class="block font-bold text-sm text-slate-900 dark:text-white">📄 Subir mis archivos</span>
+                    <span class="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Productos y stock, o clientes y saldos, desde un CSV de Excel o de tu sistema.
+                    </span>
+                  </button>
+                  {hasExampleCatalog(result.businessType) && (
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        void loadExampleCatalogOnSignup();
+                      }}
+                      class="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-400 text-left cursor-pointer disabled:opacity-60"
+                    >
+                      <span class="block font-bold text-sm text-slate-900 dark:text-white">
+                        {`🧺 Empezar con el catálogo de ejemplo de ${BUSINESS_TYPE_LABELS[result.businessType]}`}
+                      </span>
+                      <span class="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Lo corregís después: precios, nombres y stock.
+                      </span>
+                    </button>
+                  )}
+                  <div
+                    aria-disabled="true"
+                    class="p-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-left opacity-60"
+                  >
+                    <span class="block font-bold text-sm text-slate-900 dark:text-white">
+                      📷 Relevar escaneando <span class="ml-1 text-[10px] uppercase tracking-wider">Próximamente</span>
+                    </span>
+                    <span class="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Con la cámara del celular o un lector, producto por producto.
+                    </span>
+                  </div>
+                </div>
+                <div class="flex justify-end">
+                  <Button variant="ghost" onClick={skipLoadStep}>
+                    Lo hago después
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {step === LOAD_STEP && result && loadModeSignal.value === 'files' && (
+              <div class="space-y-4 animate-in fade-in duration-200">
+                <ImportWizard onDone={skipLoadStep} />
+                <div class="flex justify-between">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      loadModeSignal.value = 'choose';
+                    }}
+                  >
+                    ← Volver
+                  </Button>
+                  <Button variant="outline" onClick={skipLoadStep}>
+                    Terminar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* PASO 5: ÉXITO Y CONEXIÓN */}
+            {step === DONE_STEP && result && (
               <div class="space-y-6 animate-in fade-in duration-200">
                 <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4">
                   <div class="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold text-2xl shadow-lg shadow-emerald-500/30 shrink-0">
@@ -452,7 +505,7 @@ export function MerchantOnboardingView() {
                   onClick={() => { void advanceMerchantStep(); }}
                   loading={isSubmitting}
                 >
-                  {step === 1 ? 'Continuar a Datos del Negocio →' : 'Aprovisionar Mi Comercio 🚀'}
+                  {step === 1 ? 'Continuar →' : 'Crear mi comercio'}
                 </Button>
               </div>
             </div>

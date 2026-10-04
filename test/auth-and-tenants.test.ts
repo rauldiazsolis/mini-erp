@@ -24,7 +24,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   it('el alta crea siempre con rol "user", aunque sea el primer usuario (#3)', async () => {
     const res1 = await request(app)
       .post('/api/alta')
-      .send({ email: 'primero@sistema.com', password: 'password123', name: 'Primero', businessName: 'Primero', template: 'empty' });
+      .send({ email: 'primero@sistema.com', password: 'password123', name: 'Primero', businessName: 'Primero', businessType: 'otro', whatsapp: '1155550000' });
 
     expect(res1.status).toBe(201);
     const body1 = res1.body as unknown as { user: { globalRole: string }; token: string };
@@ -56,7 +56,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     // El alta crea el comercio con la key de Caja 1 (#19)
     const altaRes = await request(app)
       .post('/api/alta')
-      .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Dueño Kiosco', businessName: 'Kiosco San Martín', template: 'kiosco' });
+      .send({ email: 'owner@kiosco.com', password: 'password123', name: 'Dueño Kiosco', businessName: 'Kiosco San Martín', businessType: 'kiosco', whatsapp: '1155550000' });
 
     expect(altaRes.status).toBe(201);
     const altaBody = altaRes.body as unknown as { token: string; tenant: { id: string } };
@@ -111,7 +111,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     // 2. Un comerciante se da de alta con su comercio
     await request(app)
       .post('/api/alta')
-      .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante', businessName: 'Zapatería Real', template: 'empty' });
+      .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante', businessName: 'Zapatería Real', businessType: 'otro', whatsapp: '1155550000' });
 
     // 3. Root consulta tenants disponibles
     const rootTenantsRes = await request(app)

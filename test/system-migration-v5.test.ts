@@ -79,6 +79,7 @@ describe('migración de sistema v5 creditos-y-cobro (#21)', () => {
     for (const table of ['register_devices', 'billing_settings', 'paid_movements', 'gift_consumptions', 'charges']) {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
     }
-    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
+    // Migra hasta la última (v5 y las que vengan después)
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: SYSTEM_SCHEMA.migrations.at(-1)?.version });
   });
 });

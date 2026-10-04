@@ -3,17 +3,27 @@ import { z } from 'zod';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { AltaService } from '../alta/alta-service.ts';
 import { passwordSchema } from '../../shared/password.ts';
+import { BUSINESS_TYPES } from '../../shared/business-type.ts';
+import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
 import { sendError } from '../errors.ts';
 
 const businessSchema = z.object({
   businessName: z.string().trim().min(2, 'Escribí el nombre de tu comercio'),
-  template: z.enum(['kiosco', 'almacen', 'ferreteria', 'empty']),
+  businessType: z.enum(BUSINESS_TYPES, { errorMap: () => ({ message: 'Elegí el rubro de tu comercio' }) }),
 });
 
 const accountSchema = z.object({
   name: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres'),
   email: z.string().trim().email('Email inválido'),
   password: passwordSchema,
+  whatsapp: z.string({ required_error: WHATSAPP_MESSAGE, invalid_type_error: WHATSAPP_MESSAGE }).transform((value, ctx) => {
+    const digits = normalizeWhatsapp(value);
+    if (digits === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: WHATSAPP_MESSAGE });
+      return z.NEVER;
+    }
+    return digits;
+  }),
 });
 
 /** POST /api/alta (#19): con sesión crea solo el comercio; sin sesión, cuenta y comercio. */

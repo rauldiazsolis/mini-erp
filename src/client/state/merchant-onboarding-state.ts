@@ -13,7 +13,9 @@ import { navigateTo } from './navigation-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { buildConnectReturnUrl } from './connect-return.ts';
-import type { BusinessPreset } from './onboarding-state.ts';
+import { resetImport } from './import-state.ts';
+import type { BusinessType } from '../../shared/business-type.ts';
+import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
 
 export type MerchantProvisionResult = {
   tenantId: string;
@@ -27,7 +29,7 @@ export type MerchantProvisionResult = {
   connectReturnUrl: string | null;
   /** El host al que vuelve, para mostrarlo antes de mandar la conexión. */
   returnHost: string | null;
-  preset: BusinessPreset;
+  businessType: BusinessType;
 };
 
 // Control de visibilidad del flujo comercial
@@ -38,6 +40,12 @@ export const returnUrlSignal = signal<string | null>(null);
 export const wipeKeySignal = signal<string | null>(null);
 
 // Estado de pasos: 1: Cuenta, 2: Negocio/Rubro, 3: Aprovisionando, 4: Éxito
+/**
+ * Pasos del alta: 1 cuenta, 2 comercio, 3 creando, 4 "Cargá tus datos" (#22) y 5 listo. El comercio
+ * nace vacío en el 3: desde el 4 no se vuelve atrás.
+ */
+export const LOAD_STEP = 4;
+export const DONE_STEP = 5;
 export const merchantStepSignal = signal<number>(1);
 
 // Paso 1: Cuenta de usuario
@@ -45,10 +53,13 @@ export const isExistingAccountSignal = signal<boolean>(false);
 export const userNameSignal = signal<string>('');
 export const userEmailSignal = signal<string>('');
 export const userPasswordSignal = signal<string>('');
+export const userWhatsappSignal = signal<string>('');
 
 // Paso 2: Datos del Comercio (100% amigable para el comerciante)
 export const businessNameSignal = signal<string>('');
-export const selectedMerchantPresetSignal = signal<BusinessPreset>('kiosco');
+export const selectedBusinessTypeSignal = signal<BusinessType>('kiosco');
+/** En "Cargá tus datos": las tarjetas o el asistente de importación. */
+export const loadModeSignal = signal<'choose' | 'files'>('choose');
 
 // Estados de proceso
 export const isSubmittingSignal = signal<boolean>(false);
@@ -93,7 +104,7 @@ export function initMerchantOnboardingFromUrl(): void {
   returnUrlSignal.value = returnUrl;
   wipeKeySignal.value = wipeKey;
   if (template !== null) {
-    selectedMerchantPresetSignal.value = template;
+    selectedBusinessTypeSignal.value = template;
   }
 
   // Si el usuario ya está autenticado, avanzamos directamente al paso de negocio
@@ -111,8 +122,10 @@ export function resetMerchantOnboarding(): void {
   userNameSignal.value = '';
   userEmailSignal.value = '';
   userPasswordSignal.value = '';
+  userWhatsappSignal.value = '';
   businessNameSignal.value = '';
-  selectedMerchantPresetSignal.value = 'kiosco';
+  selectedBusinessTypeSignal.value = 'kiosco';
+  loadModeSignal.value = 'choose';
   isSubmittingSignal.value = false;
   progressStepMessageSignal.value = '';
   errorMessageSignal.value = null;
@@ -177,6 +190,10 @@ export async function advanceMerchantStep(): Promise<void> {
           errorMessageSignal.value = PASSWORD_MIN_MESSAGE;
           return;
         }
+        if (normalizeWhatsapp(userWhatsappSignal.value) === undefined) {
+          errorMessageSignal.value = WHATSAPP_MESSAGE;
+          return;
+        }
         // La cuenta se crea junto con el comercio, en un solo POST /api/alta (#19)
       }
     }
@@ -214,10 +231,10 @@ export async function executeMerchantProvisioning(): Promise<void> {
     errorMessageSignal.value = null;
     merchantStepSignal.value = 3;
 
-    // Cuenta (si no hay sesión), comercio, catálogo del rubro y key de Caja 1 en un solo pedido (#19)
-    progressStepMessageSignal.value = 'Creando tu comercio, su catálogo y la conexión de tu caja...';
+    // Cuenta (si no hay sesión), comercio vacío con su rubro y key de Caja 1 en un solo pedido (#19, #22)
+    progressStepMessageSignal.value = 'Creando tu comercio y la conexión de tu caja...';
     const businessName = businessNameSignal.value.trim();
-    const preset = selectedMerchantPresetSignal.value;
+    const businessType = selectedBusinessTypeSignal.value;
     const authenticated = isAuthenticatedSignal.value;
     const res = await apiFetch<{
       token?: string;
@@ -227,13 +244,14 @@ export async function executeMerchantProvisioning(): Promise<void> {
       method: 'POST',
       token: authenticated ? tokenSignal.value : null,
       body: authenticated
-        ? { businessName, template: preset }
+        ? { businessName, businessType }
         : {
             name: userNameSignal.value.trim(),
             email: userEmailSignal.value.trim(),
             password: userPasswordSignal.value,
+            whatsapp: userWhatsappSignal.value.trim(),
             businessName,
-            template: preset,
+            businessType,
           },
     });
 
@@ -274,10 +292,13 @@ export async function executeMerchantProvisioning(): Promise<void> {
       returnUrl: rawReturnUrl,
       connectReturnUrl: connectReturnUrl ?? null,
       returnHost: connectReturnUrl === undefined ? null : new URL(connectReturnUrl).host,
-      preset,
+      businessType,
     };
 
-    merchantStepSignal.value = 4;
+    // Sigue "Cargá tus datos": el comercio nació vacío (#22)
+    loadModeSignal.value = 'choose';
+    resetImport();
+    merchantStepSignal.value = LOAD_STEP;
     showToast({
       type: 'success',
       title: '¡Comercio Creado!',
@@ -293,6 +314,35 @@ export async function executeMerchantProvisioning(): Promise<void> {
     } else {
       merchantStepSignal.value = 2; // Permitir reintentar
     }
+  } finally {
+    isSubmittingSignal.value = false;
+  }
+}
+
+/** "Subir mis archivos": el asistente de importación, ahí mismo, sobre el comercio recién creado (#22). */
+export function chooseUploadFiles(): void {
+  resetImport();
+  loadModeSignal.value = 'files';
+}
+
+/** "Lo hago después" (o "Seguir" al terminar de importar). */
+export function skipLoadStep(): void {
+  errorMessageSignal.value = null;
+  merchantStepSignal.value = DONE_STEP;
+}
+
+/** "Empezar con el catálogo de ejemplo" del rubro elegido (#22). */
+export async function loadExampleCatalogOnSignup(): Promise<void> {
+  const res = merchantResultSignal.value;
+  const token = tokenSignal.value;
+  if (res === null || !token) return;
+  isSubmittingSignal.value = true;
+  errorMessageSignal.value = null;
+  try {
+    await apiFetch<{ productsCreated: number }>(`tenants/${res.tenantId}/catalog/example`, { method: 'POST', token });
+    merchantStepSignal.value = DONE_STEP;
+  } catch (err: unknown) {
+    errorMessageSignal.value = err instanceof Error ? err.message : 'No se pudo cargar el catálogo de ejemplo';
   } finally {
     isSubmittingSignal.value = false;
   }

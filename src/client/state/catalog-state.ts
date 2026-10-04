@@ -1,4 +1,5 @@
-import { signal, computed, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
+import { loadOnTenantAndView } from './view-loader.ts';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
@@ -412,10 +413,6 @@ export async function deleteProduct(product: ProductItem): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
-  effect(() => {
-    const tenantId = effectiveTenantIdSignal.value;
-    if (tenantId && tokenSignal.value) {
-      void fetchCatalog();
-    }
-  });
+  // Al cambiar de comercio y al entrar a la pantalla (#22)
+  loadOnTenantAndView('catalog', fetchCatalog);
 }

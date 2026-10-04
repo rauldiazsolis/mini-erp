@@ -157,8 +157,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `test/permissions-api.test.ts` tiene la tabla de todas las rutas y falla si una ruta nueva no
     está o exige otra capacidad.
   - El cliente esconde lo que el rol no permite con `canDo` (`state/permissions-state.ts`).
-  - **Sin registro suelto**: una cuenta nace en `POST /api/alta` (cuenta, comercio, catálogo del rubro
-    y key de "Caja 1", atómico) o aceptando una invitación.
+  - **Sin registro suelto**: una cuenta nace en `POST /api/alta` (cuenta con WhatsApp, comercio vacío
+    con su rubro y key de "Caja 1", atómico; #22) o aceptando una invitación.
   - Links de invitación y de restablecimiento de contraseña: un solo uso, 48 h, token en el fragmento
     (`/invitacion#t=…`, `/restablecer#t=…`), en la base solo su sha256. El restablecimiento lo genera
     el owner, solo para usuarios cuyas membresías activas son todas en comercios suyos.
@@ -264,6 +264,27 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     plataforma en `routes/platform-routes.ts` (`requirePlatformRole`; devoluciones y configuración,
     solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`).
   - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
+- **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
+  - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
+    `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
+    resultado por fila y totales. La vista previa corre igual dentro de un `SAVEPOINT` y se deshace;
+    al confirmar, las filas con error se omiten y el resto se aplica en esa transacción.
+  - Parser común en `src/server/io/csv.ts` (lo usa también la planilla de cobranzas): separador
+    detectado, comillas, BOM y montos; en un archivo con `;` el punto es siempre de miles. Campos y
+    tipos en `src/shared/import-fields.ts`; sinónimos y mapeo sugerido en `src/server/io/suggest-mapping.ts`.
+  - Clientes por id, documento (sin puntos ni guiones) o nombre normalizado; productos por código de
+    barras, SKU o nombre. Al actualizar solo se tocan los campos mapeados.
+  - **El saldo inicial pasa por el libro**: movimiento `opening` ("Saldo inicial (importado)"). Al
+    reimportar se corrige con otro `opening` solo si todos sus movimientos son `opening`; si no, la
+    fila avisa y el saldo no cambia. La columna id engancha los pendientes de discrepancias.
+  - El stock se fija por sucursal (una columna por sucursal) con un movimiento `inventory_count` en
+    el kardex (`stock/write-stock.ts`, compartido con `StockService`).
+  - El cliente (`components/import/`, `state/import-state.ts`) lee UTF-8 o, si no es válido,
+    Windows-1252 (el CSV de Excel en castellano).
+  - **El alta pide WhatsApp** (solo dígitos, `users.whatsapp`) y **rubro** (`tenants.business_type`:
+    `kiosco`, `almacen`, `ferreteria`, `otro`; migración de sistema v6), crea el comercio vacío y
+    sigue con "Cargá tus datos": subir archivos, el catálogo de ejemplo del rubro
+    (`POST /catalog/example`, idempotente) o después. Sin CUIT ni datos fiscales hasta la facturación.
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
   - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
@@ -348,7 +369,7 @@ Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
 (roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
 las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
 (#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
-hecha) y M6 importación (#22).
+hecha) y M6 importación (#22, hecha).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 

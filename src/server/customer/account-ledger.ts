@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 
 export type LedgerMovement = {
-  type: 'sale' | 'payment' | 'payment-void' | 'adjustment' | 'interest';
+  type: 'sale' | 'payment' | 'payment-void' | 'adjustment' | 'interest' | 'opening';
   /** Positivo sube la deuda, negativo la baja. */
   delta: number;
   description: string;
