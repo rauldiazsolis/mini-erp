@@ -31,11 +31,14 @@ import {
 import {
   tokenSignal,
   currentUserSignal,
-  activeTenantIdSignal,
+  lastTenantIdSignal,
+  rememberTenant,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
-import { activeViewSignal } from '../src/client/state/navigation-state.ts';
+import { locationSignal, navigate } from '../src/client/state/route-state.ts';
 import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
 
 describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
   beforeEach(() => {
@@ -43,10 +46,10 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
     merchantOnboardingActiveSignal.value = false;
     tokenSignal.value = null;
     currentUserSignal.value = null;
-    activeTenantIdSignal.value = null;
+    rememberTenant(null);
     userTenantsSignal.value = [];
     returnUrlSignal.value = null;
-    activeViewSignal.value = 'dashboard';
+    navigate('/');
     vi.restoreAllMocks();
   });
 
@@ -248,12 +251,13 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       expect(merchantResultSignal.value?.returnHost).toBe('localhost:5173');
 
       // Verificar que el tenant creado quedó como activo en el cliente
-      expect(activeTenantIdSignal.value).toBe('kiosco-pepe-amigos');
+      expect(lastTenantIdSignal.value).toBe('kiosco-pepe-amigos');
 
       // Finalizar e ingresar al dashboard
       enterDashboardFromOnboarding();
       expect(merchantOnboardingActiveSignal.value).toBe(false);
-      expect(activeViewSignal.value).toBe('dashboard');
+      expect(locationSignal.value.pathname).toBe('/admin');
+      expect(lastTenantIdSignal.value).toBe('kiosco-pepe-amigos');
     });
 
     it('con sesión manda solo el comercio, con el token', async () => {
@@ -333,6 +337,15 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       await loadExampleCatalogOnSignup();
       expect(calls).toEqual([{ url: '/api/tenants/kiosco-marta/catalog/example', method: 'POST' }]);
       expect(merchantStepSignal.value).toBe(DONE_STEP);
+    });
+
+    it('el catálogo de ejemplo deja viejo el catálogo del comercio nuevo (#59)', async () => {
+      queryClient.setQueryData(tenantKey('kiosco-marta', 'products'), []);
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ productsCreated: 40 }), { status: 200, headers: { 'content-type': 'application/json' } })),
+      );
+      await loadExampleCatalogOnSignup();
+      expect(queryClient.getQueryState(tenantKey('kiosco-marta', 'products'))?.isInvalidated).toBe(true);
     });
 
     it('si falla, se queda en el paso con el error', async () => {

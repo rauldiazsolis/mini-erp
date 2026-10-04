@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { activeRoleSignal, canDo, isViewAllowed, isSettingsTabAllowed, ROLE_LABEL } from '../src/client/state/permissions-state.ts';
-import { activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
 import type { MembershipRole } from '../src/shared/permissions.ts';
+import { atTenant } from './helpers/client-route.ts';
+import { navigate } from '../src/client/state/route-state.ts';
 
 function como(role: MembershipRole): void {
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T1', status: 'active', role }];
-  activeTenantIdSignal.value = 't1';
+  atTenant('t1');
 }
 
 describe('permisos en el cliente (#19)', () => {
@@ -49,7 +51,7 @@ describe('permisos en el cliente (#19)', () => {
   });
 
   it('sin comercio activo no se puede nada', () => {
-    activeTenantIdSignal.value = null;
+    navigate('/admin');
     userTenantsSignal.value = [];
     expect(activeRoleSignal.value).toBeNull();
     expect(canDo('tenant.use')).toBe(false);

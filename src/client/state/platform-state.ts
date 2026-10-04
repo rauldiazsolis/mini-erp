@@ -1,7 +1,11 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
+import { createSignalQuery, type QuerySource } from '../api/query-client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { inSection, routeSignal } from './route-state.ts';
+import { platformKey } from './query-keys.ts';
+import { invalidateAfter } from './invalidation.ts';
+import type { PlatformTabId } from '../routing/admin-routes.ts';
 import { showToast } from './toast-state.ts';
 import { refreshCredits } from './credits-state.ts';
 import type { MemberItem } from './users-state.ts';
@@ -9,19 +13,21 @@ import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../..
 
 /**
  * Plataforma de cobro (#21), para root y soporte: las acciones sobre el comercio que se impersona
- * (en su pantalla Créditos) y lo global (planilla de cobranzas, pagos y configuración).
+ * (en su pantalla Uso y pagos) y lo global (planilla de cobranzas, pagos y configuración).
  */
 
-export type PlatformTab = 'payments' | 'settings';
+export type PlatformTab = PlatformTabId;
 
-export const platformTabSignal = signal<PlatformTab>('payments');
+/** La solapa de `/plataforma` (#59). */
+export const platformTabSignal = computed<PlatformTab>(() => {
+  const route = routeSignal.value;
+  return route.kind === 'plataforma' ? route.tab : 'payments';
+});
 export const ownersSignal = signal<MemberItem[]>([]);
 export const sheetTextSignal = signal<string>('');
 export const sheetRowsSignal = signal<SheetResultRow[] | null>(null);
 export const sheetAppliedSignal = signal<boolean>(false);
 export const sheetBusySignal = signal<boolean>(false);
-export const platformPaymentsSignal = signal<PlatformPaymentItem[]>([]);
-export const platformSettingsSignal = signal<BillingSettings | null>(null);
 
 function token(): string | null {
   return tokenSignal.value;
@@ -37,7 +43,32 @@ function fail(err: unknown, title: string): false {
   return false;
 }
 
-/** Una acción sobre el comercio activo: avisa, recarga Créditos y devuelve si salió bien. */
+/** Lo global de la plataforma, en `/plataforma` (#59): no es de un comercio. */
+const platformSource = <T>(name: 'payments' | 'settings', path: string) => (): QuerySource<T> | null => {
+  const t = tokenSignal.value;
+  return t ? { key: platformKey(name), fn: () => apiFetch<T>(path, { token: t }) } : null;
+};
+
+const paymentsQuery = createSignalQuery<PlatformPaymentItem[]>({
+  source: platformSource('payments', '/api/platform/payments'),
+  enabled: () => inSection('platform'),
+  onError: (err) => {
+    fail(err, 'No se pudieron cargar los pagos');
+  },
+});
+
+const settingsQuery = createSignalQuery<BillingSettings>({
+  source: platformSource('settings', '/api/platform/settings'),
+  enabled: () => inSection('platform'),
+  onError: (err) => {
+    fail(err, 'No se pudo cargar la configuración');
+  },
+});
+
+export const platformPaymentsSignal = computed<PlatformPaymentItem[]>(() => paymentsQuery.data.value ?? []);
+export const platformSettingsSignal = computed<BillingSettings | null>(() => settingsQuery.data.value ?? null);
+
+/** Una acción sobre el comercio activo: avisa, deja viejo Uso y pagos y devuelve si salió bien. */
 async function tenantAction(
   path: string,
   method: 'POST' | 'PUT' | 'DELETE',
@@ -67,11 +98,11 @@ export function registerPayment(input: { day: string; amount: number; info?: str
 }
 
 export function grantCredits(input: { amount: number; expiresOn: string; reason?: string | undefined }): Promise<boolean> {
-  return tenantAction('/gift-credits', 'POST', compact(input), 'Créditos otorgados');
+  return tenantAction('/gift-credits', 'POST', compact(input), 'Bono otorgado');
 }
 
 export function voidCredit(creditId: string, reason: string): Promise<boolean> {
-  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Créditos anulados');
+  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Bono anulado');
 }
 
 export function extendGrace(until: string): Promise<boolean> {
@@ -114,7 +145,7 @@ async function sendSheet(dryRun: boolean): Promise<void> {
     if (res.applied) {
       const ok = res.rows.filter((r) => r.status === 'ok').length;
       showToast({ type: 'success', title: 'Planilla aplicada', message: `${String(ok)} pagos registrados` });
-      await fetchPlatformPayments();
+      await invalidateAfter('platform-changed');
     }
   } catch (err: unknown) {
     fail(err, 'No se pudo procesar la planilla');
@@ -201,42 +232,23 @@ export function draftToSettings(d: SettingsDraft): BillingSettings | string {
 }
 
 export async function fetchPlatformPayments(): Promise<void> {
-  const t = token();
-  if (t === null) return;
-  try {
-    platformPaymentsSignal.value = await apiFetch<PlatformPaymentItem[]>('/api/platform/payments', { token: t });
-  } catch (err: unknown) {
-    fail(err, 'No se pudieron cargar los pagos');
-  }
+  await paymentsQuery.refetch();
 }
 
 export async function fetchPlatformSettings(): Promise<void> {
-  const t = token();
-  if (t === null) return;
-  try {
-    platformSettingsSignal.value = await apiFetch<BillingSettings>('/api/platform/settings', { token: t });
-  } catch (err: unknown) {
-    fail(err, 'No se pudo cargar la configuración');
-  }
+  await settingsQuery.refetch();
 }
 
 export async function savePlatformSettings(patch: Partial<BillingSettings>): Promise<boolean> {
   const t = token();
   if (t === null) return false;
   try {
-    platformSettingsSignal.value = await apiFetch<BillingSettings>('/api/platform/settings', { method: 'PUT', token: t, body: patch });
+    const saved = await apiFetch<BillingSettings>('/api/platform/settings', { method: 'PUT', token: t, body: patch });
+    settingsQuery.setData(() => saved);
+    void invalidateAfter('platform-changed');
     showToast({ type: 'success', title: 'Configuración guardada', message: 'Los cambios valen para los cargos nuevos' });
     return true;
   } catch (err: unknown) {
     return fail(err, 'No se pudo guardar');
   }
-}
-
-if (typeof window !== 'undefined') {
-  effect(() => {
-    if (activeViewSignal.value === 'platform' && tokenSignal.value) {
-      void fetchPlatformPayments();
-      void fetchPlatformSettings();
-    }
-  });
 }

@@ -1,5 +1,7 @@
 import { platformTabSignal, type PlatformTab } from '../../state/platform-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
+import { buildUrl } from '../../routing/admin-routes.ts';
+import { Link } from '../ui/Link.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { PaymentSheetCard } from './PaymentSheetCard.tsx';
 import { PlatformSettingsCard } from './PlatformSettingsCard.tsx';
@@ -19,12 +21,11 @@ export function PlatformView() {
       <PageHeader title="Plataforma" subtitle="Cobranzas de todos los comercios y configuración del cobro" />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {tabs.map((t) => (
-          <button
+          <Link
             key={t.id}
-            type="button"
+            href={buildUrl({ kind: 'plataforma', tab: t.id })}
             role="tab"
             aria-selected={tab === t.id}
-            onClick={() => (platformTabSignal.value = t.id)}
             class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === t.id
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -32,7 +33,7 @@ export function PlatformView() {
             }`}
           >
             {t.label}
-          </button>
+          </Link>
         ))}
       </div>
       {tab === 'payments' && <PaymentSheetCard />}

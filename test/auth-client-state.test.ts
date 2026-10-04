@@ -3,15 +3,14 @@ import {
   tokenSignal,
   currentUserSignal,
   userTenantsSignal,
-  activeTenantIdSignal,
-  impersonatedTenantIdSignal,
+  lastTenantIdSignal,
+  impersonationSignal,
   isAuthenticatedSignal,
   isRootOrSupportSignal,
   effectiveTenantIdSignal,
   activeTenantSignal,
   isImpersonatingSignal,
   logout,
-  setActiveTenant,
   selectTenant,
   impersonateTenant,
   stopImpersonation,
@@ -19,10 +18,13 @@ import {
   type TenantMembershipItem,
 } from '../src/client/state/auth-state.ts';
 import { createSignalQuery } from '../src/client/api/query-client.ts';
+import { locationSignal, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 import { apiFetch, setOnUnauthorized } from '../src/client/api/client.ts';
 
 describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
   beforeEach(() => {
+    setHistoryForTests(null);
     logout();
   });
 
@@ -32,9 +34,10 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
         { tenantId: 'ferreteria', slug: 'ferreteria', name: 'Ferretería El Candado', status: 'active', role: 'owner' },
         { tenantId: 'kiosco', slug: 'kiosco', name: 'Kiosco San Martín', status: 'active', role: 'owner' },
       ];
-      setActiveTenant('ferreteria');
+      atTenant('ferreteria', 'clientes');
       expect(selectTenant('kiosco')).toBe('Kiosco San Martín');
       expect(activeTenantSignal.value?.tenantId).toBe('kiosco');
+      expect(locationSignal.value.pathname).toBe('/admin/kiosco/clientes');
       expect(selectTenant('no-esta')).toBe('no-esta');
     });
 
@@ -62,7 +65,7 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
       tokenSignal.value = 'fake-jwt-token';
       currentUserSignal.value = mockUser;
       userTenantsSignal.value = mockTenants;
-      setActiveTenant('t-1');
+      atTenant('t-1');
 
       expect(isAuthenticatedSignal.value).toBe(true);
       expect(isRootOrSupportSignal.value).toBe(true);
@@ -83,7 +86,7 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
         { tenantId: 'tenant-a', slug: 't-a', name: 'Tenant A', status: 'active', role: 'owner' },
         { tenantId: 'tenant-b', slug: 't-b', name: 'Tenant B', status: 'active', role: 'root_impersonator' },
       ];
-      setActiveTenant('tenant-a');
+      atTenant('tenant-a');
 
       expect(effectiveTenantIdSignal.value).toBe('tenant-a');
       expect(isImpersonatingSignal.value).toBe(false);
@@ -117,25 +120,24 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
     it('logout limpia todas las señales y el estado de sesión', () => {
       tokenSignal.value = 'token';
       currentUserSignal.value = { id: 'u1', email: 'a@b.com', name: 'A', globalRole: 'user' };
-      setActiveTenant('t1');
+      atTenant('t1');
 
       logout();
 
       expect(tokenSignal.value).toBeNull();
       expect(currentUserSignal.value).toBeNull();
-      expect(activeTenantIdSignal.value).toBeNull();
-      expect(impersonatedTenantIdSignal.value).toBeNull();
+      expect(lastTenantIdSignal.value).toBeNull();
+      expect(impersonationSignal.value).toBeNull();
       expect(isAuthenticatedSignal.value).toBe(false);
     });
   });
 
   describe('createSignalQuery (TanStack Query + Signals)', () => {
     it('encapsula consultas y actualiza señales reactivas sin hooks', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({ items: ['prod-1', 'prod-2'] });
+      const mockFetch = vi.fn(() => Promise.resolve({ items: ['prod-1', 'prod-2'] }));
 
       const query = createSignalQuery({
-        queryKey: ['mock-items-key'],
-        queryFn: mockFetch,
+        source: () => ({ key: ['mock-items-key'], fn: mockFetch }),
       });
 
       expect(query.isLoading.value).toBe(true);
@@ -146,9 +148,9 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
 
       expect(query.isLoading.value).toBe(false);
       expect(query.data.value).toEqual({ items: ['prod-1', 'prod-2'] });
-      expect(query.isError.value).toBe(false);
+      expect(query.error.value).toBeNull();
 
-      query.unsubscribe();
+      query.dispose();
     });
   });
 

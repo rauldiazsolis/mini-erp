@@ -13,7 +13,7 @@ import {
   confirmImport,
   resetImport,
 } from '../../state/import-state.ts';
-import { navigateTo } from '../../state/navigation-state.ts';
+import { goTo } from '../../state/route-state.ts';
 
 export type ImportWizardProps = {
   /** En el alta: "Seguir" en el resultado, en lugar de "Ver clientes". */
@@ -77,7 +77,7 @@ export function ImportWizard(props: ImportWizardProps) {
               <Button
                 variant="outline"
                 onClick={() => {
-                  navigateTo('customers');
+                  goTo({ section: 'customers' });
                 }}
               >
                 Ver clientes

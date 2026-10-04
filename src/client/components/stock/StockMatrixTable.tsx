@@ -184,7 +184,7 @@ export function StockMatrixTable() {
                     {/* Ver Kardex */}
                     <button
                       type="button"
-                      onClick={() => { void openKardex(item); }}
+                      onClick={() => { openKardex(item); }}
                       title="Ver trazabilidad Kardex"
                       class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                     >

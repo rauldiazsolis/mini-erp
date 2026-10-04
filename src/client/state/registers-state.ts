@@ -1,7 +1,10 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
-import { can, effectiveTenantRole } from '../../shared/permissions.ts';
+import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { canDo } from './permissions-state.ts';
+import { inSection } from './route-state.ts';
+import { createTenantQuery } from './query-keys.ts';
+import { invalidateAfter } from './invalidation.ts';
 import { showToast } from './toast-state.ts';
 import { settingsBranchesSignal } from './settings-state.ts';
 import type { RegisterItem } from '../../shared/register-types.ts';
@@ -14,8 +17,17 @@ import type { RegisterItem } from '../../shared/register-types.ts';
 type RegisterForm = { name: string; branch: string; pointOfSale: string };
 type KeyResponse = { rawKey: string; keyPrefix: string };
 
-export const registersSignal = signal<RegisterItem[]>([]);
-export const registersLoadingSignal = signal<boolean>(false);
+const registersQuery = createTenantQuery<RegisterItem[]>({
+  domain: 'pos-registers',
+  enabled: () => inSection('settings') && canDo('settings.manage'),
+  onError: (err) => {
+    showToast({ type: 'error', title: 'No se pudieron cargar las cajas', message: err.message });
+  },
+  fn: ({ tenantId, token }) => apiFetch<RegisterItem[]>(`tenants/${tenantId}/pos-registers`, { token }),
+});
+
+export const registersSignal = computed<RegisterItem[]>(() => registersQuery.data.value ?? []);
+export const registersLoadingSignal = registersQuery.isLoading;
 export const createRegisterModalOpenSignal = signal<boolean>(false);
 export const createRegisterFormSignal = signal<RegisterForm>({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
 export const createRegisterErrorSignal = signal<string | null>(null);
@@ -39,16 +51,7 @@ function errorText(err: unknown, fallback: string): string {
 }
 
 export async function fetchRegisters(): Promise<void> {
-  const ctx = context();
-  if (ctx === null) return;
-  try {
-    registersLoadingSignal.value = true;
-    registersSignal.value = await apiFetch<RegisterItem[]>(ctx.base, { token: ctx.token });
-  } catch (err: unknown) {
-    showToast({ type: 'error', title: 'No se pudieron cargar las cajas', message: errorText(err, 'Error al cargar las cajas') });
-  } finally {
-    registersLoadingSignal.value = false;
-  }
+  await registersQuery.refetch();
 }
 
 export function openCreateRegisterModal(): void {
@@ -82,7 +85,7 @@ export async function submitCreateRegister(): Promise<void> {
     });
     revealedKeySignal.value = { registerName: name, rawKey: res.rawKey };
     closeCreateRegisterModal();
-    await fetchRegisters();
+    await invalidateAfter('register-changed');
   } catch (err: unknown) {
     createRegisterErrorSignal.value = errorText(err, 'No se pudo crear la caja');
   } finally {
@@ -90,14 +93,14 @@ export async function submitCreateRegister(): Promise<void> {
   }
 }
 
-/** Corre una acción sobre una caja si el usuario confirma, avisa y recarga la lista. */
+/** Corre una acción sobre una caja si el usuario confirma, avisa y deja viejas las cajas y el cobro. */
 async function act(item: RegisterItem, message: string, done: string, run: (ctx: { base: string; token: string }) => Promise<void>): Promise<void> {
   const ctx = context();
   if (ctx === null || !confirmed(message)) return;
   try {
     await run(ctx);
     showToast({ type: 'success', title: item.name, message: done });
-    await fetchRegisters();
+    await invalidateAfter('register-changed');
   } catch (err: unknown) {
     showToast({ type: 'error', title: item.name, message: errorText(err, 'No se pudo completar la acción') });
   }
@@ -140,14 +143,4 @@ export async function deactivateRegister(item: RegisterItem): Promise<void> {
 
 export function dismissRevealedKey(): void {
   revealedKeySignal.value = null;
-}
-
-// Las cajas son de owner y admin (#19): se cargan al cambiar de comercio
-if (typeof window !== 'undefined') {
-  effect(() => {
-    const tenant = activeTenantSignal.value;
-    if (effectiveTenantIdSignal.value && tokenSignal.value && tenant !== null && can(effectiveTenantRole(tenant.role), 'settings.manage')) {
-      void fetchRegisters();
-    }
-  });
 }

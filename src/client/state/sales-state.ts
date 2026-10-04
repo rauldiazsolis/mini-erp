@@ -1,8 +1,8 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
-import { activeViewSignal, navigateTo } from './navigation-state.ts';
-import { customersSignal, fetchCustomers } from './customer-state.ts';
+import { goTo, inSection, routeFilters, routeTab, setFilters } from './route-state.ts';
+import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { decodeFilters, type RangePreset, type SalesRouteFilters, type TabId } from '../routing/admin-routes.ts';
 import type { RegisterChoice } from './sales-labels.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -10,8 +10,9 @@ import type {
   SaleDetail, SaleKind, SaleListItem,
 } from '../../shared/sales-types.ts';
 
-export type SalesTab = 'sales' | 'payments' | 'movements' | 'summary';
-export type RangePreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
+export type SalesTab = TabId<'sales'>;
+const SALES_TABS: readonly SalesTab[] = ['sales', 'payments', 'movements', 'summary'];
+export type { RangePreset } from '../routing/admin-routes.ts';
 export type DayRange = { from: string; to: string };
 export type SalesFilters = {
   method?: string | undefined;
@@ -40,29 +41,39 @@ export function presetRange(preset: Exclude<RangePreset, 'custom'>, today: strin
   }
 }
 
-// Filtros: rango y caja son compartidos por las cuatro solapas (#20)
-export const salesTabSignal = signal<SalesTab>('sales');
-export const rangePresetSignal = signal<RangePreset>('today');
-export const rangeSignal = signal<DayRange>(presetRange('today', argentinaToday(new Date())));
-export const registerSignal = signal<RegisterChoice>({});
-export const salesFiltersSignal = signal<SalesFilters>({ status: 'all' });
-export const paymentsFiltersSignal = signal<PaymentsFilters>({ status: 'all' });
-export const movementsFiltersSignal = signal<MovementsFilters>({});
-export const pageSignal = signal<number>(1);
+// Filtros: en la URL (#59). Rango y caja son compartidos por las cuatro solapas (#20)
+export const salesTabSignal = computed<SalesTab>(() => routeTab('sales', SALES_TABS, 'sales'));
+const salesRouteFiltersSignal = computed<SalesRouteFilters>(() => routeFilters('sales'));
 
-// Datos
-export const registersSignal = signal<RegisterItem[]>([]);
-export const salesListSignal = signal<ListResult<SaleListItem> | null>(null);
-export const paymentsListSignal = signal<ListResult<CustomerPaymentItem> | null>(null);
-export const movementsListSignal = signal<ListResult<CashMovementItem> | null>(null);
-export const cashSummarySignal = signal<CashSummaryResult | null>(null);
-export const salesLoadingSignal = signal<boolean>(false);
-export const salesErrorSignal = signal<string | null>(null);
-
-// Drawers: abiertos cuando no son null
-export const ticketSignal = signal<SaleDetail | null>(null);
-export const paymentDetailSignal = signal<CustomerPaymentItem | null>(null);
-export const daySummarySignal = signal<DaySummaryResult | null>(null);
+export const rangePresetSignal = computed<RangePreset>(() => salesRouteFiltersSignal.value.preset);
+export const rangeSignal = computed<DayRange>(() => {
+  const f = salesRouteFiltersSignal.value;
+  if (f.preset === 'custom' && f.from !== undefined && f.to !== undefined) return { from: f.from, to: f.to };
+  return presetRange(f.preset === 'custom' ? 'today' : f.preset, argentinaToday(new Date()));
+});
+export const registerSignal = computed<RegisterChoice>(() => {
+  const { branch, pointOfSale } = salesRouteFiltersSignal.value;
+  return { ...(branch === undefined ? {} : { branch }), ...(pointOfSale === undefined ? {} : { pointOfSale }) };
+});
+export const salesFiltersSignal = computed<SalesFilters>(() => {
+  const { status, method, customerId, productId, kind } = salesRouteFiltersSignal.value;
+  return {
+    status,
+    ...(method === undefined ? {} : { method }),
+    ...(customerId === undefined ? {} : { customerId }),
+    ...(productId === undefined ? {} : { productId }),
+    ...(kind === undefined ? {} : { kind }),
+  };
+});
+export const paymentsFiltersSignal = computed<PaymentsFilters>(() => {
+  const { status, method, customerId } = salesRouteFiltersSignal.value;
+  return { status, ...(method === undefined ? {} : { method }), ...(customerId === undefined ? {} : { customerId }) };
+});
+export const movementsFiltersSignal = computed<MovementsFilters>(() => {
+  const { direction, source } = salesRouteFiltersSignal.value;
+  return { ...(direction === undefined ? {} : { direction }), ...(source === undefined ? {} : { source }) };
+});
+export const pageSignal = computed<number>(() => salesRouteFiltersSignal.value.page);
 
 /** Query string sin los `undefined`; el vacío se conserva (filtra "sin punto de venta"). */
 export function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -104,66 +115,81 @@ export function endpointFor(input: SalesQueryInput): string {
   }
 }
 
-function session(): { tenantId: string; token: string } | null {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  return tenantId && token ? { tenantId, token } : null;
+const salesInputSignal = computed<SalesQueryInput>(() => ({
+  tab: salesTabSignal.value,
+  range: rangeSignal.value,
+  register: registerSignal.value,
+  sales: salesFiltersSignal.value,
+  payments: paymentsFiltersSignal.value,
+  movements: movementsFiltersSignal.value,
+  page: pageSignal.value,
+}));
+
+/** Una consulta por solapa: solo se pide la activa, y la clave es su endpoint (con sus filtros). */
+function tabQuery<T>(tab: SalesTab) {
+  return createTenantParamQuery<T, readonly [SalesTab, string]>({
+    domain: 'sales',
+    params: () => [tab, endpointFor({ ...salesInputSignal.value, tab })],
+    enabled: () => inSection('sales') && salesTabSignal.value === tab,
+    fn: ({ tenantId, token, params: [, endpoint] }) => apiFetch<T>(`tenants/${tenantId}/${endpoint}`, { token }),
+  });
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'No se pudieron cargar los datos';
-}
+const salesListQuery = tabQuery<ListResult<SaleListItem>>('sales');
+const paymentsListQuery = tabQuery<ListResult<CustomerPaymentItem>>('payments');
+const movementsListQuery = tabQuery<ListResult<CashMovementItem>>('movements');
+const cashSummaryQuery = tabQuery<CashSummaryResult>('summary');
 
-export async function loadTab(input: SalesQueryInput): Promise<void> {
-  const s = session();
-  if (s === null) return;
-  const path = `tenants/${s.tenantId}/${endpointFor(input)}`;
-  salesLoadingSignal.value = true;
-  salesErrorSignal.value = null;
-  try {
-    switch (input.tab) {
-      case 'sales':
-        salesListSignal.value = await apiFetch<ListResult<SaleListItem>>(path, { token: s.token });
-        break;
-      case 'payments':
-        paymentsListSignal.value = await apiFetch<ListResult<CustomerPaymentItem>>(path, { token: s.token });
-        break;
-      case 'movements':
-        movementsListSignal.value = await apiFetch<ListResult<CashMovementItem>>(path, { token: s.token });
-        break;
-      case 'summary':
-        cashSummarySignal.value = await apiFetch<CashSummaryResult>(path, { token: s.token });
-        break;
-    }
-  } catch (err: unknown) {
-    salesErrorSignal.value = errorMessage(err);
-  } finally {
-    salesLoadingSignal.value = false;
-  }
-}
+/** Las cajas del filtro (las que vendieron), no las de Configuración: son otro endpoint. */
+const registersQuery = createTenantQuery<RegisterItem[]>({
+  domain: 'registers',
+  enabled: () => inSection('sales'),
+  fn: ({ tenantId, token }) => apiFetch<RegisterItem[]>(`tenants/${tenantId}/registers`, { token }),
+});
 
-export async function fetchRegisters(): Promise<void> {
-  const s = session();
-  if (s === null) return;
-  try {
-    registersSignal.value = await apiFetch<RegisterItem[]>(`tenants/${s.tenantId}/registers`, { token: s.token });
-  } catch (err: unknown) {
-    salesErrorSignal.value = errorMessage(err);
-  }
-}
+// Drawers: el ticket y el resumen del día se piden mientras están abiertos
+const ticketIdSignal = signal<string | null>(null);
+const ticketQuery = createTenantParamQuery<SaleDetail, readonly ['ticket', string]>({
+  domain: 'sales',
+  params: () => (ticketIdSignal.value === null ? null : ['ticket', ticketIdSignal.value]),
+  fn: ({ tenantId, token, params: [, saleId] }) => apiFetch<SaleDetail>(`tenants/${tenantId}/sales/${encodeURIComponent(saleId)}`, { token }),
+});
 
-export async function openTicket(saleId: string): Promise<void> {
-  const s = session();
-  if (s === null) return;
-  try {
-    ticketSignal.value = await apiFetch<SaleDetail>(`tenants/${s.tenantId}/sales/${encodeURIComponent(saleId)}`, { token: s.token });
-  } catch (err: unknown) {
-    salesErrorSignal.value = errorMessage(err);
-  }
+type DayRow = { day: string; branch: string | null; pointOfSale: string | null };
+const dayRowSignal = signal<DayRow | null>(null);
+const daySummaryQuery = createTenantParamQuery<DaySummaryResult, readonly ['day-summary', string, string, string]>({
+  domain: 'sales',
+  params: () => {
+    const row = dayRowSignal.value;
+    return row === null ? null : ['day-summary', row.day, row.branch ?? '', row.pointOfSale ?? ''];
+  },
+  fn: ({ tenantId, token, params: [, day, branch, pointOfSale] }) =>
+    apiFetch<DaySummaryResult>(`tenants/${tenantId}/cash-summary/day?${buildQuery({ day, branch, pointOfSale })}`, { token }),
+});
+
+const TAB_QUERIES = [salesListQuery, paymentsListQuery, movementsListQuery, cashSummaryQuery];
+const ALL_QUERIES = [...TAB_QUERIES, registersQuery, ticketQuery, daySummaryQuery];
+
+// Datos
+export const registersSignal = computed<RegisterItem[]>(() => registersQuery.data.value ?? []);
+export const salesListSignal = computed<ListResult<SaleListItem> | null>(() => salesListQuery.data.value ?? null);
+export const paymentsListSignal = computed<ListResult<CustomerPaymentItem> | null>(() => paymentsListQuery.data.value ?? null);
+export const movementsListSignal = computed<ListResult<CashMovementItem> | null>(() => movementsListQuery.data.value ?? null);
+export const cashSummarySignal = computed<CashSummaryResult | null>(() => cashSummaryQuery.data.value ?? null);
+export const salesLoadingSignal = computed<boolean>(() => TAB_QUERIES.some((q) => q.isLoading.value));
+export const salesErrorSignal = computed<string | null>(() => ALL_QUERIES.map((q) => q.error.value?.message).find((m) => m !== undefined) ?? null);
+
+// Drawers: abiertos cuando no son null
+export const ticketSignal = computed<SaleDetail | null>(() => ticketQuery.data.value ?? null);
+export const paymentDetailSignal = signal<CustomerPaymentItem | null>(null);
+export const daySummarySignal = computed<DaySummaryResult | null>(() => daySummaryQuery.data.value ?? null);
+
+export function openTicket(saleId: string): void {
+  ticketIdSignal.value = saleId;
 }
 
 export function closeTicket(): void {
-  ticketSignal.value = null;
+  ticketIdSignal.value = null;
 }
 
 /** El recibo se abre con los datos de la lista; una cobranza fuera de la página no se abre. */
@@ -177,64 +203,64 @@ export function closePayment(): void {
 }
 
 /** El resumen de una caja y un día; un campo sin dato va vacío (filtra "sin sucursal" o "sin punto de venta"). */
-export async function openDaySummary(row: { day: string; branch: string | null; pointOfSale: string | null }): Promise<void> {
-  const s = session();
-  if (s === null) return;
-  const query = buildQuery({ day: row.day, branch: row.branch ?? '', pointOfSale: row.pointOfSale ?? '' });
-  try {
-    daySummarySignal.value = await apiFetch<DaySummaryResult>(`tenants/${s.tenantId}/cash-summary/day?${query}`, { token: s.token });
-  } catch (err: unknown) {
-    salesErrorSignal.value = errorMessage(err);
-  }
+export function openDaySummary(row: DayRow): void {
+  dayRowSignal.value = row;
 }
 
 export function closeDaySummary(): void {
-  daySummarySignal.value = null;
+  dayRowSignal.value = null;
+}
+
+/** Rango y caja valen para las cuatro solapas (#20); el resto de los filtros es de cada una. */
+export function sharedSalesFilters(f: SalesRouteFilters): SalesRouteFilters {
+  return {
+    ...decodeFilters('sales', {}),
+    preset: f.preset,
+    ...(f.from === undefined ? {} : { from: f.from }),
+    ...(f.to === undefined ? {} : { to: f.to }),
+    ...(f.branch === undefined ? {} : { branch: f.branch }),
+    ...(f.pointOfSale === undefined ? {} : { pointOfSale: f.pointOfSale }),
+  };
+}
+
+export function setTab(tab: SalesTab): void {
+  goTo({ section: 'sales', tab, filters: sharedSalesFilters(salesRouteFiltersSignal.peek()) });
 }
 
 // Cambiar un filtro vuelve a la primera página
-export function setTab(tab: SalesTab): void {
-  salesTabSignal.value = tab;
-  pageSignal.value = 1;
+function patchSales(patch: Partial<SalesRouteFilters>): void {
+  setFilters('sales', { ...patch, page: 1 });
 }
 
 export function applyPreset(preset: Exclude<RangePreset, 'custom'>): void {
-  rangePresetSignal.value = preset;
-  rangeSignal.value = presetRange(preset, argentinaToday(new Date()));
-  pageSignal.value = 1;
+  patchSales({ preset, from: undefined, to: undefined });
 }
 
 export function setCustomRange(range: DayRange): void {
-  rangePresetSignal.value = 'custom';
-  rangeSignal.value = range;
-  pageSignal.value = 1;
+  patchSales({ preset: 'custom', from: range.from, to: range.to });
 }
 
 export function setRegister(choice: RegisterChoice): void {
-  registerSignal.value = choice;
-  pageSignal.value = 1;
+  patchSales({ branch: choice.branch, pointOfSale: choice.pointOfSale });
 }
 
 export function setSalesFilters(patch: Partial<SalesFilters>): void {
-  salesFiltersSignal.value = { ...salesFiltersSignal.value, ...patch };
-  pageSignal.value = 1;
+  patchSales(patch);
 }
 
 export function setPaymentsFilters(patch: Partial<PaymentsFilters>): void {
-  paymentsFiltersSignal.value = { ...paymentsFiltersSignal.value, ...patch };
-  pageSignal.value = 1;
+  patchSales(patch);
 }
 
 export function setMovementsFilters(patch: Partial<MovementsFilters>): void {
-  movementsFiltersSignal.value = { ...movementsFiltersSignal.value, ...patch };
-  pageSignal.value = 1;
+  patchSales(patch);
 }
 
 export function setPage(page: number): void {
-  pageSignal.value = page;
+  setFilters('sales', { page });
 }
 
-/** Drill-down del dashboard (#20): la lista de ventas con esos filtros, y nada más. */
+/** Drill-down del dashboard (#20): la lista de ventas con esos filtros en la URL, y nada más. */
 export type SalesDrill = {
   range: DayRange;
   branch?: string | undefined;
@@ -243,49 +269,17 @@ export type SalesDrill = {
 };
 
 export function openSalesWith(drill: SalesDrill): void {
-  salesTabSignal.value = 'sales';
-  rangePresetSignal.value = 'custom';
-  rangeSignal.value = drill.range;
-  registerSignal.value = drill.branch === undefined ? {} : { branch: drill.branch };
-  salesFiltersSignal.value = {
-    status: drill.status ?? 'all',
-    ...(drill.productId === undefined ? {} : { productId: drill.productId }),
-  };
-  pageSignal.value = 1;
-  navigateTo('sales');
-}
-
-/**
- * Reactividad sin hooks, como el dashboard: las cajas y los clientes se piden al entrar a la sección;
- * la solapa activa, cada vez que cambia ella o un filtro.
- */
-export function registerSalesEffects(): () => void {
-  const disposeRegisters = effect(() => {
-    if (activeViewSignal.value === 'sales' && session() !== null) {
-      void fetchRegisters();
-      if (customersSignal.peek().length === 0) void fetchCustomers();
-    }
+  goTo({
+    section: 'sales',
+    tab: 'sales',
+    filters: {
+      ...decodeFilters('sales', {}),
+      preset: 'custom',
+      from: drill.range.from,
+      to: drill.range.to,
+      ...(drill.branch === undefined ? {} : { branch: drill.branch }),
+      status: drill.status ?? 'all',
+      ...(drill.productId === undefined ? {} : { productId: drill.productId }),
+    },
   });
-  const disposeTab = effect(() => {
-    const input: SalesQueryInput = {
-      tab: salesTabSignal.value,
-      range: rangeSignal.value,
-      register: registerSignal.value,
-      sales: salesFiltersSignal.value,
-      payments: paymentsFiltersSignal.value,
-      movements: movementsFiltersSignal.value,
-      page: pageSignal.value,
-    };
-    if (activeViewSignal.value === 'sales' && session() !== null) {
-      void loadTab(input);
-    }
-  });
-  return () => {
-    disposeRegisters();
-    disposeTab();
-  };
-}
-
-if (typeof window !== 'undefined') {
-  registerSalesEffects();
 }

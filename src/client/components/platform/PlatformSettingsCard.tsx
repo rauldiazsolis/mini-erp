@@ -19,7 +19,7 @@ type Field = { key: keyof SettingsDraft; label: string; helper?: string; numeric
 
 const FIELDS: Field[] = [
   { key: 'pricePerRegisterDay', label: 'Precio por caja y día', helper: 'Se cobra solo los días que la caja vende', numeric: true },
-  { key: 'signupBonus', label: 'Bono de alta', helper: 'Créditos regalados al crear un comercio', numeric: true },
+  { key: 'signupBonus', label: 'Bono de alta', helper: 'El bono que recibe un comercio al crearse', numeric: true },
   { key: 'signupBonusDays', label: 'Días del bono', helper: 'Hasta cuándo vale el bono de alta', numeric: true },
   { key: 'paidShare', label: 'Porcentaje pagado (0 a 100 %)', helper: 'Qué parte de cada cargo sale del saldo pagado mientras haya', numeric: true },
   { key: 'graceDays', label: 'Días de gracia', helper: 'Con deuda, cuánto falta para restringir el admin', numeric: true },

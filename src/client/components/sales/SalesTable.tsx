@@ -85,7 +85,7 @@ export function SalesTable() {
           </Thead>
           <Tbody>
             {items.map((item) => (
-              <Tr key={item.id} class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40" onClick={() => { void openTicket(item.id); }}>
+              <Tr key={item.id} class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40" onClick={() => { openTicket(item.id); }}>
                 <Td>{formatDateTime(item.createdAt)}</Td>
                 <Td>
                   <span class="font-semibold">{item.ticket === undefined ? '—' : `#${String(item.ticket.number)}`}</span>{' '}

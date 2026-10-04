@@ -5,7 +5,8 @@ import {
   giftsSignal,
   creditsTabSignal,
   chargesRangeSignal,
-  fetchCharges,
+  setChargesPage,
+  setChargesRange,
   whatsappPayUrl,
   type CreditsTab,
 } from '../../state/credits-state.ts';
@@ -18,6 +19,8 @@ import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Pagination } from '../ui/Pagination.tsx';
+import { Link } from '../ui/Link.tsx';
+import { tabUrl } from '../../state/route-state.ts';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
 import { PlatformActionsBar, GiftVoidAction } from './PlatformActionsBar.tsx';
 import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types.ts';
@@ -25,15 +28,15 @@ import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types
 const TABS: Array<{ id: CreditsTab; label: string }> = [
   { id: 'charges', label: 'Consumo' },
   { id: 'movements', label: 'Movimientos' },
-  { id: 'gifts', label: 'Regalados' },
+  { id: 'gifts', label: 'Bonos' },
 ];
 
 const MOVEMENT_LABEL: Record<CreditMovementItem['kind'], string> = {
   payment: 'Pago',
   refund: 'Devolución',
   'debt-settlement': 'Deuda cancelada',
-  'gift-granted': 'Créditos regalados',
-  'gift-voided': 'Regalados anulados',
+  'gift-granted': 'Bono otorgado',
+  'gift-voided': 'Bono anulado',
 };
 
 const GIFT_STATUS: Record<GiftItem['status'], string> = {
@@ -105,8 +108,7 @@ function ChargesTab() {
   const page = chargesSignal.value;
   const range = chargesRangeSignal.value;
   const setRange = (next: { from: string; to: string }) => {
-    chargesRangeSignal.value = next;
-    void fetchCharges();
+    setChargesRange(next);
   };
   const items = page?.items ?? [];
   return (
@@ -130,7 +132,7 @@ function ChargesTab() {
                   <Th>Caja</Th>
                   <Th class="text-right">Importe</Th>
                   <Th class="text-right">Pagado</Th>
-                  <Th class="text-right">Regalado</Th>
+                  <Th class="text-right">Bonos</Th>
                   <Th class="text-right">Deuda</Th>
                 </Tr>
               </Thead>
@@ -150,7 +152,7 @@ function ChargesTab() {
           </div>
         )}
         {page !== null && page.count > page.pageSize && (
-          <Pagination page={page.page} pageSize={page.pageSize} count={page.count} onPage={(p) => void fetchCharges(p)} />
+          <Pagination page={page.page} pageSize={page.pageSize} count={page.count} onPage={(p) => { setChargesPage(p); }} />
         )}
       </TableContainer>
     </div>
@@ -199,7 +201,7 @@ function GiftsTab() {
   return (
     <TableContainer>
       {items.length === 0 ? (
-        <TableEmptyState message="Sin créditos regalados" />
+        <TableEmptyState message="Sin bonos" />
       ) : (
         <div class="overflow-x-auto">
           <Table>
@@ -241,15 +243,15 @@ function GiftsTab() {
 }
 
 /**
- * Créditos (#21), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
- * regalados. Root y soporte suman las acciones de plataforma sobre el comercio.
+ * Uso y pagos (#21, #55), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
+ * bonos. Root y soporte suman las acciones de plataforma sobre el comercio.
  */
 export function CreditsView() {
   const credits = creditsSignal.value;
   const tab = creditsTabSignal.value;
   return (
     <div class="space-y-6">
-      <PageHeader title="Créditos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
+      <PageHeader title="Uso y pagos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
       {isRootOrSupportSignal.value && <PlatformActionsBar />}
       {credits !== null && (
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -260,9 +262,9 @@ export function CreditsView() {
             variant="primary"
           />
           <StatCard
-            title="Créditos regalados"
+            title="Bonos"
             value={formatMoney(credits.giftBalance)}
-            subtitle={credits.nextGiftExpiry === null ? 'Sin créditos vigentes' : `El próximo vence el ${formatDateTime(credits.nextGiftExpiry)}`}
+            subtitle={credits.nextGiftExpiry === null ? 'Sin bonos vigentes' : `El próximo vence el ${formatDateTime(credits.nextGiftExpiry)}`}
             variant="success"
           />
           <StatCard
@@ -282,12 +284,11 @@ export function CreditsView() {
       <HowToPay />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {TABS.map((t) => (
-          <button
+          <Link
             key={t.id}
-            type="button"
+            href={tabUrl('credits', t.id)}
             role="tab"
             aria-selected={tab === t.id}
-            onClick={() => (creditsTabSignal.value = t.id)}
             class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               tab === t.id
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -295,7 +296,7 @@ export function CreditsView() {
             }`}
           >
             {t.label}
-          </button>
+          </Link>
         ))}
       </div>
       {tab === 'charges' && <ChargesTab />}

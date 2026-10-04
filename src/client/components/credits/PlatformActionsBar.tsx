@@ -118,11 +118,11 @@ function run(kind: ActionKind, d: Draft, amount: number): Promise<boolean> {
 
 const TITLES: Record<ActionKind, { title: string; subtitle: string; submit: string }> = {
   payment: { title: 'Registrar pago', subtitle: 'Se acredita como saldo pagado; primero cancela la deuda.', submit: 'Registrar' },
-  grant: { title: 'Otorgar créditos', subtitle: 'Créditos regalados, con vencimiento.', submit: 'Otorgar' },
+  grant: { title: 'Otorgar bono', subtitle: 'Un bono para el comercio, con vencimiento.', submit: 'Otorgar' },
   grace: { title: 'Extender gracia', subtitle: 'Hasta esa fecha el comercio no se restringe por deuda.', submit: 'Extender' },
   refund: { title: 'Devolución', subtitle: 'Sale del saldo pagado.', submit: 'Registrar devolución' },
   holder: { title: 'Cambiar titular', subtitle: 'El titular es dueño del saldo pagado.', submit: 'Cambiar' },
-  void: { title: 'Anular créditos', subtitle: 'El remanente deja de estar disponible.', submit: 'Anular' },
+  void: { title: 'Anular bono', subtitle: 'El remanente deja de estar disponible.', submit: 'Anular' },
 };
 
 function ActionFields(props: { kind: ActionKind }) {
@@ -216,7 +216,7 @@ function ActionModal() {
   );
 }
 
-/** El botón Anular de un crédito regalado vigente, en la solapa Regalados. */
+/** El botón Anular de un bono vigente, en la solapa Bonos. */
 export function GiftVoidAction(props: { gift: GiftItem }) {
   if (props.gift.status !== 'active') return null;
   return (
@@ -226,7 +226,7 @@ export function GiftVoidAction(props: { gift: GiftItem }) {
   );
 }
 
-/** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Créditos. */
+/** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Uso y pagos. */
 export function PlatformActionsBar() {
   const isRoot = currentUserSignal.value?.globalRole === 'root';
   // El modal va fuera del Card: su backdrop-blur haría que el fixed del modal se mida contra la tarjeta
@@ -239,7 +239,7 @@ export function PlatformActionsBar() {
             Registrar pago
           </Button>
           <Button size="sm" variant="secondary" onClick={() => { openAction('grant'); }}>
-            Otorgar créditos
+            Otorgar bono
           </Button>
           <Button size="sm" variant="secondary" onClick={() => { openAction('grace'); }}>
             Extender gracia

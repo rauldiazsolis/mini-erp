@@ -172,7 +172,7 @@ export function CustomerGrid() {
                     {/* Extracto de Movimientos */}
                     <button
                       type="button"
-                      onClick={() => { void openAccountStatement(c); }}
+                      onClick={() => { openAccountStatement(c); }}
                       title="Ver extracto de movimientos"
                       class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                     >

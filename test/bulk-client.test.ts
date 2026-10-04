@@ -17,13 +17,17 @@ import {
 } from '../src/client/state/bulk-state.ts';
 import {
   tokenSignal,
-  activeTenantIdSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { atTenant } from './helpers/client-route.ts';
+
+const reply = (body: unknown): Promise<Response> =>
+  Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
 
 describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
   beforeEach(() => {
-    activeBulkTabSignal.value = 'prices';
     bulkPriceActionSignal.value = 'percentage';
     bulkPriceValueSignal.value = 15;
     bulkPriceCategorySignal.value = 'all';
@@ -36,10 +40,10 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
     bulkInterestPreviewSignal.value = null;
 
     tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
     vi.restoreAllMocks();
   });
 
@@ -47,10 +51,10 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
     it('inicia en precios y permite cambiar a intereses e io', () => {
       expect(activeBulkTabSignal.value).toBe('prices');
 
-      activeBulkTabSignal.value = 'interests';
+      atTenant('tienda-test', 'masivas/intereses');
       expect(activeBulkTabSignal.value).toBe('interests');
 
-      activeBulkTabSignal.value = 'io';
+      atTenant('tienda-test', 'masivas/archivos');
       expect(activeBulkTabSignal.value).toBe('io');
     });
   });
@@ -137,6 +141,36 @@ describe('Módulo de Operaciones Masivas (Etapa 4.4)', () => {
         });
 
         expect(bulkPricePreviewSignal.value?.dryRun).toBe(false);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe('Invalidación (#59)', () => {
+    it('aplicar precios masivos deja viejos catálogo y dashboard', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'products'), []);
+      queryClient.setQueryData(tenantKey('tienda-test', 'dashboard', 'week', ''), {});
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => reply({ dryRun: false, affectedCount: 2, items: [] }));
+      try {
+        await applyBulkPrices();
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'products'))?.isInvalidated).toBe(true);
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'dashboard', 'week', ''))?.isInvalidated).toBe(true);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('devengar intereses deja viejos clientes y extractos', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'customers'), []);
+      queryClient.setQueryData(tenantKey('tienda-test', 'customer-movements', 'c1'), []);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => reply({ dryRun: false, affectedCount: 1, totalInterestAmount: 50, items: [] }));
+      try {
+        await applyBulkInterests();
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'customers'))?.isInvalidated).toBe(true);
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'customer-movements', 'c1'))?.isInvalidated).toBe(true);
       } finally {
         globalThis.fetch = originalFetch;
       }

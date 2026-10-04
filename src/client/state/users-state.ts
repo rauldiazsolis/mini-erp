@@ -1,8 +1,10 @@
-import { signal, effect } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal, activeTenantSignal } from './auth-state.ts';
-import { activeViewSignal } from './navigation-state.ts';
+import { inSection } from './route-state.ts';
 import { canDo } from './permissions-state.ts';
+import { createTenantQuery } from './query-keys.ts';
+import { invalidateAfter } from './invalidation.ts';
 import { showToast } from './toast-state.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
 
@@ -20,10 +22,6 @@ export type AuditItem = { id: string; at: string; action: string; actorName: str
 /** Un link recién generado: se muestra una sola vez (#19). */
 export type LinkReady = { kind: 'invitation' | 'reset'; url: string; email: string; expiresAt: string };
 
-export const membersSignal = signal<MemberItem[]>([]);
-export const invitationsSignal = signal<InvitationItem[]>([]);
-export const auditSignal = signal<AuditItem[]>([]);
-export const usersLoadingSignal = signal<boolean>(false);
 export const inviteModalOpenSignal = signal<boolean>(false);
 export const inviteFormSignal = signal<{ email: string; role: TenantRole }>({ email: '', role: 'member' });
 export const inviteErrorSignal = signal<string | null>(null);
@@ -47,8 +45,8 @@ export const AUDIT_LABEL: Record<string, string> = {
   'register.unbound': 'desligó el equipo de una caja',
   'register.deactivated': 'desactivó una caja',
   'billing.payment_registered': 'registró un pago',
-  'billing.credits_granted': 'otorgó créditos',
-  'billing.credit_voided': 'anuló créditos regalados',
+  'billing.credits_granted': 'otorgó un bono',
+  'billing.credit_voided': 'anuló un bono',
   'billing.grace_extended': 'extendió la gracia',
   'billing.refund': 'registró una devolución',
   'billing.holder_changed': 'cambió el titular a',
@@ -85,30 +83,33 @@ function fail(title: string, err: unknown): void {
   showToast({ type: 'error', title, message: err instanceof Error ? err.message : 'Error inesperado' });
 }
 
-export async function loadUsers(): Promise<void> {
-  usersLoadingSignal.value = true;
-  try {
-    const res = await apiFetch<{ members: MemberItem[]; invitations: InvitationItem[] }>(`${base()}/users`, { token: tokenSignal.value });
-    membersSignal.value = res.members;
-    invitationsSignal.value = res.invitations;
-  } catch (err: unknown) {
+/** Usuarios e invitaciones vienen del mismo pedido (#59). */
+const usersQuery = createTenantQuery<{ members: MemberItem[]; invitations: InvitationItem[] }>({
+  domain: 'users',
+  enabled: () => inSection('users') && canDo('users.manage'),
+  onError: (err) => {
     fail('No se pudieron cargar los usuarios', err);
-  } finally {
-    usersLoadingSignal.value = false;
-  }
-}
+  },
+  fn: ({ tenantId, token }) => apiFetch<{ members: MemberItem[]; invitations: InvitationItem[] }>(`tenants/${tenantId}/users`, { token }),
+});
 
-export async function loadAudit(): Promise<void> {
-  try {
-    auditSignal.value = await apiFetch<AuditItem[]>(`${base()}/audit`, { token: tokenSignal.value });
-  } catch (err: unknown) {
+/** La actividad la ve solo el owner. */
+const auditQuery = createTenantQuery<AuditItem[]>({
+  domain: 'audit',
+  enabled: () => inSection('users') && canDo('owners.manage'),
+  onError: (err) => {
     fail('No se pudo cargar la actividad', err);
-  }
-}
+  },
+  fn: ({ tenantId, token }) => apiFetch<AuditItem[]>(`tenants/${tenantId}/audit`, { token }),
+});
+
+export const membersSignal = computed<MemberItem[]>(() => usersQuery.data.value?.members ?? []);
+export const invitationsSignal = computed<InvitationItem[]>(() => usersQuery.data.value?.invitations ?? []);
+export const auditSignal = computed<AuditItem[]>(() => auditQuery.data.value ?? []);
+export const usersLoadingSignal = usersQuery.isLoading;
 
 async function reloadAll(): Promise<void> {
-  await loadUsers();
-  if (canDo('owners.manage')) await loadAudit();
+  await invalidateAfter('users-changed');
 }
 
 async function invite(email: string, role: TenantRole): Promise<void> {
@@ -204,18 +205,8 @@ export async function createResetLink(member: MemberItem): Promise<void> {
       token: tokenSignal.value,
     });
     linkReadySignal.value = { kind: 'reset', url: buildLinkUrl('reset', res.token, origin()), email: member.email, expiresAt: res.expiresAt };
-    if (canDo('owners.manage')) await loadAudit();
+    await reloadAll();
   } catch (err: unknown) {
     fail('No se pudo generar el link', err);
   }
-}
-
-// Carga al entrar a Usuarios o al cambiar de comercio estando ahí
-if (typeof window !== 'undefined') {
-  effect(() => {
-    if (activeViewSignal.value === 'users' && effectiveTenantIdSignal.value && tokenSignal.value && canDo('users.manage')) {
-      void loadUsers();
-      if (canDo('owners.manage')) void loadAudit();
-    }
-  });
 }

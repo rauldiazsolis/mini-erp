@@ -1,10 +1,14 @@
-import { signal } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
 import { noteMaintenanceResponse } from './maintenance-state.ts';
+import { routeTab } from './route-state.ts';
+import { invalidateAfter } from './invalidation.ts';
+import type { TabId } from '../routing/admin-routes.ts';
 
-export type BulkTab = 'prices' | 'interests' | 'io';
+export type BulkTab = TabId<'bulk'>;
+const BULK_TABS: readonly BulkTab[] = ['prices', 'interests', 'io'];
 export type RoundingStrategy = 'none' | '10' | '50' | '100';
 
 export type BulkPricePreviewItem = {
@@ -38,8 +42,8 @@ export type BulkInterestResult = {
   items: BulkInterestPreviewItem[];
 };
 
-// Pestaña activa
-export const activeBulkTabSignal = signal<BulkTab>('prices');
+// Pestaña activa: la de la URL (#59)
+export const activeBulkTabSignal = computed<BulkTab>(() => routeTab('bulk', BULK_TABS, 'prices'));
 
 // Precios Masivos
 export const bulkPriceActionSignal = signal<'percentage' | 'fixed'>('percentage');
@@ -114,6 +118,7 @@ export async function applyBulkPrices(): Promise<void> {
       title: 'Precios Actualizados',
       message: `Se actualizaron ${String(res.affectedCount)} productos en catálogo`,
     });
+    void invalidateAfter('bulk-prices');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al aplicar aumento de precios';
     showToast({ type: 'error', title: 'Error', message: msg });
@@ -173,6 +178,7 @@ export async function applyBulkInterests(): Promise<void> {
       title: 'Intereses Devengados',
       message: `Asentados $${String(res.totalInterestAmount)} en ${String(res.affectedCount)} cuentas deudoras`,
     });
+    void invalidateAfter('bulk-interests');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al devengar intereses';
     showToast({ type: 'error', title: 'Error', message: msg });

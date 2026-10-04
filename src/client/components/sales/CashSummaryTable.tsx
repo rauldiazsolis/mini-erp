@@ -19,7 +19,7 @@ export function CashSummaryTable() {
         </Thead>
         <Tbody>
           {rows.map((r) => (
-            <Tr key={`${r.day}|${r.branch ?? ''}|${r.pointOfSale ?? ''}`} class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40" onClick={() => { void openDaySummary(r); }}>
+            <Tr key={`${r.day}|${r.branch ?? ''}|${r.pointOfSale ?? ''}`} class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40" onClick={() => { openDaySummary(r); }}>
               <Td>{formatDay(r.day)}</Td>
               <Td>{registerLabel(r.branch, r.pointOfSale)}</Td>
               <Td class={`text-right font-semibold ${amountClass(r.totalSold)}`}>{formatMoney(r.totalSold)}</Td>

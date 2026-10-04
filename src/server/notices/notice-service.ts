@@ -51,7 +51,7 @@ function creditsNotice(billing: BillingSummary | undefined): BackendNotice | und
       return {
         id: 'credits:low',
         severity: 'warning',
-        message: `Te quedan créditos para unos ${String(billing.daysCovered ?? 0)} días. Cargá saldo desde mini → Créditos.`,
+        message: `Te quedan créditos para unos ${String(billing.daysCovered ?? 0)} días. Cargá saldo desde mini → Uso y pagos.`,
       };
     case 'debt':
       return {
@@ -63,7 +63,7 @@ function creditsNotice(billing: BillingSummary | undefined): BackendNotice | und
       return {
         id: 'credits:restricted',
         severity: 'critical',
-        message: `mini contax está restringido por deuda de ${formatPesos(billing.debt)}. El POS sigue vendiendo y sincronizando. Pagá desde mini → Créditos.`,
+        message: `mini contax está restringido por deuda de ${formatPesos(billing.debt)}. El POS sigue vendiendo y sincronizando. Pagá desde mini → Uso y pagos.`,
       };
     case 'ok':
       return undefined;

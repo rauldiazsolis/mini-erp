@@ -12,27 +12,28 @@ import {
   checkConnectorStatus,
   connectorInfoSignal,
 } from '../src/client/state/settings-state.ts';
-import {
-  tokenSignal,
-  activeTenantIdSignal,
-  userTenantsSignal,
-} from '../src/client/state/auth-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { setHistoryForTests } from '../src/client/state/route-state.ts';
+import { toastsSignal } from '../src/client/state/toast-state.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
+
+const central = { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' };
 
 describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () => {
   beforeEach(() => {
-    activeSettingsTabSignal.value = 'pos';
-    settingsBranchesSignal.value = [
-      { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
-    ];
+    setHistoryForTests(null);
+    freshSession('mock-token');
     branchModalOpenSignal.value = false;
     editingBranchSignal.value = null;
     connectorInfoSignal.value = null;
 
-    tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    atTenant('tienda-test');
+    queryClient.setQueryData(tenantKey('tienda-test', 'branches'), [central]);
     vi.restoreAllMocks();
   });
 
@@ -40,13 +41,13 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
     it('inicia en terminales pos y permite cambiar de solapa', () => {
       expect(activeSettingsTabSignal.value).toBe('pos');
 
-      activeSettingsTabSignal.value = 'branches';
+      atTenant('tienda-test', 'configuracion/sucursales');
       expect(activeSettingsTabSignal.value).toBe('branches');
 
-      activeSettingsTabSignal.value = 'connection';
+      atTenant('tienda-test', 'configuracion/conexion');
       expect(activeSettingsTabSignal.value).toBe('connection');
 
-      activeSettingsTabSignal.value = 'appearance';
+      atTenant('tienda-test', 'configuracion/apariencia');
       expect(activeSettingsTabSignal.value).toBe('appearance');
     });
   });
@@ -99,6 +100,46 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
         globalThis.fetch = originalFetch;
       }
     });
+
+    it('guardar una sucursal deja viejos sucursales, stock y dashboard (#59)', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'stock'), []);
+      queryClient.setQueryData(tenantKey('tienda-test', 'dashboard', 'week', ''), {});
+      openNewBranchModal();
+      branchFormSignal.value = { name: 'Norte', code: 'norte' };
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => Promise.resolve(new Response(
+        JSON.stringify({ ...central, id: 'b-3', code: 'NORTE', name: 'Norte' }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      )));
+      try {
+        await submitBranchForm();
+        expect(settingsBranchesSignal.value.some((b) => b.code === 'NORTE')).toBe(true);
+        for (const domain of ['branches', 'stock'] as const) {
+          expect(queryClient.getQueryState(tenantKey('tienda-test', domain))?.isInvalidated, domain).toBe(true);
+        }
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'dashboard', 'week', ''))?.isInvalidated).toBe(true);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  it('si las sucursales no cargan, avisa en vez de mostrar la lista vacía (#59)', async () => {
+    toastsSignal.value = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(
+      JSON.stringify({ error: 'Se cayó la base' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )));
+    try {
+      queryClient.removeQueries({ queryKey: tenantKey('tienda-test', 'branches') });
+      atTenant('tienda-test', 'configuracion/sucursales');
+      await vi.waitFor(() => {
+        expect(toastsSignal.value.some((t) => t.type === 'error' && t.title === 'No se pudieron cargar las sucursales')).toBe(true);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   describe('Verificación del Connector POS', () => {

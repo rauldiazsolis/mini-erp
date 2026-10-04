@@ -1,6 +1,7 @@
 import { effect, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { invalidateAfter } from './invalidation.ts';
 import type { ImportEntity, ImportField, ImportMapping, ImportPreview } from '../../shared/import-fields.ts';
 
 /** Espera después de cambiar una columna antes de pedir la vista previa otra vez. */
@@ -92,6 +93,7 @@ export async function confirmImport(): Promise<void> {
   if (res === null) return;
   importPreviewSignal.value = res;
   importStepSignal.value = 'done';
+  void invalidateAfter(importEntitySignal.value === 'customers' ? 'customers-imported' : 'products-imported');
 }
 
 export function resetImport(): void {

@@ -1,10 +1,14 @@
+import type { JSX } from 'preact';
 import {
   isAuthenticatedSignal,
   tokenSignal,
   currentUserSignal,
   fetchProfile,
+  tenantAccessSignal,
 } from './state/auth-state.ts';
-import { activeViewSignal } from './state/navigation-state.ts';
+import { activeSectionSignal, initRouting, routeSignal } from './state/route-state.ts';
+import type { NavSection } from './routing/admin-routes.ts';
+import { NoAccessView } from './components/shell/NoAccessView.tsx';
 import { AuthView } from './components/auth/AuthView.tsx';
 import { AppShell } from './components/shell/AppShell.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
@@ -26,7 +30,6 @@ import {
 } from './state/merchant-onboarding-state.ts';
 import { MerchantOnboardingView } from './components/onboarding/MerchantOnboardingView.tsx';
 import { LandingView } from './components/landing/LandingView.tsx';
-import { initRouting, routeSignal } from './state/route-state.ts';
 import { initLinkPageFromUrl } from './state/link-pages-state.ts';
 import { InvitationView } from './components/links/InvitationView.tsx';
 import { ResetPasswordView } from './components/links/ResetPasswordView.tsx';
@@ -51,31 +54,26 @@ export function App() {
     return <MaintenanceView />;
   }
 
-  if (routeSignal.value === 'landing') {
-    return <LandingView />;
-  }
-
+  const route = routeSignal.value;
+  if (route.kind === 'landing') return <LandingView />;
   // Links de invitación y restablecimiento (#19): se abren con o sin sesión
-  if (routeSignal.value === 'invitacion') {
-    return <InvitationView />;
+  if (route.kind === 'invitacion') return <InvitationView />;
+  if (route.kind === 'restablecer') return <ResetPasswordView />;
+  if (route.kind === 'alta' || merchantOnboardingActiveSignal.value) return <MerchantOnboardingView />;
+  // Sin sesión, el login en la misma URL: al entrar se abre esa pantalla (#59)
+  if (!isAuthenticatedSignal.value) return <AuthView />;
+
+  if (tenantAccessSignal.value === 'denied') {
+    return (
+      <AppShell>
+        <NoAccessView />
+      </AppShell>
+    );
   }
 
-  if (routeSignal.value === 'restablecer') {
-    return <ResetPasswordView />;
-  }
-
-  if (routeSignal.value === 'alta' || merchantOnboardingActiveSignal.value) {
-    return <MerchantOnboardingView />;
-  }
-
-  if (!isAuthenticatedSignal.value) {
-    return <AuthView />;
-  }
-
-  const currentView = activeViewSignal.value;
-
-  // Comercio restringido por deuda (#21): solo Créditos y Configuración (cuenta y apariencia); Plataforma no es del comercio
-  if (isRestrictedSignal.value && currentView !== 'credits' && currentView !== 'settings' && currentView !== 'platform') {
+  const section = activeSectionSignal.value ?? 'dashboard';
+  // Comercio restringido por deuda (#21): solo Uso y pagos y Configuración; Plataforma no es del comercio
+  if (isRestrictedSignal.value && section !== 'credits' && section !== 'settings' && section !== 'platform') {
     return (
       <AppShell>
         <RestrictedView />
@@ -83,28 +81,24 @@ export function App() {
     );
   }
 
+  const View = VIEWS[section];
   return (
     <AppShell>
-      {/* Vista de Navegación Activa */}
-      {currentView === 'dashboard' && <DashboardView />}
-
-      {currentView === 'sales' && <SalesView />}
-
-      {currentView === 'catalog' && <CatalogView />}
-
-      {currentView === 'stock' && <StockView />}
-
-      {currentView === 'customers' && <CustomerView />}
-
-      {currentView === 'bulk' && <BulkView />}
-
-      {currentView === 'users' && <UsersView />}
-
-      {currentView === 'settings' && <SettingsView />}
-
-      {currentView === 'credits' && <CreditsView />}
-
-      {currentView === 'platform' && <PlatformView />}
+      <View />
     </AppShell>
   );
 }
+
+/** Una vista por sección: el tipo obliga a que estén todas (#59). */
+const VIEWS: Record<NavSection, () => JSX.Element> = {
+  dashboard: DashboardView,
+  sales: SalesView,
+  catalog: CatalogView,
+  stock: StockView,
+  customers: CustomerView,
+  bulk: BulkView,
+  users: UsersView,
+  settings: SettingsView,
+  credits: CreditsView,
+  platform: PlatformView,
+};

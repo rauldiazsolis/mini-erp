@@ -7,6 +7,7 @@ import { dashboardSummaryServiceDef } from '../di/container.ts';
 
 const summaryQuerySchema = z.object({
   period: z.enum(['today', 'week', 'month']).default('today'),
+  /** Código de la sucursal (`CENTRAL`), no su id. */
   branchId: z.string().optional(),
 });
 

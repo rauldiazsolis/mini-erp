@@ -10,7 +10,7 @@ import {
   userTenantsSignal,
   stopImpersonation,
 } from '../../state/auth-state.ts';
-import { activeViewSignal } from '../../state/navigation-state.ts';
+import { activeSectionSignal } from '../../state/route-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { CreditsBanner } from '../credits/CreditsBanner.tsx';
@@ -66,7 +66,7 @@ export function AppShell(props: { children: ComponentChildren }) {
 
         {/* Vista Inyectada o Empty State (Plataforma no depende de tener un comercio) */}
         <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {tenants.length === 0 && activeViewSignal.value !== 'platform' ? (
+          {tenants.length === 0 && activeSectionSignal.value !== 'platform' ? (
             <div class="py-20 text-center max-w-md mx-auto space-y-4">
               <div class="w-16 h-16 mx-auto rounded-3xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-3xl shadow-lg shadow-indigo-500/10">
                 🏪

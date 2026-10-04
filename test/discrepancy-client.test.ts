@@ -4,7 +4,11 @@ import {
   discrepanciesSignal, discrepancyDrawerOpenSignal, dismissNoteSignal, fetchDiscrepancies, dismissDiscrepancy, openDiscrepancies,
   type DiscrepancyItem,
 } from '../src/client/state/discrepancy-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const originalFetch = globalThis.fetch;
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -12,10 +16,10 @@ const item: DiscrepancyItem = { id: 'd1', kind: 'unknown-customer', message: 'La
 
 beforeEach(() => {
   globalThis.fetch = originalFetch;
-  tokenSignal.value = 'tok';
+  setHistoryForTests(null);
+  freshSession('tok');
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T', status: 'active', role: 'owner' }];
-  activeTenantIdSignal.value = 't1';
-  discrepanciesSignal.value = [];
+  atTenant('t1', 'usuarios');
 });
 
 describe('extracto por signo (#2)', () => {
@@ -34,23 +38,45 @@ describe('extracto por signo (#2)', () => {
 });
 
 describe('discrepancias en el admin (#2)', () => {
-  it('trae las abiertas', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(json(200, [item]));
+  it('al entrar a Clientes trae las abiertas', async () => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(json(200, (input instanceof Request ? input.url : input.toString()).endsWith('/discrepancies') ? [item] : [])));
+    atTenant('t1', 'clientes');
+    await vi.waitFor(() => { expect(discrepanciesSignal.value).toHaveLength(1); });
     await fetchDiscrepancies();
     expect(discrepanciesSignal.value).toHaveLength(1);
   });
 
-  it('descartar manda el motivo y la saca de la lista', async () => {
-    discrepanciesSignal.value = [item];
+  it('descartar manda el motivo y, en Clientes, la lista vuelve sin ella', async () => {
+    let dismissed = false;
+    const posts: Array<[string, RequestInit | undefined]> = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (init?.method === 'POST') {
+        posts.push([url, init]);
+        dismissed = true;
+        return Promise.resolve(json(200, { ok: true }));
+      }
+      return Promise.resolve(json(200, url.endsWith('/discrepancies') && !dismissed ? [item] : []));
+    });
+    atTenant('t1', 'clientes');
+    await vi.waitFor(() => { expect(discrepanciesSignal.value).toHaveLength(1); });
     openDiscrepancies();
     dismissNoteSignal.value = 'Era una prueba';
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(200, { ok: true })).mockResolvedValueOnce(json(200, []));
-    globalThis.fetch = fetchMock;
     await dismissDiscrepancy('d1');
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = posts[0] ?? ['', undefined];
     expect(url).toBe('/api/tenants/t1/discrepancies/d1/dismiss');
-    expect(JSON.parse(typeof init.body === 'string' ? init.body : '{}')).toEqual({ note: 'Era una prueba' });
+    expect(JSON.parse(typeof init?.body === 'string' ? init.body : '{}')).toEqual({ note: 'Era una prueba' });
     expect(discrepanciesSignal.value).toEqual([]);
     expect(discrepancyDrawerOpenSignal.value).toBe(false);
+  });
+
+  it('descartar deja viejas las discrepancias y los clientes', async () => {
+    queryClient.setQueryData(tenantKey('t1', 'discrepancies'), [item]);
+    queryClient.setQueryData(tenantKey('t1', 'customers'), []);
+    globalThis.fetch = vi.fn(() => Promise.resolve(json(200, { ok: true })));
+    await dismissDiscrepancy('d1');
+    expect(queryClient.getQueryState(tenantKey('t1', 'discrepancies'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(tenantKey('t1', 'customers'))?.isInvalidated).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalPath, routeFromPath, navigate, routeSignal } from '../src/client/state/route-state.ts';
+import { canonicalUrl, routeFromPath, navigate, routeSignal } from '../src/client/state/route-state.ts';
 import {
   DEFAULT_POS_ORIGIN,
   buildDemoUrl,
@@ -18,20 +18,21 @@ describe('Ruteo del SPA (#9)', () => {
     ['/invitacion', 'invitacion'],
     ['/restablecer', 'restablecer'],
     ['/no-existe', 'landing'],
+    ['/plataforma', 'plataforma'],
   ] as const)('%s → %s', (path, route) => {
     expect(routeFromPath(path)).toBe(route);
   });
 
   it('/onboarding se reescribe a /alta', () => {
-    expect(canonicalPath('/onboarding')).toBe('/alta');
-    expect(canonicalPath('/alta')).toBeUndefined();
+    expect(canonicalUrl({ pathname: '/onboarding', search: '' })).toBe('/alta');
+    expect(canonicalUrl({ pathname: '/alta', search: '' })).toBeUndefined();
   });
 
   it('navigate cambia la ruta', () => {
     navigate('/admin');
-    expect(routeSignal.value).toBe('admin');
+    expect(routeSignal.value.kind).toBe('admin');
     navigate('/');
-    expect(routeSignal.value).toBe('landing');
+    expect(routeSignal.value.kind).toBe('landing');
   });
 });
 

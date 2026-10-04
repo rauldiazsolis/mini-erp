@@ -1,13 +1,13 @@
 import { billingStatusSignal } from '../../state/credits-state.ts';
 import { canDo } from '../../state/permissions-state.ts';
-import { navigateTo } from '../../state/navigation-state.ts';
+import { goTo } from '../../state/route-state.ts';
 import { downloadExport } from '../../state/bulk-state.ts';
 import { formatMoney } from '../../format.ts';
 import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /**
- * El comercio pasó la gracia con deuda (#21): mini queda en Créditos y exportar. El POS sigue
+ * El comercio pasó la gracia con deuda (#21): mini queda en Uso y pagos y exportar. El POS sigue
  * vendiendo y sincronizando.
  */
 export function RestrictedView() {
@@ -24,7 +24,7 @@ export function RestrictedView() {
         </p>
         {canPay ? (
           <div class="flex flex-col sm:flex-row justify-center gap-2">
-            <Button onClick={() => { navigateTo('credits'); }}>Ver créditos y cómo pagar</Button>
+            <Button onClick={() => { goTo({ section: 'credits' }); }}>Ver uso y pagos</Button>
           </div>
         ) : (
           <p class="text-xs text-slate-500 dark:text-slate-400">Avisale al dueño del comercio para que regularice el pago.</p>

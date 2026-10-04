@@ -23,7 +23,11 @@ import {
   draftToSettings,
 } from '../src/client/state/platform-state.ts';
 import { isViewAllowed } from '../src/client/state/permissions-state.ts';
-import { tokenSignal, activeTenantIdSignal, userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
+import { userTenantsSignal, currentUserSignal } from '../src/client/state/auth-state.ts';
+import { navigate, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -31,20 +35,28 @@ describe('estado de la plataforma de cobro (#21)', () => {
   let calls: Call[];
   let reply: { status: number; body: unknown };
 
-  beforeEach(() => {
-    tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
-    userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'root_impersonator', status: 'active' }];
-    currentUserSignal.value = { id: 'root', email: 'root@x.com', name: 'Root', globalRole: 'root' };
-    sheetRowsSignal.value = null;
-    sheetAppliedSignal.value = false;
+  beforeEach(async () => {
+    setHistoryForTests(null);
     calls = [];
     reply = { status: 200, body: {} };
     vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const ok = (body: unknown, status = 200): Promise<Response> =>
+        Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
+      // El estado de cobro lo pide el shell con cualquier comercio: no es parte de lo que se prueba
+      if (url.endsWith('/billing-status')) return ok({ state: 'ok', debt: 0, deadline: null });
       calls.push({ url, method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined });
-      return Promise.resolve(new Response(JSON.stringify(reply.body), { status: reply.status, headers: { 'content-type': 'application/json' } }));
+      return ok(reply.body, reply.status);
     });
+    freshSession('mock-token');
+    userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'root_impersonator', status: 'active' }];
+    atTenant('tienda-test');
+    currentUserSignal.value = { id: 'root', email: 'root@x.com', name: 'Root', globalRole: 'root' };
+    sheetRowsSignal.value = null;
+    sheetAppliedSignal.value = false;
+    // Lo que pide el dashboard al entrar no es parte de lo que se prueba
+    await vi.waitFor(() => { expect(queryClient.isFetching()).toBe(0); });
+    calls = [];
   });
 
   afterEach(() => {
@@ -53,11 +65,12 @@ describe('estado de la plataforma de cobro (#21)', () => {
 
   const writes = () => calls.filter((c) => c.method !== 'GET');
 
-  it('registrar un pago pega a la plataforma con el comercio activo y recarga Créditos', async () => {
+  it('registrar un pago pega a la plataforma con el comercio activo y deja viejo Uso y pagos', async () => {
     reply.body = { movementId: 'pm-1', settled: 0 };
+    queryClient.setQueryData(tenantKey('tienda-test', 'credits', 'summary'), {});
     expect(await registerPayment({ day: '2026-10-05', amount: 5000, info: 'op 1' })).toBe(true);
     expect(writes()).toEqual([{ url: '/api/platform/tenants/tienda-test/payments', method: 'POST', body: { day: '2026-10-05', amount: 5000, info: 'op 1' } }]);
-    expect(calls.some((c) => c.url === '/api/tenants/tienda-test/credits')).toBe(true);
+    expect(queryClient.getQueryState(tenantKey('tienda-test', 'credits', 'summary'))?.isInvalidated).toBe(true);
   });
 
   it('un error devuelve false', async () => {
@@ -106,6 +119,21 @@ describe('estado de la plataforma de cobro (#21)', () => {
     await applySheet();
     expect(calls.find((c) => c.url === '/api/platform/payments/import')?.method).toBe('POST');
     expect(sheetAppliedSignal.value).toBe(true);
+  });
+
+  it('en /plataforma pide pagos y configuración (#59)', async () => {
+    navigate('/plataforma');
+    await vi.waitFor(() => {
+      expect(calls.map((c) => c.url)).toEqual(expect.arrayContaining(['/api/platform/payments', '/api/platform/settings']));
+    });
+  });
+
+  it('aplicar la planilla deja viejos los pagos y el estado de cobro (#59)', async () => {
+    queryClient.setQueryData(['platform', 'payments'], []);
+    sheetTextSignal.value = 'fecha;comercio;importe\n05/10/2026;kiosco;100';
+    reply.body = { rows: [{ line: 2, status: 'ok' }], applied: true };
+    await applySheet();
+    expect(queryClient.getQueryState(['platform', 'payments'])?.isInvalidated).toBe(true);
   });
 
   it('pagos registrados y configuración', async () => {

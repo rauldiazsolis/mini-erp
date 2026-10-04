@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   customersSignal,
-  customerSearchSignal,
-  customerDebtorsOnlySignal,
-  customerBlockedFilterSignal,
+  customerFiltersSignal,
+  setCustomerFilters,
+  filterCustomers,
   filteredCustomersSignal,
   customerStatsSignal,
   customerModalOpenSignal,
@@ -30,11 +30,13 @@ import {
   closeAccountStatement,
   type CustomerItem,
 } from '../src/client/state/customer-state.ts';
-import {
-  tokenSignal,
-  activeTenantIdSignal,
-  userTenantsSignal,
-} from '../src/client/state/auth-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { locationSignal, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { drillToDebtors } from '../src/client/state/dashboard-drill.ts';
+import type { CustomerFilters } from '../src/client/routing/admin-routes.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const mockCustomerA: CustomerItem = {
   id: 'cust-1',
@@ -86,10 +88,8 @@ const mockCustomerC: CustomerItem = {
 
 describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
   beforeEach(() => {
-    customersSignal.value = [mockCustomerA, mockCustomerB, mockCustomerC];
-    customerSearchSignal.value = '';
-    customerDebtorsOnlySignal.value = false;
-    customerBlockedFilterSignal.value = 'all';
+    setHistoryForTests(null);
+    freshSession('mock-token');
 
     customerModalOpenSignal.value = false;
     paymentModalOpenSignal.value = false;
@@ -98,13 +98,13 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
     balanceAdjustTargetSignal.value = null;
     accountDrawerOpenSignal.value = false;
     accountTargetCustomerSignal.value = null;
-    accountMovementsSignal.value = [];
 
-    tokenSignal.value = 'mock-token';
-    activeTenantIdSignal.value = 'tienda-test';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
+    queryClient.setQueryData(tenantKey('tienda-test', 'customers'), [mockCustomerA, mockCustomerB, mockCustomerC]);
+    // En una pantalla que no pide clientes: los tests ven la caché sin pedidos de fondo
+    atTenant('tienda-test', 'usuarios');
     vi.restoreAllMocks();
   });
 
@@ -116,31 +116,31 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       expect(stats.totalDebtAmount).toBe(90000); // 15000 + 75000
     });
 
+    const all = (): CustomerItem[] => [mockCustomerA, mockCustomerB, mockCustomerC];
+    const none: CustomerFilters = { q: '', debtorsOnly: false, blocked: 'all' };
+    const filtered = (patch: Partial<CustomerFilters>): CustomerItem[] => filterCustomers(all(), { ...none, ...patch });
+
+    it('sin filtros se ven todos', () => {
+      expect(filteredCustomersSignal.value.length).toBe(3);
+    });
+
     it('filtra clientes por búsqueda en nombre, documento o teléfono', () => {
-      customerSearchSignal.value = 'juan';
-      expect(filteredCustomersSignal.value.map((c) => c.id)).toEqual(['cust-1']);
-
-      customerSearchSignal.value = '40999888';
-      expect(filteredCustomersSignal.value.map((c) => c.id)).toEqual(['cust-2']);
-
-      customerSearchSignal.value = '5566-7788';
-      expect(filteredCustomersSignal.value.map((c) => c.id)).toEqual(['cust-3']);
+      expect(filtered({ q: 'juan' }).map((c) => c.id)).toEqual(['cust-1']);
+      expect(filtered({ q: '40999888' }).map((c) => c.id)).toEqual(['cust-2']);
+      expect(filtered({ q: '5566-7788' }).map((c) => c.id)).toEqual(['cust-3']);
     });
 
     it('filtra solo clientes deudores', () => {
-      customerDebtorsOnlySignal.value = true;
-      expect(filteredCustomersSignal.value.length).toBe(2);
-      expect(filteredCustomersSignal.value.every((c) => c.balance > 0)).toBe(true);
+      const debtors = filtered({ debtorsOnly: true });
+      expect(debtors.length).toBe(2);
+      expect(debtors.every((c) => c.balance > 0)).toBe(true);
     });
 
     it('filtra por estado habilitado vs bloqueado', () => {
-      customerBlockedFilterSignal.value = 'active';
-      expect(filteredCustomersSignal.value.length).toBe(2);
-      expect(filteredCustomersSignal.value.every((c) => c.blockedReason === null)).toBe(true);
-
-      customerBlockedFilterSignal.value = 'blocked';
-      expect(filteredCustomersSignal.value.length).toBe(1);
-      expect(filteredCustomersSignal.value[0]?.id).toBe('cust-3');
+      const active = filtered({ blocked: 'active' });
+      expect(active.length).toBe(2);
+      expect(active.every((c) => c.blockedReason === null)).toBe(true);
+      expect(filtered({ blocked: 'blocked' }).map((c) => c.id)).toEqual(['cust-3']);
     });
   });
 
@@ -316,11 +316,11 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       });
 
       try {
-        await openAccountStatement(mockCustomerA);
+        openAccountStatement(mockCustomerA);
 
         expect(accountDrawerOpenSignal.value).toBe(true);
         expect(accountTargetCustomerSignal.value?.id).toBe('cust-1');
-        expect(accountMovementsSignal.value.length).toBe(1);
+        await vi.waitFor(() => { expect(accountMovementsSignal.value.length).toBe(1); });
         expect(accountMovementsSignal.value[0]?.amount).toBe(15000);
 
         closeAccountStatement();
@@ -328,6 +328,56 @@ describe('Módulo de Clientes y Cuentas Corrientes (Etapa 4.3)', () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  });
+
+  describe('Clientes con URL y caché (#59)', () => {
+    const json = (body: unknown): Promise<Response> =>
+      Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    it('los filtros salen de la URL', () => {
+      atTenant('tienda-test', 'clientes?deudores=1');
+      expect(customerFiltersSignal.value).toEqual({ q: '', debtorsOnly: true, blocked: 'all' });
+      setCustomerFilters({ q: 'ana' });
+      expect(locationSignal.value.search).toBe('?q=ana&deudores=1');
+    });
+
+    it('una cobranza deja viejos clientes, extracto, ventas, dashboard y discrepancias', async () => {
+      for (const d of ['customer-movements', 'sales', 'dashboard', 'discrepancies'] as const) {
+        queryClient.setQueryData(tenantKey('tienda-test', d, 'x'), 1);
+      }
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => json({ customerId: 'cust-1', previousBalance: 15000, amount: 5000, newBalance: 10000, movementId: 'm' }));
+      try {
+        openPaymentModal(mockCustomerA);
+        await submitPayment();
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'customers'))?.isInvalidated).toBe(true);
+        for (const d of ['customer-movements', 'sales', 'dashboard', 'discrepancies'] as const) {
+          expect(queryClient.getQueryState(tenantKey('tienda-test', d, 'x'))?.isInvalidated, d).toBe(true);
+        }
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('un ajuste de saldo deja viejos clientes y extracto', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'customer-movements', 'cust-1'), []);
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => json({ customerId: 'cust-1', previousBalance: 15000, delta: -2000, newBalance: 13000, movementId: 'a' }));
+      try {
+        openBalanceAdjustModal(mockCustomerA);
+        balanceAdjustFormSignal.value = { type: 'credit', amount: 2000, reason: 'Bonificación' };
+        await submitBalanceAdjustment();
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'customer-movements', 'cust-1'))?.isInvalidated).toBe(true);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('el drill de deudores abre Clientes con el filtro', () => {
+      atTenant('tienda-test', 'dashboard');
+      drillToDebtors();
+      expect(`${locationSignal.value.pathname}${locationSignal.value.search}`).toBe('/admin/tienda-test/clientes?deudores=1');
     });
   });
 });

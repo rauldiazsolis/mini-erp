@@ -1,17 +1,15 @@
 import type { ComponentChildren } from 'preact';
-import {
-  activeViewSignal,
-  navigateTo,
-  mobileMenuOpenSignal,
-  toggleMobileMenu,
-  type ActiveNavView,
-} from '../../state/navigation-state.ts';
+import { mobileMenuOpenSignal, toggleMobileMenu } from '../../state/navigation-state.ts';
+import { activeSectionSignal } from '../../state/route-state.ts';
+import { homeTenantSlugSignal } from '../../state/auth-state.ts';
+import { adminUrl, type NavSection } from '../../routing/admin-routes.ts';
+import { Link } from '../ui/Link.tsx';
 import { versionLabel } from '../../state/app-version.ts';
 import { isViewAllowed } from '../../state/permissions-state.ts';
 import { Logo } from '../ui/Logo.tsx';
 
 type NavItem = {
-  id: ActiveNavView;
+  id: NavSection;
   label: string;
   badge?: string;
   icon: (active: boolean) => ComponentChildren;
@@ -168,7 +166,7 @@ export const navItems: NavItem[] = [
   },
   {
     id: 'credits',
-    label: 'Créditos',
+    label: 'Uso y pagos',
     icon: (active) => (
       <svg
         class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
@@ -180,7 +178,7 @@ export const navItems: NavItem[] = [
           stroke-linecap="round"
           stroke-linejoin="round"
           stroke-width="2"
-          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+          d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2v-5m0-4h-5a2 2 0 000 4h5m-4-2h.01"
         />
       </svg>
     ),
@@ -206,8 +204,15 @@ export const navItems: NavItem[] = [
   },
 ];
 
+/** El href de un ítem: la sección en el comercio de la URL (o el de inicio); Plataforma, aparte (#59). */
+function itemHref(id: NavSection): string {
+  if (id === 'platform') return '/plataforma';
+  const slug = homeTenantSlugSignal.value;
+  return slug === null ? '/admin' : adminUrl(slug, id);
+}
+
 export function Sidebar() {
-  const currentView = activeViewSignal.value;
+  const currentView = activeSectionSignal.value;
   const isMobileOpen = mobileMenuOpenSignal.value;
 
   const content = (
@@ -224,10 +229,10 @@ export function Sidebar() {
           {navItems.filter((item) => isViewAllowed(item.id)).map((item) => {
             const isActive = currentView === item.id;
             return (
-              <button
+              <Link
                 key={item.id}
-                type="button"
-                onClick={() => { navigateTo(item.id); }}
+                href={itemHref(item.id)}
+                onNavigate={() => { mobileMenuOpenSignal.value = false; }}
                 class={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-indigo-50 dark:bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 shadow-sm'
@@ -243,7 +248,7 @@ export function Sidebar() {
                     {item.badge}
                   </span>
                 )}
-              </button>
+              </Link>
             );
           })}
         </nav>

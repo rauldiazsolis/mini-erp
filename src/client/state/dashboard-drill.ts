@@ -1,10 +1,9 @@
 import { argentinaToday } from '../../shared/argentina-day.ts';
 import type { DocStatus } from '../../shared/sales-types.ts';
-import { customerDebtorsOnlySignal, customerSearchSignal } from './customer-state.ts';
 import { selectedBranchSignal, selectedPeriodSignal, type DashboardPeriod } from './dashboard-state.ts';
-import { navigateTo } from './navigation-state.ts';
+import { goTo } from './route-state.ts';
 import { openSalesWith, presetRange, type DayRange } from './sales-state.ts';
-import { stockSearchSignal, stockStatusFilterSignal } from './stock-state.ts';
+import { decodeFilters } from '../routing/admin-routes.ts';
 
 /** Drill-down del dashboard (#20): cada KPI, gráfico y ranking lleva a la consulta que lo explica. */
 export function periodRange(period: DashboardPeriod, today: string): DayRange {
@@ -25,13 +24,9 @@ export function drillToSales(
 }
 
 export function drillToDebtors(): void {
-  customerSearchSignal.value = '';
-  customerDebtorsOnlySignal.value = true;
-  navigateTo('customers');
+  goTo({ section: 'customers', filters: { ...decodeFilters('customers', {}), debtorsOnly: true } });
 }
 
 export function drillToStockProduct(name: string): void {
-  stockStatusFilterSignal.value = 'all';
-  stockSearchSignal.value = name;
-  navigateTo('stock');
+  goTo({ section: 'stock', filters: { ...decodeFilters('stock', {}), q: name } });
 }

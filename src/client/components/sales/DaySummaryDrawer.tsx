@@ -109,7 +109,7 @@ export function DaySummaryDrawer() {
                     <span>
                       <span class="text-slate-400 mr-2">{formatTime(e.at)}</span>
                       {e.kind === 'sale' ? (
-                        <button type="button" class="underline cursor-pointer" onClick={() => { void openTicket(e.sale.id); }}>
+                        <button type="button" class="underline cursor-pointer" onClick={() => { openTicket(e.sale.id); }}>
                           {label}
                         </button>
                       ) : (

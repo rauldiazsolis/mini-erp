@@ -6,6 +6,7 @@ import {
   customersSignal,
   customerLoadingSignal,
   fetchCustomers,
+  setCustomerFilters,
   openNewCustomerModal,
 } from '../../state/customer-state.ts';
 import { Button } from '../ui/Button.tsx';
@@ -41,13 +42,13 @@ export function CustomerToolbar() {
             type="text"
             placeholder="Buscar por nombre, DNI/CUIT o teléfono..."
             value={search}
-            onInput={(e) => (customerSearchSignal.value = (e.target as HTMLInputElement).value)}
+            onInput={(e) => { setCustomerFilters({ q: (e.target as HTMLInputElement).value }); }}
             class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           />
           {search && (
             <button
               type="button"
-              onClick={() => (customerSearchSignal.value = '')}
+              onClick={() => { setCustomerFilters({ q: '' }); }}
               class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
             >
               ✕
@@ -94,7 +95,7 @@ export function CustomerToolbar() {
           {/* Toggle Solo Deudores */}
           <button
             type="button"
-            onClick={() => (customerDebtorsOnlySignal.value = !debtorsOnly)}
+            onClick={() => { setCustomerFilters({ debtorsOnly: !debtorsOnly }); }}
             class={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
               debtorsOnly
                 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-xs'
@@ -110,7 +111,7 @@ export function CustomerToolbar() {
             <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => (customerBlockedFilterSignal.value = 'all')}
+                onClick={() => { setCustomerFilters({ blocked: 'all' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
@@ -121,7 +122,7 @@ export function CustomerToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (customerBlockedFilterSignal.value = 'active')}
+                onClick={() => { setCustomerFilters({ blocked: 'active' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'active'
                     ? 'bg-emerald-600 text-white shadow-xs'
@@ -132,7 +133,7 @@ export function CustomerToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (customerBlockedFilterSignal.value = 'blocked')}
+                onClick={() => { setCustomerFilters({ blocked: 'blocked' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'blocked'
                     ? 'bg-rose-600 text-white shadow-xs'

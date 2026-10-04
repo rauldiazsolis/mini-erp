@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  activeViewSignal,
-  navigateTo,
   mobileMenuOpenSignal,
   toggleMobileMenu,
   impersonationModalOpenSignal,
@@ -17,7 +15,6 @@ import {
   currentUserSignal,
   tokenSignal,
   userTenantsSignal,
-  setActiveTenant,
   impersonateTenant,
   stopImpersonation,
   activeTenantSignal,
@@ -25,11 +22,14 @@ import {
   effectiveTenantIdSignal,
   logout,
 } from '../src/client/state/auth-state.ts';
+import { activeSectionSignal, goTo, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant } from './helpers/client-route.ts';
 
 describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
   beforeEach(() => {
+    setHistoryForTests(null);
     logout();
-    navigateTo('dashboard');
+    atTenant('t1');
     mobileMenuOpenSignal.value = false;
     impersonationModalOpenSignal.value = false;
     toastsSignal.value = [];
@@ -37,26 +37,24 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
 
   describe('Navegación reactiva', () => {
     it('inicia en la vista dashboard', () => {
-      expect(activeViewSignal.value).toBe('dashboard');
+      expect(activeSectionSignal.value).toBe('dashboard');
     });
 
-    it('permite cambiar entre vistas y cierra el menú móvil', () => {
-      mobileMenuOpenSignal.value = true;
-      navigateTo('catalog');
-      expect(activeViewSignal.value).toBe('catalog');
-      expect(mobileMenuOpenSignal.value).toBe(false);
+    it('permite cambiar entre vistas (#59: con la URL)', () => {
+      goTo({ section: 'catalog' });
+      expect(activeSectionSignal.value).toBe('catalog');
 
-      navigateTo('stock');
-      expect(activeViewSignal.value).toBe('stock');
+      goTo({ section: 'stock' });
+      expect(activeSectionSignal.value).toBe('stock');
 
-      navigateTo('customers');
-      expect(activeViewSignal.value).toBe('customers');
+      goTo({ section: 'customers' });
+      expect(activeSectionSignal.value).toBe('customers');
 
-      navigateTo('bulk');
-      expect(activeViewSignal.value).toBe('bulk');
+      goTo({ section: 'bulk' });
+      expect(activeSectionSignal.value).toBe('bulk');
 
-      navigateTo('settings');
-      expect(activeViewSignal.value).toBe('settings');
+      goTo({ section: 'settings' });
+      expect(activeSectionSignal.value).toBe('settings');
     });
 
     it('conmuta la apertura del menú móvil', () => {
@@ -109,11 +107,11 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
         { tenantId: 't-norte', slug: 'norte', name: 'Sucursal Norte', status: 'active', role: 'owner' },
       ];
 
-      setActiveTenant('t-central');
+      atTenant('t-central');
       expect(activeTenantSignal.value?.name).toBe('Sucursal Central');
       expect(effectiveTenantIdSignal.value).toBe('t-central');
 
-      setActiveTenant('t-norte');
+      atTenant('t-norte');
       expect(activeTenantSignal.value?.name).toBe('Sucursal Norte');
       expect(effectiveTenantIdSignal.value).toBe('t-norte');
     });
@@ -131,7 +129,7 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
         { tenantId: 'ajeno', slug: 'ajeno', name: 'Comercio Cliente', status: 'active', role: 'root_impersonator' },
       ];
 
-      setActiveTenant('propio');
+      atTenant('propio');
       expect(isImpersonatingSignal.value).toBe(false);
       expect(effectiveTenantIdSignal.value).toBe('propio');
 

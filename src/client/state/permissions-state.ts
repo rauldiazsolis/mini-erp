@@ -6,8 +6,9 @@ import {
   type MembershipRole,
   type TenantRole,
 } from '../../shared/permissions.ts';
-import { activeTenantSignal, isRootOrSupportSignal } from './auth-state.ts';
-import { activeViewSignal, type ActiveNavView } from './navigation-state.ts';
+import { activeTenantSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
+import { navigate, routeSignal } from './route-state.ts';
+import { adminUrl, type NavSection } from '../routing/admin-routes.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
 
 /** El rol con el que se opera el comercio activo (#19); impersonando, owner hasta M7. */
@@ -30,7 +31,7 @@ export const ROLE_LABEL: Record<MembershipRole, string> = {
   support_impersonator: 'Soporte',
 };
 
-const VIEW_CAPABILITY: Record<Exclude<ActiveNavView, 'platform'>, Capability> = {
+const VIEW_CAPABILITY: Record<Exclude<NavSection, 'platform'>, Capability> = {
   dashboard: 'tenant.use',
   sales: 'tenant.use',
   catalog: 'tenant.use',
@@ -51,7 +52,7 @@ const TAB_CAPABILITY: Record<SettingsTab, Capability> = {
 };
 
 /** La vista Plataforma (#21) es de root y soporte, no del comercio. */
-export function isViewAllowed(view: ActiveNavView): boolean {
+export function isViewAllowed(view: NavSection): boolean {
   return view === 'platform' ? isRootOrSupportSignal.value : canDo(VIEW_CAPABILITY[view]);
 }
 
@@ -59,16 +60,26 @@ export function isSettingsTabAllowed(tab: SettingsTab): boolean {
   return canDo(TAB_CAPABILITY[tab]);
 }
 
-// Si al cambiar de comercio la vista o la solapa ya no está permitida, se vuelve a una que sí
+/**
+ * Una sección no permitida para el rol vuelve al dashboard, una solapa de Configuración no permitida a
+ * Apariencia y Plataforma sin ser root o soporte, a /admin (#59).
+ */
+export function registerPermissionEffects(): () => void {
+  return effect(() => {
+    const route = routeSignal.value;
+    if (route.kind === 'plataforma') {
+      if (profileLoadedSignal.value && !isRootOrSupportSignal.value) navigate('/admin', { replace: true });
+      return;
+    }
+    if (route.kind !== 'admin' || route.tenantSlug === null || activeRoleSignal.value === null) return;
+    if (!isViewAllowed(route.section)) {
+      navigate(adminUrl(route.tenantSlug, 'dashboard'), { replace: true });
+    } else if (route.section === 'settings' && !isSettingsTabAllowed(activeSettingsTabSignal.value)) {
+      navigate(adminUrl(route.tenantSlug, 'settings', { tab: 'appearance' }), { replace: true });
+    }
+  });
+}
+
 if (typeof window !== 'undefined') {
-  effect(() => {
-    if (activeRoleSignal.value !== null && !isViewAllowed(activeViewSignal.value)) {
-      activeViewSignal.value = 'dashboard';
-    }
-  });
-  effect(() => {
-    if (activeRoleSignal.value !== null && !isSettingsTabAllowed(activeSettingsTabSignal.value)) {
-      activeSettingsTabSignal.value = 'appearance';
-    }
-  });
+  registerPermissionEffects();
 }

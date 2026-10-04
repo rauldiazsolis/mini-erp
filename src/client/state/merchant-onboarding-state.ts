@@ -5,15 +5,15 @@ import {
   isAuthenticatedSignal,
   fetchProfile,
   adoptSession,
-  setActiveTenant,
+  rememberTenant,
   login,
 } from './auth-state.ts';
 import { PASSWORD_MIN_LENGTH, PASSWORD_MIN_MESSAGE } from '../../shared/password.ts';
-import { navigateTo } from './navigation-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { showToast } from './toast-state.ts';
 import { buildConnectReturnUrl } from './connect-return.ts';
 import { resetImport } from './import-state.ts';
+import { invalidateAfter } from './invalidation.ts';
 import type { BusinessType } from '../../shared/business-type.ts';
 import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
 
@@ -261,7 +261,7 @@ export async function executeMerchantProvisioning(): Promise<void> {
       await fetchProfile();
     }
     const tenantId = res.tenant.id;
-    setActiveTenant(tenantId);
+    rememberTenant(tenantId);
     const apiKey = res.posKey.key;
     const branchCode = res.posKey.branch;
     const posTerminalName = res.posKey.pointOfSale;
@@ -340,6 +340,7 @@ export async function loadExampleCatalogOnSignup(): Promise<void> {
   errorMessageSignal.value = null;
   try {
     await apiFetch<{ productsCreated: number }>(`tenants/${res.tenantId}/catalog/example`, { method: 'POST', token });
+    void invalidateAfter('products-imported');
     merchantStepSignal.value = DONE_STEP;
   } catch (err: unknown) {
     errorMessageSignal.value = err instanceof Error ? err.message : 'No se pudo cargar el catálogo de ejemplo';
@@ -354,11 +355,10 @@ export async function loadExampleCatalogOnSignup(): Promise<void> {
 export function enterDashboardFromOnboarding(): void {
   const res = merchantResultSignal.value;
   if (res) {
-    setActiveTenant(res.tenantId);
+    rememberTenant(res.tenantId);
   }
   merchantOnboardingActiveSignal.value = false;
   navigate('/admin');
-  navigateTo('dashboard');
 }
 
 /**

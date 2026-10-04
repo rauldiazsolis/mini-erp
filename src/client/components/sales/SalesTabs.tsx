@@ -1,4 +1,6 @@
-import { salesTabSignal, setTab, type SalesTab } from '../../state/sales-state.ts';
+import { salesTabSignal, sharedSalesFilters, type SalesTab } from '../../state/sales-state.ts';
+import { routeFilters, tabUrl } from '../../state/route-state.ts';
+import { Link } from '../ui/Link.tsx';
 
 export const TABS: Array<{ id: SalesTab; label: string }> = [
   { id: 'sales', label: 'Ventas' },
@@ -12,12 +14,11 @@ export function SalesTabs() {
   return (
     <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
       {TABS.map((t) => (
-        <button
+        <Link
           key={t.id}
-          type="button"
+          href={tabUrl('sales', t.id, sharedSalesFilters(routeFilters('sales')))}
           role="tab"
           aria-selected={active === t.id}
-          onClick={() => { setTab(t.id); }}
           class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             active === t.id
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -25,7 +26,7 @@ export function SalesTabs() {
           }`}
         >
           {t.label}
-        </button>
+        </Link>
       ))}
     </div>
   );

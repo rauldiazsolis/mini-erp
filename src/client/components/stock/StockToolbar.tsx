@@ -9,6 +9,7 @@ import {
   stockItemsSignal,
   stockLoadingSignal,
   fetchStockData,
+  setStockFilters,
 } from '../../state/stock-state.ts';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 
@@ -45,13 +46,13 @@ export function StockToolbar() {
             type="text"
             placeholder="Buscar por artículo o SKU..."
             value={search}
-            onInput={(e) => (stockSearchSignal.value = (e.target as HTMLInputElement).value)}
+            onInput={(e) => { setStockFilters({ q: (e.target as HTMLInputElement).value }); }}
             class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
           />
           {search && (
             <button
               type="button"
-              onClick={() => (stockSearchSignal.value = '')}
+              onClick={() => { setStockFilters({ q: '' }); }}
               class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
             >
               ✕
@@ -93,7 +94,7 @@ export function StockToolbar() {
             <span class="text-slate-500 dark:text-slate-400 font-medium">Categoría:</span>
             <select
               value={category}
-              onChange={(e) => (stockCategoryFilterSignal.value = (e.target as HTMLSelectElement).value)}
+              onChange={(e) => { setStockFilters({ category: (e.target as HTMLSelectElement).value }); }}
               class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="all">Todas ({totalCount})</option>
@@ -111,7 +112,7 @@ export function StockToolbar() {
               <span class="text-slate-500 dark:text-slate-400 font-medium">Sucursal:</span>
               <select
                 value={branchFilter}
-                onChange={(e) => (stockBranchFilterSignal.value = (e.target as HTMLSelectElement).value)}
+                onChange={(e) => { setStockFilters({ branch: (e.target as HTMLSelectElement).value }); }}
                 class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
               >
                 <option value="all">Todas las sucursales</option>
@@ -130,7 +131,7 @@ export function StockToolbar() {
             <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => (stockStatusFilterSignal.value = 'all')}
+                onClick={() => { setStockFilters({ level: 'all' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   status === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
@@ -141,7 +142,7 @@ export function StockToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (stockStatusFilterSignal.value = 'out')}
+                onClick={() => { setStockFilters({ level: 'out' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   status === 'out'
                     ? 'bg-rose-600 text-white shadow-xs'
@@ -152,7 +153,7 @@ export function StockToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (stockStatusFilterSignal.value = 'low')}
+                onClick={() => { setStockFilters({ level: 'low' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   status === 'low'
                     ? 'bg-amber-600 text-white shadow-xs'
@@ -163,7 +164,7 @@ export function StockToolbar() {
               </button>
               <button
                 type="button"
-                onClick={() => (stockStatusFilterSignal.value = 'normal')}
+                onClick={() => { setStockFilters({ level: 'normal' }); }}
                 class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   status === 'normal'
                     ? 'bg-emerald-600 text-white shadow-xs'

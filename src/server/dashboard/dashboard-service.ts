@@ -109,7 +109,7 @@ export class DashboardService {
     const timeline = period === 'today' ? this.hourlyTimeline(sales, today) : this.dailyTimeline(sales, from, days, period === 'week');
     const topProducts = this.calculateTopProducts(sales);
     const customerMetrics = this.calculateCustomerMetrics();
-    const stockAlerts = this.calculateStockAlerts(branchId);
+    const stockAlerts = this.calculateStockAlerts(this.branchIdByCode(branchId));
 
     return {
       period,
@@ -244,6 +244,16 @@ export class DashboardService {
       debtorCount: receivablesRow.count,
       totalCustomers: totalCustomersRow.count,
     };
+  }
+
+  /**
+   * El filtro de sucursal es su código, como `sales.branch` (lo que manda el POS); el stock va por
+   * el id de la sucursal. Un código desconocido no encuentra stock: no cae en "todas".
+   */
+  private branchIdByCode(code: string | undefined): string | undefined {
+    if (code === undefined || code === '') return undefined;
+    const row = this.db.prepare('SELECT id FROM branches WHERE code = ?').get(code) as { id: string } | undefined;
+    return row?.id ?? `sin-sucursal:${code}`;
   }
 
   private calculateStockAlerts(branchId?: string): { criticalCount: number; lowStockProducts: LowStockItem[] } {
