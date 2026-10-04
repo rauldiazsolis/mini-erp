@@ -1,5 +1,5 @@
 import express, { type Express, type Request, type Response } from 'express';
-import { isPosMirrored, mirrorPos, type FetchLike } from './mirror.ts';
+import { isPosMirrored, mirrorPos, mirroredPosVersion, type FetchLike } from './mirror.ts';
 
 /**
  * En desarrollo, el mini-erp sirve la copia local del POS publicado en `/pos/<versión>/` (#9): el
@@ -22,7 +22,11 @@ export async function ensurePosMirror(params: {
   log?: ((message: string) => void) | undefined;
 }): Promise<void> {
   const log = params.log ?? ((message: string) => { console.log(message); });
-  if (isPosMirrored(params.dir, params.channel)) return;
+  if (isPosMirrored(params.dir, params.channel)) {
+    const version = (await mirroredPosVersion(params.dir, params.channel)) ?? '(versión desconocida)';
+    log(`📦 POS ${version} (canal ${params.channel}): copia local en /pos/${params.channel}/`);
+    return;
+  }
   try {
     const { version, files } = await mirrorPos({ channel: params.channel, destDir: params.dir, fetch: params.fetch });
     log(`📦 POS ${version} (canal ${params.channel}): copia local bajada (${String(files.length)} archivos)`);

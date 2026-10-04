@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, posix } from 'node:path';
 import { channelBaseUrl, parseVersionJson } from '../../../scripts/contract-source.ts';
-import { bundleAssetRefs, htmlAssetRefs } from './pos-assets.ts';
+import { bundleAssetRefs, htmlAssetRefs, manifestAssetRefs } from './pos-assets.ts';
 
 /**
  * Copia local del POS publicado (#9, #58): el canal del major del contrato
@@ -13,8 +13,27 @@ export type FetchLike = (url: string) => Promise<Response>;
 
 export const DEFAULT_POS_MIRROR_DIR = 'vendor/pos';
 
+/**
+ * El service worker no se espeja (#58): sin él, el POS corre en desarrollo sin modo offline y una copia
+ * renovada se ve con solo recargar. La parte PWA se prueba contra el POS publicado. Se compara el
+ * nombre del archivo: un bundle que lo nombra lo resuelve relativo a su propia carpeta.
+ */
+const SERVICE_WORKER = 'sw.js';
+
 export function isPosMirrored(destDir: string, channel: string): boolean {
   return existsSync(join(destDir, channel, 'index.html')) && existsSync(join(destDir, channel, 'version.json'));
+}
+
+/** Qué versión del POS tiene la copia local del canal; `undefined` si no hay copia o no se lee. */
+export async function mirroredPosVersion(destDir: string, channel: string): Promise<string | undefined> {
+  try {
+    const raw: unknown = JSON.parse(await readFile(join(destDir, channel, 'version.json'), 'utf8'));
+    return typeof raw === 'object' && raw !== null && 'version' in raw && typeof raw.version === 'string'
+      ? raw.version
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function download(fetch: FetchLike, url: string): Promise<Buffer> {
@@ -48,11 +67,13 @@ export async function mirrorPos(params: {
   const pending = htmlAssetRefs(index.toString('utf-8'));
   while (pending.length > 0) {
     const ref = pending.shift();
-    if (ref === undefined || files.has(ref)) continue;
+    if (ref === undefined || posix.basename(ref) === SERVICE_WORKER || files.has(ref)) continue;
     const body = await download(fetch, `${base}${ref}`);
     files.set(ref, body);
     if (/\.(?:m?js|css)$/.test(ref)) {
       pending.push(...bundleAssetRefs(body.toString('utf-8'), ref));
+    } else if (ref.endsWith('.webmanifest')) {
+      pending.push(...manifestAssetRefs(body.toString('utf-8'), ref));
     }
   }
 

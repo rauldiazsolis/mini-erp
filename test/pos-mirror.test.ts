@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bundleAssetRefs, htmlAssetRefs } from '../src/server/pos-mirror/pos-assets.ts';
+import { bundleAssetRefs, htmlAssetRefs, manifestAssetRefs } from '../src/server/pos-mirror/pos-assets.ts';
 import { isPosMirrored, mirrorPos, type FetchLike } from '../src/server/pos-mirror/mirror.ts';
 
 const BASE = 'https://pos.contax.ar/v4/';
@@ -28,6 +28,20 @@ describe('Referencias del build publicado del POS (#9)', () => {
 
   it('ignora rutas que se salen de la carpeta', () => {
     expect(htmlAssetRefs('<script src="./../otra/x.js"></script><script src="/abs.js"></script>')).toEqual([]);
+  });
+});
+
+describe('Manifest de la PWA (#58)', () => {
+  it('saca los íconos relativos del manifest, sin los externos', () => {
+    const manifest = JSON.stringify({
+      name: 'POS',
+      icons: [{ src: 'icon-192.png' }, { src: './icon-512.png' }, { src: 'https://cdn.example.com/x.png' }],
+    });
+    expect(manifestAssetRefs(manifest, 'manifest.webmanifest')).toEqual(['icon-192.png', 'icon-512.png']);
+  });
+
+  it('un manifest sin íconos no nombra nada', () => {
+    expect(manifestAssetRefs('{"name":"POS"}', 'manifest.webmanifest')).toEqual([]);
   });
 });
 
@@ -92,6 +106,25 @@ describe('mirrorPos (#9)', () => {
       [`${BASE}version.json`]: JSON.stringify({ version: '1.0.0', contract: '5.0.0', minBackendContract: '5.0.0' }),
     });
     await expect(mirrorPos({ channel: 'v4', destDir: dir, fetch })).rejects.toThrow(/5\.0\.0/);
+  });
+
+  it('baja el manifest y sus íconos, pero nunca el service worker (#58)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'mini-erp-pos-'));
+    const { fetch, requested } = fakeFetch({
+      ...PUBLISHED,
+      [`${BASE}index.html`]: INDEX.replace('</head>', '<link rel="manifest" href="./manifest.webmanifest" /></head>'),
+      [`${BASE}manifest.webmanifest`]: JSON.stringify({ icons: [{ src: 'icon-192.png' }] }),
+      [`${BASE}icon-192.png`]: 'png',
+      [`${BASE}assets/index-AAA.js`]: 'register("./sw.js");"assets/chunk-CCC.js"',
+      [`${BASE}sw.js`]: 'self.addEventListener("install", () => {});',
+    });
+    const { files } = await mirrorPos({ channel: 'v4', destDir: dir, fetch });
+
+    expect(files).toContain('manifest.webmanifest');
+    expect(files).toContain('icon-192.png');
+    expect(files).not.toContain('sw.js');
+    expect(requested.filter((url) => url.endsWith('sw.js'))).toEqual([]);
+    expect(existsSync(join(dir, 'v4', 'sw.js'))).toBe(false);
   });
 
   it('una segunda bajada reemplaza la anterior', async () => {

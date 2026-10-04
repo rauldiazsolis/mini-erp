@@ -63,8 +63,11 @@ describe('Copia local del POS en desarrollo (#9)', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('0.3.1'));
 
     const fetchNunca = vi.fn<FetchLike>();
+    log.mockClear();
     await ensurePosMirror({ dir, channel: 'v4', fetch: fetchNunca, log });
     expect(fetchNunca).not.toHaveBeenCalled();
+    // Con la copia ya bajada, dice qué POS sirve
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/POS 0\.3\.1 \(canal v4\)/));
   });
 
   it('ensurePosMirror no tumba el arranque si no hay red', async () => {
