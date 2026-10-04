@@ -76,8 +76,8 @@ Así está hoy:
     celda no vacía. Reimportar el mismo archivo no cambia nada.
 12. **Columna de stock genérica** ("Stock", "Cantidad", "Existencia"): con una sola sucursal se asigna
     a esa; con varias queda "Stock · ¿qué sucursal?" y no se puede confirmar hasta elegirla.
-13. **Alta sin datos fiscales**: no se pide CUIT ni nada fiscal hasta que el POS emita facturas (se
-    corrige la spec del MVP). Sí se pide el **WhatsApp** del responsable.
+13. **Alta sin datos fiscales**: no se pide CUIT ni nada fiscal hasta que el POS emita facturas (la
+    spec del MVP queda como está: el CUIT llega con la facturación). Sí se pide el **WhatsApp** del responsable.
 14. **El alta crea el comercio vacío**; el catálogo de ejemplo se elige después, en "Cargá tus datos".
 
 ## Servidor
@@ -89,7 +89,8 @@ Así está hoy:
   línea y `\r\n`; saltea filas vacías. Devuelve `{ separator, headers, rows: { line, cells }[] }`
   (`line` = número de línea del archivo, para los mensajes).
 - `parseAmount(raw)`: `$ 12.345,50`, `1.234.567`, `12345.50`, `-1.500`, con o sin `$` y espacios;
-  redondea a centavos. `undefined` si no es un número.
+  redondea a centavos. `undefined` si no es un número. En un archivo con `;` (el Excel argentino) el
+  punto es siempre de miles: `1.200` es 1200, no 1,2. Con `,` o tabulación, un solo punto es decimal.
 - `parseDay(raw)`: `DD/MM/AAAA` o `AAAA-MM-DD`, y que la fecha exista.
 - `parseBool(raw)`: sí, si, s, x, 1, true, verdadero / no, n, 0, false, falso (sin distinguir
   mayúsculas ni tildes). `undefined` si no es ninguno.
@@ -131,7 +132,8 @@ type ImportPreview = {
   separator: ';' | ',' | '\t';
   columns: { index: number; header: string; samples: string[] }[]; // hasta 3 ejemplos
   mapping: Record<number, ImportField | null>;
-  missing: ImportField[];        // obligatorios sin columna
+  branches: { id: string; name: string }[]; // para las etiquetas de "Stock · <sucursal>"
+  missing: ImportField[];        // ['name'] si ninguna columna identifica las filas (ver abajo)
   needsBranch: number[];         // columnas de stock genérico sin sucursal
   rows: { line: number; key: string; action: 'create' | 'update' | 'unchanged' | 'error'; messages: string[] }[];
   totals: { create: number; update: number; unchanged: number; error: number };
@@ -140,7 +142,11 @@ type ImportPreview = {
 ```
 
 `messages` lleva errores (con `action: 'error'`) o avisos (con cualquier otra acción, como el del
-saldo). Con `missing` o `needsBranch` no vacíos, `dryRun: false` responde `400`.
+saldo). `missing` no exige nombre y precio como columnas: un archivo de "código de barras + stock"
+solo actualiza, y es válido. Exige una columna que identifique las filas (clientes: id, documento o
+nombre; productos: SKU, código de barras o nombre) y, si no hay ninguna, vale `['name']`. Crear una
+fila sin nombre (o un producto sin precio) es un error de esa fila. Con `missing` o `needsBranch` no
+vacíos, `dryRun: false` responde `400`.
 
 ### Stock
 
@@ -185,6 +191,9 @@ base v5 con datos. El seed de desarrollo completa el rubro de sus tres comercios
   aparece con "Otro"), "Relevar escaneando · próximamente" (deshabilitada, M11) y "Lo hago después".
   No se vuelve al paso 2: el comercio ya existe.
 - **Paso 4 · Listo**: el de hoy (key de la caja, volver al POS con `#connect` o entrar al admin).
+- "Crear nuevo comercio…" del admin (`OnboardingModal`, con sesión) manda `businessType` y también
+  crea el comercio vacío. Su paso final dice dónde cargar los datos (Operaciones masivas: archivos o
+  catálogo de ejemplo).
 - Si se cierra la pestaña en el paso 3, el comercio queda vacío. En Operaciones masivas, un botón
   "Cargar el catálogo de ejemplo de <rubro>" aparece mientras el comercio tenga rubro con ejemplo y
   cero productos.
@@ -247,7 +256,7 @@ Cada una con tests primero y `pnpm lint && pnpm typecheck && pnpm test` en verde
    permisos.
 8. **Alta en el cliente**: pasos 1 a 4 y el botón del catálogo de ejemplo en Operaciones masivas.
    *Criterio*: tests del store, `pnpm build` y `pnpm test:e2e`.
-9. **Cierre**: AGENTS.md (importación, alta, `opening`), la spec del MVP (sin CUIT), versión 0.8.0 y
+9. **Cierre**: AGENTS.md (importación, alta, `opening`), versión 0.8.0 y
    borrar el plan. *Criterio*: la prueba manual en el informe final.
 
 ## Fuera de alcance
