@@ -104,7 +104,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
     expect((await startDemo(app)).status).toBe(201);
     const res = await startDemo(app);
     expect(res.status).toBe(503);
-    expect((res.body as { code: string }).code).toBe('demo-capacity');
+    expect(res.body).toEqual({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
   });
 
   it('una demo en uso no vence; una sin uso sí', async () => {

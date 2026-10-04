@@ -87,7 +87,7 @@ export function createConnectorRoutes(
     }
     demoSessions.sweepExpired();
     if (demoSessions.isFull()) {
-      res.status(503).json({ code: 'demo-capacity', error: 'No hay lugar para más demos; probá más tarde' });
+      res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;
     }
     const session = demoSessions.create(template);

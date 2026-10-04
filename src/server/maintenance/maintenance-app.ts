@@ -1,6 +1,6 @@
 import express, { type Express, type Response } from 'express';
 import cors from 'cors';
-import { allowPrivateNetwork } from '../middleware/private-network.ts';
+import { allowPrivateNetwork, CORS_OPTIONS } from '../middleware/private-network.ts';
 import { backendInfo, MAINTENANCE_MESSAGE } from '../connector/backend-info.ts';
 import { APP_VERSION } from '../app-version.ts';
 import { MAINTENANCE_PAGE } from './maintenance-page.ts';
@@ -22,7 +22,7 @@ export function createMaintenanceApp(params: { state: () => MaintenanceState; de
   const app = express();
   app.set('trust proxy', 'loopback');
   app.use(allowPrivateNetwork);
-  app.use(cors());
+  app.use(cors(CORS_OPTIONS));
 
   app.get('/health', (_req, res) => {
     const state = params.state();

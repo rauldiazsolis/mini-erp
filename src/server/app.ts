@@ -25,7 +25,7 @@ import { createPlatformRoutes } from './routes/platform-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
-import { allowPrivateNetwork } from './middleware/private-network.ts';
+import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
 import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './middleware/rate-limit.ts';
 
 import type { Container } from 'hardwired';
@@ -95,8 +95,8 @@ export function createApp(deps?: AppDependencies): {
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
   const limits = deps?.rateLimits ?? readRateLimitConfig(process.env);
-  const demoLimit = createRateLimit({ limit: limits.demoPerHour, windowMs: 60 * 60 * 1000, now });
-  const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now });
+  const demoLimit = createRateLimit({ limit: limits.demoPerHour, windowMs: 60 * 60 * 1000, now, body: 'connector' });
+  const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now, body: 'api' });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
   const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (tenantId) => {
@@ -104,7 +104,7 @@ export function createApp(deps?: AppDependencies): {
   });
 
   app.use(allowPrivateNetwork);
-  app.use(cors());
+  app.use(cors(CORS_OPTIONS));
   app.use(express.json({ limit: '10mb' }));
   app.use(requestLogger);
 

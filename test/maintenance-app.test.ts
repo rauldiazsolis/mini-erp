@@ -28,7 +28,7 @@ describe('app de mantenimiento (#47)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.body).toEqual({
-      contractVersion: '4.5.0',
+      contractVersion: '4.6.0',
       status: 'maintenance',
       message: MAINTENANCE_MESSAGE,
       backend: { name: 'mini-erp', version: pkg.version },
@@ -56,6 +56,7 @@ describe('app de mantenimiento (#47)', () => {
       const res = await request(app()).post(path).send({});
       expect(res.status).toBe(503);
       expect(res.headers['retry-after']).toBe('30');
+      expect(res.headers['access-control-expose-headers']).toBe('Retry-After');
       expect(res.body).toEqual({ code: 'maintenance', message: MAINTENANCE_MESSAGE });
     },
   );

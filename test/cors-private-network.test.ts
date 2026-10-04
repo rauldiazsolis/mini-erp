@@ -32,6 +32,11 @@ describe('CORS y red privada (#9)', () => {
     expect(res.headers['access-control-allow-private-network']).toBe('true');
   });
 
+  it('expone Retry-After para que el POS lo lea desde otro origen (4.6.0, #63)', async () => {
+    const res = await request(makeApp()).get('/connector/info').set('Origin', 'https://pos.contax.ar');
+    expect(res.headers['access-control-expose-headers']).toBe('Retry-After');
+  });
+
   it('no agrega el header si no lo piden', async () => {
     const res = await preflight(makeApp());
     expect(res.headers['access-control-allow-private-network']).toBeUndefined();

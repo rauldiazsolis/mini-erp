@@ -96,7 +96,7 @@ describe('reglas de evolución del contrato 4.4.0 (#2)', () => {
   });
 });
 
-describe('contrato 4.5.0 (#58)', () => {
+describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let apiKey: string;
 
@@ -115,13 +115,29 @@ describe('contrato 4.5.0 (#58)', () => {
     apiKey = (key.body as { rawKey: string }).rawKey;
   });
 
-  it('/info dice 4.5.0 y el comercio de la key', async () => {
+  it('/info dice el comercio de la key', async () => {
     const res = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ contractVersion: '4.5.0', company: { name: 'Kiosco Pepe' } });
+    expect(res.body).toMatchObject({ company: { name: 'Kiosco Pepe' } });
   });
 
-  it('un POS 4.4.0 sigue sincronizando con el backend 4.5.0', async () => {
+  it('/info dice 4.6.0, sin la capacidad portal ni su objeto (#63)', async () => {
+    const res = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
+    const body = res.body as { contractVersion: string; capabilities: string[] };
+    expect(body.contractVersion).toBe('4.6.0');
+    expect(body.capabilities).not.toContain('portal');
+    expect(body).not.toHaveProperty('portal');
+  });
+
+  it('POST /portal-links da 404: el portal es de M10 (#26)', async () => {
+    const res = await request(app)
+      .post('/connector/portal-links')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.6.0');
+    expect(res.status).toBe(404);
+  });
+
+  it('un POS 4.4.0 sigue sincronizando con el backend 4.6.0', async () => {
     const res = await request(app)
       .post('/connector/sync/pull')
       .set('Authorization', `Bearer ${apiKey}`)
