@@ -7,7 +7,8 @@ import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
-import { backendInfo, CONTRACT_VERSION } from '../connector/backend-info.ts';
+import { backendInfo } from '../connector/backend-info.ts';
+import { CONTRACT_MAJOR, CONTRACT_VERSION, majorOf } from '../../shared/contract-version.ts';
 import type { RegisterService } from '../registers/register-service.ts';
 import type { BillingService } from '../billing/billing-service.ts';
 
@@ -26,12 +27,9 @@ function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
 
 function checkContractVersion(req: Request, res: Response, next: NextFunction): void {
   const version = req.headers['x-pos-contract-version'];
-  if (typeof version === 'string') {
-    const major = version.split('.')[0];
-    if (major !== '4') {
-      res.status(409).json({ code: 'incompatible-contract', contractVersion: CONTRACT_VERSION });
-      return;
-    }
+  if (typeof version === 'string' && majorOf(version) !== CONTRACT_MAJOR) {
+    res.status(409).json({ code: 'incompatible-contract', contractVersion: CONTRACT_VERSION });
+    return;
   }
   next();
 }

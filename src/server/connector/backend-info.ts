@@ -1,7 +1,5 @@
 import { APP_VERSION } from '../app-version.ts';
-
-/** Versión del contrato que implementa el mini-erp (#2): 4.4.0 entero. */
-export const CONTRACT_VERSION = '4.4.0';
+import { CONTRACT_VERSION } from '../../shared/contract-version.ts';
 
 export const MAINTENANCE_MESSAGE = 'mini contax se está actualizando, vuelve en unos minutos';
 
