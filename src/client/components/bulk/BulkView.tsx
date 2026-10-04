@@ -2,7 +2,8 @@ import { activeBulkTabSignal } from '../../state/bulk-state.ts';
 import { BulkTabs } from './BulkTabs.tsx';
 import { BulkPricesCard } from './BulkPricesCard.tsx';
 import { BulkInterestsCard } from './BulkInterestsCard.tsx';
-import { ImportExportCard } from './ImportExportCard.tsx';
+import { ExportCard } from './ExportCard.tsx';
+import { ImportWizard } from '../import/ImportWizard.tsx';
 
 import { PageHeader } from '../ui/PageHeader.tsx';
 
@@ -24,7 +25,12 @@ export function BulkView() {
       {/* Vista según la Pestaña Activa */}
       {activeTab === 'prices' && <BulkPricesCard />}
       {activeTab === 'interests' && <BulkInterestsCard />}
-      {activeTab === 'io' && <ImportExportCard />}
+      {activeTab === 'io' && (
+        <div class="space-y-6">
+          <ImportWizard />
+          <ExportCard />
+        </div>
+      )}
     </div>
   );
 }

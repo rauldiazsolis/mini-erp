@@ -38,14 +38,6 @@ export type BulkInterestResult = {
   items: BulkInterestPreviewItem[];
 };
 
-export type ImportResult = {
-  dryRun: boolean;
-  importedCount: number;
-  updatedCount: number;
-  skippedCount: number;
-  errors: Array<{ row: number; error: string; data?: unknown }>;
-};
-
 // Pestaña activa
 export const activeBulkTabSignal = signal<BulkTab>('prices');
 
@@ -67,9 +59,6 @@ export const bulkInterestLoadingSignal = signal<boolean>(false);
 // Import / Export
 export const ioSelectedEntitySignal = signal<'products' | 'customers' | 'stock'>('products');
 export const ioFormatSignal = signal<'csv' | 'json'>('csv');
-export const ioUpdateExistingSignal = signal<boolean>(true);
-export const ioCsvContentSignal = signal<string>('');
-export const ioImportPreviewSignal = signal<ImportResult | null>(null);
 export const ioLoadingSignal = signal<boolean>(false);
 
 // --- PRECIOS MASIVOS ---
@@ -235,66 +224,3 @@ export async function downloadExport(entity: 'products' | 'customers' | 'stock',
   }
 }
 
-export async function previewImport(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  const content = ioCsvContentSignal.value.trim();
-  const entity = ioSelectedEntitySignal.value;
-  if (!tenantId || !token || !content) return;
-
-  if (entity === 'stock') {
-    showToast({ type: 'info', title: 'Aviso', message: 'La importación directa está disponible para productos y clientes' });
-    return;
-  }
-
-  try {
-    ioLoadingSignal.value = true;
-    const res = await apiFetch<ImportResult>(`tenants/${tenantId}/import/${entity}`, {
-      method: 'POST',
-      body: {
-        csv: content,
-        updateExisting: ioUpdateExistingSignal.value,
-        dryRun: true,
-      },
-      token,
-    });
-    ioImportPreviewSignal.value = res;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al simular importación';
-    showToast({ type: 'error', title: 'Error en importación', message: msg });
-  } finally {
-    ioLoadingSignal.value = false;
-  }
-}
-
-export async function applyImport(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  const content = ioCsvContentSignal.value.trim();
-  const entity = ioSelectedEntitySignal.value;
-  if (!tenantId || !token || !content) return;
-
-  try {
-    ioLoadingSignal.value = true;
-    const res = await apiFetch<ImportResult>(`tenants/${tenantId}/import/${entity}`, {
-      method: 'POST',
-      body: {
-        csv: content,
-        updateExisting: ioUpdateExistingSignal.value,
-        dryRun: false,
-      },
-      token,
-    });
-    ioImportPreviewSignal.value = res;
-    showToast({
-      type: 'success',
-      title: 'Importación Completada',
-      message: `Importados: ${String(res.importedCount)}, Actualizados: ${String(res.updatedCount)}, Omitidos: ${String(res.skippedCount)}`,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al aplicar importación';
-    showToast({ type: 'error', title: 'Error', message: msg });
-  } finally {
-    ioLoadingSignal.value = false;
-  }
-}
