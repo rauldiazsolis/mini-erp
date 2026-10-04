@@ -262,3 +262,23 @@ mutaciones.
 - La preferencia de 12 o 24 horas (#65).
 - Push en vivo del POS al admin.
 - Drawers y modales en la URL.
+
+## Ajustes de la implementación
+
+1. **Filtros con códecs propios** en lugar de Zod: cada sección tiene `decode`/`encode` escritos a mano
+   con lectores chicos (`text`, `day`, `positiveInt`, enums con su texto de URL). Así el nombre interno
+   (`active`) y el de la URL (`activos`) quedan juntos y sin casts.
+2. **Sin debounce en la búsqueda**: el filtro de catálogo, stock y clientes es en memoria y
+   `replaceState` no agrega entradas al historial; un debounce obligaría a un estado local del input.
+3. **`createSignalQuery` separa la clave del habilitado**: la clave es `null` solo sin sesión o sin
+   comercio, y `enabled` dice si la pantalla está activa. Una consulta deshabilitada con clave igual ve
+   la caché (lo necesitan los tests y la edición en línea).
+4. **`members` e `invitations` son un solo dominio, `users`**, porque vienen del mismo pedido.
+   Las cajas del filtro de ventas (`registers`) y las de configuración (`pos-registers`) son dominios
+   distintos, porque son dos endpoints.
+5. **El alta y la invitación** recuerdan el comercio nuevo como "último usado" y navegan a `/admin`,
+   que la normalización lleva a su dashboard (no hace falta `tenantUrl`).
+6. **El drill del dashboard** sigue siendo un botón que llama a `goTo`; navega con URL igual.
+7. **Los avisos del pull** que nombran la sección dicen "mini → Uso y pagos" (#55).
+8. **Las sucursales** son una sola consulta para dashboard, stock y configuración, y avisan si
+   no cargan.

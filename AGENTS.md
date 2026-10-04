@@ -279,6 +279,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     plataforma en `routes/platform-routes.ts` (`requirePlatformRole`; devoluciones y configuración,
     solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`).
   - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
+  - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55).
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
@@ -302,8 +303,24 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     (`POST /catalog/example`, idempotente) o después. Sin CUIT ni datos fiscales hasta la facturación.
 - **Cliente** en `src/client/`: Preact + `@preact/signals` + Tailwind CSS v4 (`@tailwindcss/vite`,
   como middleware de Express).
-  - Un solo SPA con ruteo por path (`state/route-state.ts`): landing en `/`, admin en `/admin`, alta
-    en `/alta` (`/onboarding` se reescribe). El landing abre el POS en su **canal**, el major del
+  - **Router propio con una URL por pantalla** (#59, spec `docs/superpowers/specs/2026-10-04-router-query-design.md`):
+    landing en `/`, alta en `/alta` (`/onboarding` se reescribe), los links en `/invitacion` y
+    `/restablecer`, el admin en `/admin/<slug-comercio>/<sección>[/<solapa>][?filtros]` y la
+    plataforma en `/plataforma`. La tabla (secciones, solapas y códecs de filtros, en castellano y sin
+    acentos) es pura, en `routing/admin-routes.ts`; `state/route-state.ts` tiene la URL como signal y
+    es el único que escribe el historial (`test/client-guards.test.ts`). Cambiar de comercio, sección
+    o solapa agrega una entrada (`goTo`, `<Link>`); un filtro la reemplaza (`setFilters`). El menú abre
+    la sección limpia.
+  - **El comercio activo es el de la URL** (`effectiveTenantIdSignal`, en `auth-state.ts`): un slug
+    ajeno muestra "No tenés acceso", nunca una redirección muda; `localStorage` solo guarda el último
+    usado, para `/admin` pelado. Así cada pestaña tiene su comercio (base de M7).
+  - **Datos con TanStack Query** (`@tanstack/query-core`): `createSignalQuery`/`createTenantQuery`
+    (`api/query-client.ts`, `state/query-keys.ts`) con clave `['t', comercio, dominio, …]`,
+    habilitadas con su pantalla (`inSection`). Caché al toque y refresco al entrar y al volver a la
+    pestaña (`staleTime: 0`). Cada mutación llama a `invalidateAfter(evento)` y la tabla evento →
+    dominios está en `state/invalidation.ts`. La caché se borra al cambiar de sesión y lo de otros
+    comercios al cambiar de comercio. Nada de `effect` de carga en los stores ni de `view-loader`.
+  - El landing abre el POS en su **canal**, el major del
     contrato implementado (`<POS_URL>/v4/`, sin fijar una versión: la PWA lleva el último POS
     compatible); el origen, de `VITE_POS_URL` al compilar (`publishedPosOrigin` en
     `state/demo-link.ts`, #11), que `deploy.yml` toma de la variable `POS_URL` del environment
