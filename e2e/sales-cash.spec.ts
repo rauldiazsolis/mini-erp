@@ -10,15 +10,17 @@ import { argentinaToday } from '../src/shared/argentina-day.ts';
 test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y el drill-down', async ({ page, request }) => {
   const id = randomUUID().slice(0, 8);
   const alta = await request.post('/api/alta', {
-    data: { name: 'Owner E2E', email: `ventas-${id}@local.test`, password: 'clave-owner-1', businessName: `Kiosco Ventas ${id}`, template: 'kiosco' },
+    data: { name: 'Owner E2E', email: `ventas-${id}@local.test`, password: 'clave-owner-1', businessName: `Kiosco Ventas ${id}`, businessType: 'kiosco', whatsapp: '1155550000' },
   });
   expect(alta.status()).toBe(201);
   const { token, tenant, posKey } = (await alta.json()) as {
     token: string; tenant: { id: string }; posKey: { key: string; branch: string; pointOfSale: string };
   };
+  // El alta crea el comercio vacío (#22): el catálogo de ejemplo del rubro va aparte
+  await request.post(`/api/tenants/${tenant.id}/catalog/example`, { headers: { Authorization: `Bearer ${token}` } });
   const products = await request.get(`/api/tenants/${tenant.id}/products`, { headers: { Authorization: `Bearer ${token}` } });
   const [product] = (await products.json()) as { id: string; name: string; price: number }[];
-  if (product === undefined) throw new Error('El alta no sembró productos');
+  if (product === undefined) throw new Error('No se cargó el catálogo de ejemplo');
 
   const today = argentinaToday(new Date());
   const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();

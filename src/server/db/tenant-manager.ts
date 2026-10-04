@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { initTenantDb, openTenantDb } from './tenant-db.ts';
 import { seedDemoTenant } from '../seeds/index.ts';
+import { isBusinessType, type BusinessType } from '../../shared/business-type.ts';
 
 export type TenantRecord = {
   id: string;
@@ -25,6 +26,8 @@ export type CreateTenantParams = {
   /** Sin dueño (una demo, #9) no se crea membresía. */
   ownerUserId?: string | undefined;
   seedDemoData?: boolean;
+  /** El rubro (#22); las demos no lo guardan. */
+  businessType?: BusinessType | undefined;
 };
 
 export class TenantManager {
@@ -78,6 +81,15 @@ export class TenantManager {
     return candidate;
   }
 
+  /** El rubro del comercio (#22); `null` si no tiene (comercios de antes de M6, demos). */
+  getBusinessType(tenantId: string): BusinessType | null {
+    const row = this.systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get(tenantId) as
+      | { business_type: string | null }
+      | undefined;
+    const value = row?.business_type ?? null;
+    return value !== null && isBusinessType(value) ? value : null;
+  }
+
   createTenant(params: CreateTenantParams): TenantRecord {
     const now = new Date().toISOString();
     const status: TenantRecord['status'] = 'active';
@@ -93,9 +105,9 @@ export class TenantManager {
     this.systemDb
       .prepare(
         // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
-        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id, business_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null);
+      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null, params.businessType ?? null);
 
     if (params.ownerUserId !== undefined) {
       this.systemDb

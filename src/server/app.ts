@@ -131,7 +131,7 @@ export function createApp(deps?: AppDependencies): {
     createCustomerRoutes(),
     createDiscrepancyRoutes(),
     createBulkRoutes(),
-    createIoRoutes(),
+    createIoRoutes(tenantManager),
     createDashboardRoutes(),
     createSalesRoutes(),
     createRegisterRoutes(registers, auditLog),

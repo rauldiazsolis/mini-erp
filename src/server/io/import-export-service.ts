@@ -157,6 +157,11 @@ export class ImportExportService {
 
   // --- SEMILLAS DE NEGOCIO ---
 
+  countProducts(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
+    return row.n;
+  }
+
   applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): BusinessPresetResult {
     return applyPreset(this.db, preset);
   }

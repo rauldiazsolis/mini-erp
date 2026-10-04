@@ -6,6 +6,8 @@ import { requirePermission } from '../middleware/permission-middleware.ts';
 import { importExportServiceDef, importServiceDef } from '../di/container.ts';
 import { DomainError, sendError } from '../errors.ts';
 import { isImportFieldName, type ImportMapping } from '../../shared/import-fields.ts';
+import { hasExampleCatalog } from '../../shared/business-type.ts';
+import type { TenantManager } from '../db/tenant-manager.ts';
 
 const importBodySchema = z.object({
   csv: z.string({ required_error: 'Falta el contenido del archivo' }),
@@ -33,7 +35,7 @@ function getImportExportService(req: AuthenticatedAdminRequest): ImportExportSer
   throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
-export function createIoRoutes(): Router {
+export function createIoRoutes(tenants: TenantManager): Router {
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
@@ -91,6 +93,32 @@ export function createIoRoutes(): Router {
       if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
       res.status(200).json(service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) }));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  // Catálogo de ejemplo del rubro (#22): el alta crea el comercio vacío; se ofrece mientras no tenga productos
+  router.get('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      const available = hasExampleCatalog(businessType) && getImportExportService(req).countProducts() === 0;
+      res.status(200).json({ businessType, available });
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.post('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      if (!hasExampleCatalog(businessType)) {
+        res.status(409).json({ error: 'Tu rubro no tiene catálogo de ejemplo' });
+        return;
+      }
+      // Idempotente: el preset saltea los SKU que ya existen
+      const { productsCreated } = getImportExportService(req).applyBusinessPreset(businessType);
+      res.status(200).json({ productsCreated });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

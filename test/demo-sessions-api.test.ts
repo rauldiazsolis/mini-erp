@@ -125,7 +125,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
     const { app } = makeApp({ enabled: false });
     const alta = await request(app)
       .post('/api/alta')
-      .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana', businessName: 'Tienda', template: 'empty' });
+      .send({ email: 'a@b.com', password: 'secreta1', name: 'Ana', businessName: 'Tienda', businessType: 'otro', whatsapp: '1155550000' });
     const token = (alta.body as { token: string }).token;
     const key = await request(app)
       .post('/api/tenants/tienda/pos-registers')

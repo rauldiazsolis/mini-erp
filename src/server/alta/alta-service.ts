@@ -3,11 +3,9 @@ import type { TenantManager } from '../db/tenant-manager.ts';
 import type { ApiKeyService } from '../tenant/api-key-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { BillingService } from '../billing/billing-service.ts';
-import { applyPreset } from '../seeds/index.ts';
+import type { BusinessType } from '../../shared/business-type.ts';
 import { DomainError } from '../errors.ts';
 import { slugify } from './slug.ts';
-
-export type AltaTemplate = 'kiosco' | 'almacen' | 'ferreteria' | 'empty';
 
 export type AltaResult = {
   token?: string;
@@ -21,8 +19,8 @@ const POINT_OF_SALE = 'Caja 1';
 
 /**
  * Alta (#19): la única forma de que nazca una cuenta, además de una invitación. Crea la cuenta (si
- * no hay sesión), el comercio, el catálogo del rubro y la key de la primera caja; si algo falla,
- * deshace lo creado.
+ * no hay sesión, con su WhatsApp), el comercio vacío con su rubro (#22: los datos se cargan después,
+ * en "Cargá tus datos") y la key de la primera caja; si algo falla, deshace lo creado.
  */
 export class AltaService {
   private auth: AuthService;
@@ -41,9 +39,9 @@ export class AltaService {
 
   create(params: {
     user?: UserSession | undefined;
-    account?: { name: string; email: string; password: string } | undefined;
+    account?: { name: string; email: string; password: string; whatsapp: string } | undefined;
     businessName: string;
-    template: AltaTemplate;
+    businessType: BusinessType;
   }): AltaResult {
     let user = params.user;
     let token: string | undefined;
@@ -64,15 +62,19 @@ export class AltaService {
     try {
       const name = params.businessName.trim();
       const slug = slugify(name);
-      const tenant = this.tenants.createTenant({ id: slug, slug, name, ownerUserId: user.id, seedDemoData: false });
+      const tenant = this.tenants.createTenant({
+        id: slug,
+        slug,
+        name,
+        ownerUserId: user.id,
+        seedDemoData: false,
+        businessType: params.businessType,
+      });
       createdTenantId = tenant.id;
-      if (params.template !== 'empty') {
-        applyPreset(this.tenants.getTenantDb(tenant.id), params.template);
-      }
       const key = this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
       // El bono de alta (#21): créditos regalados del comercio, con vencimiento
       this.billing.grantSignupBonus(tenant.id, user.id);
-      this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { template: params.template } });
+      this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { businessType: params.businessType } });
       return {
         ...(token === undefined ? {} : { token }),
         user,

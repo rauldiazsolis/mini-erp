@@ -21,7 +21,7 @@ describe('usuarios del comercio (#19)', () => {
     app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) }).app;
     const alta = (await request(app)
       .post('/api/alta')
-      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', template: 'empty' })).body as {
+      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' })).body as {
       token: string;
       user: { id: string };
       tenant: { id: string };

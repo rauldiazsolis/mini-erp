@@ -43,6 +43,8 @@ export function ensureDevData(deps: Deps): DevInfo {
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {
     if (!deps.tenantManager.tenantExists(tenant.id)) seedTenant(deps, tenant, ids);
+    // Los sembrados antes de M6 no tienen rubro (#22)
+    deps.systemDb.prepare('UPDATE tenants SET business_type = ? WHERE id = ? AND business_type IS NULL').run(tenant.preset, tenant.id);
   }
   ensureDemos(deps);
   return devInfo();
@@ -70,7 +72,7 @@ function ensureUsers(deps: Deps): UserIds {
 
 function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): void {
   const now = new Date();
-  deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner] });
+  deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner], businessType: t.preset });
   const db = deps.tenantManager.getTenantDb(t.id);
   // El catálogo del rubro y los clientes, como una demo
   seedDemoSession(db, t.preset);

@@ -155,7 +155,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       // 1. Crear usuario root y obtener token
       const t1Res = await request(app)
         .post('/api/alta')
-        .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema', businessName: 'Kiosco Alfa', template: 'empty' });
+        .send({ email: 'owner@sistema.com', password: 'password123', name: 'Dueño Sistema', businessName: 'Kiosco Alfa', businessType: 'otro', whatsapp: '1155550000' });
       expect(t1Res.status).toBe(201);
       const token = (t1Res.body as unknown as { token: string }).token;
 
@@ -163,7 +163,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       const t2Res = await request(app)
         .post('/api/alta')
         .set('Authorization', `Bearer ${token}`)
-        .send({ businessName: 'Kiosco Beta', template: 'empty' });
+        .send({ businessName: 'Kiosco Beta', businessType: 'otro', whatsapp: '1155550000' });
       expect(t2Res.status).toBe(201);
 
       // 3. Crear producto en Kiosco Alfa vía API HTTP

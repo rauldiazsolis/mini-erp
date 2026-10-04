@@ -19,7 +19,7 @@ describe('contraseñas (#19)', () => {
   async function altaDe(email: string, business: string): Promise<Alta> {
     return (await request(app)
       .post('/api/alta')
-      .send({ name: email, email, password: 'clave-inicial', businessName: business, template: 'empty' })).body as Alta;
+      .send({ name: email, email, password: 'clave-inicial', businessName: business, businessType: 'otro', whatsapp: '1155550000' })).body as Alta;
   }
 
   async function sumar(tenant: string, ownerToken: string, email: string): Promise<{ token: string; user: { id: string } }> {

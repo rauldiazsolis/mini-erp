@@ -29,7 +29,7 @@ export class AuthService {
   }
 
   /** Crea una cuenta con su sesión. Solo la usan el alta y las invitaciones (#19): no hay registro suelto. */
-  createUser(params: { email: string; password: string; name: string }): {
+  createUser(params: { email: string; password: string; name: string; whatsapp?: string | undefined }): {
     token: string;
     user: UserSession;
   } {
@@ -50,9 +50,9 @@ export class AuthService {
 
     this.systemDb
       .prepare(
-        'INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (id, email, password_hash, name, global_role, created_at, whatsapp) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(userId, email, passwordHash, params.name.trim(), globalRole, now);
+      .run(userId, email, passwordHash, params.name.trim(), globalRole, now, params.whatsapp ?? null);
 
     const token = this.createSession(userId);
 

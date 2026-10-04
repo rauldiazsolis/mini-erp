@@ -43,6 +43,8 @@ const RUTAS: Record<string, Capability> = {
   'POST /bulk/interests': 'bulk',
   'GET /export/:entity': 'bulk',
   'POST /import/:entity': 'bulk',
+  'GET /catalog/example': 'bulk',
+  'POST /catalog/example': 'bulk',
   'GET /dashboard/summary': 'tenant.use',
   'GET /pos-registers': 'settings.manage',
   'POST /pos-registers': 'settings.manage',

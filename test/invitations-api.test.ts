@@ -19,7 +19,7 @@ describe('invitaciones por link (#19)', () => {
     app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }), now: () => clock }).app;
     const res = await request(app)
       .post('/api/alta')
-      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', template: 'empty' });
+      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' });
     const body = res.body as { token: string; tenant: { id: string } };
     owner = body.token;
     tenantId = body.tenant.id;
@@ -60,7 +60,7 @@ describe('invitaciones por link (#19)', () => {
   });
 
   it('con cuenta existente pide su contraseña y suma la membresía', async () => {
-    await request(app).post('/api/alta').send({ name: 'Bea', email: 'bea@k.com', password: 'clave-bea-1', businessName: 'Otro', template: 'empty' });
+    await request(app).post('/api/alta').send({ name: 'Bea', email: 'bea@k.com', password: 'clave-bea-1', businessName: 'Otro', businessType: 'otro', whatsapp: '1155550000' });
     const inv = (await invitar('bea@k.com', 'admin')).body as { token: string };
     expect(((await request(app).post('/api/invitations/lookup').send({ token: inv.token })).body as { accountExists: boolean }).accountExists).toBe(true);
     expect((await request(app).post('/api/invitations/accept').send({ token: inv.token, password: 'equivocada' })).status).toBe(401);
