@@ -209,6 +209,15 @@ export function logout(): void {
   authErrorSignal.value = null;
 }
 
+/**
+ * "Cerrar sesión" (#59): además suelta el comercio de la URL, así el próximo login va al suyo y no al
+ * del usuario anterior. Una sesión vencida (401) usa `logout` y conserva la pantalla.
+ */
+export function signOut(): void {
+  logout();
+  navigate('/admin');
+}
+
 function findTenant(tenantId: string): TenantMembershipItem | undefined {
   return userTenantsSignal.peek().find((t) => t.tenantId === tenantId);
 }

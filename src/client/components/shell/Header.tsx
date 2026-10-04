@@ -7,7 +7,7 @@ import {
   selectTenant,
   effectiveTenantIdSignal,
   isRootOrSupportSignal,
-  logout,
+  signOut,
 } from '../../state/auth-state.ts';
 import {
   toggleMobileMenu,
@@ -181,7 +181,7 @@ export function Header() {
 
         <button
           type="button"
-          onClick={logout}
+          onClick={signOut}
           title="Cerrar sesión"
           class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >

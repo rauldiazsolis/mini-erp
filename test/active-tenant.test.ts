@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { locationSignal, navigate, setHistoryForTests } from '../src/client/state/route-state.ts';
 import {
   currentUserSignal, effectiveTenantIdSignal, impersonateTenant, isImpersonatingSignal, lastTenantIdSignal, logout,
-  profileLoadedSignal, registerTenantRouteEffects, selectTenant, stopImpersonation, tenantAccessSignal, tokenSignal,
+  profileLoadedSignal, registerTenantRouteEffects, selectTenant, signOut, stopImpersonation, tenantAccessSignal, tokenSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
 
@@ -75,6 +75,18 @@ describe('El comercio activo sale de la URL (#59)', () => {
     currentUserSignal.value = { id: 'u', email: 'u@local.test', name: 'U', globalRole: 'user' };
     userTenantsSignal.value = [kiosco, almacen];
     expect(() => { impersonateTenant('t-almacen'); }).toThrow();
+  });
+
+  it('"Cerrar sesión" suelta el comercio de la URL: el próximo login va al suyo; una sesión vencida no', () => {
+    userTenantsSignal.value = [kiosco, almacen];
+    profileLoadedSignal.value = true;
+    navigate('/admin/almacen/dashboard');
+    logout();
+    expect(path()).toBe('/admin/almacen/dashboard');
+    navigate('/admin/almacen/dashboard');
+    signOut();
+    expect(path()).toBe('/admin');
+    expect(tokenSignal.value).toBeNull();
   });
 
   it('cerrar la sesión olvida el último comercio y el perfil', () => {
