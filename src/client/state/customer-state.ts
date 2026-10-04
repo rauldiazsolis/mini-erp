@@ -1,8 +1,11 @@
 import { signal, computed } from '@preact/signals';
-import { loadOnTenantAndView } from './view-loader.ts';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
+import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { inSection, routeFilters, setFilters } from './route-state.ts';
+import { invalidateAfter } from './invalidation.ts';
+import type { CustomerFilters } from '../routing/admin-routes.ts';
 
 export type CustomerItem = {
   id: string;
@@ -56,15 +59,32 @@ export type BalanceAdjustFormData = {
   reason: string;
 };
 
-// Señales principales
-export const customersSignal = signal<CustomerItem[]>([]);
-export const customerLoadingSignal = signal<boolean>(false);
-export const customerErrorSignal = signal<string | null>(null);
+// Datos: en la caché de TanStack Query (#59). Ventas también los usa, en el selector de cliente
+const customersQuery = createTenantQuery<CustomerItem[]>({
+  domain: 'customers',
+  enabled: () => inSection('customers', 'sales'),
+  onError: (err) => {
+    showToast({ type: 'error', title: 'Error de clientes', message: err.message });
+  },
+  fn: ({ tenantId, token }) => apiFetch<CustomerItem[]>(`tenants/${tenantId}/customers`, { token }),
+});
+export const customersSignal = computed<CustomerItem[]>(() => customersQuery.data.value ?? []);
+export const customerLoadingSignal = customersQuery.isLoading;
+export const customerErrorSignal = computed<string | null>(() => customersQuery.error.value?.message ?? null);
 
-// Filtros
-export const customerSearchSignal = signal<string>('');
-export const customerDebtorsOnlySignal = signal<boolean>(false);
-export const customerBlockedFilterSignal = signal<'all' | 'active' | 'blocked'>('all');
+// Filtros: en la URL (#59)
+export const customerFiltersSignal = computed<CustomerFilters>(() => routeFilters('customers'));
+export const customerSearchSignal = computed(() => customerFiltersSignal.value.q);
+export const customerDebtorsOnlySignal = computed(() => customerFiltersSignal.value.debtorsOnly);
+export const customerBlockedFilterSignal = computed(() => customerFiltersSignal.value.blocked);
+
+export function setCustomerFilters(patch: Partial<CustomerFilters>): void {
+  setFilters('customers', patch);
+}
+
+function setCustomers(update: (list: CustomerItem[]) => CustomerItem[]): void {
+  customersQuery.setData((previous) => update(previous ?? []));
+}
 
 // Modal de Alta / Edición
 export const customerModalOpenSignal = signal<boolean>(false);
@@ -107,37 +127,41 @@ export const balanceAdjustErrorSignal = signal<string | null>(null);
 // Drawer de Extracto de Cuenta Corriente
 export const accountDrawerOpenSignal = signal<boolean>(false);
 export const accountTargetCustomerSignal = signal<CustomerItem | null>(null);
-export const accountMovementsSignal = signal<AccountMovementItem[]>([]);
-export const accountLoadingSignal = signal<boolean>(false);
 
-// Clientes Filtrados
-export const filteredCustomersSignal = computed<CustomerItem[]>(() => {
-  const search = customerSearchSignal.value.trim().toLowerCase();
-  const debtorsOnly = customerDebtorsOnlySignal.value;
-  const blockedFilter = customerBlockedFilterSignal.value;
+// El extracto se pide mientras el drawer está abierto, por cliente
+const movementsQuery = createTenantParamQuery<AccountMovementItem[], readonly [string]>({
+  domain: 'customer-movements',
+  params: () => {
+    const target = accountTargetCustomerSignal.value;
+    return accountDrawerOpenSignal.value && target !== null ? [target.id] : null;
+  },
+  onError: (err) => {
+    showToast({ type: 'error', title: 'Error de cuenta corriente', message: err.message });
+  },
+  fn: ({ tenantId, token, params: [customerId] }) =>
+    apiFetch<AccountMovementItem[]>(`tenants/${tenantId}/customers/${customerId}/movements?limit=100`, { token }),
+});
+export const accountMovementsSignal = computed<AccountMovementItem[]>(() => movementsQuery.data.value ?? []);
+export const accountLoadingSignal = movementsQuery.isLoading;
 
-  return customersSignal.value.filter((c) => {
+// Clientes filtrados
+export function filterCustomers(customers: CustomerItem[], filters: CustomerFilters): CustomerItem[] {
+  const search = filters.q.trim().toLowerCase();
+  return customers.filter((c) => {
     if (search) {
       const matchName = c.name.toLowerCase().includes(search);
       const matchDoc = c.document?.toLowerCase().includes(search) ?? false;
       const matchPhone = c.phone?.toLowerCase().includes(search) ?? false;
       if (!matchName && !matchDoc && !matchPhone) return false;
     }
-
-    if (debtorsOnly && !c.isDebtor && c.balance <= 0) {
-      return false;
-    }
-
-    if (blockedFilter === 'active' && c.blockedReason !== null) {
-      return false;
-    }
-    if (blockedFilter === 'blocked' && c.blockedReason === null) {
-      return false;
-    }
-
+    if (filters.debtorsOnly && !c.isDebtor && c.balance <= 0) return false;
+    if (filters.blocked === 'active' && c.blockedReason !== null) return false;
+    if (filters.blocked === 'blocked' && c.blockedReason === null) return false;
     return true;
   });
-});
+}
+
+export const filteredCustomersSignal = computed<CustomerItem[]>(() => filterCustomers(customersSignal.value, customerFiltersSignal.value));
 
 // Métricas de Clientes y Deuda
 export const customerStatsSignal = computed(() => {
@@ -159,24 +183,9 @@ export const customerStatsSignal = computed(() => {
   };
 });
 
+/** El botón "Actualizar". */
 export async function fetchCustomers(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    customerLoadingSignal.value = true;
-    customerErrorSignal.value = null;
-
-    const data = await apiFetch<CustomerItem[]>(`tenants/${tenantId}/customers`, { token });
-    customersSignal.value = data;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar clientes';
-    customerErrorSignal.value = msg;
-    showToast({ type: 'error', title: 'Error de clientes', message: msg });
-  } finally {
-    customerLoadingSignal.value = false;
-  }
+  await customersQuery.refetch();
 }
 
 // Modal Alta / Edición
@@ -256,14 +265,14 @@ export async function submitCustomerForm(): Promise<void> {
     });
 
     if (isEdit) {
-      customersSignal.value = customersSignal.value.map((c) => (c.id === saved.id ? saved : c));
+      setCustomers((list) => list.map((c) => (c.id === saved.id ? saved : c)));
       showToast({
         type: 'success',
         title: 'Cliente Modificado',
         message: `"${saved.name}" actualizado correctamente`,
       });
     } else {
-      customersSignal.value = [saved, ...customersSignal.value];
+      setCustomers((list) => [saved, ...list]);
       showToast({
         type: 'success',
         title: 'Cliente Creado',
@@ -271,6 +280,7 @@ export async function submitCustomerForm(): Promise<void> {
       });
     }
 
+    void invalidateAfter('customer-saved');
     closeCustomerModal();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al guardar cliente';
@@ -333,7 +343,7 @@ export async function submitPayment(): Promise<void> {
     });
 
     // Actualizar reactivamente el balance del cliente en memoria
-    customersSignal.value = customersSignal.value.map((c) => {
+    setCustomers((list) => list.map((c) => {
       if (c.id === target.id) {
         const isDebtor = res.newBalance > 0;
         const availableCredit = c.unrestricted ? null : Math.max(0, c.creditLimit + c.margin - res.newBalance);
@@ -345,7 +355,7 @@ export async function submitPayment(): Promise<void> {
         };
       }
       return c;
-    });
+    }));
 
     showToast({
       type: 'success',
@@ -354,10 +364,7 @@ export async function submitPayment(): Promise<void> {
     });
 
     closePaymentModal();
-
-    if (accountDrawerOpenSignal.value && accountTargetCustomerSignal.value?.id === target.id) {
-      void loadCustomerMovements(target.id);
-    }
+    void invalidateAfter('customer-payment');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al registrar cobranza';
     paymentErrorSignal.value = msg;
@@ -421,7 +428,7 @@ export async function submitBalanceAdjustment(): Promise<void> {
     });
 
     // Actualizar reactivamente el saldo en memoria
-    customersSignal.value = customersSignal.value.map((c) => {
+    setCustomers((list) => list.map((c) => {
       if (c.id === target.id) {
         const isDebtor = res.newBalance > 0;
         const availableCredit = c.unrestricted ? null : Math.max(0, c.creditLimit + c.margin - res.newBalance);
@@ -433,7 +440,7 @@ export async function submitBalanceAdjustment(): Promise<void> {
         };
       }
       return c;
-    });
+    }));
 
     showToast({
       type: 'success',
@@ -442,10 +449,7 @@ export async function submitBalanceAdjustment(): Promise<void> {
     });
 
     closeBalanceAdjustModal();
-
-    if (accountDrawerOpenSignal.value && accountTargetCustomerSignal.value?.id === target.id) {
-      void loadCustomerMovements(target.id);
-    }
+    void invalidateAfter('balance-adjusted');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al ajustar saldo';
     balanceAdjustErrorSignal.value = msg;
@@ -455,38 +459,12 @@ export async function submitBalanceAdjustment(): Promise<void> {
 }
 
 // Extracto de Cuenta Corriente (Drawer)
-export async function openAccountStatement(customer: CustomerItem): Promise<void> {
+export function openAccountStatement(customer: CustomerItem): void {
   accountTargetCustomerSignal.value = customer;
   accountDrawerOpenSignal.value = true;
-  await loadCustomerMovements(customer.id);
 }
 
 export function closeAccountStatement(): void {
   accountDrawerOpenSignal.value = false;
   accountTargetCustomerSignal.value = null;
-  accountMovementsSignal.value = [];
-}
-
-export async function loadCustomerMovements(customerId: string): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    accountLoadingSignal.value = true;
-    const movements = await apiFetch<AccountMovementItem[]>(`tenants/${tenantId}/customers/${customerId}/movements?limit=100`, {
-      token,
-    });
-    accountMovementsSignal.value = movements;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar extracto';
-    showToast({ type: 'error', title: 'Error de cuenta corriente', message: msg });
-  } finally {
-    accountLoadingSignal.value = false;
-  }
-}
-
-if (typeof window !== 'undefined') {
-  // Al cambiar de comercio y al entrar a la pantalla (#22)
-  loadOnTenantAndView('customers', fetchCustomers);
 }

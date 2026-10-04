@@ -1,7 +1,10 @@
-import { effect, signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { effectiveTenantIdSignal, tokenSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
+import { createTenantQuery } from './query-keys.ts';
+import { inSection } from './route-state.ts';
+import { invalidateAfter } from './invalidation.ts';
 
 export type DiscrepancyItem = {
   id: string;
@@ -17,21 +20,21 @@ export type DiscrepancyItem = {
   createdAt: string;
 };
 
+// Sin la lista, la franja no aparece: un error de carga no se muestra
+const discrepanciesQuery = createTenantQuery<DiscrepancyItem[]>({
+  domain: 'discrepancies',
+  enabled: () => inSection('customers'),
+  fn: ({ tenantId, token }) => apiFetch<DiscrepancyItem[]>(`tenants/${tenantId}/discrepancies`, { token }),
+});
+
 /** Discrepancias abiertas del comercio (#2): franja y panel en Clientes. */
-export const discrepanciesSignal = signal<DiscrepancyItem[]>([]);
+export const discrepanciesSignal = computed<DiscrepancyItem[]>(() => discrepanciesQuery.data.value ?? []);
 export const discrepancyDrawerOpenSignal = signal(false);
 export const dismissingIdSignal = signal<string | null>(null);
 export const dismissNoteSignal = signal('');
 
 export async function fetchDiscrepancies(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-  try {
-    discrepanciesSignal.value = await apiFetch<DiscrepancyItem[]>(`tenants/${tenantId}/discrepancies`, { token });
-  } catch {
-    // Sin la lista, la franja no aparece: no es un error para mostrar
-  }
+  await discrepanciesQuery.refetch();
 }
 
 export function openDiscrepancies(): void {
@@ -56,7 +59,7 @@ export async function dismissDiscrepancy(id: string): Promise<void> {
   try {
     await apiFetch(`tenants/${tenantId}/discrepancies/${id}/dismiss`, { method: 'POST', token, body: { note: dismissNoteSignal.value } });
     dismissingIdSignal.value = null;
-    await fetchDiscrepancies();
+    await invalidateAfter('discrepancy-dismissed');
     if (discrepanciesSignal.value.length === 0) {
       discrepancyDrawerOpenSignal.value = false;
     }
@@ -64,12 +67,4 @@ export async function dismissDiscrepancy(id: string): Promise<void> {
   } catch (err: unknown) {
     showToast({ type: 'error', title: 'No se pudo descartar', message: err instanceof Error ? err.message : 'Error inesperado' });
   }
-}
-
-if (typeof window !== 'undefined') {
-  effect(() => {
-    if (effectiveTenantIdSignal.value && tokenSignal.value) {
-      void fetchDiscrepancies();
-    }
-  });
 }

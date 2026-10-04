@@ -3,7 +3,6 @@ import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { activeSectionSignal, goTo, routeTab } from './route-state.ts';
 import type { TabId } from '../routing/admin-routes.ts';
-import { customersSignal, fetchCustomers } from './customer-state.ts';
 import type { RegisterChoice } from './sales-labels.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -264,7 +263,6 @@ export function registerSalesEffects(): () => void {
   const disposeRegisters = effect(() => {
     if (activeSectionSignal.value === 'sales' && session() !== null) {
       void fetchRegisters();
-      if (customersSignal.peek().length === 0) void fetchCustomers();
     }
   });
   const disposeTab = effect(() => {

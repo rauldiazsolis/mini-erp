@@ -1,6 +1,5 @@
 import { argentinaToday } from '../../shared/argentina-day.ts';
 import type { DocStatus } from '../../shared/sales-types.ts';
-import { customerDebtorsOnlySignal, customerSearchSignal } from './customer-state.ts';
 import { selectedBranchSignal, selectedPeriodSignal, type DashboardPeriod } from './dashboard-state.ts';
 import { goTo } from './route-state.ts';
 import { openSalesWith, presetRange, type DayRange } from './sales-state.ts';
@@ -25,9 +24,7 @@ export function drillToSales(
 }
 
 export function drillToDebtors(): void {
-  customerSearchSignal.value = '';
-  customerDebtorsOnlySignal.value = true;
-  goTo({ section: 'customers' });
+  goTo({ section: 'customers', filters: { ...decodeFilters('customers', {}), debtorsOnly: true } });
 }
 
 export function drillToStockProduct(name: string): void {

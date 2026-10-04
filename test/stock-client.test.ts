@@ -90,7 +90,7 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
     queryClient.setQueryData(tenantKey('tienda-test', 'branches'), mockBranches);
     queryClient.setQueryData(tenantKey('tienda-test', 'categories'), ['Bebidas', 'Golosinas', 'Servicios']);
     // En una pantalla que no pide stock ni sucursales: los tests ven la caché sin pedidos de fondo
-    atTenant('tienda-test', 'clientes');
+    atTenant('tienda-test', 'usuarios');
     vi.restoreAllMocks();
   });
 
