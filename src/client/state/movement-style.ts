@@ -17,6 +17,8 @@ export function movementLabel(type: string): string {
       return 'Ajuste de saldo';
     case 'interest':
       return 'Interés';
+    case 'opening':
+      return 'Saldo inicial';
     default: {
       // Un tipo que no conocemos: legible, con mayúscula solo al principio
       const text = type.replace(/_/g, ' ');
