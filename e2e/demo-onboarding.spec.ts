@@ -45,7 +45,7 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   const demoLink = page.getByRole('link', { name: 'Probar la demo' });
   await expect(demoLink).toHaveAttribute(
     'href',
-    `http://localhost:${String(E2E_PORT)}/pos/0.1.0/?demo=true&backend=${encodeURIComponent(`http://localhost:${String(E2E_PORT)}/connector`)}`,
+    `http://localhost:${String(E2E_PORT)}/pos/v4/?demo=true&backend=${encodeURIComponent(`http://localhost:${String(E2E_PORT)}/connector`)}`,
   );
   await demoLink.click();
 

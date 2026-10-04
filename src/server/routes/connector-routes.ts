@@ -7,12 +7,18 @@ import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
-import { backendInfo, CONTRACT_VERSION } from '../connector/backend-info.ts';
+import { backendInfo } from '../connector/backend-info.ts';
+import { CONTRACT_MAJOR, CONTRACT_VERSION, majorOf } from '../../shared/contract-version.ts';
 import type { RegisterService } from '../registers/register-service.ts';
 import type { BillingService } from '../billing/billing-service.ts';
+import type { TenantManager } from '../db/tenant-manager.ts';
 
-/** Servicios de sistema que usa el Connector API (#21). */
-export type ConnectorDeps = { registers: RegisterService; billing: BillingService };
+/** Servicios de sistema que usa el Connector API (#21, #58). */
+export type ConnectorDeps = {
+  registers: RegisterService;
+  billing: BillingService;
+  tenants: Pick<TenantManager, 'getTenantName'>;
+};
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
   if (req.tenantScope !== undefined) {
@@ -26,12 +32,9 @@ function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
 
 function checkContractVersion(req: Request, res: Response, next: NextFunction): void {
   const version = req.headers['x-pos-contract-version'];
-  if (typeof version === 'string') {
-    const major = version.split('.')[0];
-    if (major !== '4') {
-      res.status(409).json({ code: 'incompatible-contract', contractVersion: CONTRACT_VERSION });
-      return;
-    }
+  if (typeof version === 'string' && majorOf(version) !== CONTRACT_MAJOR) {
+    res.status(409).json({ code: 'incompatible-contract', contractVersion: CONTRACT_VERSION });
+    return;
   }
   next();
 }
@@ -103,9 +106,11 @@ export function createConnectorRoutes(
 
   router.use(requirePosAuth);
 
-  // GET /info (nunca responde 409, informa versión y estado)
-  router.get('/info', (_req: AuthenticatedPosRequest, res: Response) => {
-    res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled() }));
+  // GET /info (nunca responde 409, informa versión y estado; 4.5.0: el comercio de la key)
+  router.get('/info', (req: AuthenticatedPosRequest, res: Response) => {
+    const tenantId = req.posContext?.tenantId;
+    const companyName = tenantId === undefined ? undefined : (deps.tenants.getTenantName(tenantId) ?? undefined);
+    res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled(), companyName }));
   });
 
   // El resto de los endpoints validan la versión del contrato

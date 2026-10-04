@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { z } from 'zod';
 
 /**
  * Qué archivos forman una versión publicada del POS (#9), leyendo su `index.html` y sus bundles.
@@ -46,4 +47,19 @@ export function bundleAssetRefs(text: string, filePath: string): string[] {
     ...text.matchAll(new RegExp(`["'(]\\./([A-Za-z0-9._-]+\\.(?:${ASSET_EXT}))["')]`, 'g')),
   ].map((m) => (m[1] === undefined ? undefined : normalize(m[1], fromDir)));
   return unique([...rooted, ...relative]);
+}
+
+const manifestSchema = z
+  .object({ icons: z.array(z.object({ src: z.string() }).passthrough()).optional() })
+  .passthrough();
+
+/** Los íconos que nombra el manifest de la PWA (`icons[].src`), relativos a su carpeta (#58). */
+export function manifestAssetRefs(text: string, filePath: string): string[] {
+  const raw: unknown = JSON.parse(text);
+  const parsed = manifestSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`${filePath} no es un manifest válido`);
+  }
+  const fromDir = posix.dirname(filePath);
+  return unique((parsed.data.icons ?? []).map((icon) => normalize(icon.src, fromDir)));
 }

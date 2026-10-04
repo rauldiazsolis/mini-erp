@@ -1,38 +1,38 @@
 import { describe, it, expect } from 'vitest';
 import {
-  contractBaseUrl,
+  channelBaseUrl,
   contractJson,
   openApiInfoVersion,
   parseVersionJson,
 } from '../scripts/contract-source.ts';
 
-describe('contractBaseUrl', () => {
-  it('arma la carpeta publicada de una versión del POS', () => {
-    expect(contractBaseUrl('0.1.0')).toBe('https://offline-pos.pages.dev/0.1.0/');
+describe('channelBaseUrl (#58)', () => {
+  it('arma la carpeta del canal publicado', () => {
+    expect(channelBaseUrl('v4')).toBe('https://pos.contax.ar/v4/');
   });
 
-  it.each(['v0.1.0', '0.1', '0.1.0-rc.1', '', '../0.1.0'])('rechaza %j', (bad) => {
-    expect(() => contractBaseUrl(bad)).toThrow(/x\.y\.z/);
+  it.each(['4', 'v0', 'v4.5', '0.1.0', '', '../v4', 'V4'])('rechaza %j', (bad) => {
+    expect(() => channelBaseUrl(bad)).toThrow(/v<major>/);
   });
 });
 
-describe('parseVersionJson', () => {
-  const ok = { version: '0.1.0', contract: '4.4.0', minBackendContract: '4.0.0' };
+describe('parseVersionJson (#58)', () => {
+  const ok = { version: '0.3.1', contract: '4.5.0', minBackendContract: '4.0.0' };
 
-  it('acepta el version.json publicado', () => {
-    expect(parseVersionJson(ok, '0.1.0')).toEqual(ok);
+  it('acepta el version.json del canal, sin fijar la versión del POS', () => {
+    expect(parseVersionJson(ok, 'v4')).toEqual(ok);
   });
 
-  it('rechaza un version.json de otra versión', () => {
-    expect(() => parseVersionJson(ok, '0.2.0')).toThrow(/0\.1\.0.*0\.2\.0/);
+  it('rechaza un contrato de otro major que el del canal', () => {
+    expect(() => parseVersionJson({ ...ok, contract: '5.0.0' }, 'v4')).toThrow(/v4.*5\.0\.0/);
   });
 
   it('rechaza un version.json sin contrato', () => {
-    expect(() => parseVersionJson({ version: '0.1.0' }, '0.1.0')).toThrow(/version\.json/);
+    expect(() => parseVersionJson({ version: '0.3.1' }, 'v4')).toThrow(/version\.json/);
   });
 
   it('rechaza versiones que no son x.y.z', () => {
-    expect(() => parseVersionJson({ ...ok, contract: '4.4' }, '0.1.0')).toThrow(/version\.json/);
+    expect(() => parseVersionJson({ ...ok, contract: '4.5' }, 'v4')).toThrow(/version\.json/);
   });
 });
 
@@ -61,15 +61,16 @@ describe('openApiInfoVersion', () => {
   });
 });
 
-describe('contractJson', () => {
-  it('guarda la procedencia de la copia', () => {
+describe('contractJson (#58)', () => {
+  it('guarda la procedencia: el canal y qué POS había', () => {
     expect(
-      contractJson({ version: '0.1.0', contract: '4.4.0', minBackendContract: '4.0.0' }),
+      contractJson('v4', { version: '0.3.1', contract: '4.5.0', minBackendContract: '4.0.0' }),
     ).toEqual({
-      posVersion: '0.1.0',
-      contract: '4.4.0',
+      channel: 'v4',
+      posVersion: '0.3.1',
+      contract: '4.5.0',
       minBackendContract: '4.0.0',
-      source: 'https://offline-pos.pages.dev/0.1.0/',
+      source: 'https://pos.contax.ar/v4/',
     });
   });
 });
