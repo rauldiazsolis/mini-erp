@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { writeStock } from './write-stock.ts';
 
 export type StockMatrixProduct = {
   productId: string;
@@ -208,56 +208,19 @@ export class StockService {
       throw err;
     }
 
-    // 3. Obtener stock actual
-    const currentStockRow = this.db
-      .prepare('SELECT quantity FROM stock WHERE product_id = ? AND branch_id = ?')
-      .get(params.productId, params.branchId) as { quantity: number } | undefined;
-
-    const previousQuantity = currentStockRow?.quantity ?? 0;
-
-    let delta: number;
-    let newQuantity: number;
-
-    if (params.type === 'set') {
-      newQuantity = params.quantity;
-      delta = newQuantity - previousQuantity;
-    } else {
-      delta = params.quantity;
-      newQuantity = previousQuantity + delta;
-    }
-
+    // 3. Movimiento en el kardex, stock y producto tocado para el pull (#22: lo comparte la importación)
     const now = new Date().toISOString();
-    const movementId = `mov_${randomUUID()}`;
-
-    // 4. Registrar movimiento en Kardex (stock_movements)
-    this.db
-      .prepare(
-        `INSERT INTO stock_movements (id, product_id, branch_id, delta, reason, notes, sale_id, device_id, branch, point_of_sale, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)`,
-      )
-      .run(movementId, params.productId, params.branchId, delta, params.reason, params.notes ?? null, now);
-
-    // 5. Actualizar o insertar fila en stock
-    this.db
-      .prepare(
-        `INSERT INTO stock (product_id, branch_id, quantity, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(product_id, branch_id) DO UPDATE SET quantity = excluded.quantity, updated_at = excluded.updated_at`,
-      )
-      .run(params.productId, params.branchId, newQuantity, now);
-
-    // 6. Actualizar timestamp del producto para que el POS lo reconozca en delta pull
-    this.db.prepare('UPDATE products SET updated_at = ? WHERE id = ?').run(now, params.productId);
-
-    return {
+    const written = writeStock(this.db, {
       productId: params.productId,
       branchId: params.branchId,
-      previousQuantity,
-      delta,
-      newQuantity,
-      movementId,
-      updatedAt: now,
-    };
+      type: params.type,
+      quantity: params.quantity,
+      reason: params.reason,
+      notes: params.notes,
+      now,
+    });
+
+    return { productId: params.productId, branchId: params.branchId, ...written, updatedAt: now };
   }
 
   // --- CONSULTA DE KARDEX ---

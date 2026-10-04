@@ -115,9 +115,6 @@ export function importCustomers(db: DatabaseSync, rows: RowContext[], now: strin
       results.push({ line: row.line, key, action: 'error', messages: errors });
       continue;
     }
-    // Solo una fila válida "ocupa" la clave: corregida más abajo en el mismo archivo, entra
-    seen.set(identity, row.line);
-
     let existingId: string | undefined;
     if (id !== undefined) {
       existingId = getCustomer.get(id) === undefined ? undefined : id;
@@ -131,12 +128,13 @@ export function importCustomers(db: DatabaseSync, rows: RowContext[], now: strin
       }
       existingId = matches[0];
     }
-
     if (existingId === undefined) {
       if (data.name === undefined) {
         results.push({ line: row.line, key, action: 'error', messages: ['Falta el nombre para crearlo'] });
         continue;
       }
+      // Solo una fila que se aplica "ocupa" la clave: corregida más abajo en el mismo archivo, entra
+      seen.set(identity, row.line);
       const newId = id ?? `cust_${randomUUID()}`;
       db.prepare(
         `INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, blocked_reason, created_at, updated_at)
@@ -163,6 +161,7 @@ export function importCustomers(db: DatabaseSync, rows: RowContext[], now: strin
       continue;
     }
 
+    seen.set(identity, row.line);
     const current = getCustomer.get(existingId) as CustomerRow;
     const messages: string[] = [];
     // Nombres de columna fijos del código, nunca del archivo
