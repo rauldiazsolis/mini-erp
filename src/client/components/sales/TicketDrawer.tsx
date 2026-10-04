@@ -26,14 +26,14 @@ export function TicketDrawer() {
           {t.voidsSaleId !== undefined && (
             <p>
               Anula el{' '}
-              <button type="button" class={link} onClick={() => { void openTicket(t.voidsSaleId ?? ''); }}>ticket original</button>
+              <button type="button" class={link} onClick={() => { openTicket(t.voidsSaleId ?? ''); }}>ticket original</button>
               . Motivo: {t.voidReason ?? 'sin motivo'}
             </p>
           )}
           {t.voidedBy !== undefined && (
             <p>
               Anulada por{' '}
-              <button type="button" class={link} onClick={() => { void openTicket(t.voidedBy ?? ''); }}>su anulación</button>
+              <button type="button" class={link} onClick={() => { openTicket(t.voidedBy ?? ''); }}>su anulación</button>
             </p>
           )}
           <table class="w-full text-left">

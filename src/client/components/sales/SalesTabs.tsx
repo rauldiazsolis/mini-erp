@@ -1,5 +1,5 @@
-import { pageSignal, salesTabSignal, type SalesTab } from '../../state/sales-state.ts';
-import { tabUrl } from '../../state/route-state.ts';
+import { salesTabSignal, sharedSalesFilters, type SalesTab } from '../../state/sales-state.ts';
+import { routeFilters, tabUrl } from '../../state/route-state.ts';
 import { Link } from '../ui/Link.tsx';
 
 export const TABS: Array<{ id: SalesTab; label: string }> = [
@@ -16,10 +16,9 @@ export function SalesTabs() {
       {TABS.map((t) => (
         <Link
           key={t.id}
-          href={tabUrl('sales', t.id)}
+          href={tabUrl('sales', t.id, sharedSalesFilters(routeFilters('sales')))}
           role="tab"
           aria-selected={active === t.id}
-          onNavigate={() => { pageSignal.value = 1; }}
           class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             active === t.id
               ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'

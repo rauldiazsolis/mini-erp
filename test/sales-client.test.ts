@@ -1,18 +1,19 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { formatDay, formatMoney, formatQty } from '../src/client/format.ts';
 import { countLabel, customerLabel, methodLabel, parseRegisterKey, registerKey, registerLabel } from '../src/client/state/sales-labels.ts';
 import {
-  buildQuery, endpointFor, loadTab, openSalesWith, openTicket, presetRange, rangeSignal, registerSignal,
-  salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, pageSignal, type SalesQueryInput,
+  buildQuery, endpointFor, openSalesWith, openTicket, presetRange, rangeSignal, rangePresetSignal, registerSignal,
+  salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, pageSignal, paymentsFiltersSignal, setSalesFilters,
+  setTab, closeTicket, type SalesQueryInput,
   openPayment, closePayment, paymentsListSignal, paymentDetailSignal,
   openDaySummary, daySummarySignal,
 } from '../src/client/state/sales-state.ts';
-import { activeSectionSignal } from '../src/client/state/route-state.ts';
-import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { activeSectionSignal, locationSignal, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
 import { drillToDebtors, drillToSales, drillToStockProduct, periodRange } from '../src/client/state/dashboard-drill.ts';
 import { customerDebtorsOnlySignal } from '../src/client/state/customer-state.ts';
 import { stockSearchSignal } from '../src/client/state/stock-state.ts';
-import { atTenant } from './helpers/client-route.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const originalFetch = globalThis.fetch;
 const json = (status: number, body: unknown) =>
@@ -29,11 +30,32 @@ const input = (patch: Partial<SalesQueryInput> = {}): SalesQueryInput => ({
   ...patch,
 });
 
+/** Las URLs pedidas al `fetch` falso. */
+let requested: string[] = [];
+
+/** Un `fetch` falso que anota cada URL y responde según la primera regla que la contiene. */
+function fakeFetch(routes: Array<[string, unknown]> = []): void {
+  globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : input.toString();
+    requested.push(url);
+    const match = routes.find(([fragment]) => url.includes(fragment));
+    return Promise.resolve(json(200, match === undefined ? [] : match[1]));
+  });
+}
+
+const path = (): string => `${locationSignal.value.pathname}${locationSignal.value.search}`;
+
 beforeEach(() => {
-  globalThis.fetch = originalFetch;
-  tokenSignal.value = 'tok';
+  requested = [];
+  fakeFetch();
+  setHistoryForTests(null);
+  freshSession('tok');
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T', status: 'active', role: 'member' }];
-  atTenant('t1');
+  atTenant('t1', 'usuarios');
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe('formato según el navegador (#20, #51)', () => {
@@ -93,18 +115,19 @@ describe('estado de Ventas & Caja (#20)', () => {
 
   it('carga la solapa y abre el ticket', async () => {
     const list = { items: [], count: 0, page: 1, pageSize: 50, netTotal: 0 };
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(200, list)).mockResolvedValueOnce(json(200, { id: 's1' }));
-    globalThis.fetch = fetchMock;
-    await loadTab(input());
-    expect((fetchMock.mock.calls[0] as [string])[0]).toBe('/api/tenants/t1/sales?from=2026-10-01&to=2026-10-02&page=1&pageSize=50');
-    expect(salesListSignal.value).toEqual(list);
-    await openTicket('s1');
-    expect((fetchMock.mock.calls[1] as [string])[0]).toBe('/api/tenants/t1/sales/s1');
-    expect(ticketSignal.value).toEqual({ id: 's1' });
+    fakeFetch([['/sales/s1', { id: 's1' }], ['/sales?', list]]);
+    atTenant('t1', 'ventas?desde=2026-10-01&hasta=2026-10-02');
+    await vi.waitFor(() => { expect(salesListSignal.value).toEqual(list); });
+    expect(requested).toContain('/api/tenants/t1/sales?from=2026-10-01&to=2026-10-02&page=1&pageSize=50');
+    openTicket('s1');
+    await vi.waitFor(() => { expect(ticketSignal.value).toEqual({ id: 's1' }); });
+    expect(requested).toContain('/api/tenants/t1/sales/s1');
+    closeTicket();
+    expect(ticketSignal.value).toBeNull();
   });
 
   it('el drill-down pone los filtros y navega a la sección', () => {
-    pageSignal.value = 3;
+    atTenant('t1', 'ventas?pagina=3');
     openSalesWith({ range: { from: '2026-09-26', to: '2026-10-02' }, branch: 'CENTRAL', status: 'valid', productId: 'p1' });
     expect(activeSectionSignal.value).toBe('sales');
     expect(salesTabSignal.value).toBe('sales');
@@ -116,15 +139,17 @@ describe('estado de Ventas & Caja (#20)', () => {
 });
 
 describe('cobranzas en el cliente (#20)', () => {
-  it('abre una cobranza de la página y navega a su anulación', () => {
+  it('abre una cobranza de la página y navega a su anulación', async () => {
     const base = { day: '2026-10-01', createdAt: '2026-10-01T15:00:00.000Z', branch: 'CENTRAL', pointOfSale: 'Caja 1', customer: { id: 'c1', name: 'Ana' } };
-    paymentsListSignal.value = {
+    fakeFetch([['/customer-payments?', {
       items: [
         { ...base, id: 'cp2', payments: [{ method: 'cash', amount: -700 }], total: -700, voided: false, voidsPaymentId: 'cp1' },
         { ...base, id: 'cp1', payments: [{ method: 'cash', amount: 700 }], total: 700, voided: true, voidedBy: 'cp2' },
       ],
       count: 2, page: 1, pageSize: 50, netTotal: 0,
-    };
+    }]]);
+    atTenant('t1', 'ventas/cobranzas');
+    await vi.waitFor(() => { expect(paymentsListSignal.value?.items).toHaveLength(2); });
     openPayment('cp1');
     expect(paymentDetailSignal.value?.id).toBe('cp1');
     openPayment(paymentDetailSignal.value?.voidedBy ?? '');
@@ -138,11 +163,10 @@ describe('cobranzas en el cliente (#20)', () => {
 
 describe('resumen del día en el cliente (#20)', () => {
   it('pide el día de esa caja; sin punto de venta va vacío', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json(200, { day: '2026-10-01', summary: {}, entries: [] }));
-    globalThis.fetch = fetchMock;
-    await openDaySummary({ day: '2026-10-01', branch: 'CENTRAL', pointOfSale: null });
-    expect((fetchMock.mock.calls[0] as [string])[0]).toBe('/api/tenants/t1/cash-summary/day?day=2026-10-01&branch=CENTRAL&pointOfSale=');
-    expect(daySummarySignal.value?.day).toBe('2026-10-01');
+    fakeFetch([['/cash-summary/day?', { day: '2026-10-01', summary: {}, entries: [] }]]);
+    openDaySummary({ day: '2026-10-01', branch: 'CENTRAL', pointOfSale: null });
+    await vi.waitFor(() => { expect(daySummarySignal.value?.day).toBe('2026-10-01'); });
+    expect(requested).toEqual(['/api/tenants/t1/cash-summary/day?day=2026-10-01&branch=CENTRAL&pointOfSale=']);
   });
 });
 
@@ -178,5 +202,41 @@ describe('drill-down del dashboard (#20)', () => {
     drillToStockProduct('Alfajor');
     expect(activeSectionSignal.value).toBe('stock');
     expect(stockSearchSignal.value).toBe('Alfajor');
+  });
+});
+
+describe('Ventas con URL y caché (#59)', () => {
+  it('rango, caja, filtros y página salen de la URL', () => {
+    atTenant('t1', 'ventas/cobranzas?desde=2026-10-01&hasta=2026-10-03&caja=&pagina=2&estado=anuladas');
+    expect(salesTabSignal.value).toBe('payments');
+    expect(rangePresetSignal.value).toBe('custom');
+    expect(rangeSignal.value).toEqual({ from: '2026-10-01', to: '2026-10-03' });
+    expect(registerSignal.value).toEqual({ pointOfSale: '' });
+    expect(paymentsFiltersSignal.value).toEqual({ status: 'voided' });
+    expect(pageSignal.value).toBe(2);
+  });
+
+  it('un filtro vuelve a la primera página y reemplaza la entrada', () => {
+    atTenant('t1', 'ventas?pagina=3');
+    setSalesFilters({ status: 'valid' });
+    expect(locationSignal.value.search).toBe('?estado=vigentes');
+  });
+
+  it('cambiar de solapa conserva rango y caja y suelta los filtros de la solapa', () => {
+    atTenant('t1', 'ventas?rango=semana&sucursal=CENTRAL&estado=anuladas&pagina=2');
+    setTab('movements');
+    expect(path()).toBe('/admin/t1/ventas/movimientos?rango=semana&sucursal=CENTRAL');
+  });
+
+  it('el drill del dashboard abre ventas con sus filtros en la URL', () => {
+    atTenant('t1', 'dashboard');
+    openSalesWith({ range: { from: '2026-10-01', to: '2026-10-01' }, status: 'voided', productId: 'p1' });
+    expect(path()).toBe('/admin/t1/ventas?desde=2026-10-01&hasta=2026-10-01&estado=anuladas&producto=p1');
+  });
+
+  it('solo pide la solapa activa', async () => {
+    atTenant('t1', 'ventas/resumen');
+    await vi.waitFor(() => { expect(requested.some((u) => u.includes('/cash-summary?'))).toBe(true); });
+    expect(requested.some((u) => u.includes('/sales?'))).toBe(false);
   });
 });
