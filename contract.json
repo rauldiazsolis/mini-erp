@@ -1,7 +1,7 @@
 {
   "channel": "v4",
-  "posVersion": "0.3.1",
-  "contract": "4.5.0",
+  "posVersion": "0.4.0",
+  "contract": "4.6.0",
   "minBackendContract": "4.0.0",
   "source": "https://pos.contax.ar/v4/"
 }

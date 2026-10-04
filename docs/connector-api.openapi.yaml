@@ -1,12 +1,26 @@
 openapi: 3.1.0
 info:
   title: offline-pos Connector API
-  version: '4.5.0'
+  version: '4.6.0'
   description: |
     Contrato que cualquier sistema externo (ERP, e-commerce, facturación,
     inventario) implementa para conectarse al POS. La guía para integradores
     (`guia.md`, publicada junto a este archivo) explica cómo probarlo y por
     dónde empezar.
+
+    **4.6.0 respecto de 4.5.0** (aditivo):
+      - Capacidad `portal`: el POS abre el backend en una pestaña nueva con
+        un comando que nombra el backend. `GET /info` la declara en
+        `capabilities` junto con `portal: { command, label }`, y
+        `POST /portal-links` devuelve la URL que el POS abre. Ver "Portal"
+        más abajo.
+      - Cuerpo de error común `ErrorBody` (`{ code, message? }`) y el header
+        `Retry-After`.
+      - `503` de mantenimiento (`code: maintenance`) en `/sync/push`,
+        `/sync/pull`, `/account-holds`, `/demo-sessions` y `/portal-links`.
+      - `POST /demo-sessions` documenta `429` (`rate-limited`) y `503`
+        (`demo-capacity`).
+      - El piso sigue en 4.0.0: un backend 4.5 sigue siendo compatible.
 
     **4.5.0 respecto de 4.4.0** (aditivo):
       - `GET /info` suma `company` opcional (`{ name }`): el comercio al que
@@ -119,17 +133,18 @@ info:
     ack, el lote sigue congelado en el outbox del POS con su mismo
     `idempotency_id` y sale cuando el backend se actualice.
 
-    **Compatibilidad del lado del POS (desde 4.4.0)**: el POS habla 4.5.0 y
+    **Compatibilidad del lado del POS (desde 4.4.0)**: el POS habla 4.6.0 y
     considera compatible a un backend del **mismo major con minor igual o
     mayor que el piso 4.0.0** (hasta 4.3.0 exigía su mismo minor). Lo que un
     backend puede o no hacer más allá del piso lo declara como **capacidad**
     en `GET /info.capabilities`; el POS nunca la deduce de la versión y un
-    nombre de capacidad que no conoce lo ignora. Capacidades de 4.4.0:
+    nombre de capacidad que no conoce lo ignora. Capacidades (4.4.0 y 4.6.0):
 
     | Capacidad | Qué habilita | Sin ella |
     |---|---|---|
     | `demo-sessions` | El backend implementa `POST /demo-sessions` | El POS no la consulta antes: un link de demo prueba directo y el 404 es la respuesta |
     | `customer-payment-void` | El POS anula cobranzas (`voidsPaymentId`, 4.3.0) | La cobranza se ve en `/ANULAR` pero no se anula |
+    | `portal` | El POS muestra el comando y el botón que declara `portal` y abre el backend con `POST /portal-links` | No aparece nada |
 
     **Reglas de evolución (4.4.0)**:
       - **Campos desconocidos**: los dos lados los ignoran, en cualquier nivel.
@@ -171,6 +186,25 @@ info:
     operador decida. Una demo revocada (ver `POST /demo-sessions`) puede ir
     igual al alta: la vuelta trae una conexión nueva.
 
+    **Portal (4.6.0)**: con la capacidad `portal`, el POS suma el comando
+    `/<portal.command>` y un botón `<portal.label> (/<portal.command>)`.
+    Al usarlos pide `POST /portal-links` con su API key y abre la `url` de
+    la respuesta en una pestaña nueva, sin guardarla. **El backend decide
+    qué URL devuelve según la credencial**, en cada pedido: un link con
+    autorización (de un solo uso o de varios) que abre una sesión acotada a
+    esa terminal, o su página de login para que entre un usuario con su
+    cuenta. La sesión y sus permisos los decide el backend; el contrato no
+    define roles.
+
+      - La URL **nunca lleva la API key**: si lleva autorización, es un
+        token opaco del backend. Se recomienda un solo uso y un vencimiento
+        corto (por ejemplo, 60 segundos).
+      - El link no viaja en el pull ni se guarda: se pide al usarlo.
+      - `command`: mayúsculas, dígitos y `_`, de 2 a 16 caracteres, sin la
+        `/`. Si coincide con un comando propio del POS, el POS usa
+        `/PORTAL`. Con `portal` en `capabilities` pero sin el objeto, o con
+        el objeto mal formado, el POS se comporta como sin la capacidad.
+
     Cada operación está marcada con una extensión `x-pos-status`:
       - `implemented-v4`: el POS ya la consume con la forma de 4.x.
       - `implemented-v3`: el POS ya la consume con la forma de v3.
@@ -203,6 +237,10 @@ paths:
         4.4.0: `capabilities` declara lo que el backend implementa más allá
         del piso 4.0.0. El POS guarda las del último `/info` exitoso, así una
         terminal que arranca sin red las sabe igual.
+
+        4.6.0: `portal` (con la capacidad del mismo nombre) declara el
+        comando y el botón del portal. `/info` nunca responde `503`: en
+        mantenimiento responde `200` con `status: maintenance`.
       parameters:
         - $ref: '#/components/parameters/ContractVersion'
       responses:
@@ -237,6 +275,9 @@ paths:
         Un `template` desconocido responde 422 con la lista: el POS reintenta
         sin template y avisa qué plantilla usó.
 
+        4.6.0: un backend público conviene que limite los pedidos por IP
+        (`429`) y la cantidad de demos abiertas (`503 demo-capacity`).
+
         **Revocar una demo**: el backend puede revocar la conexión de una
         demo cuando quiera (por ejemplo, al reiniciar los datos de la demo o
         tras un tiempo sin uso). Desde entonces responde `401` a todo request
@@ -269,6 +310,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnknownTemplate'
+        '429':
+          description: |
+            4.6.0: demasiados pedidos (por ejemplo, desde la misma IP). El POS
+            muestra cuándo volver a probar según `Retry-After` y no reintenta
+            solo.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ErrorBody'
+                  - type: object
+                    properties:
+                      code: { type: string, enum: [rate-limited] }
+        '503':
+          description: |
+            4.6.0: `code: demo-capacity` (el backend llegó a su tope de demos
+            abiertas) o `code: maintenance` (ver la respuesta `Maintenance`).
+            El POS muestra el motivo y no reintenta solo. `Retry-After`
+            opcional.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ErrorBody'
+                  - type: object
+                    properties:
+                      code: { type: string, enum: [demo-capacity, maintenance] }
+
+  /portal-links:
+    post:
+      operationId: createPortalLink
+      summary: La URL para abrir el backend desde el POS (capacidad portal)
+      x-pos-status: documented-not-implemented
+      description: |
+        Opcional (4.6.0): solo lo implementa un backend con la capacidad
+        `portal`. Autenticado con la API key de la terminal, sin cuerpo. El
+        backend decide qué URL devolver según la credencial (ver "Portal" en
+        la descripción general). El POS la abre en una pestaña nueva y no la
+        guarda.
+      parameters:
+        - $ref: '#/components/parameters/ContractVersion'
+      responses:
+        '201':
+          description: La URL a abrir.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalLink'
+        '401':
+          description: |
+            API key inválida o revocada. Con la terminal en demo, el POS lo
+            toma como "la demo terminó", igual que en el sync.
+        '404':
+          description: El backend no implementa el portal.
+        '409':
+          $ref: '#/components/responses/IncompatibleContract'
+        '503':
+          $ref: '#/components/responses/Maintenance'
 
   /sync/push:
     post:
@@ -310,6 +415,8 @@ paths:
           description: Lote recibido (o ya recibido antes, si el idempotency_id se repite).
         '409':
           $ref: '#/components/responses/IncompatibleContract'
+        '503':
+          $ref: '#/components/responses/Maintenance'
 
   /sync/pull:
     post:
@@ -379,6 +486,8 @@ paths:
                 $ref: '#/components/schemas/PullBatchResponse'
         '409':
           $ref: '#/components/responses/IncompatibleContract'
+        '503':
+          $ref: '#/components/responses/Maintenance'
 
   /account-holds:
     post:
@@ -409,6 +518,8 @@ paths:
                 $ref: '#/components/schemas/AccountHoldResponse'
         '409':
           $ref: '#/components/responses/IncompatibleContract'
+        '503':
+          $ref: '#/components/responses/Maintenance'
 
 components:
   securitySchemes:
@@ -431,15 +542,42 @@ components:
       required: false
       schema:
         type: string
-        example: '4.5.0'
+        example: '4.6.0'
       description: |
-        Versión del contrato que habla el POS (4.5.0). El POS la manda en
+        Versión del contrato que habla el POS (4.6.0). El POS la manda en
         todos los requests. Un backend que no soporta ese major responde 409
         `IncompatibleContract` sin procesar nada (salvo `/info`, que nunca
         responde 409). Sin el header (un POS anterior a 4.0.0) queda a
         criterio del backend; se recomienda tratarlo igual.
 
+  headers:
+    RetryAfter:
+      description: |
+        4.6.0: segundos enteros hasta que conviene volver a probar. El
+        backend tiene que exponerlo por CORS
+        (`Access-Control-Expose-Headers: Retry-After`): sin eso, el POS no
+        lo puede leer desde otro origen.
+      schema: { type: integer, minimum: 0, example: 30 }
+
   responses:
+    Maintenance:
+      description: |
+        4.6.0: el backend está en mantenimiento y no procesó nada (sin ack:
+        un lote sigue en el outbox del POS con su mismo `idempotency_id`).
+        El POS consulta `GET /info`, que responde `status: maintenance`, y
+        no corre push ni pull hasta que vuelva `ok`; no adelanta nada por el
+        `Retry-After`. La venta nunca se bloquea.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorBody'
+              - type: object
+                properties:
+                  code: { type: string, enum: [maintenance] }
     IncompatibleContract:
       description: |
         El backend no habla la versión mayor del contrato que declaró el POS.
@@ -465,7 +603,7 @@ components:
       type: object
       required: [contractVersion, status]
       properties:
-        contractVersion: { type: string, example: '4.5.0' }
+        contractVersion: { type: string, example: '4.6.0' }
         status:
           type: string
           enum: [ok, maintenance]
@@ -475,8 +613,8 @@ components:
           items: { type: string, example: customer-payment-void }
           description: |
             4.4.0: lo que el backend implementa más allá del piso 4.0.0
-            (`demo-sessions`, `customer-payment-void`). Ausente = ninguna. El
-            POS ignora un nombre que no conoce.
+            (`demo-sessions`, `customer-payment-void`; `portal` desde 4.6.0).
+            Ausente = ninguna. El POS ignora un nombre que no conoce.
         message:
           {
             type: string,
@@ -497,6 +635,22 @@ components:
             y la caja. Opcional.
           properties:
             name: { type: string, example: Kiosco Pepe }
+        portal:
+          type: object
+          required: [command, label]
+          description: |
+            4.6.0: el comando y el botón del portal; va junto con la capacidad
+            `portal`. Ver "Portal" en la descripción general.
+          properties:
+            command:
+              type: string
+              pattern: '^[A-Z0-9_]{2,16}$'
+              example: MINI
+              description: 'Sin la `/`, que agrega el POS.'
+            label:
+              type: string
+              example: Abrir mini
+              description: 'Texto del botón; el POS lo muestra como `<label> (/<command>)`.'
 
     Blocked:
       type: object
@@ -997,6 +1151,31 @@ components:
           type: string
           format: uri
           description: 'URL del Connector API para esta demo; ausente = la misma del link. `https:` (o `http:` a localhost).'
+
+    PortalLink:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            `https:` (o `http:` a localhost). Nunca lleva la API key; si lleva
+            autorización, es un token opaco del backend.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Cuándo vence el link, si vence. Informativo.
+
+    ErrorBody:
+      type: object
+      required: [code]
+      description: |
+        4.6.0: cuerpo de los errores `429` y `503`. El POS decide por `code`
+        e ignora un código que no conoce.
+      properties:
+        code: { type: string, example: maintenance }
+        message: { type: string, description: Para mostrar en el POS. }
 
     UnknownTemplate:
       type: object
