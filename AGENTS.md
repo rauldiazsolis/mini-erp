@@ -20,16 +20,20 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
   versiones nuevas a las terminales). Ya no hay carpetas por versión (`/0.1.0/`).
 - **Contrato publicado**: la copia en `docs/connector-api.openapi.yaml`, con su procedencia en
   `contract.json` (el canal y qué POS había al bajarla; ningún código lee esa versión). Hoy: canal
-  `v4`, POS `0.3.1`, contrato **4.5.0**, piso **4.0.0**.
-- **Contrato implementado**: **4.5.0** (#2, #58), en `src/shared/contract-version.ts`
+  `v4`, POS `0.4.0`, contrato **4.6.0**, piso **4.0.0**.
+- **Contrato implementado**: **4.6.0** (#2, #58, #63), en `src/shared/contract-version.ts`
   (`CONTRACT_VERSION`; de su major salen el `409` y el canal del POS, `POS_CHANNEL`). `GET /info`
-  dice `4.5.0`, manda `company.name` (el nombre del comercio de la key; no va en mantenimiento ni
+  dice `4.6.0`, manda `company.name` (el nombre del comercio de la key; no va en mantenimiento ni
   con el nombre vacío) y declara las capacidades `customer-payment-void` (siempre: la anulación de
   una cobranza es otra cobranza, en negativo) y `demo-sessions` (si las demos están prendidas:
   `POST /connector/demo-sessions` y la vuelta del onboarding con `#connect` desde `/alta`, #9). El
   pull manda `notices` y el backend cumple las reglas de evolución (tests en
   `test/contract-evolution.test.ts`). Una demo barrida da `401` a todo y puede ir igual al alta; la
-  revocación activa de demos es de M8 (#24).
+  revocación activa de demos es de M8 (#24). La capacidad `portal` de 4.6.0 (opcional) no se
+  declara: `POST /portal-links` da `404` hasta M10 (#26).
+- **Errores del Connector API** (4.6.0, #63): los `429` y `503` mandan `ErrorBody`
+  (`{ code, message? }`: `rate-limited`, `demo-capacity`, `maintenance`), con `Retry-After` en
+  segundos. En `/api` el texto sigue en `error`, que es donde lo lee el admin.
 - **Actualizar la copia**: `pnpm contract:update [canal]`. Siempre del canal publicado
   (`https://pos.contax.ar/<canal>/`, por defecto el del major implementado; otro, como `v5`, para
   preparar una migración), nunca de `main` de offline-pos. El diff del OpenAPI muestra qué cambió;
@@ -190,9 +194,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
-  (`AUTH_RATE_LIMIT`, contador compartido); `429` con `Retry-After`. `trust proxy` en `loopback`:
-  detrás de Caddy, `req.ip` es la del cliente y `req.protocol`, `https`. El contrato todavía no
-  documenta el 429 ni el 503 de `/demo-sessions` (rauldiazsolis/offline-pos#173).
+  (`AUTH_RATE_LIMIT`, contador compartido); `429` con `Retry-After` y el texto en `message` (Connector
+  API) o en `error` (`/api`). `trust proxy` en `loopback`: detrás de Caddy, `req.ip` es la del
+  cliente y `req.protocol`, `https`.
 - **IoC con Hardwired 1.6.2** (versión exacta): servicios por request con
   `req.tenantScope.use(serviceDef)`; nunca `new Service()` para un servicio de tenant. La base del
   tenant es `unbound` (`tenantDbDef`): resolverla desde el contenedor raíz falla a propósito, para
@@ -217,9 +221,11 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `credits:restricted`, excluyentes, nunca en demos) y los de caja (`register:foreign-device` al
     equipo que no es el ligado, `register:shared-key` al ligado).
   - `X-POS-Contract-Version`: `409 IncompatibleContract` si el major difiere (salvo en `/info`).
-  - CORS `*` (sin cookies: el admin y el POS usan Bearer) y `Access-Control-Allow-Private-Network:
-    true` en el preflight, para el POS publicado llamando a `localhost`
-    (`src/server/middleware/private-network.ts`).
+  - CORS `*` (sin cookies: el admin y el POS usan Bearer), `Access-Control-Expose-Headers:
+    Retry-After` (4.6.0: si no, el POS, que corre en otro origen, no lo puede leer) y
+    `Access-Control-Allow-Private-Network: true` en el preflight, para el POS publicado llamando a
+    `localhost`. `CORS_OPTIONS` y el preflight, en `src/server/middleware/private-network.ts`, valen
+    para el app real y para el de mantenimiento.
 - **Demos aisladas** (#9), en `src/server/demo/`:
   - `POST /connector/demo-sessions` es el único endpoint sin key: crea un tenant `demo-*` **sin
     dueño**, marcado en `demo_sessions` (`system.sqlite`) y sembrado con `seedDemoSession` (template
@@ -385,7 +391,8 @@ las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hech
 (#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
 hecha) y M6 importación (#22, hecha).
 Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0
-(#58 con #38, hecha), y después #51 → #59 → #56 → #6.
+(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, sin el portal) y después
+#51 → #59 → #56 → #6.
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
