@@ -1,11 +1,10 @@
 import type { HTMLAttributes } from 'preact';
 import {
   dashboardDataSignal,
-  formatCurrency,
-  formatNumber,
 } from '../../state/dashboard-state.ts';
 import { drillToSales } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
+import { formatMoneyRounded, formatQty } from '../../format.ts';
 
 export function TopProductsTable() {
   const data = dashboardDataSignal.value;
@@ -75,9 +74,9 @@ export function TopProductsTable() {
                     </div>
 
                     <div class="text-right shrink-0">
-                      <span class="font-semibold text-slate-900 dark:text-white">{formatCurrency(item.totalRevenue)}</span>
+                      <span class="font-semibold text-slate-900 dark:text-white">{formatMoneyRounded(item.totalRevenue)}</span>
                       <span class="text-[10px] text-slate-500 dark:text-slate-400 block font-mono">
-                        {formatNumber(item.unitsSold)} un.
+                        {formatQty(item.unitsSold)} un.
                       </span>
                     </div>
                   </div>

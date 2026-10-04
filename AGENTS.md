@@ -333,7 +333,10 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
   - **Fechas, horas y números según la configuración del navegador** (su locale y su preferencia de
     12 o 24 horas), nunca con un locale fijo. La moneda es siempre ARS; solo cambia cómo se escribe.
-    Hoy varios componentes fijan `es-AR`: unificarlo es #51. Lo nuevo usa `src/client/format.ts`.
+    Todo pasa por `src/client/format.ts` (#51): montos con centavos (`formatMoney`) o en pesos
+    enteros para los agregados del dashboard (`formatMoneyRounded`), cantidades, días, fechas y
+    horas. Nada más en `src/client` usa `Intl`, `toLocale*String`, `hourCycle` ni un locale fijo
+    (`test/browser-format.test.ts`).
   - **Marca** (#18): lo visible dice "mini contax" (en minúsculas). Logo en `components/ui/Logo.tsx`
     (un ticket con la "c" de Contax) y favicon en `public/favicon.svg` (variante de ticket grande,
     legible a 16 px). La versión de mini sale de `package.json`: `appVersionDefine` en

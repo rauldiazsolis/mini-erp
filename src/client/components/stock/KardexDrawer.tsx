@@ -6,24 +6,9 @@ import {
   kardexReasonFilterSignal,
   closeKardex,
 } from '../../state/stock-state.ts';
-import { formatNumber } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Drawer } from '../ui/Drawer.tsx';
-
-function formatDateTime(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return dateStr;
-  }
-}
+import { formatQty, formatDateTime } from '../../format.ts';
 
 export function KardexDrawer() {
   const isOpen = kardexDrawerOpenSignal.value;
@@ -58,11 +43,11 @@ export function KardexDrawer() {
             <div class="flex items-center gap-2">
               {Object.entries(product.branches).map(([bId, qty]) => (
                 <span key={bId} class="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
-                  {bId}: <strong>{formatNumber(qty)}</strong>
+                  {bId}: <strong>{formatQty(qty)}</strong>
                 </span>
               ))}
               <span class="px-2.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-600/20 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-bold border border-indigo-200 dark:border-indigo-500/30">
-                Total: {formatNumber(product.totalStock)} un.
+                Total: {formatQty(product.totalStock)} un.
               </span>
             </div>
           </div>

@@ -1,10 +1,9 @@
 import {
   dashboardDataSignal,
-  formatCurrency,
-  formatNumber,
 } from '../../state/dashboard-state.ts';
 import { drillToDebtors, drillToSales } from '../../state/dashboard-drill.ts';
 import { StatCard } from '../ui/StatCard.tsx';
+import { formatMoneyRounded, formatQty } from '../../format.ts';
 
 export function KpiCards() {
   const data = dashboardDataSignal.value;
@@ -25,7 +24,7 @@ export function KpiCards() {
       <StatCard
         title="Facturación Total"
         onClick={() => { drillToSales({}); }}
-        value={formatCurrency(totalSales)}
+        value={formatMoneyRounded(totalSales)}
         variant="primary"
         icon={
           <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,7 +52,7 @@ export function KpiCards() {
       <StatCard
         title="Tickets Emitidos"
         onClick={() => { drillToSales({ status: 'valid' }); }}
-        value={formatNumber(salesCount)}
+        value={formatQty(salesCount)}
         variant="default"
         icon={
           <svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -67,7 +66,7 @@ export function KpiCards() {
       <StatCard
         title="Ticket Promedio"
         onClick={() => { drillToSales({ status: 'valid' }); }}
-        value={formatCurrency(averageTicket)}
+        value={formatMoneyRounded(averageTicket)}
         variant="default"
         icon={
           <svg class="w-4 h-4 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -81,7 +80,7 @@ export function KpiCards() {
       <StatCard
         title="Deuda en Cuenta Cte"
         onClick={drillToDebtors}
-        value={formatCurrency(totalReceivables)}
+        value={formatMoneyRounded(totalReceivables)}
         variant="warning"
         icon={
           <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

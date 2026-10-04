@@ -7,10 +7,10 @@ import {
   closePaymentModal,
   submitPayment,
 } from '../../state/customer-state.ts';
-import { formatCurrency } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Modal } from '../ui/Modal.tsx';
+import { formatMoney } from '../../format.ts';
 
 const PAYMENT_METHODS = [
   { value: 'efectivo', label: 'Efectivo' },
@@ -64,7 +64,7 @@ export function PaymentModal() {
           <div class="text-right">
             <div class="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Saldo Adeudado</div>
             <div class="text-base font-black font-mono text-rose-600 dark:text-rose-400 mt-0.5">
-              {formatCurrency(target.balance)}
+              {formatMoney(target.balance)}
             </div>
           </div>
         </div>

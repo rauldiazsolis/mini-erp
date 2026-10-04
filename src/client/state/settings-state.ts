@@ -144,7 +144,7 @@ export async function checkConnectorStatus(): Promise<void> {
     connectorInfoSignal.value = {
       version: data.version,
       status: data.status,
-      checkedAt: new Date().toLocaleTimeString('es-AR'),
+      checkedAt: new Date().toISOString(),
     };
     showToast({
       type: 'info',

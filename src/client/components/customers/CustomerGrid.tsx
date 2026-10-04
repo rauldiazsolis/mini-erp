@@ -6,7 +6,6 @@ import {
   openBalanceAdjustModal,
   openAccountStatement,
 } from '../../state/customer-state.ts';
-import { formatCurrency } from '../../state/dashboard-state.ts';
 import {
   TableContainer,
   Table,
@@ -17,6 +16,7 @@ import {
   Td,
   TableEmptyState,
 } from '../ui/Table.tsx';
+import { formatMoney } from '../../format.ts';
 
 export function CustomerGrid() {
   const customers = filteredCustomersSignal.value;
@@ -95,7 +95,7 @@ export function CustomerGrid() {
 
                 {/* Límite de Crédito */}
                 <Td class="text-right font-mono text-slate-700 dark:text-slate-300">
-                  {c.unrestricted ? 'Sin límite' : formatCurrency(c.creditLimit)}
+                  {c.unrestricted ? 'Sin límite' : formatMoney(c.creditLimit)}
                 </Td>
 
                 {/* Saldo en Cuenta Corriente */}
@@ -109,7 +109,7 @@ export function CustomerGrid() {
                         : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
-                    {formatCurrency(c.balance)}
+                    {formatMoney(c.balance)}
                   </span>
                 </Td>
 
@@ -119,7 +119,7 @@ export function CustomerGrid() {
                     <span class="text-indigo-600 dark:text-indigo-400 font-sans text-[11px]">Total</span>
                   ) : c.availableCredit !== null ? (
                     <span class={c.availableCredit <= 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-300'}>
-                      {formatCurrency(c.availableCredit)}
+                      {formatMoney(c.availableCredit)}
                     </span>
                   ) : (
                     <span class="text-slate-400">--</span>

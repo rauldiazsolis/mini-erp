@@ -7,6 +7,7 @@ import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Card } from '../ui/Card.tsx';
 import { CONTRACT_VERSION } from '../../../shared/contract-version.ts';
+import { formatTime } from '../../format.ts';
 
 export function ConnectorGuideSection() {
   const info = connectorInfoSignal.value;
@@ -84,7 +85,7 @@ export function ConnectorGuideSection() {
               <span class="text-slate-500 dark:text-slate-400">
                 Versión: <strong class="text-emerald-600 dark:text-emerald-400 font-mono">{info.version}</strong> • Estado:{' '}
                 <strong class="text-emerald-600 dark:text-emerald-400 font-mono uppercase">{info.status}</strong> • Verificado a las{' '}
-                {info.checkedAt}
+                {formatTime(info.checkedAt)}
               </span>
             </div>
           </div>

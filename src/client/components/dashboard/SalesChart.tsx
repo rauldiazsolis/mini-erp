@@ -1,11 +1,10 @@
 import { signal } from '@preact/signals';
 import {
   dashboardDataSignal,
-  formatCurrency,
-  formatNumber,
 } from '../../state/dashboard-state.ts';
 import { drillToSales } from '../../state/dashboard-drill.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
+import { formatMoneyCompact, formatMoneyRounded, formatQty } from '../../format.ts';
 
 export const hoveredIndexSignal = signal<number | null>(null);
 
@@ -27,7 +26,7 @@ export function SalesChart() {
   // Dimensiones del canvas SVG
   const width = 800;
   const height = 260;
-  const paddingLeft = 60;
+  const paddingLeft = 72;
   const paddingRight = 30;
   const paddingTop = 25;
   const paddingBottom = 40;
@@ -73,8 +72,8 @@ export function SalesChart() {
       >
         {activePoint && (
           <div class="text-xs bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-3 py-1 rounded-xl text-indigo-700 dark:text-indigo-300 font-medium">
-            <strong>{activePoint.item.label}:</strong> {formatCurrency(activePoint.item.total)} (
-            {formatNumber(activePoint.item.count)} tickets)
+            <strong>{activePoint.item.label}:</strong> {formatMoneyRounded(activePoint.item.total)} (
+            {formatQty(activePoint.item.count)} tickets)
           </div>
         )}
       </CardHeader>
@@ -112,7 +111,7 @@ export function SalesChart() {
                 text-anchor="end"
                 font-family="monospace"
               >
-                ${(tick.val / 1000).toFixed(0)}k
+                {formatMoneyCompact(tick.val)}
               </text>
             </g>
           ))}
