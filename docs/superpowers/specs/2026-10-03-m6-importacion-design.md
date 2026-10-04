@@ -191,9 +191,9 @@ base v5 con datos. El seed de desarrollo completa el rubro de sus tres comercios
   aparece con "Otro"), "Relevar escaneando · próximamente" (deshabilitada, M11) y "Lo hago después".
   No se vuelve al paso 2: el comercio ya existe.
 - **Paso 4 · Listo**: el de hoy (key de la caja, volver al POS con `#connect` o entrar al admin).
-- "Crear nuevo comercio…" del admin (`OnboardingModal`, con sesión) manda `businessType` y también
-  crea el comercio vacío. Su paso final dice dónde cargar los datos (Operaciones masivas: archivos o
-  catálogo de ejemplo).
+- "Crear nuevo comercio…" del selector de comercios y "Crear mi comercio" (sin comercios) abren
+  `/alta`, que con sesión arranca en el paso del comercio: un solo flujo. El asistente aparte que
+  tenía el admin (`OnboardingModal`) se borra.
 - Si se cierra la pestaña en el paso 3, el comercio queda vacío. En Operaciones masivas, un botón
   "Cargar el catálogo de ejemplo de <rubro>" aparece mientras el comercio tenga rubro con ejemplo y
   cero productos.

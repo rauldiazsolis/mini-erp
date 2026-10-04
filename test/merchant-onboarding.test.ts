@@ -70,6 +70,15 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
       expect(merchantStepSignal.value).toBe(2);
     });
 
+    it('"Crear nuevo comercio" desde el admin abre /alta en el paso del comercio (#22: un solo flujo)', () => {
+      tokenSignal.value = 'jwt-mock';
+      currentUserSignal.value = { id: 'u1', email: 'test@pos.com', name: 'Carlos', globalRole: 'user' };
+      openMerchantOnboarding();
+      expect(merchantOnboardingActiveSignal.value).toBe(true);
+      expect(merchantStepSignal.value).toBe(2);
+      expect(returnUrlSignal.value).toBeNull();
+    });
+
     it('closeMerchantOnboarding cierra el flujo y limpia el estado', () => {
       merchantOnboardingActiveSignal.value = true;
       closeMerchantOnboarding();
