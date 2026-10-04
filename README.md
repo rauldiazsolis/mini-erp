@@ -37,11 +37,13 @@ root y le pone la contraseña nueva.
 
 1. `pnpm dev` y abrir `http://localhost:4100/` (anda en cualquier navegador).
 2. **Probar la demo**: abre el POS en demo contra este mini-erp.
-   - **En desarrollo**, una copia local del POS publicado (versión de `contract.json`, hoy 0.1.0) que
-     el mini-erp sirve en `/pos/<versión>/`: el mismo JS de `https://offline-pos.pages.dev/<versión>/`,
-     en el mismo origen que el mini-erp, sin CORS ni permiso de red local. `pnpm dev` la baja sola si
-     falta; `pnpm pos:mirror [versión]` la vuelve a bajar a `vendor/pos/` (ignorada por git).
-   - **En producción** (`pnpm build` + `NODE_ENV=production`), el POS publicado en offline-pos.pages.dev.
+   - **En desarrollo**, una copia local del canal del POS publicado (`/v4/`, el del contrato
+     implementado) que el mini-erp sirve en `/pos/v4/`: el mismo JS de `https://pos.contax.ar/v4/`,
+     sin el service worker, en el mismo origen que el mini-erp, sin CORS ni permiso de red local.
+     `pnpm dev` la baja sola si falta; `pnpm pos:mirror` la renueva en `vendor/pos/` (ignorada por
+     git).
+   - **En producción** (`pnpm build` + `NODE_ENV=production`), el POS publicado en
+     `https://pos.contax.ar/v4/`.
 3. El POS arranca con la marca DEMO y el catálogo del template (por defecto `kiosco`). Cada demo es un
    comercio aislado que vence solo.
 4. **Crear mi comercio (/ALTA)**: lleva a `/alta` del mini-erp. Al terminar el alta, "Volver al POS"
@@ -60,7 +62,7 @@ app de Claude lo bloquea sin preguntar.
 | `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
 | `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para armar la página de alta detrás de un proxy |
-| `VITE_POS_URL` (al compilar) | `https://offline-pos.pages.dev` | Origen del POS publicado que abre "Probar la demo" en producción (le suma `/<versión>/` de `contract.json`). En el deploy sale de la variable `POS_URL` del environment `production` de GitHub |
+| `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS publicado que abre "Probar la demo" en producción (le suma el canal del contrato, `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` de GitHub |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (responde 404) |
 | `DEMO_TTL_HOURS` | `24` | Horas sin uso hasta que una demo se borra |
 | `DEMO_MAX_ACTIVE` | `200` | Tope de demos vivas (pasado el tope, 503) |

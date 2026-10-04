@@ -1,10 +1,10 @@
 import { POS_CHANNEL } from '../../shared/contract-version.ts';
 
-export const DEFAULT_POS_ORIGIN = 'https://offline-pos.pages.dev';
+export const DEFAULT_POS_ORIGIN = 'https://pos.contax.ar';
 
 /**
  * Origen del POS publicado (#11): `VITE_POS_URL` al compilar, que el deploy toma de la variable
- * `POS_URL` del environment `production` de GitHub. Vacía o inválida, el POS publicado de siempre.
+ * `POS_URL` del environment `production` de GitHub. Vacía o inválida, `https://pos.contax.ar` (#38).
  */
 export function publishedPosOrigin(raw: string | undefined): string {
   const value = raw?.trim() ?? '';

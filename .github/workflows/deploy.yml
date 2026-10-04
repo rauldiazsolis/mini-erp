@@ -47,8 +47,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # El origen del POS al que lleva "Probar la demo" (#11): la variable POS_URL del environment;
-      # vacía, el POS publicado en offline-pos.pages.dev
+      # El origen del POS al que lleva "Probar la demo" (#11, #38): la variable POS_URL del environment;
+      # vacía, https://pos.contax.ar (el link suma el canal, /v4/)
       - run: pnpm build
         env:
           VITE_POS_URL: ${{ vars.POS_URL }}

@@ -45,12 +45,12 @@ describe('Link de demo del landing (#9)', () => {
     expect(url.searchParams.get('backend')).toBe('http://localhost:4100/connector');
   });
 
-  it('el origen del POS sale de VITE_POS_URL al compilar, con offline-pos.pages.dev por defecto (#11)', () => {
-    expect(DEFAULT_POS_ORIGIN).toBe('https://offline-pos.pages.dev');
+  it('el origen del POS sale de VITE_POS_URL al compilar, con pos.contax.ar por defecto (#11, #38)', () => {
+    expect(DEFAULT_POS_ORIGIN).toBe('https://pos.contax.ar');
     expect(publishedPosOrigin(undefined)).toBe(DEFAULT_POS_ORIGIN);
     expect(publishedPosOrigin('')).toBe(DEFAULT_POS_ORIGIN);
-    expect(publishedPosOrigin(' https://pos.contax.ar/ ')).toBe('https://pos.contax.ar');
-    expect(publishedPosOrigin('pos.contax.ar')).toBe(DEFAULT_POS_ORIGIN);
-    expect(publishedPosOrigin('ftp://pos.contax.ar')).toBe(DEFAULT_POS_ORIGIN);
+    expect(publishedPosOrigin(' https://otro-pos.example.com/ ')).toBe('https://otro-pos.example.com');
+    expect(publishedPosOrigin('otro-pos.example.com')).toBe(DEFAULT_POS_ORIGIN);
+    expect(publishedPosOrigin('ftp://otro-pos.example.com')).toBe(DEFAULT_POS_ORIGIN);
   });
 });
