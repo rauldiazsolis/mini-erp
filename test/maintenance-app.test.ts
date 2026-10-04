@@ -28,7 +28,7 @@ describe('app de mantenimiento (#47)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.body).toEqual({
-      contractVersion: '4.4.0',
+      contractVersion: '4.5.0',
       status: 'maintenance',
       message: MAINTENANCE_MESSAGE,
       backend: { name: 'mini-erp', version: pkg.version },

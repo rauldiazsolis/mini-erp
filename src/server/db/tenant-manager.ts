@@ -81,6 +81,14 @@ export class TenantManager {
     return candidate;
   }
 
+  /** El nombre del comercio, el que se ve en el admin (#58); `null` si no existe. */
+  getTenantName(tenantId: string): string | null {
+    const row = this.systemDb.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as
+      | { name: string }
+      | undefined;
+    return row?.name ?? null;
+  }
+
   /** El rubro del comercio (#22); `null` si no tiene (comercios de antes de M6, demos). */
   getBusinessType(tenantId: string): BusinessType | null {
     const row = this.systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get(tenantId) as

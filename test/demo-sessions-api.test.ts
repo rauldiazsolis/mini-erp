@@ -72,6 +72,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
     expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['customer-payment-void', 'demo-sessions']);
+    expect((info.body as { company?: { name: string } }).company).toEqual({ name: 'Demo Ferreteria' });
   });
 
   it('422 con la lista si el template no existe', async () => {

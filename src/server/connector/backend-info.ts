@@ -8,16 +8,24 @@ export type BackendInfo = {
   status: 'ok' | 'maintenance';
   message?: string;
   backend: { name: string; version: string };
+  /** 4.5.0 (#58): el comercio de la key; no va sin key (mantenimiento) ni con el nombre vacío. */
+  company?: { name: string };
   capabilities: string[];
 };
 
 /** Respuesta de `GET /connector/info`: la misma en el app real y en el de mantenimiento (#47). */
-export function backendInfo(params: { status: 'ok' | 'maintenance'; demos: boolean }): BackendInfo {
+export function backendInfo(params: {
+  status: 'ok' | 'maintenance';
+  demos: boolean;
+  companyName?: string | undefined;
+}): BackendInfo {
+  const companyName = params.companyName?.trim() ?? '';
   return {
     contractVersion: CONTRACT_VERSION,
     status: params.status,
     ...(params.status === 'maintenance' ? { message: MAINTENANCE_MESSAGE } : {}),
     backend: { name: 'mini-erp', version: APP_VERSION },
+    ...(companyName === '' ? {} : { company: { name: companyName } }),
     // Más allá del piso 4.0.0: anulación de cobranzas siempre, demos si están prendidas
     capabilities: ['customer-payment-void', ...(params.demos ? ['demo-sessions'] : [])],
   };

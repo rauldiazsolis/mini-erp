@@ -142,8 +142,8 @@ export function createApp(deps?: AppDependencies): {
   // Plataforma de cobro (#21): root y soporte
   app.use('/api/platform', requireAdmin, createPlatformRoutes({ billing, audit: auditLog }));
 
-  // Rutas para terminales POS (Connector API 4.4.0, #2)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing }));
+  // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
