@@ -1,6 +1,10 @@
-import { signal, effect } from '@preact/signals';
+import { computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { createTenantParamQuery } from './query-keys.ts';
+import { branchesQuery } from './shared-queries.ts';
+import { inSection, routeFilters, setFilters } from './route-state.ts';
+import type { DashboardFilters } from '../routing/admin-routes.ts';
+import type { BranchItem } from './stock-state.ts';
 
 export type DashboardPeriod = 'today' | 'week' | 'month';
 
@@ -51,96 +55,34 @@ export type DashboardData = {
   };
 };
 
-export type BranchItem = {
-  id: string;
-  name: string;
-  code: string;
-};
+// Filtros: en la URL (#59)
+export const dashboardFiltersSignal = computed<DashboardFilters>(() => routeFilters('dashboard'));
+export const selectedPeriodSignal = computed<DashboardPeriod>(() => dashboardFiltersSignal.value.period);
+export const selectedBranchSignal = computed<string>(() => dashboardFiltersSignal.value.branch);
 
-// Signals
-export const selectedPeriodSignal = signal<DashboardPeriod>('week');
-export const selectedBranchSignal = signal<string>('');
-export const dashboardDataSignal = signal<DashboardData | null>(null);
-export const dashboardLoadingSignal = signal<boolean>(false);
-export const dashboardErrorSignal = signal<string | null>(null);
-export const branchesListSignal = signal<BranchItem[]>([]);
-
-export async function fetchBranches(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    const list = await apiFetch<BranchItem[]>(`tenants/${tenantId}/branches`, { token });
-    branchesListSignal.value = list;
-  } catch {
-    // Si falla el listado de sucursales, no bloquear la vista
-    branchesListSignal.value = [];
-  }
+export function setDashboardFilters(patch: Partial<DashboardFilters>): void {
+  setFilters('dashboard', patch);
 }
 
-export async function fetchDashboardData(
-  filters: { period: DashboardPeriod; branch: string } = {
-    period: selectedPeriodSignal.value,
-    branch: selectedBranchSignal.value,
+// Datos: en la caché de TanStack Query, uno por período y sucursal. Al entrar se pide de nuevo, y
+// una mutación de otra pantalla (cobranza, importación, ajuste) lo deja viejo (#59)
+const summaryQuery = createTenantParamQuery<DashboardData, readonly [DashboardPeriod, string]>({
+  domain: 'dashboard',
+  params: () => [selectedPeriodSignal.value, selectedBranchSignal.value],
+  enabled: () => inSection('dashboard'),
+  fn: ({ tenantId, token, params: [period, branch] }) => {
+    const query = branch ? `period=${period}&branchId=${encodeURIComponent(branch)}` : `period=${period}`;
+    return apiFetch<DashboardData>(`tenants/${tenantId}/dashboard/summary?${query}`, { token });
   },
-): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) {
-    dashboardDataSignal.value = null;
-    return;
-  }
+});
 
-  try {
-    dashboardLoadingSignal.value = true;
-    dashboardErrorSignal.value = null;
+export const dashboardDataSignal = computed<DashboardData | null>(() => summaryQuery.data.value ?? null);
+export const dashboardLoadingSignal = summaryQuery.isLoading;
+export const dashboardErrorSignal = computed<string | null>(() => summaryQuery.error.value?.message ?? null);
+/** Si falla el listado de sucursales, el filtro queda vacío sin bloquear la vista. */
+export const branchesListSignal = computed<BranchItem[]>(() => branchesQuery.data.value ?? []);
 
-    const { period, branch } = filters;
-
-    let query = `period=${period}`;
-    if (branch) {
-      query += `&branchId=${encodeURIComponent(branch)}`;
-    }
-
-    const data = await apiFetch<DashboardData>(`tenants/${tenantId}/dashboard/summary?${query}`, {
-      token,
-    });
-
-    dashboardDataSignal.value = data;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar analíticas';
-    dashboardErrorSignal.value = msg;
-  } finally {
-    dashboardLoadingSignal.value = false;
-  }
-}
-
-/**
- * Reactividad sin hooks (#7): un effect por cosa que se carga. Las sucursales dependen solo del
- * tenant y del token; el resumen, de eso y de los filtros. Así un filtro recarga solo el resumen, una
- * vez, y al entrar no se pide dos veces.
- */
-export function registerDashboardEffects(): () => void {
-  const disposeBranches = effect(() => {
-    if (effectiveTenantIdSignal.value && tokenSignal.value) {
-      void fetchBranches();
-    }
-  });
-
-  const disposeSummary = effect(() => {
-    const filters = { period: selectedPeriodSignal.value, branch: selectedBranchSignal.value };
-    if (effectiveTenantIdSignal.value && tokenSignal.value) {
-      void fetchDashboardData(filters);
-    }
-  });
-
-  return () => {
-    disposeBranches();
-    disposeSummary();
-  };
-}
-
-if (typeof window !== 'undefined') {
-  registerDashboardEffects();
+/** Los botones "Actualizar" y "Reintentar". */
+export async function fetchDashboardData(): Promise<void> {
+  await summaryQuery.refetch();
 }

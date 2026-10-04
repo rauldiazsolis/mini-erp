@@ -4,6 +4,7 @@ import {
   branchesListSignal,
   dashboardLoadingSignal,
   fetchDashboardData,
+  setDashboardFilters,
   type DashboardPeriod,
 } from '../../state/dashboard-state.ts';
 import { Button } from '../ui/Button.tsx';
@@ -30,7 +31,7 @@ export function DashboardFilters() {
             <button
               key={p.id}
               type="button"
-              onClick={() => (selectedPeriodSignal.value = p.id)}
+              onClick={() => { setDashboardFilters({ period: p.id }); }}
               class={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 isActive
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -49,7 +50,7 @@ export function DashboardFilters() {
           <div class="relative min-w-44">
             <select
               value={currentBranch}
-              onChange={(e) => (selectedBranchSignal.value = (e.target as HTMLSelectElement).value)}
+              onChange={(e) => { setDashboardFilters({ branch: (e.target as HTMLSelectElement).value }); }}
               class="w-full appearance-none px-3.5 py-1.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8 cursor-pointer"
             >
               <option value="">Todas las sucursales</option>

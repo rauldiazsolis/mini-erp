@@ -10,7 +10,6 @@ import {
 import { activeSectionSignal } from '../src/client/state/route-state.ts';
 import { tokenSignal, userTenantsSignal } from '../src/client/state/auth-state.ts';
 import { drillToDebtors, drillToSales, drillToStockProduct, periodRange } from '../src/client/state/dashboard-drill.ts';
-import { selectedBranchSignal, selectedPeriodSignal } from '../src/client/state/dashboard-state.ts';
 import { customerDebtorsOnlySignal } from '../src/client/state/customer-state.ts';
 import { stockSearchSignal } from '../src/client/state/stock-state.ts';
 import { atTenant } from './helpers/client-route.ts';
@@ -155,8 +154,7 @@ describe('drill-down del dashboard (#20)', () => {
   });
 
   it('un KPI lleva a Ventas con el período, la sucursal y el estado', () => {
-    selectedPeriodSignal.value = 'week';
-    selectedBranchSignal.value = 'CENTRAL';
+    atTenant('t1', 'dashboard?sucursal=CENTRAL');
     drillToSales({ status: 'valid' }, '2026-10-02');
     expect(activeSectionSignal.value).toBe('sales');
     expect(rangeSignal.value).toEqual({ from: '2026-09-26', to: '2026-10-02' });
@@ -165,7 +163,7 @@ describe('drill-down del dashboard (#20)', () => {
   });
 
   it('un punto del gráfico lleva a su día; un producto del ranking, a sus tickets', () => {
-    selectedBranchSignal.value = '';
+    atTenant('t1', 'dashboard');
     drillToSales({ day: '2026-09-28' }, '2026-10-02');
     expect(rangeSignal.value).toEqual({ from: '2026-09-28', to: '2026-09-28' });
     expect(registerSignal.value).toEqual({});

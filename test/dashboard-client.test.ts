@@ -2,38 +2,42 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   selectedPeriodSignal,
   selectedBranchSignal,
+  setDashboardFilters,
   dashboardDataSignal,
-  dashboardLoadingSignal,
-  dashboardErrorSignal,
   type DashboardData,
 } from '../src/client/state/dashboard-state.ts';
 import { hoveredIndexSignal } from '../src/client/components/dashboard/SalesChart.tsx';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { setHistoryForTests } from '../src/client/state/route-state.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', () => {
   beforeEach(() => {
-    selectedPeriodSignal.value = 'week';
-    selectedBranchSignal.value = '';
-    dashboardDataSignal.value = null;
-    dashboardLoadingSignal.value = false;
-    dashboardErrorSignal.value = null;
+    setHistoryForTests(null);
+    freshSession('tok');
+    // Fuera del dashboard: los tests ven la caché sin pedidos de fondo
+    atTenant('kiosco', 'usuarios');
     hoveredIndexSignal.value = null;
   });
 
   describe('Estado Reactivo de Filtros', () => {
     it('inicia con período "week" y permite conmutar', () => {
+      atTenant('kiosco', 'dashboard');
       expect(selectedPeriodSignal.value).toBe('week');
 
-      selectedPeriodSignal.value = 'today';
+      setDashboardFilters({ period: 'today' });
       expect(selectedPeriodSignal.value).toBe('today');
 
-      selectedPeriodSignal.value = 'month';
+      setDashboardFilters({ period: 'month' });
       expect(selectedPeriodSignal.value).toBe('month');
     });
 
     it('permite seleccionar sucursal', () => {
+      atTenant('kiosco', 'dashboard');
       expect(selectedBranchSignal.value).toBe('');
 
-      selectedBranchSignal.value = 'Sucursal Central';
+      setDashboardFilters({ branch: 'Sucursal Central' });
       expect(selectedBranchSignal.value).toBe('Sucursal Central');
     });
   });
@@ -75,7 +79,8 @@ describe('Dashboard Client State, Analytics & Visual Components (Etapa 3.5)', ()
     };
 
     it('almacena y distribuye las métricas en las señales reactivas', () => {
-      dashboardDataSignal.value = mockDashboardData;
+      queryClient.setQueryData(tenantKey('kiosco', 'dashboard', 'week', ''), mockDashboardData);
+      if (dashboardDataSignal.value === null) throw new Error('sin datos del dashboard');
 
       expect(dashboardDataSignal.value.summary.totalSales).toBe(125000);
       expect(dashboardDataSignal.value.summary.salesCount).toBe(45);
