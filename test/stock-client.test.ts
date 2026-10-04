@@ -1,12 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
+  stockFiltersSignal,
+  setStockFilters,
+  filterStock,
   stockItemsSignal,
-  stockBranchesSignal,
-  stockCategoriesSignal,
-  stockSearchSignal,
-  stockCategoryFilterSignal,
-  stockStatusFilterSignal,
-  stockBranchFilterSignal,
   filteredStockSignal,
   adjustModalOpenSignal,
   adjustFormSignal,
@@ -21,11 +18,13 @@ import {
   type StockMatrixItem,
   type BranchItem,
 } from '../src/client/state/stock-state.ts';
-import {
-  tokenSignal,
-  userTenantsSignal,
-} from '../src/client/state/auth-state.ts';
-import { atTenant } from './helpers/client-route.ts';
+import { userTenantsSignal } from '../src/client/state/auth-state.ts';
+import { queryClient } from '../src/client/api/query-client.ts';
+import { tenantKey } from '../src/client/state/query-keys.ts';
+import { locationSignal, setHistoryForTests } from '../src/client/state/route-state.ts';
+import { drillToStockProduct } from '../src/client/state/dashboard-drill.ts';
+import type { StockFilters } from '../src/client/routing/admin-routes.ts';
+import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const mockBranches: BranchItem[] = [
   { id: 'branch-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' },
@@ -78,64 +77,52 @@ const mockStockProductD: StockMatrixItem = {
 
 describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
   beforeEach(() => {
-    stockItemsSignal.value = [mockStockProductA, mockStockProductB, mockStockProductC, mockStockProductD];
-    stockBranchesSignal.value = mockBranches;
-    stockCategoriesSignal.value = ['Bebidas', 'Golosinas', 'Servicios'];
-    stockSearchSignal.value = '';
-    stockCategoryFilterSignal.value = 'all';
-    stockStatusFilterSignal.value = 'all';
-    stockBranchFilterSignal.value = 'all';
-
+    setHistoryForTests(null);
+    freshSession('mock-token');
     adjustModalOpenSignal.value = false;
     kardexDrawerOpenSignal.value = false;
     kardexTargetProductSignal.value = null;
-    kardexMovementsSignal.value = [];
 
-    tokenSignal.value = 'mock-token';
     userTenantsSignal.value = [
       { tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' },
     ];
-    atTenant('tienda-test');
+    queryClient.setQueryData(tenantKey('tienda-test', 'stock'), [mockStockProductA, mockStockProductB, mockStockProductC, mockStockProductD]);
+    queryClient.setQueryData(tenantKey('tienda-test', 'branches'), mockBranches);
+    queryClient.setQueryData(tenantKey('tienda-test', 'categories'), ['Bebidas', 'Golosinas', 'Servicios']);
+    // En una pantalla que no pide stock ni sucursales: los tests ven la caché sin pedidos de fondo
+    atTenant('tienda-test', 'clientes');
     vi.restoreAllMocks();
   });
 
   describe('Filtros y Búsqueda de Stock', () => {
+    const all = [mockStockProductA, mockStockProductB, mockStockProductC, mockStockProductD];
+    const none: StockFilters = { q: '', category: 'all', level: 'all', branch: 'all' };
+    const ids = (patch: Partial<StockFilters>): string[] => filterStock(all, { ...none, ...patch }).map((s) => s.productId);
+
     it('muestra todos los artículos por defecto', () => {
       expect(filteredStockSignal.value.length).toBe(4);
     });
 
     it('filtra por búsqueda en nombre o SKU', () => {
-      stockSearchSignal.value = 'coca';
-      expect(filteredStockSignal.value.map((s) => s.productId)).toEqual(['prod-1']);
-
-      stockSearchSignal.value = 'ALF-JOR';
-      expect(filteredStockSignal.value.map((s) => s.productId)).toEqual(['prod-2']);
+      expect(ids({ q: 'coca' })).toEqual(['prod-1']);
+      expect(ids({ q: 'ALF-JOR' })).toEqual(['prod-2']);
     });
 
     it('filtra por categoría', () => {
-      stockCategoryFilterSignal.value = 'Bebidas';
-      expect(filteredStockSignal.value.length).toBe(2);
-      expect(filteredStockSignal.value.every((s) => s.category === 'Bebidas')).toBe(true);
+      expect(ids({ category: 'Bebidas' })).toEqual(['prod-1', 'prod-3']);
     });
 
     it('filtra por nivel de existencias (agotado, stock bajo, normal)', () => {
-      stockStatusFilterSignal.value = 'out';
-      expect(filteredStockSignal.value.map((s) => s.productId)).toContain('prod-3');
-
-      stockStatusFilterSignal.value = 'low';
-      expect(filteredStockSignal.value.map((s) => s.productId)).toEqual(['prod-2']);
-
-      stockStatusFilterSignal.value = 'normal';
-      expect(filteredStockSignal.value.map((s) => s.productId)).toEqual(['prod-1']);
+      expect(ids({ level: 'out' })).toContain('prod-3');
+      expect(ids({ level: 'low' })).toEqual(['prod-2']);
+      expect(ids({ level: 'normal' })).toEqual(['prod-1']);
     });
 
     it('filtra por existencia específica en una sucursal seleccionada', () => {
-      stockBranchFilterSignal.value = 'branch-2';
-      stockStatusFilterSignal.value = 'out';
       // En branch-2, prod-2 (0) y prod-3 (0) están agotados
-      const ids = filteredStockSignal.value.map((s) => s.productId);
-      expect(ids).toContain('prod-2');
-      expect(ids).toContain('prod-3');
+      const out = ids({ branch: 'branch-2', level: 'out' });
+      expect(out).toContain('prod-2');
+      expect(out).toContain('prod-3');
     });
   });
 
@@ -265,11 +252,11 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
       });
 
       try {
-        await openKardex(mockStockProductA);
+        openKardex(mockStockProductA);
 
         expect(kardexDrawerOpenSignal.value).toBe(true);
         expect(kardexTargetProductSignal.value?.productId).toBe('prod-1');
-        expect(kardexMovementsSignal.value.length).toBe(2);
+        await vi.waitFor(() => { expect(kardexMovementsSignal.value.length).toBe(2); });
         expect(kardexMovementsSignal.value[0]?.reason).toBe('sale');
         expect(kardexMovementsSignal.value[0]?.delta).toBe(-2);
 
@@ -279,6 +266,58 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  });
+
+  describe('Stock con URL y caché (#59)', () => {
+    const json = (body: unknown): Promise<Response> =>
+      Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    it('los filtros salen de la URL', () => {
+      atTenant('tienda-test', 'stock?nivel=sin-stock&sucursal=b1');
+      expect(stockFiltersSignal.value).toEqual({ q: '', category: 'all', level: 'out', branch: 'b1' });
+      setStockFilters({ q: 'coca' });
+      expect(locationSignal.value.search).toBe('?q=coca&nivel=sin-stock&sucursal=b1');
+    });
+
+    it('el kardex se pide al abrirlo, por producto, y cerrado no se ve', async () => {
+      const urls: string[] = [];
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+        urls.push(input instanceof Request ? input.url : input.toString());
+        return json([]);
+      });
+      try {
+        openKardex(mockStockProductB);
+        await vi.waitFor(() => { expect(urls).toContain('/api/tenants/tienda-test/stock/kardex?productId=prod-2&limit=100'); });
+        closeKardex();
+        expect(kardexMovementsSignal.value).toEqual([]);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('un ajuste deja viejos stock, catálogo y dashboard', async () => {
+      queryClient.setQueryData(tenantKey('tienda-test', 'products'), []);
+      queryClient.setQueryData(tenantKey('tienda-test', 'dashboard', 'week', ''), {});
+      openAdjustModal(mockStockProductA, 'branch-1');
+      const original = globalThis.fetch;
+      globalThis.fetch = vi.fn(() => json({ productId: 'prod-1', branchId: 'branch-1', previousQuantity: 20, delta: 1, newQuantity: 21, movementId: 'm' }));
+      try {
+        await submitStockAdjustment();
+        for (const domain of ['stock', 'products'] as const) {
+          expect(queryClient.getQueryState(tenantKey('tienda-test', domain))?.isInvalidated, domain).toBe(true);
+        }
+        expect(queryClient.getQueryState(tenantKey('tienda-test', 'dashboard', 'week', ''))?.isInvalidated).toBe(true);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('el drill del dashboard abre Stock filtrado por el producto', () => {
+      atTenant('tienda-test', 'dashboard');
+      drillToStockProduct('Coca');
+      expect(`${locationSignal.value.pathname}${locationSignal.value.search}`).toBe('/admin/tienda-test/stock?q=Coca');
     });
   });
 });

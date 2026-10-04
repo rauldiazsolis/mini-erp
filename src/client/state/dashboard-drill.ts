@@ -4,7 +4,7 @@ import { customerDebtorsOnlySignal, customerSearchSignal } from './customer-stat
 import { selectedBranchSignal, selectedPeriodSignal, type DashboardPeriod } from './dashboard-state.ts';
 import { goTo } from './route-state.ts';
 import { openSalesWith, presetRange, type DayRange } from './sales-state.ts';
-import { stockSearchSignal, stockStatusFilterSignal } from './stock-state.ts';
+import { decodeFilters } from '../routing/admin-routes.ts';
 
 /** Drill-down del dashboard (#20): cada KPI, gráfico y ranking lleva a la consulta que lo explica. */
 export function periodRange(period: DashboardPeriod, today: string): DayRange {
@@ -31,7 +31,5 @@ export function drillToDebtors(): void {
 }
 
 export function drillToStockProduct(name: string): void {
-  stockStatusFilterSignal.value = 'all';
-  stockSearchSignal.value = name;
-  goTo({ section: 'stock' });
+  goTo({ section: 'stock', filters: { ...decodeFilters('stock', {}), q: name } });
 }

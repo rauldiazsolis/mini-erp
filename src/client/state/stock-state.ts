@@ -1,8 +1,12 @@
 import { signal, computed } from '@preact/signals';
-import { loadOnTenantAndView } from './view-loader.ts';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
+import { createTenantParamQuery } from './query-keys.ts';
+import { branchesQuery, categoriesQuery, stockMatrixQuery } from './shared-queries.ts';
+import { routeFilters, setFilters } from './route-state.ts';
+import { invalidateAfter } from './invalidation.ts';
+import type { StockFilters } from '../routing/admin-routes.ts';
 
 export type BranchItem = {
   id: string;
@@ -51,18 +55,23 @@ export type AdjustStockFormData = {
   notes: string;
 };
 
-// Señales principales
-export const stockItemsSignal = signal<StockMatrixItem[]>([]);
-export const stockBranchesSignal = signal<BranchItem[]>([]);
-export const stockCategoriesSignal = signal<string[]>([]);
-export const stockLoadingSignal = signal<boolean>(false);
-export const stockErrorSignal = signal<string | null>(null);
+// Datos: en la caché de TanStack Query, compartida con el catálogo (#59)
+export const stockItemsSignal = computed<StockMatrixItem[]>(() => stockMatrixQuery.data.value ?? []);
+export const stockBranchesSignal = computed<BranchItem[]>(() => branchesQuery.data.value ?? []);
+export const stockCategoriesSignal = computed<string[]>(() => categoriesQuery.data.value ?? []);
+export const stockLoadingSignal = stockMatrixQuery.isLoading;
+export const stockErrorSignal = computed<string | null>(() => stockMatrixQuery.error.value?.message ?? null);
 
-// Filtros
-export const stockSearchSignal = signal<string>('');
-export const stockCategoryFilterSignal = signal<string>('all');
-export const stockStatusFilterSignal = signal<'all' | 'out' | 'low' | 'normal'>('all');
-export const stockBranchFilterSignal = signal<string>('all');
+// Filtros: en la URL (#59)
+export const stockFiltersSignal = computed<StockFilters>(() => routeFilters('stock'));
+export const stockSearchSignal = computed(() => stockFiltersSignal.value.q);
+export const stockCategoryFilterSignal = computed(() => stockFiltersSignal.value.category);
+export const stockStatusFilterSignal = computed(() => stockFiltersSignal.value.level);
+export const stockBranchFilterSignal = computed(() => stockFiltersSignal.value.branch);
+
+export function setStockFilters(patch: Partial<StockFilters>): void {
+  setFilters('stock', patch);
+}
 
 // Modal de Ajuste de Stock
 export const adjustModalOpenSignal = signal<boolean>(false);
@@ -82,68 +91,50 @@ export const adjustErrorSignal = signal<string | null>(null);
 // Drawer de Kardex
 export const kardexDrawerOpenSignal = signal<boolean>(false);
 export const kardexTargetProductSignal = signal<StockMatrixItem | null>(null);
-export const kardexMovementsSignal = signal<KardexItem[]>([]);
-export const kardexLoadingSignal = signal<boolean>(false);
 export const kardexReasonFilterSignal = signal<string>('all');
 
-// Computada de Stock Filtrado
-export const filteredStockSignal = computed<StockMatrixItem[]>(() => {
-  const search = stockSearchSignal.value.trim().toLowerCase();
-  const category = stockCategoryFilterSignal.value;
-  const status = stockStatusFilterSignal.value;
-  const branchFilter = stockBranchFilterSignal.value;
+// Los movimientos se piden mientras el drawer está abierto, por producto
+const kardexQuery = createTenantParamQuery<KardexItem[], readonly [string]>({
+  domain: 'kardex',
+  params: () => {
+    const target = kardexTargetProductSignal.value;
+    return kardexDrawerOpenSignal.value && target !== null ? [target.productId] : null;
+  },
+  onError: (err) => {
+    showToast({ type: 'error', title: 'Error de Kardex', message: err.message });
+  },
+  fn: ({ tenantId, token, params: [productId] }) =>
+    apiFetch<KardexItem[]>(`tenants/${tenantId}/stock/kardex?productId=${encodeURIComponent(productId)}&limit=100`, { token }),
+});
+export const kardexMovementsSignal = computed<KardexItem[]>(() => kardexQuery.data.value ?? []);
+export const kardexLoadingSignal = kardexQuery.isLoading;
 
-  return stockItemsSignal.value.filter((item) => {
-    // Búsqueda
+// Stock filtrado
+export function filterStock(items: StockMatrixItem[], filters: StockFilters): StockMatrixItem[] {
+  const search = filters.q.trim().toLowerCase();
+  return items.filter((item) => {
     if (search) {
       const matchName = item.name.toLowerCase().includes(search);
       const matchSku = item.sku.toLowerCase().includes(search);
       if (!matchName && !matchSku) return false;
     }
-
-    // Categoría
-    if (category !== 'all' && item.category !== category) {
-      return false;
-    }
-
-    // Nivel / Estado de stock
-    if (status !== 'all') {
+    if (filters.category !== 'all' && item.category !== filters.category) return false;
+    if (filters.level !== 'all') {
       if (!item.tracksStock) return false;
-      const qty = branchFilter !== 'all' ? item.branches[branchFilter] ?? 0 : item.totalStock;
-      if (status === 'out' && qty > 0) return false;
-      if (status === 'low' && (qty <= 0 || qty > 5)) return false;
-      if (status === 'normal' && qty <= 5) return false;
+      const qty = filters.branch !== 'all' ? item.branches[filters.branch] ?? 0 : item.totalStock;
+      if (filters.level === 'out' && qty > 0) return false;
+      if (filters.level === 'low' && (qty <= 0 || qty > 5)) return false;
+      if (filters.level === 'normal' && qty <= 5) return false;
     }
-
     return true;
   });
-});
+}
 
+export const filteredStockSignal = computed<StockMatrixItem[]>(() => filterStock(stockItemsSignal.value, stockFiltersSignal.value));
+
+/** El botón "Actualizar". */
 export async function fetchStockData(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    stockLoadingSignal.value = true;
-    stockErrorSignal.value = null;
-
-    const [matrix, branches, categories] = await Promise.all([
-      apiFetch<StockMatrixItem[]>(`tenants/${tenantId}/stock`, { token }),
-      apiFetch<BranchItem[]>(`tenants/${tenantId}/branches`, { token }),
-      apiFetch<string[]>(`tenants/${tenantId}/categories`, { token }).catch(() => []),
-    ]);
-
-    stockItemsSignal.value = matrix;
-    stockBranchesSignal.value = branches;
-    stockCategoriesSignal.value = categories;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar matriz de stock';
-    stockErrorSignal.value = msg;
-    showToast({ type: 'error', title: 'Error de stock', message: msg });
-  } finally {
-    stockLoadingSignal.value = false;
-  }
+  await Promise.all([stockMatrixQuery.refetch(), branchesQuery.refetch(), categoriesQuery.refetch()]);
 }
 
 // Abrir modal de ajuste para un producto y sucursal opcional
@@ -215,7 +206,7 @@ export async function submitStockAdjustment(): Promise<void> {
     });
 
     // Actualizar reactivamente la celda de la sucursal y el total consolidado en la matriz local
-    stockItemsSignal.value = stockItemsSignal.value.map((item) => {
+    stockMatrixQuery.setData((previous) => (previous ?? []).map((item) => {
       if (item.productId === form.productId) {
         const nextBranches = { ...item.branches, [form.branchId]: res.newQuantity };
         const nextTotal = Object.values(nextBranches).reduce((acc, q) => acc + q, 0);
@@ -226,7 +217,7 @@ export async function submitStockAdjustment(): Promise<void> {
         };
       }
       return item;
-    });
+    }));
 
     showToast({
       type: 'success',
@@ -234,12 +225,8 @@ export async function submitStockAdjustment(): Promise<void> {
       message: `${form.productName}: nuevo stock de ${String(res.newQuantity)} un. en sucursal (delta: ${res.delta > 0 ? '+' : ''}${String(res.delta)})`,
     });
 
+    void invalidateAfter('stock-adjusted');
     closeAdjustModal();
-
-    // Si el drawer de Kardex está abierto para este producto, refrescar movimientos
-    if (kardexDrawerOpenSignal.value && kardexTargetProductSignal.value?.productId === form.productId) {
-      void loadKardexMovements(form.productId);
-    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al registrar ajuste de stock';
     adjustErrorSignal.value = msg;
@@ -249,39 +236,13 @@ export async function submitStockAdjustment(): Promise<void> {
 }
 
 // Kardex Drawer
-export async function openKardex(product: StockMatrixItem): Promise<void> {
+export function openKardex(product: StockMatrixItem): void {
   kardexTargetProductSignal.value = product;
   kardexReasonFilterSignal.value = 'all';
   kardexDrawerOpenSignal.value = true;
-  await loadKardexMovements(product.productId);
 }
 
 export function closeKardex(): void {
   kardexDrawerOpenSignal.value = false;
   kardexTargetProductSignal.value = null;
-  kardexMovementsSignal.value = [];
-}
-
-export async function loadKardexMovements(productId: string): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const token = tokenSignal.value;
-  if (!tenantId || !token) return;
-
-  try {
-    kardexLoadingSignal.value = true;
-    const movements = await apiFetch<KardexItem[]>(`tenants/${tenantId}/stock/kardex?productId=${encodeURIComponent(productId)}&limit=100`, {
-      token,
-    });
-    kardexMovementsSignal.value = movements;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al cargar Kardex';
-    showToast({ type: 'error', title: 'Error de Kardex', message: msg });
-  } finally {
-    kardexLoadingSignal.value = false;
-  }
-}
-
-if (typeof window !== 'undefined') {
-  // Al cambiar de comercio y al entrar a la pantalla (#22)
-  loadOnTenantAndView('stock', fetchStockData);
 }
