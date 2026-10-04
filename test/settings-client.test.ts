@@ -16,6 +16,7 @@ import { userTenantsSignal } from '../src/client/state/auth-state.ts';
 import { queryClient } from '../src/client/api/query-client.ts';
 import { tenantKey } from '../src/client/state/query-keys.ts';
 import { setHistoryForTests } from '../src/client/state/route-state.ts';
+import { toastsSignal } from '../src/client/state/toast-state.ts';
 import { atTenant, freshSession } from './helpers/client-route.ts';
 
 const central = { id: 'b-1', code: 'CENTRAL', name: 'Casa Central', createdAt: '2026-09-25T10:00:00Z', updatedAt: '2026-09-25T10:00:00Z' };
@@ -121,6 +122,24 @@ describe('Módulo de Configuración, Sucursales y API Keys POS (Etapa 4.5)', () 
         globalThis.fetch = originalFetch;
       }
     });
+  });
+
+  it('si las sucursales no cargan, avisa en vez de mostrar la lista vacía (#59)', async () => {
+    toastsSignal.value = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(
+      JSON.stringify({ error: 'Se cayó la base' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )));
+    try {
+      queryClient.removeQueries({ queryKey: tenantKey('tienda-test', 'branches') });
+      atTenant('tienda-test', 'configuracion/sucursales');
+      await vi.waitFor(() => {
+        expect(toastsSignal.value.some((t) => t.type === 'error' && t.title === 'No se pudieron cargar las sucursales')).toBe(true);
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   describe('Verificación del Connector POS', () => {

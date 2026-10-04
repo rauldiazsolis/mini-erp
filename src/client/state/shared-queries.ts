@@ -24,5 +24,8 @@ export const stockMatrixQuery = createTenantQuery<StockMatrixItem[]>({
 export const branchesQuery = createTenantQuery<BranchItem[]>({
   domain: 'branches',
   enabled: () => inSection('dashboard', 'stock', 'settings'),
+  onError: (err) => {
+    showToast({ type: 'error', title: 'No se pudieron cargar las sucursales', message: err.message });
+  },
   fn: ({ tenantId, token }) => apiFetch<BranchItem[]>(`tenants/${tenantId}/branches`, { token }),
 });
