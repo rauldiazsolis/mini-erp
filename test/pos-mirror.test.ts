@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { bundleAssetRefs, htmlAssetRefs } from '../src/server/pos-mirror/pos-assets.ts';
 import { isPosMirrored, mirrorPos, type FetchLike } from '../src/server/pos-mirror/mirror.ts';
 
-const BASE = 'https://offline-pos.pages.dev/0.1.0/';
+const BASE = 'https://pos.contax.ar/v4/';
 
 const INDEX = `<!doctype html>
 <html><head>
@@ -44,7 +44,7 @@ function fakeFetch(files: Record<string, string>): { fetch: FetchLike; requested
 }
 
 const PUBLISHED = {
-  [`${BASE}version.json`]: JSON.stringify({ version: '0.1.0', contract: '4.4.0', minBackendContract: '4.0.0' }),
+  [`${BASE}version.json`]: JSON.stringify({ version: '0.3.1', contract: '4.5.0', minBackendContract: '4.0.0' }),
   [`${BASE}index.html`]: INDEX,
   [`${BASE}favicon.svg`]: '<svg/>',
   [`${BASE}assets/index-AAA.js`]: 'import("./x");"assets/chunk-CCC.js"',
@@ -62,14 +62,15 @@ describe('mirrorPos (#9)', () => {
   it('baja la versión publicada entera, siguiendo los chunks', async () => {
     dir = mkdtempSync(join(tmpdir(), 'mini-erp-pos-'));
     const { fetch } = fakeFetch(PUBLISHED);
-    const files = await mirrorPos({ version: '0.1.0', destDir: dir, fetch });
+    const result = await mirrorPos({ channel: 'v4', destDir: dir, fetch });
 
-    expect(files.sort()).toEqual(
+    expect(result.version).toBe('0.3.1');
+    expect(result.files.sort()).toEqual(
       ['assets/chunk-CCC.js', 'assets/index-AAA.js', 'assets/index-BBB.css', 'favicon.svg', 'index.html', 'version.json'],
     );
-    expect(readFileSync(join(dir, '0.1.0', 'assets', 'chunk-CCC.js'), 'utf-8')).toBe('export const c = 1;');
-    expect(isPosMirrored(dir, '0.1.0')).toBe(true);
-    expect(isPosMirrored(dir, '0.2.0')).toBe(false);
+    expect(readFileSync(join(dir, 'v4', 'assets', 'chunk-CCC.js'), 'utf-8')).toBe('export const c = 1;');
+    expect(isPosMirrored(dir, 'v4')).toBe(true);
+    expect(isPosMirrored(dir, 'v5')).toBe(false);
   });
 
   it('si falta un archivo no deja una copia a medias', async () => {
@@ -79,25 +80,25 @@ describe('mirrorPos (#9)', () => {
     );
     const { fetch } = fakeFetch(incompleto);
 
-    await expect(mirrorPos({ version: '0.1.0', destDir: dir, fetch })).rejects.toThrow(/chunk-CCC\.js.*404/);
-    expect(existsSync(join(dir, '0.1.0'))).toBe(false);
-    expect(isPosMirrored(dir, '0.1.0')).toBe(false);
+    await expect(mirrorPos({ channel: 'v4', destDir: dir, fetch })).rejects.toThrow(/chunk-CCC\.js.*404/);
+    expect(existsSync(join(dir, 'v4'))).toBe(false);
+    expect(isPosMirrored(dir, 'v4')).toBe(false);
   });
 
-  it('rechaza un version.json de otra versión', async () => {
+  it('rechaza un version.json de otro major', async () => {
     dir = mkdtempSync(join(tmpdir(), 'mini-erp-pos-'));
     const { fetch } = fakeFetch({
       ...PUBLISHED,
-      [`${BASE}version.json`]: JSON.stringify({ version: '0.2.0', contract: '4.4.0', minBackendContract: '4.0.0' }),
+      [`${BASE}version.json`]: JSON.stringify({ version: '1.0.0', contract: '5.0.0', minBackendContract: '5.0.0' }),
     });
-    await expect(mirrorPos({ version: '0.1.0', destDir: dir, fetch })).rejects.toThrow(/0\.2\.0/);
+    await expect(mirrorPos({ channel: 'v4', destDir: dir, fetch })).rejects.toThrow(/5\.0\.0/);
   });
 
   it('una segunda bajada reemplaza la anterior', async () => {
     dir = mkdtempSync(join(tmpdir(), 'mini-erp-pos-'));
-    await mirrorPos({ version: '0.1.0', destDir: dir, fetch: fakeFetch(PUBLISHED).fetch });
+    await mirrorPos({ channel: 'v4', destDir: dir, fetch: fakeFetch(PUBLISHED).fetch });
     const cambiado = { ...PUBLISHED, [`${BASE}favicon.svg`]: '<svg id="nuevo"/>' };
-    await mirrorPos({ version: '0.1.0', destDir: dir, fetch: fakeFetch(cambiado).fetch });
-    expect(readFileSync(join(dir, '0.1.0', 'favicon.svg'), 'utf-8')).toBe('<svg id="nuevo"/>');
+    await mirrorPos({ channel: 'v4', destDir: dir, fetch: fakeFetch(cambiado).fetch });
+    expect(readFileSync(join(dir, 'v4', 'favicon.svg'), 'utf-8')).toBe('<svg id="nuevo"/>');
   });
 });

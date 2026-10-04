@@ -1,29 +1,20 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { contractBaseUrl, parseVersionJson } from '../../../scripts/contract-source.ts';
+import { channelBaseUrl, parseVersionJson } from '../../../scripts/contract-source.ts';
 import { bundleAssetRefs, htmlAssetRefs } from './pos-assets.ts';
 
 /**
- * Copia local del POS publicado (#9): la misma versión de `https://offline-pos.pages.dev/<v>/`,
- * byte por byte, para servirla en desarrollo desde el mismo origen que el mini-erp. Siempre de una
- * carpeta publicada, nunca de main de offline-pos.
+ * Copia local del POS publicado (#9, #58): el canal del major del contrato
+ * (`https://pos.contax.ar/v4/`), byte por byte, para servirlo en desarrollo desde el mismo origen que
+ * el mini-erp. Siempre del canal publicado, nunca de main de offline-pos.
  */
 export type FetchLike = (url: string) => Promise<Response>;
 
 export const DEFAULT_POS_MIRROR_DIR = 'vendor/pos';
 
-/** La versión del POS fijada en `contract.json` (la que abre el landing). */
-export async function contractPosVersion(contractJsonPath: string): Promise<string> {
-  const raw: unknown = JSON.parse(await readFile(contractJsonPath, 'utf8'));
-  if (typeof raw === 'object' && raw !== null && 'posVersion' in raw && typeof raw.posVersion === 'string') {
-    return raw.posVersion;
-  }
-  throw new Error(`${contractJsonPath} no tiene posVersion`);
-}
-
-export function isPosMirrored(destDir: string, version: string): boolean {
-  return existsSync(join(destDir, version, 'index.html')) && existsSync(join(destDir, version, 'version.json'));
+export function isPosMirrored(destDir: string, channel: string): boolean {
+  return existsSync(join(destDir, channel, 'index.html')) && existsSync(join(destDir, channel, 'version.json'));
 }
 
 async function download(fetch: FetchLike, url: string): Promise<Buffer> {
@@ -35,20 +26,20 @@ async function download(fetch: FetchLike, url: string): Promise<Buffer> {
 }
 
 /**
- * Baja la versión entera a `<destDir>/<version>/` y devuelve sus archivos. Arma todo en una carpeta
- * temporal y la mueve al final: si algo falla, no queda una copia a medias.
+ * Baja el canal entero a `<destDir>/<canal>/` y devuelve qué versión del POS tenía y sus archivos.
+ * Arma todo en una carpeta temporal y la mueve al final: si algo falla, no queda una copia a medias.
  */
 export async function mirrorPos(params: {
-  version: string;
+  channel: string;
   destDir: string;
   fetch?: FetchLike | undefined;
-}): Promise<string[]> {
+}): Promise<{ version: string; files: string[] }> {
   const fetch = params.fetch ?? ((url: string) => globalThis.fetch(url));
-  const base = contractBaseUrl(params.version);
+  const base = channelBaseUrl(params.channel);
   const files = new Map<string, Buffer>();
 
   const versionJson = await download(fetch, `${base}version.json`);
-  parseVersionJson(JSON.parse(versionJson.toString('utf-8')), params.version);
+  const published = parseVersionJson(JSON.parse(versionJson.toString('utf-8')), params.channel);
   files.set('version.json', versionJson);
 
   const index = await download(fetch, `${base}index.html`);
@@ -65,7 +56,7 @@ export async function mirrorPos(params: {
     }
   }
 
-  const finalDir = join(params.destDir, params.version);
+  const finalDir = join(params.destDir, params.channel);
   const tempDir = `${finalDir}.tmp-${String(process.pid)}-${String(Date.now())}`;
   try {
     for (const [ref, body] of files) {
@@ -78,5 +69,5 @@ export async function mirrorPos(params: {
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
-  return [...files.keys()];
+  return { version: published.version, files: [...files.keys()] };
 }

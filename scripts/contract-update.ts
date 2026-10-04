@@ -1,16 +1,18 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
-  contractBaseUrl,
+  channelBaseUrl,
   contractJson,
   openApiInfoVersion,
   parseVersionJson,
 } from './contract-source.ts';
+import { POS_CHANNEL } from '../src/shared/contract-version.ts';
 
 /**
- * pnpm contract:update <versión del POS publicada>
- * Baja el OpenAPI de esa carpeta publicada y deja su procedencia en contract.json. No escribe nada
- * si algo no coincide.
+ * pnpm contract:update [canal]
+ * Baja el OpenAPI del canal publicado del POS (por defecto el del contrato implementado, hoy v4; otro,
+ * como v5, para preparar una migración) y deja su procedencia en contract.json. No escribe nada si
+ * algo no coincide.
  */
 const root = resolve(import.meta.dirname, '..');
 const openApiPath = resolve(root, 'docs/connector-api.openapi.yaml');
@@ -36,9 +38,9 @@ async function previousContract(): Promise<string> {
   }
 }
 
-const posVersion = process.argv[2] ?? '';
-const base = contractBaseUrl(posVersion);
-const published = parseVersionJson(JSON.parse(await fetchText(`${base}version.json`)), posVersion);
+const channel = process.argv[2] ?? POS_CHANNEL;
+const base = channelBaseUrl(channel);
+const published = parseVersionJson(JSON.parse(await fetchText(`${base}version.json`)), channel);
 const yaml = await fetchText(`${base}docs/connector-api.openapi.yaml`);
 const infoVersion = openApiInfoVersion(yaml);
 if (infoVersion !== published.contract) {
@@ -49,5 +51,5 @@ if (infoVersion !== published.contract) {
 
 const before = await previousContract();
 await writeFile(openApiPath, yaml);
-await writeFile(contractJsonPath, `${JSON.stringify(contractJson(published), null, 2)}\n`);
-console.log(`Contrato: ${before} → ${published.contract} (POS ${published.version}, ${base})`);
+await writeFile(contractJsonPath, `${JSON.stringify(contractJson(channel, published), null, 2)}\n`);
+console.log(`Contrato: ${before} → ${published.contract} (POS ${published.version} en ${base})`);

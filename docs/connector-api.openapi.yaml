@@ -1,12 +1,19 @@
 openapi: 3.1.0
 info:
   title: offline-pos Connector API
-  version: '4.4.0'
+  version: '4.5.0'
   description: |
     Contrato que cualquier sistema externo (ERP, e-commerce, facturación,
     inventario) implementa para conectarse al POS. La guía para integradores
     (`guia.md`, publicada junto a este archivo) explica cómo probarlo y por
     dónde empezar.
+
+    **4.5.0 respecto de 4.4.0** (aditivo):
+      - `GET /info` suma `company` opcional (`{ name }`): el comercio al que
+        pertenece la key, para que el POS muestre en qué empresa está la
+        terminal. Ausente, mal formado o con el nombre vacío, el POS no
+        muestra empresa. No es una capacidad: se declara mandándolo.
+      - El piso sigue en 4.0.0: un backend 4.4 sigue siendo compatible.
 
     **4.4.0 respecto de 4.3.0** (aditivo) — la última versión antes del
     MVP: desde acá el contrato casi no cambia de forma y lo nuevo entra como
@@ -112,7 +119,7 @@ info:
     ack, el lote sigue congelado en el outbox del POS con su mismo
     `idempotency_id` y sale cuando el backend se actualice.
 
-    **Compatibilidad del lado del POS (4.4.0)**: el POS habla 4.4.0 y
+    **Compatibilidad del lado del POS (desde 4.4.0)**: el POS habla 4.5.0 y
     considera compatible a un backend del **mismo major con minor igual o
     mayor que el piso 4.0.0** (hasta 4.3.0 exigía su mismo minor). Lo que un
     backend puede o no hacer más allá del piso lo declara como **capacidad**
@@ -161,7 +168,8 @@ info:
     `[::1]`). `wipeKey` es el `wipe_key` que recibió en la ida, sin
     modificar: con él (o sin datos del usuario) el POS borra lo local de la
     demo y aplica la conexión; sin él, precarga `/CONFIG` para que el
-    operador decida.
+    operador decida. Una demo revocada (ver `POST /demo-sessions`) puede ir
+    igual al alta: la vuelta trae una conexión nueva.
 
     Cada operación está marcada con una extensión `x-pos-status`:
       - `implemented-v4`: el POS ya la consume con la forma de 4.x.
@@ -217,8 +225,10 @@ paths:
         versión).
 
         El POS lo llama al abrirse con un link de demo
-        (`<pos>/?demo=true&backend=<base URL>&template=<opcional>`), en una
-        terminal sin config y sin datos del usuario, o que ya está en demo.
+        (`<pos>/?demo=true&backend=<base URL>&template=<opcional>`). En una
+        terminal sin config, o que ya está en demo, y sin datos del usuario,
+        lo llama directo; si no (tiene datos, o una conexión real), primero
+        le muestra al operador qué se pierde y lo llama recién si confirma.
         Con la respuesta arma una conexión REST, la prueba (un pull) y la
         aplica borrando lo local. Después muestra un botón
         `<onboarding.label> (/ALTA)` que lleva al usuario a `onboarding.url`
@@ -226,6 +236,15 @@ paths:
 
         Un `template` desconocido responde 422 con la lista: el POS reintenta
         sin template y avisa qué plantilla usó.
+
+        **Revocar una demo**: el backend puede revocar la conexión de una
+        demo cuando quiera (por ejemplo, al reiniciar los datos de la demo o
+        tras un tiempo sin uso). Desde entonces responde `401` a todo request
+        con esa API key. El POS en demo lo toma como "la demo terminó": deja
+        de sincronizar y ofrece empezar una demo nueva, que es otro
+        `POST /demo-sessions` al mismo backend (el del link) y con la misma
+        plantilla. Fuera de una demo, un `401` sigue siendo una credencial
+        inválida.
       security: []
       parameters:
         - $ref: '#/components/parameters/ContractVersion'
@@ -412,9 +431,9 @@ components:
       required: false
       schema:
         type: string
-        example: '4.4.0'
+        example: '4.5.0'
       description: |
-        Versión del contrato que habla el POS (4.4.0). El POS la manda en
+        Versión del contrato que habla el POS (4.5.0). El POS la manda en
         todos los requests. Un backend que no soporta ese major responde 409
         `IncompatibleContract` sin procesar nada (salvo `/info`, que nunca
         responde 409). Sin el header (un POS anterior a 4.0.0) queda a
@@ -446,7 +465,7 @@ components:
       type: object
       required: [contractVersion, status]
       properties:
-        contractVersion: { type: string, example: '4.4.0' }
+        contractVersion: { type: string, example: '4.5.0' }
         status:
           type: string
           enum: [ok, maintenance]
@@ -469,6 +488,15 @@ components:
           properties:
             name: { type: string }
             version: { type: string }
+        company:
+          type: object
+          required: [name]
+          description: |
+            4.5.0: el comercio al que pertenece la key (por ejemplo, el nombre
+            de la empresa en el backend). El POS lo muestra junto a la sucursal
+            y la caja. Opcional.
+          properties:
+            name: { type: string, example: Kiosco Pepe }
 
     Blocked:
       type: object

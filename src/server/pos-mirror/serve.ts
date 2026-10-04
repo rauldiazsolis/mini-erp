@@ -14,20 +14,20 @@ export function mountPosMirror(app: Express, dir: string): void {
   });
 }
 
-/** Si falta la copia de la versión fijada, la baja. Sin red avisa y sigue: nunca tumba el arranque. */
+/** Si falta la copia del canal, la baja. Sin red avisa y sigue: nunca tumba el arranque. */
 export async function ensurePosMirror(params: {
   dir: string;
-  version: string;
+  channel: string;
   fetch?: FetchLike | undefined;
   log?: ((message: string) => void) | undefined;
 }): Promise<void> {
   const log = params.log ?? ((message: string) => { console.log(message); });
-  if (isPosMirrored(params.dir, params.version)) return;
+  if (isPosMirrored(params.dir, params.channel)) return;
   try {
-    const files = await mirrorPos({ version: params.version, destDir: params.dir, fetch: params.fetch });
-    log(`📦 POS ${params.version}: copia local bajada (${String(files.length)} archivos)`);
+    const { version, files } = await mirrorPos({ channel: params.channel, destDir: params.dir, fetch: params.fetch });
+    log(`📦 POS ${version} (canal ${params.channel}): copia local bajada (${String(files.length)} archivos)`);
   } catch (err: unknown) {
     const reason = err instanceof Error ? err.message : String(err);
-    log(`⚠️  No se pudo bajar el POS ${params.version} (${reason}). Corré \`pnpm pos:mirror\` cuando haya red.`);
+    log(`⚠️  No se pudo bajar el POS del canal ${params.channel} (${reason}). Corré \`pnpm pos:mirror\` cuando haya red.`);
   }
 }

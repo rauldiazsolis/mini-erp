@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { canonicalPath, routeFromPath, navigate, routeSignal } from '../src/client/state/route-state.ts';
 import {
   DEFAULT_POS_ORIGIN,
-  POS_VERSION,
   buildDemoUrl,
   posBaseUrl,
   publishedPosOrigin,
@@ -38,16 +36,11 @@ describe('Ruteo del SPA (#9)', () => {
 });
 
 describe('Link de demo del landing (#9)', () => {
-  it('la versión del POS sale de contract.json', () => {
-    const contract = JSON.parse(readFileSync('contract.json', 'utf-8')) as { posVersion: string };
-    expect(POS_VERSION).toBe(contract.posVersion);
-  });
-
-  it('abre el POS publicado en demo contra este Connector API', () => {
+  it('abre el canal del POS publicado en demo contra este Connector API (#58)', () => {
     const url = new URL(
-      buildDemoUrl(posBaseUrl('0.1.0', 'http://localhost:4100', false, 'https://pos.contax.ar'), 'http://localhost:4100'),
+      buildDemoUrl(posBaseUrl('http://localhost:4100', false, 'https://pos.contax.ar'), 'http://localhost:4100'),
     );
-    expect(`${url.origin}${url.pathname}`).toBe('https://pos.contax.ar/0.1.0/');
+    expect(`${url.origin}${url.pathname}`).toBe('https://pos.contax.ar/v4/');
     expect(url.searchParams.get('demo')).toBe('true');
     expect(url.searchParams.get('backend')).toBe('http://localhost:4100/connector');
   });

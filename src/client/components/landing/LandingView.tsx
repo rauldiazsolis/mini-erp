@@ -1,7 +1,8 @@
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { Logo } from '../ui/Logo.tsx';
 import { versionLabel } from '../../state/app-version.ts';
-import { POS_VERSION, buildDemoUrl, posBaseUrl, publishedPosOrigin } from '../../state/demo-link.ts';
+import { buildDemoUrl, posBaseUrl, publishedPosOrigin } from '../../state/demo-link.ts';
+import { POS_CHANNEL } from '../../../shared/contract-version.ts';
 
 /**
  * Landing en la raíz (#9, #18): le habla al comerciante y abre el POS en demo contra este backend. En
@@ -12,7 +13,7 @@ export function LandingView() {
   const origin = typeof window === 'undefined' ? 'http://localhost:4100' : window.location.origin;
   const useLocalCopy = import.meta.env.DEV;
   const posOrigin = publishedPosOrigin(import.meta.env.VITE_POS_URL);
-  const demoUrl = buildDemoUrl(posBaseUrl(POS_VERSION, origin, useLocalCopy, posOrigin), origin);
+  const demoUrl = buildDemoUrl(posBaseUrl(origin, useLocalCopy, posOrigin), origin);
 
   return (
     <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
@@ -46,7 +47,7 @@ export function LandingView() {
           </a>
           <p class="text-xs text-slate-500 dark:text-slate-400">
             {useLocalCopy
-              ? `Abre una copia local del POS ${POS_VERSION} publicado, servida por este backend.`
+              ? `Abre una copia local del POS del canal ${POS_CHANNEL}, servida por este backend.`
               : 'Se abre el punto de venta con un comercio de ejemplo.'}
           </p>
         </div>

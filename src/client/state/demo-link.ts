@@ -1,7 +1,4 @@
-import contract from '../../../contract.json' with { type: 'json' };
-
-/** La versión publicada del POS contra la que se probó el mini-erp (la mueve `pnpm contract:update`). */
-export const POS_VERSION: string = contract.posVersion;
+import { POS_CHANNEL } from '../../shared/contract-version.ts';
 
 export const DEFAULT_POS_ORIGIN = 'https://offline-pos.pages.dev';
 
@@ -15,11 +12,12 @@ export function publishedPosOrigin(raw: string | undefined): string {
 }
 
 /**
- * Dónde está el POS: en desarrollo, la copia local que sirve el mini-erp en `/pos/<versión>/` (mismo
- * origen, sin permiso de red local); en producción, el POS publicado en `posOrigin`.
+ * Dónde está el POS (#58): el canal del contrato implementado (`/v4/`), sin fijar una versión. En
+ * desarrollo, la copia local que sirve el mini-erp en `/pos/<canal>/` (mismo origen, sin permiso de
+ * red local); en producción, el POS publicado en `posOrigin`.
  */
-export function posBaseUrl(posVersion: string, origin: string, useLocalCopy: boolean, posOrigin: string): string {
-  return useLocalCopy ? `${origin}/pos/${posVersion}/` : `${posOrigin}/${posVersion}/`;
+export function posBaseUrl(origin: string, useLocalCopy: boolean, posOrigin: string, channel = POS_CHANNEL): string {
+  return useLocalCopy ? `${origin}/pos/${channel}/` : `${posOrigin}/${channel}/`;
 }
 
 /** Link de "Probar la demo": el POS en demo contra el Connector API de este mini-erp. */
