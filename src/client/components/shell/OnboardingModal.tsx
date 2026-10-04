@@ -10,7 +10,6 @@ import {
   prevStep,
   finishAndEnterTenant,
   DONE_STEP,
-  type BusinessPreset,
 } from '../../state/onboarding-state.ts';
 import {
   onboardingModalOpenSignal,
@@ -20,43 +19,7 @@ import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Logo } from '../ui/Logo.tsx';
-
-const PRESETS: Array<{
-  id: BusinessPreset;
-  title: string;
-  badge: string;
-  description: string;
-  icon: string;
-}> = [
-  {
-    id: 'kiosco',
-    title: 'Kiosco / Drugstore',
-    badge: 'Popular',
-    description: 'Bebidas, snacks, golosinas y cigarrillos precargados con categorías y precios sugeridos.',
-    icon: '🏪',
-  },
-  {
-    id: 'ferreteria',
-    title: 'Ferretería / Corralón',
-    badge: 'Industrial',
-    description: 'Tornillería, herramientas manuales, pinturas y electricidad con stock de referencia.',
-    icon: '🔧',
-  },
-  {
-    id: 'almacen',
-    title: 'Almacén / Minimarket',
-    badge: 'Comestibles',
-    description: 'Lácteos, fiambres, panificados, artículos de almacén y limpieza listos para la venta.',
-    icon: '🛒',
-  },
-  {
-    id: 'empty',
-    title: 'En Blanco (Personalizado)',
-    badge: 'Sin datos',
-    description: 'Inicia con un catálogo completamente vacío para cargar tus propios productos desde cero o CSV.',
-    icon: '📄',
-  },
-];
+import { BUSINESS_TYPE_OPTIONS } from '../onboarding/business-type-options.ts';
 
 export function OnboardingModal() {
   if (!onboardingModalOpenSignal.value) return null;
@@ -182,42 +145,37 @@ export function OnboardingModal() {
           {step === 2 && (
             <div class="space-y-4 animate-in fade-in duration-150">
               <div>
-                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Selecciona una plantilla o rubro inicial</h3>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Rubro del comercio</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Puedes precargar categorías, marcas y artículos modelo listos para vender o comenzar en blanco.
+                  El comercio nace vacío: después cargás tus productos desde un archivo o con el catálogo de ejemplo del rubro.
                 </p>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {PRESETS.map((p) => {
-                  const isSelected = selectedPresetSignal.value === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => (selectedPresetSignal.value = p.id)}
-                      class={`p-4 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
-                        isSelected
-                          ? 'bg-indigo-600/15 border-indigo-500 shadow-lg shadow-indigo-600/10 ring-2 ring-indigo-500/40'
-                          : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <div class="flex items-start justify-between mb-2">
-                        <span class="text-2xl">{p.icon}</span>
-                        <span
-                          class={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                {BUSINESS_TYPE_OPTIONS.map((p) => {
+                      const isSelected = selectedPresetSignal.value === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            selectedPresetSignal.value = p.id;
+                          }}
+                          class={`p-4 rounded-2xl border transition-all cursor-pointer text-left flex items-start gap-3 ${
                             isSelected
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                              ? 'bg-indigo-600/15 border-indigo-500 shadow-lg shadow-indigo-600/10 ring-2 ring-indigo-500/40'
+                              : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/40'
                           }`}
                         >
-                          {p.badge}
-                        </span>
-                      </div>
-                      <div class="font-bold text-sm text-slate-900 dark:text-white mb-1">{p.title}</div>
-                      <div class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{p.description}</div>
-                    </div>
-                  );
-                })}
+                          <span class="text-2xl">{p.icon}</span>
+                          <span>
+                            <span class="block font-bold text-sm text-slate-900 dark:text-white">{p.title}</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{p.description}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
               </div>
             </div>
           )}
@@ -232,7 +190,7 @@ export function OnboardingModal() {
                 <div>
                   <h4 class="text-sm font-bold text-slate-900 dark:text-white">¡Comercio "{result.name}" Creado con Éxito!</h4>
                   <p class="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    La base de datos SQLite fue creada y poblada. Conecta tu Offline POS con las siguientes credenciales:
+                    Cargá tus productos y clientes desde Operaciones masivas: un archivo o el catálogo de ejemplo. Conectá tu POS con estas credenciales:
                   </p>
                 </div>
               </div>

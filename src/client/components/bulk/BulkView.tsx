@@ -4,6 +4,7 @@ import { BulkPricesCard } from './BulkPricesCard.tsx';
 import { BulkInterestsCard } from './BulkInterestsCard.tsx';
 import { ExportCard } from './ExportCard.tsx';
 import { ImportWizard } from '../import/ImportWizard.tsx';
+import { ExampleCatalogCard } from '../import/ExampleCatalogCard.tsx';
 
 import { PageHeader } from '../ui/PageHeader.tsx';
 
@@ -27,6 +28,7 @@ export function BulkView() {
       {activeTab === 'interests' && <BulkInterestsCard />}
       {activeTab === 'io' && (
         <div class="space-y-6">
+          <ExampleCatalogCard />
           <ImportWizard />
           <ExportCard />
         </div>

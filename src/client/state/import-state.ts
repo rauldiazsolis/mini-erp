@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { effect, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import type { ImportEntity, ImportField, ImportMapping, ImportPreview } from '../../shared/import-fields.ts';
@@ -104,4 +104,16 @@ export function resetImport(): void {
   importLoadingSignal.value = false;
   importErrorSignal.value = null;
   importOnlyIssuesSignal.value = false;
+}
+
+if (typeof window !== 'undefined') {
+  // Otro comercio activo: el archivo y la vista previa eran del anterior
+  let lastTenant = effectiveTenantIdSignal.peek();
+  effect(() => {
+    const tenant = effectiveTenantIdSignal.value;
+    if (tenant !== lastTenant) {
+      lastTenant = tenant;
+      resetImport();
+    }
+  });
 }

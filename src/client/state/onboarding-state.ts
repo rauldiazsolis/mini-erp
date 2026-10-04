@@ -7,8 +7,7 @@ import {
 } from './auth-state.ts';
 import { closeOnboardingModal } from './navigation-state.ts';
 import { showToast } from './toast-state.ts';
-
-export type BusinessPreset = 'kiosco' | 'ferreteria' | 'almacen' | 'empty';
+import type { BusinessType } from '../../shared/business-type.ts';
 
 export type ProvisionResult = {
   tenantId: string;
@@ -24,7 +23,7 @@ export const DONE_STEP = 3;
 
 export const stepSignal = signal<number>(1);
 export const nameSignal = signal<string>('');
-export const selectedPresetSignal = signal<BusinessPreset>('kiosco');
+export const selectedPresetSignal = signal<BusinessType>('kiosco');
 export const isSubmittingSignal = signal<boolean>(false);
 export const errorMessageSignal = signal<string | null>(null);
 export const provisionResultSignal = signal<ProvisionResult | null>(null);
@@ -86,7 +85,7 @@ export async function submitOnboarding(): Promise<void> {
     }>('alta', {
       method: 'POST',
       token,
-      body: { businessName: name, template: selectedPresetSignal.value },
+      body: { businessName: name, businessType: selectedPresetSignal.value },
     });
 
     await fetchProfile();

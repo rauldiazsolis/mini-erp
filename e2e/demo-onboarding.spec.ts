@@ -74,9 +74,12 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await page.getByPlaceholder('Ej: Martín Rodríguez').fill('Alta E2E');
   await page.getByPlaceholder('ejemplo@comercio.com').fill(email);
   await page.getByPlaceholder('Mínimo 8 caracteres').fill('prueba-e2e');
-  await page.getByRole('button', { name: 'Continuar a Datos del Negocio →' }).click();
+  await page.getByPlaceholder('Ej: 11 5555-1234').fill('1155550000');
+  await page.getByRole('button', { name: 'Continuar →' }).click();
   await page.getByPlaceholder(/Ej: Kiosco San Martín/).fill('Kiosco E2E');
-  await page.getByRole('button', { name: /Aprovisionar Mi Comercio/ }).click();
+  await page.getByRole('button', { name: 'Crear mi comercio' }).click();
+  // Cargá tus datos (#22): el catálogo de ejemplo del rubro de la demo
+  await page.getByRole('button', { name: /catálogo de ejemplo de Kiosco/ }).click();
   await expect(page.getByText(`Vas a volver a localhost:${String(E2E_PORT)}`)).toBeVisible();
   await page.getByRole('button', { name: 'Volver al POS' }).click();
 

@@ -125,7 +125,7 @@ describe('Wizard "Crear nuevo comercio" (con sesión, #19)', () => {
       const alta = fetchCalls.filter((c) => c.url.endsWith('/api/alta'));
       expect(alta).toHaveLength(1);
       expect(alta[0]?.method).toBe('POST');
-      expect(alta[0]?.body).toEqual({ businessName: 'Kiosco Avenida', template: 'ferreteria' });
+      expect(alta[0]?.body).toEqual({ businessName: 'Kiosco Avenida', businessType: 'ferreteria' });
       expect(alta[0]?.auth).toBe('Bearer mock-jwt-token');
     });
 
