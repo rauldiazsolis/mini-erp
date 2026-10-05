@@ -5,6 +5,7 @@ import { v7Plataforma } from './system/v7-plataforma.ts';
 import { v8ImpersonacionYAyuda } from './system/v8-impersonacion-y-ayuda.ts';
 import { v9DemosV2 } from './system/v9-demos-v2.ts';
 import { v10PortalCajas } from './system/v10-portal-cajas.ts';
+import { v11Embudo } from './system/v11-embudo.ts';
 
 /** Base de sistema (#47): línea de base 4 (la de M2). Desde acá, todo cambio es una migración. */
 export const SYSTEM_SCHEMA: Schema = {
@@ -110,5 +111,5 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_log (tenant_id, at);
 `,
-  migrations: [v5CreditosYCobro, v6AltaWhatsappRubro, v7Plataforma, v8ImpersonacionYAyuda, v9DemosV2, v10PortalCajas],
+  migrations: [v5CreditosYCobro, v6AltaWhatsappRubro, v7Plataforma, v8ImpersonacionYAyuda, v9DemosV2, v10PortalCajas, v11Embudo],
 };

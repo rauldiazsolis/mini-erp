@@ -3,6 +3,9 @@ import { createDbAtVersion } from './helpers/db-at-version.ts';
 import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { migrateDb } from '../src/server/db/migrations/migrate.ts';
 
+/** El esquema hasta v10: las migraciones de después suben `user_version` (v11, M9). */
+const HASTA_V10 = { ...SYSTEM_SCHEMA, migrations: SYSTEM_SCHEMA.migrations.filter((m) => m.version <= 10) };
+
 const at = '2026-10-05T12:00:00.000Z';
 
 function baseV9() {
@@ -29,7 +32,7 @@ function baseV9() {
 describe('migración de sistema v10 portal-cajas (M10)', () => {
   it('las sesiones de demo pasan con su key activa; sin key activa se descartan', () => {
     const db = baseV9();
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V10);
     expect(
       db.prepare('SELECT token_hash, kind, tenant_id, register_id, api_key_id, demo_session_id, created_at, last_used_at FROM anonymous_sessions').all(),
     ).toEqual([
@@ -40,7 +43,7 @@ describe('migración de sistema v10 portal-cajas (M10)', () => {
 
   it('una sesión de caja real no lleva sesión de demo', () => {
     const db = baseV9();
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V10);
     db.prepare(
       "INSERT INTO anonymous_sessions (token_hash, kind, tenant_id, register_id, api_key_id, created_at, last_used_at) VALUES ('s_r', 'register', 'demo-kiosco', 'reg_a', 'key_a', ?, ?)",
     ).run(at, at);
@@ -49,7 +52,7 @@ describe('migración de sistema v10 portal-cajas (M10)', () => {
 
   it('los links y la auditoría siguen, con las columnas nuevas vacías', () => {
     const db = baseV9();
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V10);
     expect(db.prepare('SELECT token_hash, api_key_id FROM portal_links').all()).toEqual([{ token_hash: 'l_a', api_key_id: null }]);
     expect(db.prepare('SELECT id, actor_user_id, actor_register_id FROM audit_log').all()).toEqual([
       { id: 'aud_1', actor_user_id: 'u1', actor_register_id: null },
