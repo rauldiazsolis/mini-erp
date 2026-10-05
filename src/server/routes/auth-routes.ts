@@ -70,8 +70,15 @@ export function createAuthRoutes(
     const tenants = authService.listUserTenants(req.user.id, req.user.globalRole);
     res.status(200).json({
       user: req.user,
+      impersonator: req.impersonator ?? null,
       tenants,
     });
+  });
+
+  // "Cerrar sesión" (#23): borra la sesión en el servidor; las impersonaciones hijas mueren con ella
+  router.post('/logout', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
+    if (req.sessionToken !== undefined) authService.deleteSession(req.sessionToken);
+    res.status(200).json({ success: true });
   });
 
   return router;

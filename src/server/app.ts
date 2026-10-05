@@ -23,6 +23,7 @@ import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { createRegisterRoutes } from './routes/register-routes.ts';
 import { createPlatformRoutes } from './routes/platform-routes.ts';
 import { createPlatformAdminRoutes } from './routes/platform-admin-routes.ts';
+import { createImpersonationRoutes } from './routes/impersonation-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
@@ -49,6 +50,7 @@ import {
   userStatusServiceDef,
   staffInvitationServiceDef,
   platformQueryServiceDef,
+  impersonationServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
@@ -122,6 +124,8 @@ export function createApp(deps?: AppDependencies): {
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));
+  // Impersonación de usuario (#23): una sesión aparte, por pestaña
+  app.use('/api/impersonations', requireAdmin, createImpersonationRoutes(rootContainer.use(impersonationServiceDef)));
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit));

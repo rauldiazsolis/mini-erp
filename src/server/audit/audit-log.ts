@@ -31,7 +31,9 @@ export type AuditAction =
   | 'user.enabled'
   | 'staff.invited'
   | 'staff.invitation_revoked'
-  | 'staff.joined';
+  | 'staff.joined'
+  | 'impersonation.started'
+  | 'impersonation.ended';
 
 export type AuditEntry = {
   id: string;
