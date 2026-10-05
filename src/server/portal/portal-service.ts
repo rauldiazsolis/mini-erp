@@ -62,9 +62,10 @@ export class PortalService {
       this.db.prepare('UPDATE portal_links SET used_at = ? WHERE token_hash = ?').run(now, link.token_hash);
       this.db
         .prepare(
-          'INSERT INTO anonymous_sessions (token_hash, tenant_id, register_id, demo_session_id, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)',
+          `INSERT INTO anonymous_sessions (token_hash, kind, tenant_id, register_id, api_key_id, demo_session_id, created_at, last_used_at)
+           VALUES (?, 'demo', ?, ?, (SELECT id FROM tenant_api_keys WHERE register_id = ? AND active = 1), ?, ?, ?)`,
         )
-        .run(hashLinkToken(session), link.tenant_id, link.register_id, demo.id, now, now);
+        .run(hashLinkToken(session), link.tenant_id, link.register_id, link.register_id, demo.id, now, now);
       this.db.exec('COMMIT');
     } catch (err: unknown) {
       this.db.exec('ROLLBACK');
