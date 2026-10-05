@@ -5,13 +5,12 @@ import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
 
 /**
  * Pasada la gracia, el admin del comercio queda restringido (#21): `402 billing-restricted` en todo
- * menos lo abierto. Root y soporte (impersonando) no se restringen. El Connector API no pasa por acá:
+ * menos lo abierto. Quien impersona no se restringe (#23). El Connector API no pasa por acá:
  * el POS sigue vendiendo y sincronizando. Va después de `requireTenantContext`.
  */
 export function createBillingRestriction(billing: BillingService) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
-    const role = req.user?.globalRole;
-    if (role === 'root' || role === 'support' || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator !== undefined || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       next();
       return;
     }

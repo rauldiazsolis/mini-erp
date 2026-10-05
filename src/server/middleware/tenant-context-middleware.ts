@@ -9,8 +9,8 @@ import { isSuspended } from '../platform/suspensions.ts';
 import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
 
 /**
- * Resuelve el comercio del pedido y el rol con el que se opera (#19): la membresía activa, u owner
- * para root y support hasta M7. Sin rol, 403. Cada ruta exige después su capacidad. Un comercio
+ * Resuelve el comercio del pedido y el rol con el que se opera (#19): la membresía activa (root y
+ * soporte entran impersonando, #16). Sin rol, 403. Cada ruta exige después su capacidad. Un comercio
  * suspendido (#23) solo deja a sus usuarios lo abierto (Uso y pagos, estado de cobro y exportar).
  */
 export function createTenantContextMiddleware(
@@ -38,7 +38,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    if (req.user.globalRole === 'user' && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator === undefined && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
       return;
     }

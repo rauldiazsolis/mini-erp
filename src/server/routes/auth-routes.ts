@@ -5,6 +5,7 @@ import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts
 import type { AuditLog } from '../audit/audit-log.ts';
 import { passwordSchema } from '../../shared/password.ts';
 import { sendError } from '../errors.ts';
+import { requireOwnSession } from '../middleware/own-session-middleware.ts';
 
 const loginSchema = z.object({
   email: z.email('Email inválido'),
@@ -41,7 +42,7 @@ export function createAuthRoutes(
   });
 
   // Cambiar la propia contraseña (#19): cierra las sesiones de los otros equipos
-  router.post('/password', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/password', requireAdmin, requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
@@ -67,11 +68,18 @@ export function createAuthRoutes(
       return;
     }
 
-    const tenants = authService.listUserTenants(req.user.id, req.user.globalRole);
+    const tenants = authService.listUserTenants(req.user.id);
     res.status(200).json({
       user: req.user,
+      impersonator: req.impersonator ?? null,
       tenants,
     });
+  });
+
+  // "Cerrar sesión" (#23): borra la sesión en el servidor; las impersonaciones hijas mueren con ella
+  router.post('/logout', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
+    if (req.sessionToken !== undefined) authService.deleteSession(req.sessionToken);
+    res.status(200).json({ success: true });
   });
 
   return router;

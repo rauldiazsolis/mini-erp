@@ -29,15 +29,8 @@ export class MembershipService {
     this.audit = audit;
   }
 
-  /** El rol con el que el usuario opera el comercio; root y support, owner hasta M7. */
+  /** El rol con el que el usuario opera el comercio: su membresía activa. Root y soporte no son miembros (#16). */
   resolveRole(user: UserSession, tenantId: string): TenantRole | undefined {
-    if (user.globalRole === 'root' || user.globalRole === 'support') {
-      // Las demos (#9) no se impersonan desde el admin
-      const tenant = this.db
-        .prepare('SELECT id FROM tenants WHERE id = ? AND id NOT IN (SELECT tenant_id FROM demo_sessions)')
-        .get(tenantId);
-      return tenant === undefined ? undefined : 'owner';
-    }
     const membership = this.getMembership(tenantId, user.id);
     return membership?.status === 'active' ? membership.role : undefined;
   }
@@ -101,7 +94,7 @@ export class MembershipService {
    */
   updateMember(params: {
     tenantId: string;
-    actor: { userId: string; role: TenantRole };
+    actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     targetUserId: string;
     role?: TenantRole | undefined;
     status?: MemberStatus | undefined;
@@ -130,6 +123,7 @@ export class MembershipService {
       this.db.prepare('UPDATE memberships SET role = ? WHERE tenant_id = ? AND user_id = ?').run(params.role, tenantId, targetUserId);
       this.audit?.record({
         actorUserId: actor.userId,
+        impersonatorUserId: actor.impersonatorUserId,
         tenantId,
         action: 'member.role_changed',
         targetUserId,
@@ -140,6 +134,7 @@ export class MembershipService {
       this.db.prepare('UPDATE memberships SET status = ? WHERE tenant_id = ? AND user_id = ?').run(params.status, tenantId, targetUserId);
       this.audit?.record({
         actorUserId: actor.userId,
+        impersonatorUserId: actor.impersonatorUserId,
         tenantId,
         action: params.status === 'disabled' ? 'member.disabled' : 'member.enabled',
         targetUserId,

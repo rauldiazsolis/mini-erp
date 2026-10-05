@@ -18,7 +18,15 @@ export type MemberItem = {
   canReset: boolean;
 };
 export type InvitationItem = { id: string; email: string; role: TenantRole; createdAt: string; expiresAt: string; invitedByName: string };
-export type AuditItem = { id: string; at: string; action: string; actorName: string; targetName: string | null; details: Record<string, unknown> };
+export type AuditItem = {
+  id: string;
+  at: string;
+  action: string;
+  actorName: string;
+  impersonatorName: string | null;
+  targetName: string | null;
+  details: Record<string, unknown>;
+};
 /** Un link recién generado: se muestra una sola vez (#19). */
 export type LinkReady = { kind: 'invitation' | 'reset' | 'staff-invitation'; url: string; email: string; expiresAt: string };
 
@@ -58,7 +66,22 @@ export const AUDIT_LABEL: Record<string, string> = {
   'staff.invited': 'invitó a soporte a',
   'staff.invitation_revoked': 'revocó la invitación a soporte de',
   'staff.joined': 'se sumó a soporte',
+  // Impersonación (#23)
+  'impersonation.started': 'entró como',
+  'impersonation.ended': 'salió de la cuenta de',
 };
+
+/** Por qué terminó una impersonación (#23). */
+export const IMPERSONATION_END_LABEL: Record<string, string> = {
+  exit: 'salió',
+  expired: 'venció por falta de uso',
+  'parent-ended': 'se cerró la sesión de soporte',
+};
+
+/** El actor de una línea de auditoría (#23): "Ana (soporte) como Juan" si fue impersonando. */
+export function auditActorText(e: { actorName: string; impersonatorName: string | null }): string {
+  return e.impersonatorName === null ? e.actorName : `${e.impersonatorName} (soporte) como ${e.actorName}`;
+}
 
 /** El token va en el fragmento: no llega al servidor ni a los logs. */
 export function buildLinkUrl(kind: LinkReady['kind'], token: string, origin: string): string {

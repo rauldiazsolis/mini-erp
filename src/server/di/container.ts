@@ -29,6 +29,8 @@ import { UserStatusService } from '../platform/user-status-service.ts';
 import { StaffInvitationService } from '../platform/staff-invitation-service.ts';
 import { PlatformQueryService } from '../platform/platform-query-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
+import { ImpersonationService } from '../impersonation/impersonation-service.ts';
+import { HelpRequestService } from '../help/help-request-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -53,7 +55,6 @@ export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
 export const tenantManagerDef = fn.singleton(
   (c) => new TenantManager(c.use(systemDbDef), { baseDir: join(dataDir(), 'tenants') }),
 );
-export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef)));
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemDbDef)));
 
 // --- DEMOS (#9) ---
@@ -82,6 +83,7 @@ export const billingServiceDef = fn.singleton((c) => new BillingService({ db: c.
 // --- USUARIOS Y AUDITORÍA (#19) ---
 
 export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), c.use(clockDef)));
+export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef), { now: c.use(clockDef), audit: c.use(auditLogDef) }));
 export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemDbDef), c.use(auditLogDef)));
 export const invitationServiceDef = fn.singleton(
   (c) =>
@@ -93,6 +95,14 @@ export const invitationServiceDef = fn.singleton(
       now: c.use(clockDef),
     }),
 );
+// --- IMPERSONACIÓN (#23, M7b) ---
+
+export const helpRequestServiceDef = fn.singleton((c) => new HelpRequestService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
+export const impersonationServiceDef = fn.singleton(
+  (c) =>
+    new ImpersonationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), help: c.use(helpRequestServiceDef) }),
+);
+
 // --- PLATAFORMA (#23) ---
 
 export const suspensionServiceDef = fn.singleton(

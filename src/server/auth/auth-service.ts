@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword, generateSessionToken } from './crypto.ts';
 import { DomainError } from '../errors.ts';
-import type { MembershipRole } from '../../shared/permissions.ts';
+import type { TenantRole } from '../../shared/permissions.ts';
+import type { AuditLog } from '../audit/audit-log.ts';
 
 export type UserRole = 'root' | 'support' | 'user';
 
@@ -13,19 +14,54 @@ export type UserSession = {
   globalRole: UserRole;
 };
 
+export type Impersonator = { id: string; name: string; globalRole: 'root' | 'support' };
+
+/** Una sesión resuelta (#23): la del usuario o una impersonación, con quién la abrió. */
+export type ResolvedSession = {
+  user: UserSession;
+  impersonator: Impersonator | null;
+  tenantId: string | null;
+  helpRequestId: string | null;
+};
+
+/** Una impersonación vence a las 2 h sin uso; el último uso se escribe a lo sumo una vez por minuto. */
+export const IMPERSONATION_IDLE_MS = 2 * 60 * 60 * 1000;
+const TOUCH_EVERY_MS = 60 * 1000;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+type SessionRow = {
+  id: string;
+  email: string;
+  name: string;
+  global_role: string;
+  expires_at: string;
+  impersonator_user_id: string | null;
+  help_request_id: string | null;
+  tenant_id: string | null;
+  last_used_at: string | null;
+  imp_name: string | null;
+  imp_role: string | null;
+  imp_status: string | null;
+  parent_expires_at: string | null;
+};
+
 export type TenantMembershipInfo = {
   tenantId: string;
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: MembershipRole;
+  role: TenantRole;
 };
 
 export class AuthService {
   private systemDb: DatabaseSync;
+  private now: () => Date;
+  private audit: AuditLog | undefined;
 
-  constructor(systemDb: DatabaseSync) {
+  constructor(systemDb: DatabaseSync, deps: { now?: (() => Date) | undefined; audit?: AuditLog | undefined } = {}) {
     this.systemDb = systemDb;
+    this.now = deps.now ?? (() => new Date());
+    this.audit = deps.audit;
   }
 
   /** Crea una cuenta con su sesión. Solo la usan el alta y las invitaciones (#19): no hay registro suelto. */
@@ -131,8 +167,8 @@ export class AuthService {
 
   createSession(userId: string): string {
     const token = generateSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 días
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString(); // 30 días
 
     this.systemDb
       .prepare(
@@ -143,34 +179,114 @@ export class AuthService {
     return token;
   }
 
+  /** El usuario de la sesión, propia o impersonada. Para saber si es una impersonación, `resolveSession`. */
   validateSession(token: string): UserSession | undefined {
-    const now = new Date().toISOString();
+    return this.resolveSession(token)?.user;
+  }
+
+  /**
+   * Resuelve el token (#23): una impersonación vence a las 2 h sin uso y muere si su sesión padre ya no
+   * existe, venció o es de una cuenta desactivada. Las dos cosas la borran y se auditan.
+   */
+  resolveSession(token: string): ResolvedSession | undefined {
     const row = this.systemDb
       .prepare(
-        `SELECT u.id, u.email, u.name, u.global_role, s.expires_at 
-         FROM sessions s 
-         JOIN users u ON s.user_id = u.id 
+        `SELECT u.id, u.email, u.name, u.global_role, s.expires_at, s.impersonator_user_id, s.help_request_id,
+           s.tenant_id, s.last_used_at, imp.name AS imp_name, imp.global_role AS imp_role, imp.status AS imp_status,
+           p.expires_at AS parent_expires_at
+         FROM sessions s
+         JOIN users u ON s.user_id = u.id
+         LEFT JOIN users imp ON imp.id = s.impersonator_user_id
+         LEFT JOIN sessions p ON p.token = s.parent_token
          WHERE s.token = ? AND u.status = 'active'`,
       )
-      .get(token) as
-      | { id: string; email: string; name: string; global_role: string; expires_at: string }
-      | undefined;
+      .get(token) as SessionRow | undefined;
+    if (row === undefined) return undefined;
 
-    if (row === undefined) {
-      return undefined;
-    }
-
-    if (row.expires_at < now) {
+    const now = this.now();
+    if (row.expires_at < now.toISOString()) {
       this.systemDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
       return undefined;
     }
+    const user: UserSession = { id: row.id, email: row.email, name: row.name, globalRole: row.global_role as UserRole };
+    if (row.impersonator_user_id === null) return { user, impersonator: null, tenantId: null, helpRequestId: null };
 
+    const impRole = row.imp_role;
+    const parentAlive =
+      row.parent_expires_at !== null &&
+      row.parent_expires_at >= now.toISOString() &&
+      row.imp_status === 'active' &&
+      (impRole === 'root' || impRole === 'support');
+    if (!parentAlive) {
+      this.endImpersonation(token, 'parent-ended');
+      return undefined;
+    }
+    const idle = now.getTime() - Date.parse(row.last_used_at ?? '');
+    if (!(idle <= IMPERSONATION_IDLE_MS)) {
+      this.endImpersonation(token, 'expired');
+      return undefined;
+    }
+    if (idle >= TOUCH_EVERY_MS) {
+      this.systemDb.prepare('UPDATE sessions SET last_used_at = ? WHERE token = ?').run(now.toISOString(), token);
+    }
     return {
-      id: row.id,
-      email: row.email,
-      name: row.name,
-      globalRole: row.global_role as UserRole,
+      user,
+      impersonator: { id: row.impersonator_user_id, name: row.imp_name ?? '', globalRole: impRole },
+      tenantId: row.tenant_id,
+      helpRequestId: row.help_request_id,
     };
+  }
+
+  /** Una sesión de impersonación (#23): un token propio, hijo de la sesión de quien impersona. */
+  createImpersonationSession(p: {
+    parentToken: string;
+    impersonatorId: string;
+    userId: string;
+    tenantId: string;
+    helpRequestId: string | null;
+  }): string {
+    const token = generateSessionToken();
+    const now = this.now();
+    this.systemDb
+      .prepare(
+        `INSERT INTO sessions (token, user_id, expires_at, created_at, impersonator_user_id, parent_token, help_request_id, tenant_id, last_used_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        token,
+        p.userId,
+        new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+        now.toISOString(),
+        p.impersonatorId,
+        p.parentToken,
+        p.helpRequestId,
+        p.tenantId,
+        now.toISOString(),
+      );
+    return token;
+  }
+
+  /** Termina una impersonación y la audita; `false` si el token no es una. */
+  endImpersonation(token: string, reason: 'exit' | 'expired' | 'parent-ended'): boolean {
+    const row = this.systemDb
+      .prepare('SELECT user_id, impersonator_user_id, tenant_id FROM sessions WHERE token = ? AND impersonator_user_id IS NOT NULL')
+      .get(token) as { user_id: string; impersonator_user_id: string; tenant_id: string | null } | undefined;
+    if (row === undefined) return false;
+    this.systemDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    this.audit?.record({
+      actorUserId: row.impersonator_user_id,
+      tenantId: row.tenant_id,
+      action: 'impersonation.ended',
+      targetUserId: row.user_id,
+      details: { reason },
+    });
+    return true;
+  }
+
+  /** "Cerrar sesión" (#23): borra la sesión del token; sus impersonaciones mueren en el próximo pedido. */
+  deleteSession(token: string): void {
+    if (this.endImpersonation(token, 'exit')) return;
+    this.systemDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
 
   findUserByEmail(email: string): { id: string; email: string; name: string } | undefined {
@@ -214,29 +330,8 @@ export class AuthService {
     this.revokeSessions(params.userId, params.currentToken);
   }
 
-  listUserTenants(userId: string, globalRole: UserRole): TenantMembershipInfo[] {
-    if (globalRole === 'root' || globalRole === 'support') {
-      // Impersonación: root y support tienen acceso a todos los tenants
-      const rows = this.systemDb
-        .prepare(
-          // Las demos (#9) no se listan: en la web serían cientos
-          `SELECT id, slug, name, status FROM tenants
-           WHERE id NOT IN (SELECT tenant_id FROM demo_sessions)
-           ORDER BY created_at DESC`,
-        )
-        .all() as { id: string; slug: string; name: string; status: string }[];
-
-      const role = globalRole === 'root' ? 'root_impersonator' : 'support_impersonator';
-
-      return rows.map((r) => ({
-        tenantId: r.id,
-        slug: r.slug,
-        name: r.name,
-        status: r.status as TenantMembershipInfo['status'],
-        role,
-      }));
-    }
-
+  /** "Tus comercios": las membresías activas. Root y soporte no son miembros implícitos (#16). */
+  listUserTenants(userId: string): TenantMembershipInfo[] {
     const rows = this.systemDb
       .prepare(
         `SELECT t.id, t.slug, t.name, t.status, m.role 

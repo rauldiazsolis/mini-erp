@@ -47,7 +47,7 @@ describe('estado de la plataforma de cobro (#21)', () => {
       return ok(reply.body, reply.status);
     });
     freshSession('mock-token');
-    userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'root_impersonator', status: 'active' }];
+    userTenantsSignal.value = [{ tenantId: 'tienda-test', name: 'Tienda Test', slug: 'tienda-test', role: 'owner', status: 'active' }];
     atTenant('tienda-test');
     currentUserSignal.value = { id: 'root', email: 'root@x.com', name: 'Root', globalRole: 'root' };
     sheetRowsSignal.value = null;

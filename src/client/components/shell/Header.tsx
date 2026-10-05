@@ -6,16 +6,15 @@ import {
   userTenantsSignal,
   selectTenant,
   effectiveTenantIdSignal,
-  isRootOrSupportSignal,
+  isImpersonatingSignal,
   signOut,
 } from '../../state/auth-state.ts';
-import {
-  toggleMobileMenu,
-  openImpersonationModal,
-} from '../../state/navigation-state.ts';
+import { toggleMobileMenu } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { ROLE_LABEL } from '../../state/permissions-state.ts';
+import { canAskHelpSignal, helpModalOpenSignal, supportInsideSignal } from '../../state/help-state.ts';
+import { Button } from '../ui/Button.tsx';
 
 export const tenantDropdownOpenSignal = signal(false);
 
@@ -114,42 +113,24 @@ export function Header() {
                 })}
               </div>
 
-              <div class="p-1.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-1">
-                {isRootOrSupportSignal.value && (
+              {/* Impersonando no se crean comercios (#23) */}
+              {!isImpersonatingSignal.value && (
+                <div class="p-1.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-1">
                   <button
                     type="button"
                     onClick={() => {
                       closeTenantDropdown();
-                      openImpersonationModal();
+                      openMerchantOnboarding();
                     }}
-                    class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
+                    class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
                   >
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
-                    Impersonar comercio...
+                    Crear nuevo comercio...
                   </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeTenantDropdown();
-                    openMerchantOnboarding();
-                  }}
-                  class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
-                >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Crear nuevo comercio...
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -157,6 +138,18 @@ export function Header() {
 
       {/* Derecha: Selector de Tema, Usuario y Logout */}
       <div class="flex items-center gap-3 sm:gap-4">
+        {/* Transparencia (#23): el usuario ve cuando soporte está adentro de su cuenta */}
+        {supportInsideSignal.value && (
+          <span role="status" class="hidden sm:inline text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            Soporte está viendo tu cuenta
+          </span>
+        )}
+        {canAskHelpSignal.value && (
+          <Button size="sm" variant="outline" onClick={() => { helpModalOpenSignal.value = true; }}>
+            Pedir ayuda
+          </Button>
+        )}
+
         {/* Toggle de Tema Compacto */}
         <ThemeToggle compact />
 
@@ -179,21 +172,24 @@ export function Header() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={signOut}
-          title="Cerrar sesión"
-          class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-            />
-          </svg>
-        </button>
+        {/* Impersonando, se sale con "Salir" de la franja (#23) */}
+        {!isImpersonatingSignal.value && (
+          <button
+            type="button"
+            onClick={signOut}
+            title="Cerrar sesión"
+            class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+          </button>
+        )}
       </div>
     </header>
   );

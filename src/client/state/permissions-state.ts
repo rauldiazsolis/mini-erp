@@ -1,20 +1,14 @@
 import { computed, effect } from '@preact/signals';
-import {
-  can,
-  effectiveTenantRole,
-  type Capability,
-  type MembershipRole,
-  type TenantRole,
-} from '../../shared/permissions.ts';
+import { can, type Capability, type TenantRole } from '../../shared/permissions.ts';
 import { activeTenantSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
 import { navigate, routeSignal } from './route-state.ts';
 import { adminUrl, type NavSection } from '../routing/admin-routes.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
 
-/** El rol con el que se opera el comercio activo (#19); impersonando, owner hasta M7. */
+/** El rol con el que se opera el comercio activo (#19): el de la membresía (impersonando, la del usuario). */
 export const activeRoleSignal = computed<TenantRole | null>(() => {
   const tenant = activeTenantSignal.value;
-  return tenant === null ? null : effectiveTenantRole(tenant.role);
+  return tenant === null ? null : tenant.role;
 });
 
 /** Si el rol activo tiene la capacidad. Lee `activeRoleSignal`: un componente que lo usa se re-renderiza. */
@@ -23,12 +17,10 @@ export function canDo(capability: Capability): boolean {
   return role !== null && can(role, capability);
 }
 
-export const ROLE_LABEL: Record<MembershipRole, string> = {
+export const ROLE_LABEL: Record<TenantRole, string> = {
   owner: 'Owner',
   admin: 'Admin',
   member: 'Empleado',
-  root_impersonator: 'Soporte',
-  support_impersonator: 'Soporte',
 };
 
 const VIEW_CAPABILITY: Record<Exclude<NavSection, 'platform'>, Capability> = {

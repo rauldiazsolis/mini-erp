@@ -16,6 +16,7 @@ import type {
   StaffInvitationItem,
   StaffMemberItem,
 } from '../../shared/platform-types.ts';
+import type { HelpRequestItem } from '../../shared/help-types.ts';
 
 /**
  * El panel de plataforma (#23), para root y soporte: comercios y su detalle, usuarios, equipo de
@@ -29,7 +30,7 @@ function fail(err: unknown, title: string): false {
 }
 
 /** Si la solapa activa de `/plataforma` (sin detalle) es esa. Reactiva. */
-function platformTabIs(tab: 'users' | 'staff' | 'audit'): boolean {
+function platformTabIs(tab: 'users' | 'requests' | 'staff' | 'audit'): boolean {
   const route = routeSignal.value;
   return route.kind === 'plataforma' && route.tab === tab && route.tenantSlug === null;
 }
@@ -156,6 +157,23 @@ export async function createPlatformResetLink(user: { id: string; email: string 
     fail(err, 'No se pudo generar el link');
   }
 }
+
+// --- Pedidos de ayuda (#23) ---
+
+const helpRequestsQuery = createSignalQuery<HelpRequestItem[]>({
+  source: (): QuerySource<HelpRequestItem[]> | null => {
+    const t = tokenSignal.value;
+    if (t === null) return null;
+    return { key: platformKey('help-requests'), fn: () => apiFetch<HelpRequestItem[]>('/api/platform/help-requests', { token: t }) };
+  },
+  enabled: () => platformTabIs('requests'),
+  onError: (err) => {
+    fail(err, 'No se pudieron cargar los pedidos');
+  },
+});
+
+export const helpRequestsSignal = computed<HelpRequestItem[]>(() => helpRequestsQuery.data.value ?? []);
+export const helpRequestsLoadingSignal = helpRequestsQuery.isLoading;
 
 // --- Equipo de soporte (solo root) ---
 

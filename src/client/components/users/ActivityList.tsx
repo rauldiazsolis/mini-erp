@@ -1,4 +1,4 @@
-import { auditSignal, AUDIT_LABEL } from '../../state/users-state.ts';
+import { auditSignal, AUDIT_LABEL, auditActorText } from '../../state/users-state.ts';
 import { Card, CardHeader } from '../ui/Card.tsx';
 import { formatDateTime } from '../../format.ts';
 
@@ -19,7 +19,7 @@ export function ActivityList() {
               <li key={e.id} class="py-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                 <span class="text-slate-400 font-mono shrink-0">{formatDateTime(e.at)}</span>
                 <span class="text-slate-700 dark:text-slate-300">
-                  <strong class="text-slate-900 dark:text-white">{e.actorName}</strong> {AUDIT_LABEL[e.action] ?? e.action}
+                  <strong class="text-slate-900 dark:text-white">{auditActorText(e)}</strong> {AUDIT_LABEL[e.action] ?? e.action}
                   {e.targetName !== null && e.targetName !== e.actorName && (
                     <>
                       {' '}

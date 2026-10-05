@@ -3,7 +3,8 @@ import { ApiError, apiFetch, setOnUnauthorized } from '../api/client.ts';
 import { queryClient } from '../api/query-client.ts';
 import { adminUrl } from '../routing/admin-routes.ts';
 import { currentTenantSlugSignal, navigate, routeSignal, switchTenantUrl } from './route-state.ts';
-import type { MembershipRole } from '../../shared/permissions.ts';
+import { z } from '../../shared/zod.ts';
+import type { TenantRole } from '../../shared/permissions.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
 
@@ -19,55 +20,80 @@ export type TenantMembershipItem = {
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: MembershipRole;
+  role: TenantRole;
 };
+
+/** Quién impersona (#23). */
+export type Impersonator = { id: string; name: string; globalRole: 'root' | 'support' };
+/** La impersonación de la pestaña: como quién, quién y el comercio por el que entró. */
+export type ImpersonationState = { user: AuthUser; impersonator: Impersonator; tenantSlug: string };
+/** Lo que responde `POST /api/impersonations`. */
+export type ImpersonationStart = ImpersonationState & { token: string; path: string };
+
+export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 const TOKEN_KEY = 'mini_erp_token';
 const TENANT_KEY = 'mini_erp_tenant_id';
+/** La impersonación de la pestaña (#23): solo en su sessionStorage, que `noopener` no hereda. */
+const IMPERSONATION_KEY = 'mini_erp_impersonation';
 
-function getStorage(): Storage | null {
+const storedImpersonationSchema = z.object({
+  token: z.string().min(1),
+  user: z.object({ id: z.string(), email: z.string(), name: z.string(), globalRole: z.enum(['root', 'support', 'user']) }),
+  impersonator: z.object({ id: z.string(), name: z.string(), globalRole: z.enum(['root', 'support']) }),
+  tenantSlug: z.string(),
+});
+
+function browserStorage(kind: 'localStorage' | 'sessionStorage'): StorageLike | null {
   try {
-    if (typeof window !== 'undefined') {
-      return window.localStorage;
-    }
+    return typeof window === 'undefined' ? null : window[kind];
   } catch {
-    // Entorno no navegador
-  }
-  return null;
-}
-
-export function getStoredToken(): string | null {
-  return getStorage()?.getItem(TOKEN_KEY) ?? null;
-}
-
-export function setStoredToken(token: string | null): void {
-  const s = getStorage();
-  if (token) {
-    s?.setItem(TOKEN_KEY, token);
-  } else {
-    s?.removeItem(TOKEN_KEY);
+    return null; // Navegador sin almacenamiento
   }
 }
 
-export function getStoredTenantId(): string | null {
-  return getStorage()?.getItem(TENANT_KEY) ?? null;
+/**
+ * Dónde vive la sesión (#23): la propia en el localStorage (compartido por las pestañas) y la
+ * impersonación en el sessionStorage de su pestaña. Solo este módulo toca el sessionStorage.
+ */
+let storages: { local: StorageLike | null; session: StorageLike | null } = {
+  local: browserStorage('localStorage'),
+  session: browserStorage('sessionStorage'),
+};
+
+/** Los tests corren sin navegador: le pasan almacenamientos en memoria. */
+export function setStoragesForTests(next: { local: StorageLike | null; session: StorageLike | null }): void {
+  storages = next;
 }
 
-export function setStoredTenantId(tenantId: string | null): void {
-  const s = getStorage();
-  if (tenantId) {
-    s?.setItem(TENANT_KEY, tenantId);
-  } else {
-    s?.removeItem(TENANT_KEY);
+function readImpersonation(): (ImpersonationState & { token: string }) | null {
+  const raw = storages.session?.getItem(IMPERSONATION_KEY) ?? null;
+  if (raw === null) return null;
+  try {
+    const parsed = storedImpersonationSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
   }
+}
+
+/** El token de la sesión propia (la de soporte, en una pestaña que impersona). */
+export function ownToken(): string | null {
+  return storages.local?.getItem(TOKEN_KEY) ?? null;
 }
 
 // Signals de estado de autenticación
-export const tokenSignal = signal<string | null>(getStoredToken());
+export const tokenSignal = signal<string | null>(null);
 export const currentUserSignal = signal<AuthUser | null>(null);
 export const userTenantsSignal = signal<TenantMembershipItem[]>([]);
 export const authLoadingSignal = signal<boolean>(false);
 export const authErrorSignal = signal<string | null>(null);
+
+/** La impersonación de esta pestaña (#23), o `null` si usa la sesión propia. */
+export const impersonationSignal = signal<ImpersonationState | null>(null);
+export const isImpersonatingSignal = computed<boolean>(() => impersonationSignal.value !== null);
+/** La impersonación de la pestaña terminó (venció, salió o cerró soporte): "La sesión como Juan terminó". */
+export const impersonationEndedSignal = signal<{ userName: string } | null>(null);
 
 // Señales computadas
 export const isAuthenticatedSignal = computed<boolean>(() => {
@@ -82,7 +108,30 @@ export const isRootOrSupportSignal = computed<boolean>(() => {
 /** Si ya llegó `auth/me`: antes, un slug de la URL no se puede juzgar (#59). */
 export const profileLoadedSignal = signal<boolean>(false);
 /** El último comercio usado (#59): solo decide adónde va `/admin` pelado. */
-export const lastTenantIdSignal = signal<string | null>(getStoredTenantId());
+export const lastTenantIdSignal = signal<string | null>(null);
+
+/** Lee la sesión de la pestaña: primero su impersonación, después la propia. */
+export function loadSessionFromStorage(): void {
+  const imp = readImpersonation();
+  if (imp !== null) {
+    tokenSignal.value = imp.token;
+    impersonationSignal.value = { user: imp.user, impersonator: imp.impersonator, tenantSlug: imp.tenantSlug };
+    lastTenantIdSignal.value = null;
+    return;
+  }
+  impersonationSignal.value = null;
+  tokenSignal.value = ownToken();
+  lastTenantIdSignal.value = storages.local?.getItem(TENANT_KEY) ?? null;
+}
+
+loadSessionFromStorage();
+
+/** Una pestaña que impersona nunca escribe el localStorage (#23): es de la sesión de soporte. */
+function writeLocal(key: string, value: string | null): void {
+  if (impersonationSignal.peek() !== null) return;
+  if (value === null) storages.local?.removeItem(key);
+  else storages.local?.setItem(key, value);
+}
 
 /** El comercio de la URL, si es uno de "tus comercios". */
 export const activeTenantSignal = computed<TenantMembershipItem | null>(() => {
@@ -100,28 +149,28 @@ export const tenantAccessSignal = computed<TenantAccess>(() => {
   return activeTenantSignal.value === null ? 'denied' : 'ok';
 });
 
-/** Adónde llevan `/admin` y el menú cuando la URL no tiene comercio: el de la URL, el último o el primero. */
+/**
+ * Adónde llevan `/admin` y el menú cuando la URL no tiene comercio: el de la URL, el de entrada de la
+ * impersonación, el último o el primero.
+ */
 export const homeTenantSlugSignal = computed<string | null>(() => {
   const current = activeTenantSignal.value;
   if (current !== null) return current.slug;
   const tenants = userTenantsSignal.value;
-  return (tenants.find((t) => t.tenantId === lastTenantIdSignal.value) ?? tenants[0])?.slug ?? null;
+  const imp = impersonationSignal.value;
+  const entry = imp === null ? undefined : tenants.find((t) => t.slug === imp.tenantSlug);
+  return (entry ?? tenants.find((t) => t.tenantId === lastTenantIdSignal.value) ?? tenants[0])?.slug ?? null;
 });
 
 export function rememberTenant(tenantId: string | null): void {
   lastTenantIdSignal.value = tenantId;
-  setStoredTenantId(tenantId);
+  writeLocal(TENANT_KEY, tenantId);
 }
 
-/** La impersonación de hoy, en memoria, hasta que M7 la reemplace: el comercio y desde cuál se entró. */
-export const impersonationSignal = signal<{ slug: string; fromSlug: string | null } | null>(null);
-export const isImpersonatingSignal = computed<boolean>(() => {
-  const imp = impersonationSignal.value;
-  return imp !== null && imp.slug === currentTenantSlugSignal.value;
-});
-
-// Callback ante 401
+// Un 401 con sesión (#23): impersonando, solo termina la pestaña y se avisa
 setOnUnauthorized(() => {
+  const imp = impersonationSignal.peek();
+  if (imp !== null) impersonationEndedSignal.value = { userName: imp.user.name };
   logout();
 });
 
@@ -174,8 +223,9 @@ export async function login(credentials: { email: string; password: string }): P
     });
 
     queryClient.clear();
+    impersonationEndedSignal.value = null;
     tokenSignal.value = res.token;
-    setStoredToken(res.token);
+    writeLocal(TOKEN_KEY, res.token);
     currentUserSignal.value = res.user;
 
     await fetchProfile();
@@ -192,30 +242,72 @@ export async function login(credentials: { email: string; password: string }): P
 /** Adopta una sesión que dio el servidor (alta, invitación, restablecimiento, #19). */
 export async function adoptSession(token: string): Promise<boolean> {
   queryClient.clear();
+  impersonationEndedSignal.value = null;
   tokenSignal.value = token;
-  setStoredToken(token);
+  writeLocal(TOKEN_KEY, token);
   return fetchProfile();
+}
+
+/** Suelta la impersonación de la pestaña: borra su sessionStorage, nunca el localStorage. */
+function dropImpersonation(): void {
+  storages.session?.removeItem(IMPERSONATION_KEY);
+  impersonationSignal.value = null;
 }
 
 export function logout(): void {
   queryClient.clear();
+  if (impersonationSignal.peek() !== null) {
+    dropImpersonation();
+  } else {
+    writeLocal(TOKEN_KEY, null);
+    writeLocal(TENANT_KEY, null);
+  }
   tokenSignal.value = null;
-  setStoredToken(null);
   currentUserSignal.value = null;
   userTenantsSignal.value = [];
   profileLoadedSignal.value = false;
-  rememberTenant(null);
-  impersonationSignal.value = null;
+  lastTenantIdSignal.value = null;
   authErrorSignal.value = null;
 }
 
 /**
  * "Cerrar sesión" (#59): además suelta el comercio de la URL, así el próximo login va al suyo y no al
- * del usuario anterior. Una sesión vencida (401) usa `logout` y conserva la pantalla.
+ * del usuario anterior. También la cierra en el servidor, así mueren sus impersonaciones (#23). Una
+ * sesión vencida (401) usa `logout` y conserva la pantalla.
  */
 export function signOut(): void {
+  const token = tokenSignal.peek();
+  if (token !== null) void apiFetch('auth/logout', { method: 'POST', token }).catch(() => undefined);
   logout();
   navigate('/admin');
+}
+
+/** La pestaña pasa a ser la impersonación que dio el servidor y va a su pantalla (#23). */
+export async function adoptImpersonation(start: ImpersonationStart): Promise<boolean> {
+  queryClient.clear();
+  storages.session?.setItem(IMPERSONATION_KEY, JSON.stringify(start));
+  impersonationSignal.value = { user: start.user, impersonator: start.impersonator, tenantSlug: start.tenantSlug };
+  impersonationEndedSignal.value = null;
+  tokenSignal.value = start.token;
+  currentUserSignal.value = start.user;
+  userTenantsSignal.value = [];
+  profileLoadedSignal.value = false;
+  lastTenantIdSignal.value = null;
+  navigate(start.path, { replace: true });
+  return fetchProfile();
+}
+
+/** Vuelve a la sesión propia de la pestaña (después de "Salir" o de que terminó la impersonación). */
+export async function resumeOwnSession(): Promise<boolean> {
+  queryClient.clear();
+  dropImpersonation();
+  impersonationEndedSignal.value = null;
+  loadSessionFromStorage();
+  currentUserSignal.value = null;
+  userTenantsSignal.value = [];
+  profileLoadedSignal.value = false;
+  navigate('/plataforma');
+  return fetchProfile();
 }
 
 function findTenant(tenantId: string): TenantMembershipItem | undefined {
@@ -224,31 +316,14 @@ function findTenant(tenantId: string): TenantMembershipItem | undefined {
 
 /** Cambia de comercio desde el selector, en la misma pantalla; devuelve el nombre para el aviso (#45). */
 export function selectTenant(tenantId: string): string {
-  impersonationSignal.value = null;
   const tenant = findTenant(tenantId);
   if (tenant !== undefined) navigate(switchTenantUrl(routeSignal.peek(), tenant.slug));
   return tenant?.name ?? tenantId;
 }
 
-export function impersonateTenant(tenantId: string): void {
-  if (!isRootOrSupportSignal.value) {
-    throw new Error('Solo usuarios root o support pueden impersonar comercios');
-  }
-  const tenant = findTenant(tenantId);
-  if (tenant === undefined) throw new Error('Comercio desconocido');
-  impersonationSignal.value = { slug: tenant.slug, fromSlug: currentTenantSlugSignal.peek() };
-  navigate(switchTenantUrl(routeSignal.peek(), tenant.slug));
-}
-
-export function stopImpersonation(): void {
-  const from = impersonationSignal.peek()?.fromSlug ?? null;
-  impersonationSignal.value = null;
-  navigate(from === null ? '/admin' : adminUrl(from, 'dashboard'));
-}
-
 /**
- * Recuerda el comercio de la URL y lleva `/admin` pelado al último usado (#59). Devuelve la función
- * que corta los efectos.
+ * Recuerda el comercio de la URL y lleva `/admin` pelado al último usado (#59); root y soporte, sin
+ * comercios propios, a la plataforma (#16). Devuelve la función que corta los efectos.
  */
 export function registerTenantRouteEffects(): () => void {
   const stopRemember = effect(() => {
@@ -260,6 +335,7 @@ export function registerTenantRouteEffects(): () => void {
     if (route.kind !== 'admin' || route.tenantSlug !== null || !profileLoadedSignal.value) return;
     const home = homeTenantSlugSignal.value;
     if (home !== null) navigate(adminUrl(home, 'dashboard'), { replace: true });
+    else if (isRootOrSupportSignal.value && !isImpersonatingSignal.value) navigate('/plataforma', { replace: true });
   });
   return () => {
     stopRemember();

@@ -5,7 +5,11 @@ import {
   currentUserSignal,
   fetchProfile,
   tenantAccessSignal,
+  impersonationEndedSignal,
 } from './state/auth-state.ts';
+import './state/impersonation-state.ts';
+import { EnterView } from './components/platform/EnterView.tsx';
+import { ImpersonationEndedView } from './components/shell/ImpersonationEndedView.tsx';
 import { activeSectionSignal, initRouting, routeSignal } from './state/route-state.ts';
 import type { NavSection } from './routing/admin-routes.ts';
 import { NoAccessView } from './components/shell/NoAccessView.tsx';
@@ -60,8 +64,12 @@ export function App() {
   if (route.kind === 'invitacion') return <InvitationView />;
   if (route.kind === 'restablecer') return <ResetPasswordView />;
   if (route.kind === 'alta' || merchantOnboardingActiveSignal.value) return <MerchantOnboardingView />;
+  // La impersonación de la pestaña terminó (#23): la sesión de soporte sigue
+  if (impersonationEndedSignal.value !== null) return <ImpersonationEndedView />;
   // Sin sesión, el login en la misma URL: al entrar se abre esa pantalla (#59)
   if (!isAuthenticatedSignal.value) return <AuthView />;
+  // Impersonación (#23): la pestaña nueva pide la sesión como el usuario
+  if (route.kind === 'entrar' || route.kind === 'ayuda') return <EnterView />;
 
   if (tenantAccessSignal.value === 'denied') {
     return (

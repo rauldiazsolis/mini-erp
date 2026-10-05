@@ -8,6 +8,7 @@ import type { PasswordResetService } from '../users/password-reset-service.ts';
 import type { StaffInvitationService } from '../platform/staff-invitation-service.ts';
 import type { PlatformQueryService } from '../platform/platform-query-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
+import type { HelpRequestService } from '../help/help-request-service.ts';
 import { DomainError, sendError } from '../errors.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
@@ -22,6 +23,7 @@ export type PlatformAdminDeps = {
   staffInvitations: StaffInvitationService;
   queries: PlatformQueryService;
   audit: AuditLog;
+  help: HelpRequestService;
 };
 
 /** Panel de plataforma (#23, M7a), para root y soporte. Lo de cobro sigue en platform-routes.ts. */
@@ -115,6 +117,11 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
+  });
+
+  // Pedidos de ayuda de las últimas 48 h (#23)
+  router.get('/help-requests', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(deps.help.listForPanel());
   });
 
   // El equipo de soporte (#23): solo root lo ve, lo invita y revoca invitaciones

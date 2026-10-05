@@ -57,7 +57,7 @@ export class InvitationService {
 
   create(params: {
     tenantId: string;
-    actor: { userId: string; role: TenantRole };
+    actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     email: string;
     role: TenantRole;
   }): { id: string; token: string; expiresAt: string } {
@@ -85,6 +85,7 @@ export class InvitationService {
       .run(id, params.tenantId, email, params.role, hash, params.actor.userId, now.toISOString(), expiresAt);
     this.audit.record({
       actorUserId: params.actor.userId,
+      impersonatorUserId: params.actor.impersonatorUserId,
       tenantId: params.tenantId,
       action: 'invitation.created',
       details: { email, role: params.role },
@@ -92,7 +93,11 @@ export class InvitationService {
     return { id, token: raw, expiresAt };
   }
 
-  revoke(params: { tenantId: string; actor: { userId: string; role: TenantRole }; invitationId: string }): void {
+  revoke(params: {
+    tenantId: string;
+    actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
+    invitationId: string;
+  }): void {
     const row = this.db
       .prepare('SELECT email, role FROM invitations WHERE id = ? AND tenant_id = ? AND accepted_at IS NULL AND revoked_at IS NULL')
       .get(params.invitationId, params.tenantId) as { email: string; role: string } | undefined;
@@ -103,6 +108,7 @@ export class InvitationService {
     this.db.prepare('UPDATE invitations SET revoked_at = ? WHERE id = ?').run(this.now().toISOString(), params.invitationId);
     this.audit.record({
       actorUserId: params.actor.userId,
+      impersonatorUserId: params.actor.impersonatorUserId,
       tenantId: params.tenantId,
       action: 'invitation.revoked',
       details: { email: row.email, role: row.role },

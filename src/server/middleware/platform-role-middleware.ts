@@ -1,5 +1,6 @@
 import type { NextFunction, RequestHandler, Response } from 'express';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
+import { sendImpersonating } from './own-session-middleware.ts';
 
 export type PlatformRole = 'root' | 'support';
 
@@ -9,6 +10,11 @@ export type PlatformRole = 'root' | 'support';
  */
 export function requirePlatformRole(...roles: PlatformRole[]): RequestHandler & { platformRoles: readonly PlatformRole[] } {
   const handler = (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+    // Desde una impersonación no se usa la plataforma (#23)
+    if (req.impersonator !== undefined) {
+      sendImpersonating(res);
+      return;
+    }
     const role = req.user?.globalRole;
     if (role !== 'root' && role !== 'support') {
       res.status(403).json({ error: 'Solo para la plataforma' });

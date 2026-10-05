@@ -23,6 +23,9 @@ import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { createRegisterRoutes } from './routes/register-routes.ts';
 import { createPlatformRoutes } from './routes/platform-routes.ts';
 import { createPlatformAdminRoutes } from './routes/platform-admin-routes.ts';
+import { createImpersonationRoutes } from './routes/impersonation-routes.ts';
+import { createHelpRoutes } from './routes/help-routes.ts';
+import { createMeRoutes } from './routes/me-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
@@ -49,6 +52,8 @@ import {
   userStatusServiceDef,
   staffInvitationServiceDef,
   platformQueryServiceDef,
+  impersonationServiceDef,
+  helpRequestServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
@@ -97,6 +102,7 @@ export function createApp(deps?: AppDependencies): {
   const registers = rootContainer.use(registerServiceDef);
   const billing = rootContainer.use(billingServiceDef);
   const staffInvitations = rootContainer.use(staffInvitationServiceDef);
+  const helpRequests = rootContainer.use(helpRequestServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -122,11 +128,15 @@ export function createApp(deps?: AppDependencies): {
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));
+  // Impersonación de usuario (#23): una sesión aparte, por pestaña
+  app.use('/api/impersonations', requireAdmin, createImpersonationRoutes(rootContainer.use(impersonationServiceDef)));
+  // Lo del usuario de la sesión (#23): su pedido de ayuda y los accesos de soporte
+  app.use('/api/me', requireAdmin, createMeRoutes(helpRequests));
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
-  app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit));
+  app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit, authService));
   app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
-  app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit));
+  app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit, authService));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
@@ -144,6 +154,7 @@ export function createApp(deps?: AppDependencies): {
     createRegisterRoutes(registers, auditLog),
     createCreditsRoutes(billing),
     createUserRoutes({ members: membershipService, invitations: invitationService, resets: passwordResetService, audit: auditLog }),
+    createHelpRoutes(helpRequests),
   );
 
   // Plataforma de cobro (#21): root y soporte
@@ -159,6 +170,7 @@ export function createApp(deps?: AppDependencies): {
       staffInvitations,
       queries: rootContainer.use(platformQueryServiceDef),
       audit: auditLog,
+      help: helpRequests,
     }),
   );
 

@@ -43,6 +43,7 @@ export const SECTION_TABS = {
 export const PLATFORM_TABS = [
   { id: 'tenants', slug: '' },
   { id: 'users', slug: 'usuarios' },
+  { id: 'requests', slug: 'pedidos' },
   { id: 'payments', slug: 'cobranzas' },
   { id: 'staff', slug: 'soporte' },
   { id: 'audit', slug: 'registro' },
@@ -296,7 +297,10 @@ function canonParams(section: TenantSection, p: Params): Params {
 
 export type AdminRoute = { kind: 'admin'; tenantSlug: string | null; section: TenantSection; tab: string; params: Params };
 export type PlatformRoute = { kind: 'plataforma'; tab: PlatformTabId; tenantSlug: string | null; params: Params };
-export type Route = { kind: 'landing' | 'alta' | 'invitacion' | 'restablecer' } | AdminRoute | PlatformRoute;
+/** La pestaña nueva que entra como un usuario (#23) y el link de un pedido de ayuda. */
+export type EnterRoute = { kind: 'entrar'; userId: string | null; tenantSlug: string | null };
+export type HelpRoute = { kind: 'ayuda'; requestId: string };
+export type Route = { kind: 'landing' | 'alta' | 'invitacion' | 'restablecer' } | AdminRoute | PlatformRoute | EnterRoute | HelpRoute;
 
 function readSearch(search: string): Params {
   return Object.fromEntries(new URLSearchParams(search));
@@ -317,6 +321,12 @@ export function parseLocation(pathname: string, search: string): Route {
   if (segments.length === 1 && (first === 'alta' || first === 'onboarding')) return { kind: 'alta' };
   if (segments.length === 1 && first === 'invitacion') return { kind: 'invitacion' };
   if (segments.length === 1 && first === 'restablecer') return { kind: 'restablecer' };
+  // Impersonación (#23): la pestaña nueva que entra como un usuario, y el link de un pedido de ayuda
+  if (first === 'plataforma' && second === 'entrar' && third === undefined) {
+    const p = readSearch(search);
+    return { kind: 'entrar', userId: p['usuario'] ?? null, tenantSlug: p['comercio'] ?? null };
+  }
+  if (first === 'ayuda' && second !== undefined && third === undefined) return { kind: 'ayuda', requestId: decodeSlug(second) };
   if (first === 'plataforma') {
     if (second === 'comercios' && third !== undefined) {
       return { kind: 'plataforma', tab: 'tenants', tenantSlug: decodeSlug(third), params: {} };
@@ -341,6 +351,12 @@ export function buildUrl(route: Route): string {
       return '/invitacion';
     case 'restablecer':
       return '/restablecer';
+    case 'entrar': {
+      const query = new URLSearchParams(params({ usuario: route.userId ?? undefined, comercio: route.tenantSlug ?? undefined })).toString();
+      return query === '' ? '/plataforma/entrar' : `/plataforma/entrar?${query}`;
+    }
+    case 'ayuda':
+      return `/ayuda/${encodeURIComponent(route.requestId)}`;
     case 'plataforma': {
       if (route.tenantSlug !== null) return `/plataforma/comercios/${encodeURIComponent(route.tenantSlug)}`;
       const slug = PLATFORM_TABS.find((t) => t.id === route.tab)?.slug ?? '';
@@ -391,4 +407,14 @@ export function platformUrl(tab: PlatformTabId, filters: Params = {}): string {
 
 export function platformTenantUrl(slug: string): string {
   return buildUrl({ kind: 'plataforma', tab: 'tenants', tenantSlug: slug, params: {} });
+}
+
+/** La pestaña que entra como un usuario (#23); sin comercio, el servidor elige su membresía más reciente. */
+export function enterUrl(userId: string, tenantSlug?: string): string {
+  return buildUrl({ kind: 'entrar', userId, tenantSlug: tenantSlug ?? null });
+}
+
+/** El link de un pedido de ayuda (#23): soporte lo abre y entra como quien lo pidió. */
+export function helpRequestUrl(id: string): string {
+  return buildUrl({ kind: 'ayuda', requestId: id });
 }

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { locationSignal, navigate, setHistoryForTests } from '../src/client/state/route-state.ts';
 import {
-  currentUserSignal, effectiveTenantIdSignal, impersonateTenant, isImpersonatingSignal, lastTenantIdSignal, logout,
-  profileLoadedSignal, registerTenantRouteEffects, selectTenant, signOut, stopImpersonation, tenantAccessSignal, tokenSignal,
+  effectiveTenantIdSignal, lastTenantIdSignal, logout,
+  profileLoadedSignal, registerTenantRouteEffects, selectTenant, signOut, tenantAccessSignal, tokenSignal,
   userTenantsSignal,
 } from '../src/client/state/auth-state.ts';
 
@@ -56,25 +56,6 @@ describe('El comercio activo sale de la URL (#59)', () => {
     navigate('/admin/kiosco/ventas/cobranzas?rango=semana');
     expect(selectTenant('t-almacen')).toBe('Almacén');
     expect(path()).toBe('/admin/almacen/ventas/cobranzas');
-  });
-
-  it('impersonar muestra la franja en ese comercio y "Salir" vuelve al de antes', () => {
-    currentUserSignal.value = { id: 'r', email: 'root@local.test', name: 'Root', globalRole: 'root' };
-    userTenantsSignal.value = [kiosco, almacen];
-    profileLoadedSignal.value = true;
-    navigate('/admin/kiosco/clientes');
-    impersonateTenant('t-almacen');
-    expect(path()).toBe('/admin/almacen/clientes');
-    expect(isImpersonatingSignal.value).toBe(true);
-    stopImpersonation();
-    expect(path()).toBe('/admin/kiosco/dashboard');
-    expect(isImpersonatingSignal.value).toBe(false);
-  });
-
-  it('solo root o soporte impersonan', () => {
-    currentUserSignal.value = { id: 'u', email: 'u@local.test', name: 'U', globalRole: 'user' };
-    userTenantsSignal.value = [kiosco, almacen];
-    expect(() => { impersonateTenant('t-almacen'); }).toThrow();
   });
 
   it('"Cerrar sesión" suelta el comercio de la URL: el próximo login va al suyo; una sesión vencida no', () => {

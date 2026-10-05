@@ -6,6 +6,7 @@ import { passwordSchema } from '../../shared/password.ts';
 import { BUSINESS_TYPES } from '../../shared/business-type.ts';
 import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
 import { sendError } from '../errors.ts';
+import { sendImpersonating } from '../middleware/own-session-middleware.ts';
 
 const businessSchema = z.object({
   businessName: z.string().trim().min(2, 'Escribí el nombre de tu comercio'),
@@ -33,11 +34,17 @@ export function createAltaRoutes(authService: AuthService, altaService: AltaServ
   router.post('/', limit, (req, res) => {
     const header = req.headers.authorization;
     const sessionToken = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7).trim() : undefined;
-    const user = sessionToken === undefined ? undefined : authService.validateSession(sessionToken);
-    if (sessionToken !== undefined && user === undefined) {
+    const session = sessionToken === undefined ? undefined : authService.resolveSession(sessionToken);
+    if (sessionToken !== undefined && session === undefined) {
       res.status(401).json({ error: 'Sesión expirada o token inválido' });
       return;
     }
+    // Quien impersona no crea comercios (#23)
+    if (session !== undefined && session.impersonator !== null) {
+      sendImpersonating(res);
+      return;
+    }
+    const user = session?.user;
 
     const business = businessSchema.safeParse(req.body);
     if (!business.success) {

@@ -7,6 +7,7 @@ import {
   suspendTenant,
 } from '../../state/platform-panel-state.ts';
 import { ROLE_LABEL } from '../../state/permissions-state.ts';
+import { openEnterTab } from '../../state/impersonation-state.ts';
 import { platformUrl } from '../../routing/admin-routes.ts';
 import { formatDateTime, formatMoney } from '../../format.ts';
 import { Button } from '../ui/Button.tsx';
@@ -83,6 +84,7 @@ function Members(props: { detail: PlatformTenantDetail }) {
                 <Th>Correo</Th>
                 <Th>Rol</Th>
                 <Th>Estado</Th>
+                <Th />
               </Tr>
             </Thead>
             <Tbody>
@@ -93,6 +95,13 @@ function Members(props: { detail: PlatformTenantDetail }) {
                   <Td>{ROLE_LABEL[m.role]}</Td>
                   <Td>
                     <AccountStatusBadge status={m.status} />
+                  </Td>
+                  <Td class="text-right">
+                    {m.status === 'active' && (
+                      <Button size="sm" onClick={() => { openEnterTab(m.userId, props.detail.tenant.slug); }}>
+                        Entrar como
+                      </Button>
+                    )}
                   </Td>
                 </Tr>
               ))}

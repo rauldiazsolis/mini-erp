@@ -12,8 +12,6 @@ import {
   isImpersonatingSignal,
   logout,
   selectTenant,
-  impersonateTenant,
-  stopImpersonation,
   type AuthUser,
   type TenantMembershipItem,
 } from '../src/client/state/auth-state.ts';
@@ -72,49 +70,6 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
       expect(effectiveTenantIdSignal.value).toBe('t-1');
       expect(activeTenantSignal.value?.name).toBe('Kiosco 1');
       expect(isImpersonatingSignal.value).toBe(false);
-    });
-
-    it('permite impersonar un tenant a usuarios con rol root o support', () => {
-      currentUserSignal.value = {
-        id: 'usr-root',
-        email: 'root@local.test',
-        name: 'Super Admin',
-        globalRole: 'root',
-      };
-      tokenSignal.value = 'token-root';
-      userTenantsSignal.value = [
-        { tenantId: 'tenant-a', slug: 't-a', name: 'Tenant A', status: 'active', role: 'owner' },
-        { tenantId: 'tenant-b', slug: 't-b', name: 'Tenant B', status: 'active', role: 'root_impersonator' },
-      ];
-      atTenant('tenant-a');
-
-      expect(effectiveTenantIdSignal.value).toBe('tenant-a');
-      expect(isImpersonatingSignal.value).toBe(false);
-
-      // Impersonar tenant-b
-      impersonateTenant('tenant-b');
-      expect(effectiveTenantIdSignal.value).toBe('tenant-b');
-      expect(activeTenantSignal.value?.name).toBe('Tenant B');
-      expect(isImpersonatingSignal.value).toBe(true);
-
-      // Salir de impersonación
-      stopImpersonation();
-      expect(effectiveTenantIdSignal.value).toBe('tenant-a');
-      expect(activeTenantSignal.value?.name).toBe('Tenant A');
-      expect(isImpersonatingSignal.value).toBe(false);
-    });
-
-    it('impide impersonar a usuarios estándar sin permisos globales', () => {
-      currentUserSignal.value = {
-        id: 'usr-regular',
-        email: 'cajero@local.test',
-        name: 'Cajero',
-        globalRole: 'user',
-      };
-
-      expect(() => { impersonateTenant('otro-tenant'); }).toThrow(
-        'Solo usuarios root o support pueden impersonar comercios',
-      );
     });
 
     it('logout limpia todas las señales y el estado de sesión', () => {

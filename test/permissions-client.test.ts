@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { activeRoleSignal, canDo, isViewAllowed, isSettingsTabAllowed, ROLE_LABEL } from '../src/client/state/permissions-state.ts';
 import { userTenantsSignal } from '../src/client/state/auth-state.ts';
-import type { MembershipRole } from '../src/shared/permissions.ts';
+import type { TenantRole } from '../src/shared/permissions.ts';
 import { atTenant } from './helpers/client-route.ts';
 import { navigate } from '../src/client/state/route-state.ts';
 
-function como(role: MembershipRole): void {
+function como(role: TenantRole): void {
   userTenantsSignal.value = [{ tenantId: 't1', slug: 't1', name: 'T1', status: 'active', role }];
   atTenant('t1');
 }
@@ -44,12 +44,6 @@ describe('permisos en el cliente (#19)', () => {
     expect(isViewAllowed('credits')).toBe(false);
   });
 
-  it('root impersonando opera como owner', () => {
-    como('root_impersonator');
-    expect(activeRoleSignal.value).toBe('owner');
-    expect(canDo('owners.manage')).toBe(true);
-  });
-
   it('sin comercio activo no se puede nada', () => {
     navigate('/admin');
     userTenantsSignal.value = [];
@@ -59,6 +53,5 @@ describe('permisos en el cliente (#19)', () => {
 
   it('las etiquetas de rol', () => {
     expect(ROLE_LABEL.member).toBe('Empleado');
-    expect(ROLE_LABEL.support_impersonator).toBe('Soporte');
   });
 });

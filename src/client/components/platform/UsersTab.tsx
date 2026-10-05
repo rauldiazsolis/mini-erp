@@ -6,6 +6,7 @@ import {
   setUserStatus,
 } from '../../state/platform-panel-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
+import { openEnterTab } from '../../state/impersonation-state.ts';
 import { ROLE_LABEL } from '../../state/permissions-state.ts';
 import { routeSignal, setPlatformFilters } from '../../state/route-state.ts';
 import { platformTenantUrl } from '../../routing/admin-routes.ts';
@@ -25,6 +26,11 @@ const busySignal = signal<boolean>(false);
 export function canManageAccount(actor: { id: string; globalRole: string } | null, target: PlatformUserItem): boolean {
   if (actor === null || target.id === actor.id || target.globalRole === 'root') return false;
   return target.globalRole === 'user' || actor.globalRole === 'root';
+}
+
+/** "Entrar como" (#23): cuentas user activas con algún comercio activo. */
+export function canEnterAs(user: PlatformUserItem): boolean {
+  return user.globalRole === 'user' && user.status === 'active' && user.tenants.some((t) => t.status === 'active');
 }
 
 async function confirmDisable(): Promise<void> {
@@ -68,23 +74,30 @@ function DisableModal() {
 
 function UserActions(props: { user: PlatformUserItem }) {
   const { user } = props;
-  if (!canManageAccount(currentUserSignal.value, user)) return null;
+  const manage = canManageAccount(currentUserSignal.value, user);
+  if (!manage && !canEnterAs(user)) return null;
   return (
     <div class="flex flex-wrap justify-end gap-2">
-      {user.globalRole === 'user' && (
+      {canEnterAs(user) && (
+        <Button size="sm" onClick={() => { openEnterTab(user.id); }}>
+          Entrar como
+        </Button>
+      )}
+      {manage && user.globalRole === 'user' && (
         <Button size="sm" variant="secondary" onClick={() => void createPlatformResetLink({ id: user.id, email: user.email })}>
           Link de restablecimiento
         </Button>
       )}
-      {user.status === 'active' ? (
-        <Button size="sm" variant="outline" onClick={() => { confirmSignal.value = user; }}>
-          Desactivar
-        </Button>
-      ) : (
-        <Button size="sm" variant="outline" onClick={() => void setUserStatus(user.id, 'active')}>
-          Activar
-        </Button>
-      )}
+      {manage &&
+        (user.status === 'active' ? (
+          <Button size="sm" variant="outline" onClick={() => { confirmSignal.value = user; }}>
+            Desactivar
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => void setUserStatus(user.id, 'active')}>
+            Activar
+          </Button>
+        ))}
     </div>
   );
 }

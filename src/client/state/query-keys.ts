@@ -18,10 +18,15 @@ export function tenantKey(tenantId: string, domain: TenantDomain, ...params: rea
 }
 
 /** Lo de `/plataforma` (#21, #23); los parámetros son el filtro o el comercio del detalle. */
-export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' | 'users' | 'staff' | 'audit';
+export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' | 'users' | 'staff' | 'audit' | 'help-requests';
 
 export function platformKey(name: PlatformQueryName, ...params: readonly unknown[]): QueryKey {
   return ['platform', name, ...params];
+}
+
+/** Lo del usuario de la sesión (#23), sin comercio. */
+export function meKey(name: 'support-access'): QueryKey {
+  return ['me', name];
 }
 
 /** Lo que sigue abierto con el comercio suspendido (#23): el resto daría 403 detrás del aviso. */

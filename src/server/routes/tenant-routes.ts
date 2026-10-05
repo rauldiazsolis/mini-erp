@@ -16,7 +16,7 @@ export function createTenantRoutes(
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-    const tenants = authService.listUserTenants(req.user.id, req.user.globalRole);
+    const tenants = authService.listUserTenants(req.user.id);
     res.status(200).json(tenants);
   });
 
