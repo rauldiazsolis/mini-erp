@@ -14,7 +14,7 @@ function makeApp() {
     systemDb,
     tenantManager: new TenantManager(systemDb, { inMemory: true }),
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
-    rateLimits: { demoPerHour: 10, authPer15Min: 20 },
+    rateLimits: { demoPerHour: 10, authPer15Min: 20, contactPerHour: 5, beaconPerHour: 60 },
     now: () => clock.now,
   });
   const advance = (ms: number): void => {
@@ -33,10 +33,12 @@ const login = (app: App) =>
 
 describe('límite de pedidos (#3)', () => {
   it('lee los límites del entorno, con 10 y 20 por defecto', () => {
-    expect(readRateLimitConfig({})).toEqual({ demoPerHour: 10, authPer15Min: 20 });
-    expect(readRateLimitConfig({ DEMO_RATE_LIMIT: '3', AUTH_RATE_LIMIT: 'x' })).toEqual({
+    expect(readRateLimitConfig({})).toEqual({ demoPerHour: 10, authPer15Min: 20, contactPerHour: 5, beaconPerHour: 60 });
+    expect(readRateLimitConfig({ DEMO_RATE_LIMIT: '3', AUTH_RATE_LIMIT: 'x', CONTACT_RATE_LIMIT: '2', BEACON_RATE_LIMIT: '9' })).toEqual({
       demoPerHour: 3,
       authPer15Min: 20,
+      contactPerHour: 2,
+      beaconPerHour: 9,
     });
   });
 

@@ -1,13 +1,15 @@
 import type { RequestHandler } from 'express';
 import { positiveInt } from '../demo/demo-config.ts';
 
-/** Límites por IP (#3), leídos del entorno una vez al arrancar. */
-export type RateLimitConfig = { demoPerHour: number; authPer15Min: number };
+/** Límites por IP (#3), leídos del entorno una vez al arrancar; los del embudo (#25), contactos y beacons. */
+export type RateLimitConfig = { demoPerHour: number; authPer15Min: number; contactPerHour: number; beaconPerHour: number };
 
 export function readRateLimitConfig(env: NodeJS.ProcessEnv): RateLimitConfig {
   return {
     demoPerHour: positiveInt(env['DEMO_RATE_LIMIT'], 10),
     authPer15Min: positiveInt(env['AUTH_RATE_LIMIT'], 20),
+    contactPerHour: positiveInt(env['CONTACT_RATE_LIMIT'], 5),
+    beaconPerHour: positiveInt(env['BEACON_RATE_LIMIT'], 60),
   };
 }
 
@@ -26,6 +28,8 @@ export function createRateLimit(options: {
   windowMs: number;
   now: () => Date;
   body: 'connector' | 'api';
+  /** Pasado el límite, 204 sin seguir: los beacons nunca molestan al landing (#25). */
+  silent?: boolean | undefined;
 }): RequestHandler {
   const windows = new Map<string, Window>();
   return (req, res, next) => {
@@ -40,6 +44,10 @@ export function createRateLimit(options: {
     current.count += 1;
     windows.set(key, current);
     if (current.count > options.limit) {
+      if (options.silent === true) {
+        res.status(204).end();
+        return;
+      }
       res.setHeader('Retry-After', String(Math.ceil((current.resetAt - now) / 1000)));
       res
         .status(429)

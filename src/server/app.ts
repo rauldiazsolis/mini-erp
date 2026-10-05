@@ -29,6 +29,7 @@ import { createMeRoutes } from './routes/me-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createPortalRoutes } from './routes/portal-routes.ts';
 import { createPlatformDemoRoutes } from './routes/platform-demo-routes.ts';
+import { createFunnelRoutes } from './routes/funnel-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
@@ -122,6 +123,9 @@ export function createApp(deps?: AppDependencies): {
   const limits = deps?.rateLimits ?? readRateLimitConfig(process.env);
   const demoLimit = createRateLimit({ limit: limits.demoPerHour, windowMs: 60 * 60 * 1000, now, body: 'connector' });
   const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now, body: 'api' });
+  // El embudo (#25): contactos con 429; los beacons, pasado el límite, no cuentan y responden igual
+  const contactLimit = createRateLimit({ limit: limits.contactPerHour, windowMs: 60 * 60 * 1000, now, body: 'api' });
+  const beaconLimit = createRateLimit({ limit: limits.beaconPerHour, windowMs: 60 * 60 * 1000, now, body: 'api', silent: true });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
   // La cadena del comercio acepta también la sesión anónima de una demo (#24); el resto, solo usuarios
@@ -153,6 +157,8 @@ export function createApp(deps?: AppDependencies): {
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit, authService));
   // El portal (#24): canje del link del POS por la sesión anónima de la demo
   app.use('/api/portal', createPortalRoutes(portal, authLimit));
+  // El embudo (#25): beacons del landing y del alta, y el contacto; sin sesión
+  app.use('/api/funnel', createFunnelRoutes(funnel, { beacon: beaconLimit, contact: contactLimit }));
   app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
   app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit, authService));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
