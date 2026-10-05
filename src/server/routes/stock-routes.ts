@@ -30,7 +30,7 @@ export function createStockRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /stock - Matriz de stock consolidada y por sucursal
-  router.get('/stock', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const search =

@@ -1,6 +1,6 @@
 import { computed, effect } from '@preact/signals';
 import { canAs, type Capability, type TenantRole } from '../../shared/permissions.ts';
-import { activeTenantSignal, anonymousSignal, currentUserSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
+import { accessSignal, activeTenantSignal, anonymousSignal, currentUserSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
 import { navigate, routeSignal } from './route-state.ts';
 import { adminUrl, type NavSection, type PlatformSectionId } from '../routing/admin-routes.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
@@ -14,8 +14,8 @@ export const activeRoleSignal = computed<TenantRole | null>(() => {
 /** Si el rol activo tiene la capacidad. Lee `activeRoleSignal`: un componente que lo usa se re-renderiza. */
 export function canDo(capability: Capability): boolean {
   const role = activeRoleSignal.value;
-  // El acceso anónimo de una demo (#24): admin sin usuarios, owners, créditos ni configuración
-  return role !== null && canAs(role, capability, anonymousSignal.value !== null);
+  // El acceso anónimo (#24, M10): la demo y la caja restan capacidades
+  return role !== null && canAs(role, capability, accessSignal.value);
 }
 
 export const ROLE_LABEL: Record<TenantRole, string> = {
@@ -26,10 +26,10 @@ export const ROLE_LABEL: Record<TenantRole, string> = {
 
 const VIEW_CAPABILITY: Record<Exclude<NavSection, 'platform'>, Capability> = {
   dashboard: 'tenant.use',
-  sales: 'tenant.use',
-  catalog: 'tenant.use',
-  stock: 'tenant.use',
-  customers: 'tenant.use',
+  sales: 'sales.view',
+  catalog: 'tenant.view',
+  stock: 'tenant.view',
+  customers: 'tenant.view',
   bulk: 'bulk',
   users: 'users.manage',
   settings: 'tenant.use',

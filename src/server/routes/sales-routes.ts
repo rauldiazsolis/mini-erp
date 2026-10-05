@@ -64,11 +64,11 @@ function handle<T>(schema: z.ZodType<T>, run: (service: SalesQueryService, query
 /** Ventas & Caja (#20): consultas de solo lectura, para los tres roles. */
 export function createSalesRoutes(): Router {
   const router = Router({ mergeParams: true });
-  const use = requirePermission('tenant.use');
+  const view = requirePermission('sales.view');
 
-  router.get('/registers', use, handle(z.object({}), (service) => service.registers()));
-  router.get('/sales', use, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize })));
-  router.get('/sales/:saleId', use, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/registers', view, handle(z.object({}), (service) => service.registers()));
+  router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize })));
+  router.get('/sales/:saleId', view, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       res.status(200).json(getService(req).getSale(req.params['saleId'] ?? ''));
     } catch (err: unknown) {
@@ -77,16 +77,16 @@ export function createSalesRoutes(): Router {
   });
   router.get(
     '/customer-payments',
-    use,
+    view,
     handle(paymentsQuerySchema, (service, q) => service.listCustomerPayments(q, { page: q.page, pageSize: q.pageSize })),
   );
   router.get(
     '/cash-movements',
-    use,
+    view,
     handle(movementsQuerySchema, (service, q) => service.listCashMovements(q, { page: q.page, pageSize: q.pageSize })),
   );
-  router.get('/cash-summary', use, handle(summaryQuerySchema, (service, q) => service.cashSummary(q)));
-  router.get('/cash-summary/day', use, handle(dayQuerySchema, (service, q) => service.daySummary(q)));
+  router.get('/cash-summary', view, handle(summaryQuerySchema, (service, q) => service.cashSummary(q)));
+  router.get('/cash-summary/day', view, handle(dayQuerySchema, (service, q) => service.daySummary(q)));
 
   return router;
 }

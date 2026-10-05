@@ -8,7 +8,7 @@ import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
  */
 export function requirePermission(capability: Capability): RequestHandler & { capability: Capability } {
   const handler = (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
-    if (req.tenantRole === undefined || !canAs(req.tenantRole, capability, req.anonymous !== undefined)) {
+    if (req.tenantRole === undefined || !canAs(req.tenantRole, capability, req.anonymous === undefined ? 'user' : 'demo')) {
       res.status(403).json({ error: 'No tenés permiso para esto' });
       return;
     }

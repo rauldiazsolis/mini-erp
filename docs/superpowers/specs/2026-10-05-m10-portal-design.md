@@ -23,8 +23,8 @@ que deja al backend decidir la URL y los permisos de la sesión.
 
 | Pregunta | Decisión |
 |---|---|
-| Qué puede el cajero | **Solo consulta**: ventas, cobranzas, movimientos y resumen de su caja; precios, stock (todas las sucursales) y clientes (con saldo y movimientos). Sin dashboard, kardex, discrepancias, estado de cobro ni escrituras |
-| Cómo lo hace cumplir el servidor | Dos capacidades de lectura nuevas en la matriz (`catalog.view`, `sales.view`) y `canAs` por **tipo de acceso**; la caja es un filtro que el servidor fuerza en las rutas de Ventas & Caja |
+| Qué puede el cajero | **Solo consulta**: ventas, cobranzas, movimientos y resumen de su caja; precios, stock (todas las sucursales) y clientes (con saldo y movimientos). Ve el estado de cobro (como el `member`). Sin dashboard, kardex, discrepancias ni escrituras |
+| Cómo lo hace cumplir el servidor | Dos capacidades de lectura nuevas en la matriz (`tenant.view`, `sales.view`) y `canAs` por **tipo de acceso**; la caja es un filtro que el servidor fuerza en las rutas de Ventas & Caja |
 | Vista "mi caja" | **Ventas & Caja (M4) con la caja fija**, sin el filtro de caja; abre en el Resumen de hoy; cualquier rango de fechas de su caja |
 | La demo | Sigue como `admin` del comercio demo (M8 no cambia) |
 | Qué origina y qué corta la sesión de una caja real | La origina el canje de un link pedido con la key; la cortan **rotar la key o desactivar la caja**. Desligar el equipo no la corta: `/portal-links` no manda `deviceId` |
@@ -85,19 +85,21 @@ auditoría) y verifica que sobreviven como se describe.
 
 ### Permisos (`src/shared/permissions.ts`)
 
-- Capacidades nuevas, de los tres roles: `catalog.view` (consultar productos, categorías, stock,
-  sucursales y clientes) y `sales.view` (consultar Ventas & Caja).
+- Capacidades nuevas, de los tres roles: `tenant.view` (consultar el comercio: productos, categorías,
+  stock, sucursales, clientes y estado de cobro) y `sales.view` (consultar Ventas & Caja). El estado
+  de cobro va en `tenant.view` porque, con un comercio restringido, el cliente decide la pantalla con
+  él; el `member` ya lo ve.
 - `export type Access = 'user' | 'demo' | 'register'` y `canAs(role, capability, access)`:
   - `user`: `can(role, capability)`;
   - `demo`: menos `ANONYMOUS_DENIED` (sin cambios);
-  - `register`: solo `REGISTER_ALLOWED = ['catalog.view', 'sales.view']`.
+  - `register`: solo `REGISTER_ALLOWED = ['tenant.view', 'sales.view']`.
 - `requirePermission` calcula el acceso con `req.anonymous?.kind ?? 'user'`.
-- Rutas que pasan de `tenant.use` a `catalog.view`: `GET /branches`, `GET /branches/:branchId`,
+- Rutas que pasan de `tenant.use` a `tenant.view`: `GET /branches`, `GET /branches/:branchId`,
   `GET /products`, `GET /products/:productId`, `GET /categories`, `GET /stock`, `GET /customers`,
-  `GET /customers/:customerId`, `GET /customers/:customerId/movements`.
+  `GET /customers/:customerId`, `GET /customers/:customerId/movements` y `GET /billing-status`.
 - Rutas que pasan a `sales.view`: `GET /registers`, `GET /sales`, `GET /sales/:saleId`,
   `GET /customer-payments`, `GET /cash-movements`, `GET /cash-summary`, `GET /cash-summary/day`.
-- Siguen en `tenant.use` (la caja no las ve): dashboard, kardex, discrepancias, estado de cobro,
+- Siguen en `tenant.use` (la caja no las ve): dashboard, kardex, discrepancias,
   pedir ayuda y todas las escrituras.
 
 ### La caja fija en Ventas & Caja (`routes/sales-routes.ts`)
@@ -121,7 +123,7 @@ Para los usuarios y la demo, sin cambios.
 - **Cabecera** con acceso de caja (`RegisterHeader`, como `DemoHeader`): "Caja 1 · Kiosco X" y "desde el
   POS", el tema y **"Entrar con tu cuenta"**, que suelta el acceso de la pestaña y va a `/admin/<slug>`
   (si no hay sesión de usuario, el login). Sin selector de comercios, menú de usuario ni "Pedir ayuda".
-- **Menú**: `VIEW_CAPABILITY` pasa a `sales.view` (Ventas & Caja) y `catalog.view` (Productos, Stock y
+- **Menú**: `VIEW_CAPABILITY` pasa a `sales.view` (Ventas & Caja) y `tenant.view` (Productos, Stock y
   Clientes). Una sección no permitida vuelve a la primera permitida del menú (hoy, al dashboard).
 - **Solo lectura**: con `!canDo('tenant.use')` se esconden crear, editar y borrar productos y clientes,
   ajustar stock, el kardex, cobrar, ajustar saldo y bloquear; no se piden discrepancias ni el estado de
@@ -152,7 +154,7 @@ Para los usuarios y la demo, sin cambios.
     menú y `canDo` con el acceso de caja.
   - `test/permissions-api.test.ts` con la tabla `RUTAS` actualizada.
   - `test/anonymous-permissions.test.ts`: una pasada con el acceso de caja (403 en todo lo que no sea
-    `catalog.view` ni `sales.view`).
+    `tenant.view` ni `sales.view`).
   - `test/portal-register-scope.test.ts`: la caja forzada en las consultas, la venta ajena 404 y
     `/registers` con su caja.
   - Cliente (`test/portal-client.test.ts`): el estado guardado, la ruta de destino y el menú.

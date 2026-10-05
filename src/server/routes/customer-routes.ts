@@ -61,7 +61,7 @@ export function createCustomerRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /customers - Listar clientes con filtros
-  router.get('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCustomerService(req);
       const search =
@@ -111,7 +111,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId - Detalle de cliente
-  router.get('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -234,7 +234,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId/movements - Extracto de cuenta corriente
-  router.get('/customers/:customerId/movements', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId/movements', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = req.params['customerId'];
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });

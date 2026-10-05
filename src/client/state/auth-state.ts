@@ -4,7 +4,7 @@ import { queryClient } from '../api/query-client.ts';
 import { adminUrl } from '../routing/admin-routes.ts';
 import { currentTenantSlugSignal, navigate, routeSignal, switchTenantUrl } from './route-state.ts';
 import { z } from '../../shared/zod.ts';
-import type { TenantRole } from '../../shared/permissions.ts';
+import type { Access, TenantRole } from '../../shared/permissions.ts';
 import type { PortalRedeemResponse } from '../../shared/portal-types.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
@@ -133,6 +133,8 @@ export const isRootOrSupportSignal = computed<boolean>(() => {
 /** El acceso anónimo de la demo de esta pestaña (#24), o `null`. */
 export const anonymousSignal = signal<AnonymousState | null>(null);
 export const isAnonymousSignal = computed<boolean>(() => anonymousSignal.value !== null);
+/** El tipo de acceso de la pestaña (M10): lo usa `canDo`. */
+export const accessSignal = computed<Access>(() => (anonymousSignal.value === null ? 'user' : 'demo'));
 /** La demo de la pestaña terminó (su caja se revocó): "Esta demo terminó". */
 export const demoEndedSignal = signal<{ template: string } | null>(null);
 
