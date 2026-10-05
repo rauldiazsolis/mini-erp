@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  TENANT_SECTIONS, SECTION_TABS, PLATFORM_TABS, adminUrl, buildUrl, decodeFilters, encodeFilters, parseLocation, platformUrl,
+  TENANT_SECTIONS, SECTION_TABS, PLATFORM_SECTIONS, adminUrl, buildUrl, decodeFilters, encodeFilters, parseLocation, platformUrl,
   platformTenantUrl,
   enterUrl,
   helpRequestUrl,
@@ -31,8 +31,9 @@ describe('Rutas del admin (#59)', () => {
         expect(route).toMatchObject({ kind: 'admin', tenantSlug: 'kiosco', section, tab: tab.id });
       }
     }
-    for (const tab of PLATFORM_TABS) {
-      const url = platformUrl(tab.id);
+    for (const section of PLATFORM_SECTIONS) {
+      const url = platformUrl(section.id);
+      expect(parseLocation(url, '')).toMatchObject({ kind: 'plataforma', section: section.id, tenantSlug: null });
       expect(roundTrip(url)).toBe(url);
     }
   });
@@ -50,21 +51,21 @@ describe('Rutas del admin (#59)', () => {
   });
 
   it('plataforma: Comercios por omisión, solapas, detalle de comercio y filtros (#23)', () => {
-    expect(parseLocation('/plataforma', '')).toEqual({ kind: 'plataforma', tab: 'tenants', tenantSlug: null, params: {} });
-    expect(parseLocation('/plataforma/cobranzas', '')).toMatchObject({ tab: 'payments', tenantSlug: null });
-    expect(parseLocation('/plataforma/soporte', '')).toMatchObject({ tab: 'staff' });
-    expect(parseLocation('/plataforma/comercios/Kiosco-X', '?q=1')).toEqual({ kind: 'plataforma', tab: 'tenants', tenantSlug: 'kiosco-x', params: {} });
-    expect(parseLocation('/plataforma', '?q=%20kio%20')).toMatchObject({ tab: 'tenants', params: { q: 'kio' } });
-    expect(parseLocation('/plataforma/usuarios', '?q=ana&x=1')).toMatchObject({ tab: 'users', params: { q: 'ana' } });
-    expect(parseLocation('/plataforma/registro', '?comercio=kiosco&q=x')).toMatchObject({ tab: 'audit', params: { comercio: 'kiosco' } });
+    expect(parseLocation('/plataforma', '')).toEqual({ kind: 'plataforma', section: 'tenants', tenantSlug: null, params: {} });
+    expect(parseLocation('/plataforma/cobranzas', '')).toMatchObject({ section: 'payments', tenantSlug: null });
+    expect(parseLocation('/plataforma/soporte', '')).toMatchObject({ section: 'staff' });
+    expect(parseLocation('/plataforma/comercios/Kiosco-X', '?q=1')).toEqual({ kind: 'plataforma', section: 'tenants', tenantSlug: 'kiosco-x', params: {} });
+    expect(parseLocation('/plataforma', '?q=%20kio%20')).toMatchObject({ section: 'tenants', params: { q: 'kio' } });
+    expect(parseLocation('/plataforma/usuarios', '?q=ana&x=1')).toMatchObject({ section: 'users', params: { q: 'ana' } });
+    expect(parseLocation('/plataforma/registro', '?comercio=kiosco&q=x')).toMatchObject({ section: 'audit', params: { comercio: 'kiosco' } });
     expect(parseLocation('/plataforma/cobranzas', '?q=x')).toMatchObject({ params: {} });
-    expect(buildUrl({ kind: 'plataforma', tab: 'tenants', tenantSlug: 'kiosco-x', params: {} })).toBe('/plataforma/comercios/kiosco-x');
+    expect(buildUrl({ kind: 'plataforma', section: 'tenants', tenantSlug: 'kiosco-x', params: {} })).toBe('/plataforma/comercios/kiosco-x');
     expect(platformTenantUrl('kiosco x')).toBe('/plataforma/comercios/kiosco%20x');
     expect(platformUrl('users', { q: 'ana' })).toBe('/plataforma/usuarios?q=ana');
     expect(platformUrl('tenants', { q: '' })).toBe('/plataforma');
     expect(roundTrip('/plataforma/comercios/kiosco')).toBe('/plataforma/comercios/kiosco');
     expect(roundTrip('/plataforma/comercios')).toBe('/plataforma');
-    expect(parseLocation('/plataforma/nada', '')).toMatchObject({ tab: 'tenants' });
+    expect(parseLocation('/plataforma/nada', '')).toMatchObject({ section: 'tenants' });
   });
 
   it('normaliza: comercio sin sección, mayúsculas, solapa y sección desconocidas', () => {

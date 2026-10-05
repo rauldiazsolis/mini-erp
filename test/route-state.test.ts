@@ -49,7 +49,7 @@ describe('La URL como signal (#59)', () => {
   it('cambiar de comercio mantiene sección y solapa y suelta los filtros', () => {
     navigate('/admin/kiosco/ventas/cobranzas?rango=semana');
     expect(switchTenantUrl(routeSignal.value, 'almacen')).toBe('/admin/almacen/ventas/cobranzas');
-    expect(switchTenantUrl({ kind: 'plataforma', tab: 'payments', tenantSlug: null, params: {} }, 'almacen')).toBe('/admin/almacen/dashboard');
+    expect(switchTenantUrl({ kind: 'plataforma', section: 'payments', tenantSlug: null, params: {} }, 'almacen')).toBe('/admin/almacen/dashboard');
   });
 
   it('la URL canónica', () => {

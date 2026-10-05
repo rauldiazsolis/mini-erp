@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { NAV_SECTIONS } from '../src/client/routing/admin-routes.ts';
+import { TENANT_SECTIONS } from '../src/client/routing/admin-routes.ts';
 import { navItems } from '../src/client/components/shell/Sidebar.tsx';
 import { isPlainLeftClick } from '../src/client/components/ui/Link.tsx';
 
@@ -12,8 +12,8 @@ const files = (readdirSync(ROOT, { recursive: true, encoding: 'utf8' }))
 const read = (f: string): string => readFileSync(join(ROOT, f), 'utf8');
 
 describe('Guardianes del cliente (#59)', () => {
-  it('cada sección tiene su ítem en el menú y viceversa', () => {
-    expect([...navItems.map((i) => i.id)].sort()).toEqual([...NAV_SECTIONS].sort());
+  it('cada sección del comercio tiene su ítem en el menú y viceversa (#81: la plataforma tiene el suyo)', () => {
+    expect([...navItems.map((i) => i.id)].sort()).toEqual([...TENANT_SECTIONS].sort());
   });
 
   it('solo route-state navega con el historial; la vuelta al POS del alta es la excepción', () => {

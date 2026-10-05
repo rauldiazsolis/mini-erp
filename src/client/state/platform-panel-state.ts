@@ -30,16 +30,16 @@ function fail(err: unknown, title: string): false {
   return false;
 }
 
-/** Si la solapa activa de `/plataforma` (sin detalle) es esa. Reactiva. */
-function platformTabIs(tab: 'users' | 'requests' | 'demos' | 'staff' | 'audit'): boolean {
+/** Si la sección activa de `/plataforma` (sin detalle) es esa. Reactiva. */
+function platformSectionIs(section: 'users' | 'requests' | 'demos' | 'staff' | 'audit'): boolean {
   const route = routeSignal.value;
-  return route.kind === 'plataforma' && route.tab === tab && route.tenantSlug === null;
+  return route.kind === 'plataforma' && route.section === section && route.tenantSlug === null;
 }
 
-/** El texto de búsqueda de una solapa de la plataforma, si es la activa; si no, `null`. */
-function searchOf(tab: 'tenants' | 'users'): string | null {
+/** El texto de búsqueda de una sección de la plataforma, si es la activa; si no, `null`. */
+function searchOf(section: 'tenants' | 'users'): string | null {
   const route = routeSignal.value;
-  if (route.kind !== 'plataforma' || route.tab !== tab || route.tenantSlug !== null) return null;
+  if (route.kind !== 'plataforma' || route.section !== section || route.tenantSlug !== null) return null;
   return route.params['q'] ?? '';
 }
 
@@ -52,7 +52,7 @@ const tenantsQuery = createSignalQuery<PlatformTenantItem[]>({
     return { key: platformKey('tenants', q), fn: () => apiFetch<PlatformTenantItem[]>(`/api/platform/tenants${query}`, { token: t }) };
   },
   // También en Registro: el selector de comercio usa esta lista
-  enabled: () => searchOf('tenants') !== null || platformTabIs('audit'),
+  enabled: () => searchOf('tenants') !== null || platformSectionIs('audit'),
   keepPrevious: (prev, next) => prev[1] === next[1],
   onError: (err) => {
     fail(err, 'No se pudieron cargar los comercios');
@@ -167,7 +167,7 @@ const helpRequestsQuery = createSignalQuery<HelpRequestItem[]>({
     if (t === null) return null;
     return { key: platformKey('help-requests'), fn: () => apiFetch<HelpRequestItem[]>('/api/platform/help-requests', { token: t }) };
   },
-  enabled: () => platformTabIs('requests'),
+  enabled: () => platformSectionIs('requests'),
   onError: (err) => {
     fail(err, 'No se pudieron cargar los pedidos');
   },
@@ -184,7 +184,7 @@ const demosQuery = createSignalQuery<DemoStatusItem[]>({
     if (t === null) return null;
     return { key: platformKey('demos'), fn: () => apiFetch<DemoStatusItem[]>('/api/platform/demos', { token: t }) };
   },
-  enabled: () => platformTabIs('demos'),
+  enabled: () => platformSectionIs('demos'),
   onError: (err) => {
     fail(err, 'No se pudieron cargar las demos');
   },
@@ -218,7 +218,7 @@ const staffQuery = createSignalQuery<StaffView>({
     if (t === null) return null;
     return { key: platformKey('staff'), fn: () => apiFetch<StaffView>('/api/platform/staff', { token: t }) };
   },
-  enabled: () => platformTabIs('staff') && currentUserSignal.value?.globalRole === 'root',
+  enabled: () => platformSectionIs('staff') && currentUserSignal.value?.globalRole === 'root',
   onError: (err) => {
     fail(err, 'No se pudo cargar el equipo');
   },
@@ -277,7 +277,7 @@ const auditQuery = createSignalQuery<PlatformAuditItem[]>({
     const query = slug === '' ? '' : `?tenantSlug=${encodeURIComponent(slug)}`;
     return { key: platformKey('audit', slug), fn: () => apiFetch<PlatformAuditItem[]>(`/api/platform/audit${query}`, { token: t }) };
   },
-  enabled: () => platformTabIs('audit'),
+  enabled: () => platformSectionIs('audit'),
   keepPrevious: (prev, next) => prev[1] === next[1],
   onError: (err) => {
     fail(err, 'No se pudo cargar el registro');
