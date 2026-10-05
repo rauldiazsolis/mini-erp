@@ -35,7 +35,8 @@ export type AuditAction =
   | 'impersonation.started'
   | 'impersonation.ended'
   | 'demo.reset'
-  | 'portal.opened';
+  | 'portal.opened'
+  | 'funnel.contact-handled';
 
 export type AuditEntry = {
   id: string;

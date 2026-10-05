@@ -34,6 +34,7 @@ import { BillingService } from '../billing/billing-service.ts';
 import { ImpersonationService } from '../impersonation/impersonation-service.ts';
 import { HelpRequestService } from '../help/help-request-service.ts';
 import { FunnelService } from '../funnel/funnel-service.ts';
+import { FunnelQueryService } from '../funnel/funnel-query-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -99,6 +100,7 @@ export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), 
 
 // El embudo (#25): eventos, totales del landing y contactos
 export const funnelServiceDef = fn.singleton((c) => new FunnelService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
+export const funnelQueryServiceDef = fn.singleton((c) => new FunnelQueryService({ db: c.use(systemDbDef) }));
 
 // El portal y el acceso anónimo (#24, M10): demos y cajas reales; audita las aperturas de las cajas
 export const portalServiceDef = fn.singleton(

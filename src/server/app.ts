@@ -30,6 +30,7 @@ import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createPortalRoutes } from './routes/portal-routes.ts';
 import { createPlatformDemoRoutes } from './routes/platform-demo-routes.ts';
 import { createFunnelRoutes } from './routes/funnel-routes.ts';
+import { createPlatformFunnelRoutes } from './routes/platform-funnel-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
@@ -60,6 +61,7 @@ import {
   impersonationServiceDef,
   helpRequestServiceDef,
   funnelServiceDef,
+  funnelQueryServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { AuditLog } from './audit/audit-log.ts';
@@ -200,6 +202,13 @@ export function createApp(deps?: AppDependencies): {
 
   // Demos de la plataforma (#24): estado y reinicios
   app.use('/api/platform', requireAdmin, createPlatformDemoRoutes({ resets: demoResets, audit: auditLog }));
+
+  // El embudo de la plataforma (#25): reporte, visitantes y contactos
+  app.use(
+    '/api/platform',
+    requireAdmin,
+    createPlatformFunnelRoutes({ funnel, queries: rootContainer.use(funnelQueryServiceDef), audit: auditLog, now }),
+  );
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal, funnel }));
