@@ -63,6 +63,7 @@ const RUTAS: Record<string, Capability> = {
   'PATCH /users/:userId': 'users.manage',
   'GET /audit': 'owners.manage',
   'POST /users/:userId/password-reset': 'owners.manage',
+  'POST /help-requests': 'tenant.use',
 };
 
 type Layer = {

@@ -4,7 +4,8 @@ import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { bootstrap } from '../src/server/bootstrap.ts';
-import { DEV_DEMOS, DEV_PASSWORD, DEV_POS_API_KEY, DEV_TENANTS, DEV_USERS } from '../src/server/seeds/dev-fixtures.ts';
+import { DEV_DEMOS, DEV_PASSWORD, DEV_POS_API_KEY, DEV_SUPPORT_WHATSAPP, DEV_TENANTS, DEV_USERS } from '../src/server/seeds/dev-fixtures.ts';
+import { readBillingSettings, writeBillingSettings } from '../src/server/billing/settings.ts';
 import { hashApiKey } from '../src/server/auth/crypto.ts';
 
 function boot(env: NodeJS.ProcessEnv) {
@@ -149,6 +150,14 @@ describe('seed de desarrollo (#21)', () => {
     expect(status(almacen.id)).toEqual(['grant:active', 'signup:voided']);
     expect(status(ferreteria.id)).toEqual(['signup:expired']);
     expect(bundle.billing.listMovements(kiosco.id).some((m) => m.kind === 'payment')).toBe(true);
+  });
+
+  it('carga un WhatsApp de soporte de prueba, sin pisar uno cargado a mano (#23)', () => {
+    const { systemDb, run } = boot({});
+    expect(readBillingSettings(systemDb).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
+    writeBillingSettings(systemDb, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
+    run();
+    expect(readBillingSettings(systemDb).supportWhatsapp).toBe('5491177778888');
   });
 
   it('hay dos demos andando, sin dueño y con key fija', () => {

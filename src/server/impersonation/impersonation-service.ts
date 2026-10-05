@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { AuthService, Impersonator, UserSession } from '../auth/auth-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
+import type { HelpRequestService } from '../help/help-request-service.ts';
 import { DomainError } from '../errors.ts';
 
 export type ImpersonationStart = { token: string; user: UserSession; impersonator: Impersonator; tenantSlug: string; path: string };
@@ -15,16 +16,28 @@ export class ImpersonationService {
   private db: DatabaseSync;
   private auth: AuthService;
   private audit: AuditLog;
+  private help: HelpRequestService;
 
-  constructor(deps: { db: DatabaseSync; auth: AuthService; audit: AuditLog }) {
+  constructor(deps: { db: DatabaseSync; auth: AuthService; audit: AuditLog; help: HelpRequestService }) {
     this.db = deps.db;
     this.auth = deps.auth;
     this.audit = deps.audit;
+    this.help = deps.help;
   }
 
   start(p: { staff: UserSession; parentToken: string; userId: string; tenantSlug?: string | undefined }): ImpersonationStart {
     const { user, tenant } = this.target(p.userId, p.tenantSlug);
     return this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: `/admin/${tenant.slug}/dashboard`, helpRequestId: null });
+  }
+
+  /** Toma un pedido de ayuda vigente: entra como quien lo pidió, en esa pantalla, y registra la toma. */
+  take(p: { staff: UserSession; parentToken: string; helpRequestId: string }): ImpersonationStart {
+    const request = this.help.findOpen(p.helpRequestId);
+    if (request === undefined) throw new DomainError(410, 'Este pedido venció');
+    const { user, tenant } = this.target(request.userId, request.tenantSlug);
+    const started = this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: request.path, helpRequestId: request.id });
+    this.help.recordTake(request.id, p.staff.id);
+    return started;
   }
 
   /** "Salir": termina la impersonación del token. */

@@ -30,6 +30,7 @@ import { StaffInvitationService } from '../platform/staff-invitation-service.ts'
 import { PlatformQueryService } from '../platform/platform-query-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
 import { ImpersonationService } from '../impersonation/impersonation-service.ts';
+import { HelpRequestService } from '../help/help-request-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -96,8 +97,10 @@ export const invitationServiceDef = fn.singleton(
 );
 // --- IMPERSONACIÓN (#23, M7b) ---
 
+export const helpRequestServiceDef = fn.singleton((c) => new HelpRequestService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
 export const impersonationServiceDef = fn.singleton(
-  (c) => new ImpersonationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef) }),
+  (c) =>
+    new ImpersonationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), help: c.use(helpRequestServiceDef) }),
 );
 
 // --- PLATAFORMA (#23) ---

@@ -50,6 +50,9 @@ export const DEV_BRANCH = 'CENTRAL';
 /** La key de siempre del POS de desarrollo: Caja 1 del Kiosco. */
 export const DEV_POS_API_KEY = 'mpos_dev_demo_key_12345';
 
+/** WhatsApp de soporte de desarrollo (#23): sin uno, "Pedir ayuda" no aparece. */
+export const DEV_SUPPORT_WHATSAPP = '5491100000000';
+
 /** En este orden: Kiosco y Almacén comparten titular y el Almacén usa lo que el Kiosco dejó de saldo pagado. */
 export const DEV_TENANTS: DevTenant[] = [
   {

@@ -5,10 +5,11 @@ import { requirePlatformRole } from '../middleware/platform-role-middleware.ts';
 import type { ImpersonationService } from '../impersonation/impersonation-service.ts';
 import { DomainError, sendError } from '../errors.ts';
 
-const startSchema = z.object({
-  userId: z.string().trim().min(1, 'Falta el usuario'),
-  tenantSlug: z.string().trim().min(1).optional(),
-});
+// Entrar como un usuario, o tomar un pedido de ayuda (entra como quien lo pidió, en esa pantalla)
+const startSchema = z.union([
+  z.object({ helpRequestId: z.string().trim().min(1) }),
+  z.object({ userId: z.string().trim().min(1, 'Falta el usuario'), tenantSlug: z.string().trim().min(1).optional() }),
+]);
 
 /** Impersonación de usuario (#23): empezar (root o soporte, con su sesión propia) y "Salir". */
 export function createImpersonationRoutes(impersonations: ImpersonationService): Router {
@@ -22,7 +23,11 @@ export function createImpersonationRoutes(impersonations: ImpersonationService):
     }
     try {
       if (req.user === undefined || req.sessionToken === undefined) throw new DomainError(401, 'No autorizado');
-      res.status(201).json(impersonations.start({ staff: req.user, parentToken: req.sessionToken, ...parsed.data }));
+      const body = parsed.data;
+      const base = { staff: req.user, parentToken: req.sessionToken };
+      res
+        .status(201)
+        .json('helpRequestId' in body ? impersonations.take({ ...base, helpRequestId: body.helpRequestId }) : impersonations.start({ ...base, ...body }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

@@ -9,12 +9,14 @@ import {
   DEV_BRANCH,
   DEV_DEMOS,
   DEV_PASSWORD,
+  DEV_SUPPORT_WHATSAPP,
   DEV_TENANTS,
   DEV_USERS,
   type DevTenant,
   type DevUserKey,
 } from '../seeds/dev-fixtures.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
+import { readBillingSettings, writeBillingSettings } from '../billing/settings.ts';
 
 /** Lo que el arranque muestra en el log: con qué entrar y qué keys conectar al POS. */
 export type DevInfo = {
@@ -40,6 +42,10 @@ type UserIds = Record<DevUserKey, string>;
  */
 export function ensureDevData(deps: Deps): DevInfo {
   const ids = ensureUsers(deps);
+  // Sin WhatsApp de soporte no hay "Pedir ayuda" (#23); no pisa uno cargado a mano
+  if (readBillingSettings(deps.systemDb).supportWhatsapp === '') {
+    writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
+  }
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {
     if (!deps.tenantManager.tenantExists(tenant.id)) seedTenant(deps, tenant, ids);
