@@ -52,7 +52,7 @@ firmado sin estado (no se revoca con "Salir" ni con el logout de soporte).
 ### Reglas
 
 - **Comercio suspendido**: `403 { error, code: 'tenant-suspended' }` en `/api/tenants/:tenantId`,
-  salvo exportar y `billing-status`. Va en `requireTenantContext`, después de resolver el rol. El
+  salvo Uso y pagos (`/credits…`), `billing-status` y exportar (lo mismo que queda abierto con la restricción por deuda). Va en `requireTenantContext`, después de resolver el rol. El
   Connector API no cambia. El cargo diario (push y barrido de `BillingService`) se saltea los días en
   que el comercio estuvo suspendido (algún momento del día argentino dentro de un período de
   `tenant_suspensions`). Suspender y reactivar piden motivo y se auditan
@@ -61,7 +61,7 @@ firmado sin estado (no se revoca con "Salir" ni con el logout de soporte).
   `validateSession` no lo acepta. Nadie desactiva a un root ni a sí mismo; desactivar o reactivar a
   soporte es solo de root; soporte desactiva usuarios `user`. Auditoría: `user.disabled`,
   `user.enabled`.
-- **Soporte por invitación** (solo root): link de un solo uso, 48 h, en `/invitacion#t=…` con el
+- **Soporte por invitación** (solo root): link de un solo uso, 48 h, en `/invitacion#t=…&tipo=soporte` con el
   texto "Te invitaron al equipo de soporte de mini contax". Aceptar con un mail nuevo crea la cuenta
   con `global_role = 'support'`; con un mail existente sin membresías, la promueve (pide su
   contraseña); con membresías, `409` ("Esa cuenta es de un comercio: usá otro mail"). Revocar y
@@ -78,11 +78,11 @@ firmado sin estado (no se revoca con "Salir" ni con el logout de soporte).
 | `GET /tenants/:tenantId` (resumen de créditos, miembros, estado) | root, soporte |
 | `POST /tenants/:tenantId/suspend`, `POST /tenants/:tenantId/reactivate` | root, soporte |
 | `GET /users?q=` | root, soporte |
-| `POST /users/:userId/disable`, `POST /users/:userId/enable` | root, soporte (soporte, solo `user`) |
+| `POST /users/:userId/disable`, `POST /users/:userId/enable` | root, soporte (desactivar o reactivar soporte, solo root) |
 | `POST /users/:userId/password-reset` | root, soporte |
 | `GET /staff`, `POST /staff/invitations`, `DELETE /staff/invitations/:id` | root |
-| `POST /staff/:userId/disable`, `POST /staff/:userId/enable` | root |
-| `GET /audit?tenantId=` | root, soporte |
+| `GET /tenants/by-slug/:slug` (lo mismo, para el detalle que se abre por URL) | root, soporte |
+| `GET /audit?tenantId=` o `?tenantSlug=` | root, soporte |
 | Las de cobro y configuración de hoy | sin cambios |
 
 Tipos en `src/shared/platform-types.ts`. Las consultas del panel son de sistema (`PlatformQueryService`,
@@ -219,7 +219,7 @@ acceso entre los dos PR.
 - `test/signal-query.test.ts` (#68).
 - Migración v7 con datos (`createDbAtVersion`): usuarios, restablecimientos con comercio y auditoría
   sobreviven.
-- Suspensión: 403 salvo exportar y `billing-status`, Connector API igual, sin cargos de días
+- Suspensión: 403 salvo Uso y pagos, `billing-status` y exportar, Connector API igual, sin cargos de días
   suspendidos. Usuarios desactivados: login, sesiones, quién desactiva a quién. Invitación de
   soporte: cuenta nueva, promoción y 409. Listados y detalle del panel.
 - `test/permissions-api.test.ts` suma las rutas de `/platform` con su rol.
