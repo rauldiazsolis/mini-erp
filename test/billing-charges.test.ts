@@ -30,7 +30,7 @@ describe('cargos y estado de cobro (#21)', () => {
       db.prepare("INSERT INTO tenants (id, slug, name, created_at, holder_user_id) VALUES (?, ?, ?, '2026-10-01T00:00:00.000Z', 'u1')").run(t, t, t);
     }
     db.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('demo', 'demo', 'Demo', '2026-10-01T00:00:00.000Z')").run();
-    db.prepare("INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES ('demo', 'kiosco', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')").run();
+    db.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo', 'kiosco', '2026-10-01T00:00:00.000Z')").run();
     now = new Date('2026-10-05T15:00:00.000Z');
     billing = new BillingService({ db, now: () => now });
   });

@@ -20,12 +20,27 @@ export function createTenantContextMiddleware(
   rootContainer?: Container,
 ) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+    const tenantId = req.params['tenantId'] ?? req.params['id'] ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
+
+    // El acceso anónimo de una demo (#24): admin de su comercio demo, de ningún otro
+    if (req.anonymous !== undefined) {
+      if (tenantId !== req.anonymous.tenantId) {
+        res.status(403).json({ error: 'No tienes acceso a este tenant' });
+        return;
+      }
+      const tenantDb = tenantManager.getTenantDb(tenantId);
+      req.activeTenantId = tenantId;
+      req.activeTenantDb = tenantDb;
+      req.tenantRole = 'admin';
+      if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      next();
+      return;
+    }
+
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
-
-    const tenantId = req.params['tenantId'] ?? req.params['id'] ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
 
     if (tenantId === undefined || tenantId === '') {
       res.status(400).json({ error: 'Tenant ID requerido' });

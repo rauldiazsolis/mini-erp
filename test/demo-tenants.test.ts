@@ -24,10 +24,11 @@ function count(db: DatabaseSync, sql: string, ...params: string[]): number {
   return (db.prepare(sql).get(...params) as { n: number }).n;
 }
 
-function markAsDemo(sys: DatabaseSync, tenantId: string): void {
+/** Una demo por visitante de antes de M8 (#24): la que borra el barrido. */
+function markAsLegacyDemo(sys: DatabaseSync, tenantId: string): void {
   const now = new Date().toISOString();
   sys
-    .prepare('INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
+    .prepare('INSERT INTO legacy_demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
     .run(tenantId, 'kiosco', now, now);
 }
 
@@ -72,14 +73,14 @@ describe('TenantManager y demos (#9)', () => {
       branch: 'CENTRAL',
       pointOfSale: 'Caja 1',
     });
-    markAsDemo(sys, 'tienda');
+    markAsLegacyDemo(sys, 'tienda');
 
     manager.deleteTenant('tienda');
 
     expect(manager.tenantExists('tienda')).toBe(false);
     expect(keys.validateApiKey(rawKey)).toBeUndefined();
     expect(count(sys, 'SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ?', 'tienda')).toBe(0);
-    expect(count(sys, 'SELECT COUNT(*) AS n FROM demo_sessions WHERE tenant_id = ?', 'tienda')).toBe(0);
+    expect(count(sys, 'SELECT COUNT(*) AS n FROM legacy_demo_sessions WHERE tenant_id = ?', 'tienda')).toBe(0);
   });
 
   it('deleteTenant borra el archivo de la base', () => {
@@ -103,7 +104,7 @@ describe('TenantManager y demos (#9)', () => {
     const { user } = auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
-    markAsDemo(sys, 'demo-d');
+    sys.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-d', 'kiosco', 'x')").run();
 
     const ids = auth.listUserTenants(user.id).map((t) => t.tenantId);
     expect(ids).toEqual(['tienda']);

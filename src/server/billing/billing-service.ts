@@ -5,6 +5,7 @@ import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } 
 import { DomainError } from '../errors.ts';
 import { suspendedDays } from '../platform/suspensions.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
+import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 import type {
   BillingSettings,
   BillingSummary,
@@ -44,7 +45,7 @@ export class BillingService {
   charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): number {
     const holder = this.holderOf(p.tenantId);
     if (holder === null) {
-      const demo = this.db.prepare('SELECT 1 FROM demo_sessions WHERE tenant_id = ?').get(p.tenantId);
+      const demo = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id IN ${DEMO_TENANT_IDS_SQL}`).get(p.tenantId);
       if (demo === undefined) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
       return 0;
     }
@@ -348,7 +349,7 @@ export class BillingService {
   /** Un comercio por su identificador, para la planilla; `demo` si es una demo. */
   findTenantBySlug(slug: string): { id: string; name: string; demo: boolean } | undefined {
     const row = this.db
-      .prepare('SELECT id, name, id IN (SELECT tenant_id FROM demo_sessions) AS demo FROM tenants WHERE slug = ?')
+      .prepare(`SELECT id, name, id IN ${DEMO_TENANT_IDS_SQL} AS demo FROM tenants WHERE slug = ?`)
       .get(slug) as { id: string; name: string; demo: number } | undefined;
     return row === undefined ? undefined : { id: row.id, name: row.name, demo: row.demo === 1 };
   }
@@ -400,7 +401,7 @@ export class BillingService {
   // --- internos ---
 
   private requireTenant(tenantId: string): void {
-    const row = this.db.prepare('SELECT 1 FROM tenants WHERE id = ? AND id NOT IN (SELECT tenant_id FROM demo_sessions)').get(tenantId);
+    const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
   }
 

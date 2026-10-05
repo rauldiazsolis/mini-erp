@@ -19,8 +19,13 @@ function query<T>(file: string, sql: string, ...params: string[]): T[] {
   }
 }
 
-function salesOf(tenantId: string): number {
-  return query<{ n: number }>(`tenants/${tenantId}.sqlite`, 'SELECT COUNT(*) AS n FROM sales')[0]?.n ?? 0;
+function salesOf(tenantId: string, pointOfSale?: string): number {
+  const file = `tenants/${tenantId}.sqlite`;
+  const rows =
+    pointOfSale === undefined
+      ? query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales')
+      : query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales WHERE point_of_sale = ?', pointOfSale);
+  return rows[0]?.n ?? 0;
 }
 
 async function sellOneAndSync(page: Page, search: string): Promise<void> {
@@ -55,16 +60,20 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await expect(page.getByText('DEMO', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Crear mi comercio (/ALTA)' })).toBeVisible();
 
-  const [demo] = query<{ tenant_id: string; template: string }>(
+  // La demo es una caja de visitante en el comercio demo del rubro (#24)
+  const [demo] = query<{ tenant_id: string; template: string; pos: string }>(
     'system.sqlite',
-    'SELECT tenant_id, template FROM demo_sessions ORDER BY created_at DESC LIMIT 1',
+    `SELECT s.tenant_id, s.template, r.point_of_sale AS pos FROM demo_sessions s JOIN registers r ON r.id = s.register_id
+     ORDER BY s.created_at DESC LIMIT 1`,
   );
   expect(demo?.template).toBe('kiosco');
+  expect(demo?.tenant_id).toBe('demo-kiosco');
   const demoTenant = demo?.tenant_id ?? '';
+  const demoPos = demo?.pos ?? '';
 
-  // Venta de práctica, que llega a la demo
+  // Venta de práctica, que llega a la caja de la demo
   await sellOneAndSync(page, 'alfajor');
-  await expect.poll(() => salesOf(demoTenant)).toBe(1);
+  await expect.poll(() => salesOf(demoTenant, demoPos)).toBe(1);
 
   // /ALTA → alta del mini-erp, con el rubro de la demo
   await commandBar.fill('/ALTA');
@@ -101,5 +110,5 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   // Una venta real llega al comercio nuevo; la demo sigue con la suya
   await sellOneAndSync(page, 'alfajor');
   await expect.poll(() => salesOf(newTenant)).toBe(1);
-  expect(salesOf(demoTenant)).toBe(1);
+  expect(salesOf(demoTenant, demoPos)).toBe(1);
 });

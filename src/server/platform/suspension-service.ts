@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { AuditLog } from '../audit/audit-log.ts';
 import { DomainError } from '../errors.ts';
 import { isSuspended } from './suspensions.ts';
+import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 
 /** Suspender y reactivar comercios (#23): corta el admin, el POS sigue y no se cobran esos días. */
 export class SuspensionService {
@@ -39,7 +40,7 @@ export class SuspensionService {
   }
 
   private requireRealTenant(tenantId: string): void {
-    const row = this.db.prepare('SELECT 1 FROM tenants WHERE id = ? AND id NOT IN (SELECT tenant_id FROM demo_sessions)').get(tenantId);
+    const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
   }
 

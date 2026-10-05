@@ -6,6 +6,7 @@ import { summarizeForLog } from '../connector/push-events.ts';
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
+import type { PortalService } from '../portal/portal-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
 import { backendInfo } from '../connector/backend-info.ts';
 import { CONTRACT_MAJOR, CONTRACT_VERSION, majorOf } from '../../shared/contract-version.ts';
@@ -18,6 +19,7 @@ export type ConnectorDeps = {
   registers: RegisterService;
   billing: BillingService;
   tenants: Pick<TenantManager, 'getTenantName'>;
+  portal: PortalService;
 };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
@@ -85,7 +87,6 @@ export function createConnectorRoutes(
       res.status(422).json({ code: 'unknown-template', templates: [...DEMO_TEMPLATES] });
       return;
     }
-    demoSessions.sweepExpired();
     if (demoSessions.isFull()) {
       res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;
@@ -110,11 +111,22 @@ export function createConnectorRoutes(
   router.get('/info', (req: AuthenticatedPosRequest, res: Response) => {
     const tenantId = req.posContext?.tenantId;
     const companyName = tenantId === undefined ? undefined : (deps.tenants.getTenantName(tenantId) ?? undefined);
-    res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled(), companyName }));
+    res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled(), portal: true, companyName }));
   });
 
   // El resto de los endpoints validan la versión del contrato
   router.use(checkContractVersion);
+
+  // POST /portal-links (4.6.0, capacidad portal; adelantado de M10 en #24): la URL para abrir mini
+  router.post('/portal-links', (req: AuthenticatedPosRequest, res: Response) => {
+    const ctx = req.posContext;
+    if (ctx === undefined) {
+      res.status(401).json({ error: 'No autorizado' });
+      return;
+    }
+    const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+    res.status(201).json(deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, origin }));
+  });
 
   // POST /sync/push (con Idempotency-Key)
   router.post('/sync/push', (req: AuthenticatedPosRequest, res: Response) => {

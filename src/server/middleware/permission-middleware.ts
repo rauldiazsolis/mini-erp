@@ -1,5 +1,5 @@
 import type { NextFunction, RequestHandler, Response } from 'express';
-import { can, type Capability } from '../../shared/permissions.ts';
+import { canAs, type Capability } from '../../shared/permissions.ts';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 
 /**
@@ -8,7 +8,7 @@ import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
  */
 export function requirePermission(capability: Capability): RequestHandler & { capability: Capability } {
   const handler = (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
-    if (req.tenantRole === undefined || !can(req.tenantRole, capability)) {
+    if (req.tenantRole === undefined || !canAs(req.tenantRole, capability, req.anonymous !== undefined)) {
       res.status(403).json({ error: 'No tenés permiso para esto' });
       return;
     }

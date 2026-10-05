@@ -13,7 +13,7 @@ function makeApp() {
   const { app } = createApp({
     systemDb,
     tenantManager: new TenantManager(systemDb, { inMemory: true }),
-    demoConfig: { enabled: true, ttlHours: 24, maxActive: 200 },
+    demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
     rateLimits: { demoPerHour: 10, authPer15Min: 20 },
     now: () => clock.now,
   });

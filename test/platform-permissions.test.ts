@@ -33,6 +33,9 @@ const RUTAS: Record<string, Need> = {
   'DELETE /staff/invitations/:invitationId': 'root',
   'GET /audit': 'staff',
   'GET /help-requests': 'staff',
+  // Demos (#24)
+  'GET /demos': 'staff',
+  'POST /demos/reset': 'staff',
 };
 
 type Layer = {

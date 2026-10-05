@@ -121,20 +121,21 @@ describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
     expect(res.body).toMatchObject({ company: { name: 'Kiosco Pepe' } });
   });
 
-  it('/info dice 4.6.0, sin la capacidad portal ni su objeto (#63)', async () => {
+  it('/info dice 4.6.0 con la capacidad portal y su objeto (#63, #24)', async () => {
     const res = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
-    const body = res.body as { contractVersion: string; capabilities: string[] };
+    const body = res.body as { contractVersion: string; capabilities: string[]; portal?: unknown };
     expect(body.contractVersion).toBe('4.6.0');
-    expect(body.capabilities).not.toContain('portal');
-    expect(body).not.toHaveProperty('portal');
+    expect(body.capabilities).toContain('portal');
+    expect(body.portal).toEqual({ command: 'MINI', label: 'Abrir mini' });
   });
 
-  it('POST /portal-links da 404: el portal es de M10 (#26)', async () => {
+  it('POST /portal-links con la key de un comercio real devuelve el login de mini (#24)', async () => {
     const res = await request(app)
       .post('/connector/portal-links')
       .set('Authorization', `Bearer ${apiKey}`)
       .set('X-POS-Contract-Version', '4.6.0');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(201);
+    expect((res.body as { url: string }).url).toMatch(/\/admin\/[\w-]+$/);
   });
 
   it('un POS 4.4.0 sigue sincronizando con el backend 4.6.0', async () => {
@@ -149,8 +150,8 @@ describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
 
 describe('backendInfo (#58)', () => {
   it('sin nombre, o con un nombre vacío, no manda company', () => {
-    expect(backendInfo({ status: 'ok', demos: false })).not.toHaveProperty('company');
-    expect(backendInfo({ status: 'ok', demos: false, companyName: '  ' })).not.toHaveProperty('company');
-    expect(backendInfo({ status: 'ok', demos: false, companyName: 'Kiosco' }).company).toEqual({ name: 'Kiosco' });
+    expect(backendInfo({ status: 'ok', demos: false, portal: false })).not.toHaveProperty('company');
+    expect(backendInfo({ status: 'ok', demos: false, portal: false, companyName: '  ' })).not.toHaveProperty('company');
+    expect(backendInfo({ status: 'ok', demos: false, portal: false, companyName: 'Kiosco' }).company).toEqual({ name: 'Kiosco' });
   });
 });

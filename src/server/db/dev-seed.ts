@@ -160,19 +160,26 @@ function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): void {
   }
 }
 
-/** Las demos con key fija: si no hay una viva con esa key, se crea y se le pone la key. */
+/**
+ * Las cajas de demo con key fija (#24): si no hay una viva con esa key (un reinicio o la inactividad
+ * la revocaron), se crea otra caja de visitante y se le pone la key. La revocada suelta el hash, que es único.
+ */
 function ensureDemos(deps: Deps): void {
   if (!deps.demoSessions.enabled()) return;
   for (const d of DEV_DEMOS) {
     const hash = hashApiKey(d.rawKey);
     const alive = deps.systemDb
-      .prepare('SELECT 1 FROM tenant_api_keys k JOIN demo_sessions s ON s.tenant_id = k.tenant_id WHERE k.key_hash = ?')
+      .prepare(
+        `SELECT 1 FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
+         WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`,
+      )
       .get(hash);
     if (alive !== undefined) continue;
+    deps.systemDb.prepare("UPDATE tenant_api_keys SET key_hash = key_hash || ':revocada:' || id WHERE key_hash = ?").run(hash);
     const session = deps.demoSessions.create(d.template);
     deps.systemDb
-      .prepare('UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ? WHERE tenant_id = ?')
-      .run(hash, d.rawKey.slice(0, 10), session.tenantId);
+      .prepare('UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ? WHERE register_id = (SELECT register_id FROM demo_sessions WHERE id = ?)')
+      .run(hash, d.rawKey.slice(0, 10), session.sessionId);
   }
 }
 

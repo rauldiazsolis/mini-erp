@@ -17,6 +17,7 @@ import type {
   StaffMemberItem,
 } from '../../shared/platform-types.ts';
 import type { HelpRequestItem } from '../../shared/help-types.ts';
+import type { DemoResetRequest, DemoResetResponse, DemoStatusItem } from '../../shared/demo-types.ts';
 
 /**
  * El panel de plataforma (#23), para root y soporte: comercios y su detalle, usuarios, equipo de
@@ -30,7 +31,7 @@ function fail(err: unknown, title: string): false {
 }
 
 /** Si la solapa activa de `/plataforma` (sin detalle) es esa. Reactiva. */
-function platformTabIs(tab: 'users' | 'requests' | 'staff' | 'audit'): boolean {
+function platformTabIs(tab: 'users' | 'requests' | 'demos' | 'staff' | 'audit'): boolean {
   const route = routeSignal.value;
   return route.kind === 'plataforma' && route.tab === tab && route.tenantSlug === null;
 }
@@ -174,6 +175,38 @@ const helpRequestsQuery = createSignalQuery<HelpRequestItem[]>({
 
 export const helpRequestsSignal = computed<HelpRequestItem[]>(() => helpRequestsQuery.data.value ?? []);
 export const helpRequestsLoadingSignal = helpRequestsQuery.isLoading;
+
+// --- Demos (#24) ---
+
+const demosQuery = createSignalQuery<DemoStatusItem[]>({
+  source: (): QuerySource<DemoStatusItem[]> | null => {
+    const t = tokenSignal.value;
+    if (t === null) return null;
+    return { key: platformKey('demos'), fn: () => apiFetch<DemoStatusItem[]>('/api/platform/demos', { token: t }) };
+  },
+  enabled: () => platformTabIs('demos'),
+  onError: (err) => {
+    fail(err, 'No se pudieron cargar las demos');
+  },
+});
+
+export const demosSignal = computed<DemoStatusItem[]>(() => demosQuery.data.value ?? []);
+export const demosLoadingSignal = demosQuery.isLoading;
+
+/** Un reinicio de demos (parcial o total, de un rubro o de los tres). */
+export async function resetDemos(req: DemoResetRequest): Promise<boolean> {
+  const t = tokenSignal.value;
+  if (t === null) return false;
+  try {
+    const res = await apiFetch<DemoResetResponse>('/api/platform/demos/reset', { method: 'POST', token: t, body: req });
+    const revoked = req.kind === 'full' ? ` · ${String(res.revoked)} cajas revocadas` : '';
+    showToast({ type: 'success', title: 'Demo reiniciada', message: `${res.reset.join(', ')}${revoked}` });
+    await invalidateAfter('platform-changed');
+    return true;
+  } catch (err: unknown) {
+    return fail(err, 'No se pudo reiniciar la demo');
+  }
+}
 
 // --- Equipo de soporte (solo root) ---
 

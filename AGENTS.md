@@ -26,11 +26,12 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
   dice `4.6.0`, manda `company.name` (el nombre del comercio de la key; no va en mantenimiento ni
   con el nombre vacío) y declara las capacidades `customer-payment-void` (siempre: la anulación de
   una cobranza es otra cobranza, en negativo) y `demo-sessions` (si las demos están prendidas:
-  `POST /connector/demo-sessions` y la vuelta del onboarding con `#connect` desde `/alta`, #9). El
-  pull manda `notices` y el backend cumple las reglas de evolución (tests en
-  `test/contract-evolution.test.ts`). Una demo barrida da `401` a todo y puede ir igual al alta; la
-  revocación activa de demos es de M8 (#24). La capacidad `portal` de 4.6.0 (opcional) no se
-  declara: `POST /portal-links` da `404` hasta M10 (#26).
+  `POST /connector/demo-sessions` y la vuelta del onboarding con `#connect` desde `/alta`, #9) y
+  `portal` con `{ command: 'MINI', label: 'Abrir mini' }` (con cualquier key; adelantada de M10 en
+  #24). El pull manda `notices` y el backend cumple las reglas de evolución (tests en
+  `test/contract-evolution.test.ts`). La revocación activa de demos está hecha (#24): una caja de
+  visitante revocada (reinicio total o `DEMO_TTL_HOURS` sin uso) da `401` a todo, el POS lo toma
+  como "la demo terminó" y puede ir igual al alta.
 - **Errores del Connector API** (4.6.0, #63): los `429` y `503` mandan `ErrorBody`
   (`{ code, message? }`: `rate-limited`, `demo-capacity`, `maintenance`), con `Retry-After` en
   segundos. En `/api` el texto sigue en `error`, que es donde lo lee el admin.
@@ -172,8 +173,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `owners.manage`, `credits.view`. Permisos fijos. Quien impersona opera con el rol del usuario.
   - `requireTenantContext` resuelve el rol (`MembershipService.resolveRole`, solo membresías
     activas) y **cada** ruta de `/api/tenants/:tenantId` lleva `requirePermission(<capacidad>)`.
-    `test/permissions-api.test.ts` tiene la tabla de todas las rutas y falla si una ruta nueva no
-    está o exige otra capacidad.
+    La tabla de todas las rutas está en `test/helpers/tenant-routes.ts`: `test/permissions-api.test.ts`
+    falla si una ruta nueva no está o exige otra capacidad, y `test/anonymous-permissions.test.ts`
+    la recorre con el acceso anónimo de una demo.
   - El cliente esconde lo que el rol no permite con `canDo` (`state/permissions-state.ts`).
   - **Sin registro suelto**: una cuenta nace en `POST /api/alta` (cuenta con WhatsApp, comercio vacío
     con su rubro y key de "Caja 1", atómico; #22) o aceptando una invitación.
@@ -184,7 +186,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - Auditoría en `audit_log` (`AuditLog`, de sistema): usuarios, roles, invitaciones y contraseñas.
     La ve el owner en Usuarios → Actividad.
   - Los errores de negocio son `DomainError` con su estado HTTP (`src/server/errors.ts`).
-- **Arranque** en `src/server/bootstrap.ts`: el barrido de demos siempre; el seed de desarrollo
+- **Arranque** en `src/server/bootstrap.ts`: con las demos prendidas, los comercios demo
+  (`ensureDemoTenants`, **también en producción**); el barrido de demos siempre; el seed de desarrollo
   (`ensureDevData` en `db/dev-seed.ts`, datos en `seeds/dev-fixtures.ts`, todo en el repo) **solo
   fuera de `NODE_ENV=production`**:
   - Usuarios con contraseña `admin123`: `root@local.test` y `soporte@local.test` sin comercios,
@@ -194,7 +197,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     caja y un estado de créditos distinto (ok, saldo bajo, deuda en gracia), armado con las mismas
     operaciones de `BillingService`. Cada caja tiene una key fija; `mpos_dev_demo_key_12345` es la
     Caja 1 del Kiosco.
-  - Dos demos con key fija, que se vuelven a crear al arrancar si vencieron.
+  - Dos cajas de demo con key fija (`DEV_DEMOS`: Kiosco y Almacén demo), que se vuelven a crear al
+    arrancar si un reinicio o la inactividad las revocó.
   - Es idempotente y no borra nada: para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
     El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
@@ -231,18 +235,45 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `Access-Control-Allow-Private-Network: true` en el preflight, para el POS publicado llamando a
     `localhost`. `CORS_OPTIONS` y el preflight, en `src/server/middleware/private-network.ts`, valen
     para el app real y para el de mantenimiento.
-- **Demos aisladas** (#9), en `src/server/demo/`:
-  - `POST /connector/demo-sessions` es el único endpoint sin key: crea un tenant `demo-*` **sin
-    dueño**, marcado en `demo_sessions` (`system.sqlite`) y sembrado con `seedDemoSession` (template
-    = preset: `kiosco`, `almacen`, `ferreteria`). `DemoSessionService` es de sistema (contenedor
-    raíz), con reloj inyectable (`clockDef`).
-  - Vence a las `DEMO_TTL_HOURS` del **último uso**: la auth del POS llama a `touch` con cada key
-    válida. `startDemoSweeper` barre al arrancar y cada 15 minutos (`TenantManager.deleteTenant`
-    borra filas y archivo). Tope `DEMO_MAX_ACTIVE` (`503 demo-capacity`).
-  - Las demos no aparecen en la lista de comercios del admin, ni para `root`.
-  - El barrido loguea `[demos] barrido: N …` al arrancar y cada vez que borra alguna.
-  - El alta desde una demo crea un **comercio nuevo** (la demo vence sola); el rubro se preselecciona
-    con el `template` que viaja en `onboarding.url`.
+- **Demos v2** (#24, spec `docs/superpowers/specs/2026-10-05-m8-demos-v2-design.md`), en
+  `src/server/demo/` (reemplaza el tenant por visitante de #9):
+  - **Un comercio fijo por rubro**: `demo-kiosco`, `demo-almacen` y `demo-ferreteria` ("Kiosco Demo",
+    etc.), sin dueño, marcados en `demo_tenants`. La semilla (`seedDemoCommerce`,
+    `seeds/demo-commerce.ts`) pone el catálogo con ids deterministas (`demo_<sku>`), los clientes demo
+    y 30 días de historial de dos cajas de la casa, relativos a `now`. `DEMO_TENANT_IDS_SQL`
+    (`demo/demo-tenant-ids.ts`) es la marca de demo para cobro, plataforma, suspensión,
+    impersonación y backup: los comercios demo nunca cobran ni aparecen en Comercios o Usuarios.
+  - **Una caja por visitante**: `POST /connector/demo-sessions` (el único endpoint sin key) crea en
+    el comercio del rubro una caja `Demo XXXX` con su key y su fila de `demo_sessions`. Los visitantes
+    comparten el comercio. `demo_sessions` es el registro para M9: **nunca se borra** y vive en
+    `system.sqlite`, fuera del comercio. Tope `DEMO_MAX_ACTIVE` de cajas activas (`503 demo-capacity`).
+  - **Revocar** una caja es `active = 0` en la caja y su key (`401` a todo), con `revoked_at` y
+    `revoke_reason` (`reset` o `idle`). Pasa con el reinicio total o a las `DEMO_TTL_HOURS` sin uso: la
+    auth del POS y el admin anónimo corren `last_used_at` (`touchRegister`, a lo sumo por minuto).
+  - **Reinicios** (`DemoResetService`, sincrónicos): el **total** vacía todas las tablas del comercio
+    (salen de `sqlite_master`), vuelve a sembrar y revoca sus cajas; el **parcial** devuelve
+    productos, stock (con `inventory_count`) y datos de clientes de la semilla, borra lo creado por
+    visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
+    cajas.
+  - **El barrido** (`startDemoSweeper` en `demo/demo-sweeper.ts`, al arrancar y cada 15 minutos):
+    borra las demos por tenant de antes de M8 (`legacy_demo_sessions`), hace el reinicio total
+    automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
+    caído, al arrancar), revoca las cajas inactivas y repone el stock que bajó de un cuarto del de la
+    semilla ("Reposición automática"). Loguea `[demos] barrido: …`.
+  - **Portal y acceso anónimo** (adelantado de M10): `POST /connector/portal-links` da, con una caja de
+    demo, `<origen>/portal#t=<token>` (un uso, 60 s, en `portal_links` su sha256) y, con una caja
+    real, `<origen>/admin/<slug>`. `POST /api/portal/redeem` lo canjea por una sesión anónima
+    (`anonymous_sessions`, `PortalService`) que vale mientras su caja esté activa. Solo entra por la
+    cadena `/api/tenants/:tenantId` (`req.anonymous`, sin `req.user`) como `admin` de su comercio, sin
+    `settings.manage`, `users.manage`, `owners.manage` ni `credits.view` (`canAs` y
+    `ANONYMOUS_DENIED` en `shared/permissions.ts`); `requireOwnSession` la rechaza. En el cliente,
+    `/portal` canjea y guarda la sesión en el `sessionStorage` de la pestaña (solo `auth-state`), abre
+    Ventas en la caja del visitante con la franja de la demo y, con un 401, "Esta demo terminó".
+  - **Plataforma**: solapa Demos (`/plataforma/demos`, root y soporte) con el estado de cada comercio
+    demo y los reinicios parcial y total, auditados como `demo.reset` (el automático, con el actor
+    `system`, "Automático").
+  - El alta desde una demo crea un **comercio nuevo**; el rubro se preselecciona con el `template` que
+    viaja en `onboarding.url`.
 - **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
   - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
     y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
@@ -479,7 +510,8 @@ hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), mo
 top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 fue en dos PR: M7a (panel de
 plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) y M7b (impersonación de
-usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). Sigue
-M8 (#24). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
+usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). M8
+(#24, hecha): demos v2 con un comercio por rubro, una caja por visitante, reinicios y el portal
+adelantado de M10 con el acceso anónimo de la demo. Sigue M9 (#25). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
 En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).

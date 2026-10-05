@@ -27,6 +27,8 @@ import { createImpersonationRoutes } from './routes/impersonation-routes.ts';
 import { createHelpRoutes } from './routes/help-routes.ts';
 import { createMeRoutes } from './routes/me-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
+import { createPortalRoutes } from './routes/portal-routes.ts';
+import { createPlatformDemoRoutes } from './routes/platform-demo-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
@@ -40,6 +42,8 @@ import {
   authServiceDef,
   apiKeyServiceDef,
   demoSessionServiceDef,
+  demoResetServiceDef,
+  portalServiceDef,
   clockDef,
   membershipServiceDef,
   altaServiceDef,
@@ -56,8 +60,10 @@ import {
   helpRequestServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
+import type { AuditLog } from './audit/audit-log.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
+import type { DemoResetService } from './demo/demo-reset-service.ts';
 import { APP_VERSION } from './app-version.ts';
 
 export type AppDependencies = {
@@ -76,6 +82,8 @@ export function createApp(deps?: AppDependencies): {
   authService: AuthService;
   apiKeyService: ApiKeyService;
   demoSessions: DemoSessionService;
+  demoResets: DemoResetService;
+  auditLog: AuditLog;
   billing: BillingService;
   rootContainer: Container;
 } {
@@ -95,6 +103,7 @@ export function createApp(deps?: AppDependencies): {
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
   const demoSessions = rootContainer.use(demoSessionServiceDef);
+  const demoResets = rootContainer.use(demoResetServiceDef);
   const membershipService = rootContainer.use(membershipServiceDef);
   const invitationService = rootContainer.use(invitationServiceDef);
   const auditLog = rootContainer.use(auditLogDef);
@@ -111,8 +120,11 @@ export function createApp(deps?: AppDependencies): {
   const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now, body: 'api' });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (tenantId) => {
-    demoSessions.touch(tenantId);
+  // La cadena del comercio acepta también la sesión anónima de una demo (#24); el resto, solo usuarios
+  const portal = rootContainer.use(portalServiceDef);
+  const requireTenantSession = createAdminAuthMiddleware(authService, tenantManager, portal);
+  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (key) => {
+    demoSessions.touchRegister(key.registerId);
   });
 
   app.use(allowPrivateNetwork);
@@ -135,12 +147,14 @@ export function createApp(deps?: AppDependencies): {
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit, authService));
+  // El portal (#24): canje del link del POS por la sesión anónima de la demo
+  app.use('/api/portal', createPortalRoutes(portal, authLimit));
   app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
   app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit, authService));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
-    requireAdmin,
+    requireTenantSession,
     requireTenantContext,
     createBillingRestriction(billing),
     createCatalogRoutes(),
@@ -174,8 +188,11 @@ export function createApp(deps?: AppDependencies): {
     }),
   );
 
+  // Demos de la plataforma (#24): estado y reinicios
+  app.use('/api/platform', requireAdmin, createPlatformDemoRoutes({ resets: demoResets, audit: auditLog }));
+
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager }));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -191,6 +208,8 @@ export function createApp(deps?: AppDependencies): {
     authService,
     apiKeyService,
     demoSessions,
+    demoResets,
+    auditLog,
     billing,
     rootContainer,
   };

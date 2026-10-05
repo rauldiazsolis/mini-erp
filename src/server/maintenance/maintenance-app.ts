@@ -36,7 +36,7 @@ export function createMaintenanceApp(params: { state: () => MaintenanceState; de
 
   // Sin validar la key: no hay base de sistema y la respuesta no dice nada de nadie. Nunca 409.
   app.get('/connector/info', (_req, res) => {
-    res.status(200).json(backendInfo({ status: 'maintenance', demos: params.demos }));
+    res.status(200).json(backendInfo({ status: 'maintenance', demos: params.demos, portal: false }));
   });
   app.use('/connector', (_req, res) => {
     unavailable(res).json({ code: 'maintenance', message: MAINTENANCE_MESSAGE });

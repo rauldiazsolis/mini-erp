@@ -45,7 +45,7 @@ function sembrar(ids: string[] = ['kiosco-real']): string {
   }
   tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
-  systemDb.prepare('INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)').run('demo-abc', 'kiosco', at, at);
+  systemDb.prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)').run('demo-abc', 'kiosco', at);
   const kiosco = tenants.getTenantDb(ids[0] ?? 'kiosco-real');
   kiosco.prepare('INSERT INTO products (id, sku, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('p1', 'SKU1', 'Yerba', at, at);
   tenants.closeAll();

@@ -3,6 +3,8 @@ import { createDbAtVersion } from './helpers/db-at-version.ts';
 import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { migrateDb } from '../src/server/db/migrations/migrate.ts';
 
+const HASTA_V8 = { ...SYSTEM_SCHEMA, migrations: SYSTEM_SCHEMA.migrations.filter((m) => m.version <= 8) };
+
 describe('migración de sistema v8 impersonación y ayuda (#23)', () => {
   it('suma la impersonación a las sesiones y los pedidos de ayuda sin perder datos', () => {
     const db = createDbAtVersion(SYSTEM_SCHEMA, 7);
@@ -11,7 +13,7 @@ describe('migración de sistema v8 impersonación y ayuda (#23)', () => {
     db.prepare("INSERT INTO tenants (id, slug, name, created_at, holder_user_id) VALUES ('k', 'k', 'Kiosco', ?, 'u1')").run(at);
     db.prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok', 'u1', ?, ?)").run(at, at);
 
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V8);
 
     expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 });
     expect(
