@@ -132,7 +132,9 @@ dejó `demo_sessions.id` como el id de visitante.
   con TanStack Query e `invalidateAfter('platform-changed')`.
   - **Embudo** (por omisión los últimos 30 días): arriba los totales del landing; una tabla con una
     fila por etapa y columnas total, kiosco, almacén, ferretería y otro o sin rubro; cada celda con
-    la cantidad, el % sobre la etapa anterior y una barra (CSS). Cada cantidad lleva a Visitantes
+    la cantidad, el % sobre los visitantes de la cohorte en esa columna (el reporte trae ese total; sobre
+    la etapa anterior no sirve: la cohorte mezcla demos, contactos y comercios sin demo, y Contacto es
+    opcional) y una barra (CSS). Cada cantidad lleva a Visitantes
     filtrado por cohorte, etapa y rubro. Nota: "Las cohortes recientes siguen avanzando".
   - **Visitantes**: una fila por visitante (inicio, rubro, etapa más avanzada, contacto, comercio con
     link a su detalle, estado del contacto). Filtros "Todos", "Con contacto", "Contactos sin

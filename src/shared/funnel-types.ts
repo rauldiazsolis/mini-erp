@@ -55,6 +55,8 @@ export type FunnelReport = {
   from: string;
   to: string;
   landing: Record<FunnelDailyKind, number>;
+  /** Los visitantes de la cohorte: la base de los porcentajes del panel. */
+  visitors: { total: number; byRubro: Record<FunnelRubro, number> };
   stages: { stage: FunnelStage; total: number; byRubro: Record<FunnelRubro, number> }[];
 };
 

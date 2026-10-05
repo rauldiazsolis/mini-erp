@@ -18,14 +18,22 @@ function countOf(stage: Stage | undefined, key: Column['key']): number {
   return key === 'total' ? stage.total : stage.byRubro[key];
 }
 
-/** Una celda: la cantidad (con link a Visitantes), el % sobre la etapa anterior y una barra. */
+/** Los visitantes de la cohorte en la columna: la base del % y de la barra. */
+function cohortOf(report: FunnelReport, key: Column['key']): number {
+  return key === 'total' ? report.visitors.total : report.visitors.byRubro[key];
+}
+
+/**
+ * Una celda: la cantidad (con link a Visitantes), el % de la cohorte y una barra. Sobre la cohorte y no
+ * sobre la etapa anterior: la cohorte mezcla demos, contactos del landing y comercios sin demo, y una
+ * etapa puede superar a la anterior.
+ */
 function Cell(props: { report: FunnelReport; index: number; column: Column }) {
   const { report, index, column } = props;
   const stage = report.stages[index];
   const n = countOf(stage, column.key);
-  const previous = index === 0 ? undefined : countOf(report.stages[index - 1], column.key);
-  const base = Math.max(...report.stages.map((s) => countOf(s, column.key)), 0);
-  const width = base === 0 ? 0 : Math.round((n / base) * 100);
+  const cohort = cohortOf(report, column.key);
+  const width = cohort === 0 ? 0 : Math.round((n / cohort) * 100);
   const rubro = column.key === 'total' ? {} : { rubro: column.key };
   const href = platformUrl('visitors', { desde: report.from, hasta: report.to, etapa: stage?.stage ?? 'demo', ...rubro });
   return (
@@ -35,7 +43,7 @@ function Cell(props: { report: FunnelReport; index: number; column: Column }) {
           <Link href={href} class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
             {formatQty(n)}
           </Link>
-          {previous !== undefined && <span class="text-[10px] text-slate-400">{percentOf(n, previous)}</span>}
+          <span class="text-[10px] text-slate-400">{percentOf(n, cohort)}</span>
         </div>
         <div class="h-1.5 rounded bg-slate-100 dark:bg-slate-800">
           <div class="h-1.5 rounded bg-indigo-500" style={{ width: `${String(width)}%` }} />
@@ -100,8 +108,8 @@ export function FunnelTab() {
             <StatCard title="Altas abiertas sin demo" value={formatQty(report.landing['alta-open'])} />
           </div>
           <p class="text-xs text-slate-500 dark:text-slate-400">
-            Cohorte: los visitantes que empezaron entre el {formatDay(report.from)} y el {formatDay(report.to)}, con cada etapa a la que
-            llegaron. Las cohortes recientes siguen avanzando.
+            Cohorte: los {formatQty(report.visitors.total)} visitantes que empezaron entre el {formatDay(report.from)} y el{' '}
+            {formatDay(report.to)}, con cada etapa a la que llegaron y el % sobre la cohorte. Las cohortes recientes siguen avanzando.
           </p>
         </>
       )}
@@ -115,7 +123,9 @@ export function FunnelTab() {
               <Tr>
                 <Th>Etapa</Th>
                 {columns.map((c) => (
-                  <Th key={c.key}>{c.label}</Th>
+                  <Th key={c.key}>
+                    {c.label} ({formatQty(cohortOf(report, c.key))})
+                  </Th>
                 ))}
               </Tr>
             </Thead>

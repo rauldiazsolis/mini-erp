@@ -100,7 +100,7 @@ export class FunnelQueryService {
       .prepare('SELECT kind, SUM(count) AS n FROM funnel_daily WHERE day BETWEEN ? AND ? GROUP BY kind')
       .all(f.from, f.to) as { kind: string; n: number }[];
     for (const row of rows) if (isFunnelDailyKind(row.kind)) landing[row.kind] = row.n;
-    return { from: f.from, to: f.to, landing, stages };
+    return { from: f.from, to: f.to, landing, visitors: { total: built.length, byRubro: countBy(built, (b) => b.item.rubro) }, stages };
   }
 
   visitors(f: VisitorQuery): FunnelVisitorItem[] {

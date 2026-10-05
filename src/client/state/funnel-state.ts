@@ -112,7 +112,7 @@ export function contactWhatsappUrl(name: string | null, whatsapp: string): strin
   return `https://wa.me/${whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
 }
 
-/** % entero sobre la etapa anterior; sin anterior, un guion. */
+/** % entero sobre la cohorte; sin cohorte, un guion. */
 export function percentOf(part: number, whole: number): string {
   return whole === 0 ? '—' : `${String(Math.round((part / whole) * 100))} %`;
 }

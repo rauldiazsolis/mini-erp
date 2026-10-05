@@ -53,6 +53,8 @@ describe('FunnelQueryService (#25)', () => {
   it('el embudo cuenta la cohorte del rango por etapa y por rubro', () => {
     const r = q.report({ from: '2026-10-05', to: '2026-10-05' });
     expect(r.landing).toEqual({ landing: 7, 'demo-click': 3, 'alta-open': 0 });
+    // El tamaño de la cohorte: la base de los porcentajes del panel
+    expect(r.visitors).toEqual({ total: 3, byRubro: { kiosco: 1, almacen: 0, ferreteria: 1, otro: 1 } });
     const total = Object.fromEntries(r.stages.map((s) => [s.stage, s.total]));
     expect(total).toEqual({ demo: 1, 'demo-sale': 1, portal: 1, contact: 2, alta: 2, commerce: 2, load: 1, 'real-sale': 1, payment: 0 });
     const ferre = Object.fromEntries(r.stages.map((s) => [s.stage, s.byRubro.ferreteria]));

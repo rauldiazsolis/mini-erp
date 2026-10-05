@@ -28,7 +28,7 @@ describe('cliente del panel del embudo (#25)', () => {
     expect(contactWhatsappUrl(null, '1155550000')).toContain(encodeURIComponent('Hola, te escribo'));
   });
 
-  it('el porcentaje sobre la etapa anterior es entero y sin anterior es un guion', () => {
+  it('el porcentaje sobre la cohorte es entero y sin cohorte es un guion', () => {
     expect(percentOf(1, 3)).toBe('33 %');
     expect(percentOf(0, 0)).toBe('—');
   });
