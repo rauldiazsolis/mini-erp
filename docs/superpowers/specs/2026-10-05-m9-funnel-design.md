@@ -45,7 +45,7 @@ dejó `demo_sessions.id` como el id de visitante.
 | 2 | Venta demo | evento `demo-sale` | La primera venta que no es anulación de una caja de visitante, en el push. |
 | 3 | Mini desde el POS | evento `portal-opened` | El primer canje del portal con una caja de demo. |
 | 4 | Contacto | `funnel_contacts.created_at` | Inferida. |
-| 5 | Alta | evento `alta-opened` | Beacon de `/alta` con `?demo=`. Sin demo suma `alta-open` en `funnel_daily`. |
+| 5 | Alta | evento `alta-opened` (o, si falta, la fecha del comercio) | Beacon de `/alta` con `?demo=`. Sin demo suma `alta-open` en `funnel_daily`. Un comercio implica el alta. |
 | 6 | Comercio | `tenants.created_at` con `demo_session_id` | Inferida. La cuenta (`users.created_at` del titular) va en la historia. |
 | 7 | Carga | evento `catalog-loaded` (`data.source`: `import-products`, `import-customers`, `example`) | La primera importación confirmada (no la vista previa) o el catálogo de ejemplo. |
 | 8 | Venta real | el primer `charges.created_at` del comercio | Inferida. |
@@ -115,28 +115,28 @@ dejó `demo_sessions.id` como el id de visitante.
 
 ## Cliente
 
-- **Landing**: beacon `landing` al cargar (una vez por pestaña, `sessionStorage`) y `demo-click` al
-  tocar "Probar la demo" (`navigator.sendBeacon`); link "¿Querés que te ayudemos a empezar?" que abre
+- **Landing**: beacon `landing` al cargar (una vez por carga de la página, en memoria: solo `auth-state`
+  toca `sessionStorage`) y `demo-click` al tocar "Probar la demo" (`fetch` con `keepalive`); link "¿Querés que te ayudemos a empezar?" que abre
   el modal de contacto (`source: 'landing'`).
 - **Alta** (`merchant-onboarding-state`): lee `demo` de la query, manda el beacon `alta-open` una vez
-  por pestaña y `demoSessionId` en el `POST /api/alta`.
+  por carga y `demoSessionId` en el `POST /api/alta`.
 - **Demo**: el canje guarda `demoSessionId` en el estado anónimo (`sessionStorage`, solo
   `auth-state`). `DemoBar` suma "¿Querés que te ayudemos a empezar?" y su "Crear mi comercio" lleva
   `&demo=`; `DemoEndedView`, lo mismo (`source: 'demo-ended'`). Después de enviar: "Listo, te
-  escribimos por WhatsApp" y la franja lo recuerda en `sessionStorage`.
+  escribimos por WhatsApp" y la pestaña lo recuerda en memoria.
 - **Modal de contacto** (`components/funnel/ContactModal.tsx`, por `Modal`): nombre y WhatsApp,
   validados con el esquema compartido.
 - **Plataforma**: secciones `funnel` (Embudo) y `visitors` (Visitantes) en `PLATFORM_SECTIONS` y
   `platformNavItems`, después de Demos, para root y soporte; la historia en
   `/plataforma/visitantes/<id>` marca Visitantes. Filtros en la URL con `setPlatformFilters`; datos
-  con TanStack Query e `invalidateAfter('funnel-contact-handled')`.
+  con TanStack Query e `invalidateAfter('platform-changed')`.
   - **Embudo** (por omisión los últimos 30 días): arriba los totales del landing; una tabla con una
     fila por etapa y columnas total, kiosco, almacén, ferretería y otro o sin rubro; cada celda con
     la cantidad, el % sobre la etapa anterior y una barra (CSS). Cada cantidad lleva a Visitantes
     filtrado por cohorte, etapa y rubro. Nota: "Las cohortes recientes siguen avanzando".
   - **Visitantes**: una fila por visitante (inicio, rubro, etapa más avanzada, contacto, comercio con
     link a su detalle, estado del contacto). Filtros "Todos", "Con contacto", "Contactos sin
-    atender" y "Con alta", y búsqueda por nombre, WhatsApp, comercio o caja (`Demo AB12`). El menú
+    atender" (todos, sin rango de fechas) y "Con alta", y búsqueda por nombre, WhatsApp, comercio o caja (`Demo AB12`). El menú
     muestra el contador de contactos sin atender.
   - **Historia**: línea de tiempo con cada etapa y su fecha y hora; la caja de la demo y su
     revocación (motivo y fecha); el contacto con "Escribir por WhatsApp"
@@ -149,7 +149,7 @@ dejó `demo_sessions.id` como el id de visitante.
   memoria.
 - El id de la demo viaja en la query de `/alta`: no da acceso a nada, solo liga un alta o un contacto.
 - **Barrido** (`startFunnelSweeper`, al arrancar y cada 15 minutos, aunque las demos estén apagadas):
-  borra los `funnel_events` de más de 24 meses y, a los contactos de más de 12 meses sin un comercio
+  borra los `funnel_events` de más de 24 meses y, a los contactos sin cambios en más de 12 meses (`updated_at`) y sin un comercio
   ligado a su demo, les borra nombre y WhatsApp (`erased_at`; en el panel, "Contacto borrado por
   antigüedad"). Loguea `[embudo] barrido: …` cuando hace algo.
 
@@ -176,7 +176,7 @@ dejó `demo_sessions.id` como el id de visitante.
   `/MINI` y contacto desde la franja → `/ALTA` desde el POS, alta y vuelta con `#connect` → el POS con
   la caja real vende → root ve en Visitantes una sola historia (demo, venta demo, mini desde el POS,
   contacto, alta, comercio, venta real) y en Embudo cada una de esas etapas sube en 1 respecto de lo
-  que mostraba antes del recorrido (Carga y Pago no cambian; la base del e2e tiene otras demos).
+  que mostraba antes del recorrido (Carga incluida, por el catálogo de ejemplo; Pago no cambia). Como otros e2e crean demos en paralelo, cada etapa sube al menos 1.
 
 ## Afuera (backlog)
 
