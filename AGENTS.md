@@ -209,7 +209,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
   (`AUTH_RATE_LIMIT`, contador compartido); `429` con `Retry-After` y el texto en `message` (Connector
-  API) o en `error` (`/api`). `trust proxy` en `loopback`: detrás de Caddy, `req.ip` es la del
+  API) o en `error` (`/api`). Del embudo (#25): 5 contactos por hora (`CONTACT_RATE_LIMIT`, `429`) y 60
+  beacons por hora (`BEACON_RATE_LIMIT`; pasado, `204` sin contar, la opción `silent`). `trust proxy` en `loopback`: detrás de Caddy, `req.ip` es la del
   cliente y `req.protocol`, `https`.
 - **IoC con Hardwired 1.6.2** (versión exacta): servicios por request con
   `req.tenantScope.use(serviceDef)`; nunca `new Service()` para un servicio de tenant. La base del
@@ -298,6 +299,35 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     y, con un 401, "Este acceso terminó". `/MINI` abre "mi caja" aunque en el navegador haya un usuario
     logueado.
   - Migración de sistema v10 (`kind`, `api_key_id` y `actor_register_id`).
+- **Embudo** (#25, spec `docs/superpowers/specs/2026-10-05-m9-funnel-design.md`), en `src/server/funnel/`:
+  - **El visitante es la demo** (`demo_sessions.id`). Sin demo, un contacto del landing (`c-<id>`) o un
+    comercio (`t-<id>`). Dos demos de la misma persona son dos visitantes (unirlos pediría contrato).
+  - **El id viaja al alta**: `onboarding.url` es `/alta?template=<rubro>&demo=<id>` (también el
+    "Crear mi comercio" de la franja y de "Esta demo terminó"); `POST /api/alta` con `demoSessionId`
+    lo guarda en `tenants.demo_session_id`, aunque la demo esté revocada (una desconocida se ignora).
+    El `#connect` no cambia: la liga se hace en el servidor.
+  - **Se registra solo lo que se pierde** (`funnel_events`, `FunnelService`, una vez por demo o por
+    comercio, con índices únicos): la primera venta de una caja de visitante (`demo-sale`, en el push),
+    mini desde el POS (`portal-opened`, en el canje), el alta abierta (`alta-opened`, beacon) y la
+    carga (`catalog-loaded`: importación confirmada o catálogo de ejemplo, nunca en demos). Los puntos
+    de registro usan `tryRecord`: un error queda en el log y nunca corta el push, el canje ni el alta.
+  - **Lo demás se infiere** (`FunnelQueryService`): la demo, el comercio, la venta real (el primer
+    `charges`) y el pago (el primer `paid_movements` `payment` del titular desde que nace el comercio).
+    Un comercio implica el alta.
+  - **Landing anónimo**: `funnel_daily` por día argentino (visitas, clic en "Probar la demo", alta sin
+    demo), con `POST /api/funnel/beacon` (siempre `204`). Sin id, cookies, IP ni navegador.
+  - **Contacto** "¿Querés que te ayudemos a empezar?" (`funnel_contacts`, uno por demo; el esquema
+    compartido es `src/shared/funnel-contact.ts`): en la franja de la demo (desde el POS, con `/MINI`),
+    en "Esta demo terminó" y en el landing, con `POST /api/funnel/contacts`. En el cliente, "una vez"
+    y "ya lo dejó" viven en memoria (`state/funnel-public-state.ts`).
+  - **Panel**: Embudo (cohorte por inicio del visitante, por etapa y por rubro, con el % sobre la
+    cohorte: sobre la etapa anterior no sirve porque la cohorte mezcla tipos de visitante) y
+    Visitantes (lista, filtros, historia, "Escribir por WhatsApp" y "Marcar atendido", auditado como
+    `funnel.contact-handled`), para root y soporte. El menú cuenta los contactos sin atender.
+  - **Retención** (`startFunnelSweeper`, al arrancar y cada 15 minutos): eventos 24 meses; nombre y
+    WhatsApp de contactos sin comercio, 12 meses sin cambios. Loguea `[embudo] barrido: …`.
+  - Migración de sistema v11 (`tenants.demo_session_id`, `funnel_events`, `funnel_daily` y
+    `funnel_contacts`).
 - **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
   - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
     y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
@@ -346,8 +376,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Plataforma** (#23, M7a y M7b; spec `docs/superpowers/specs/2026-10-04-m7-plataforma-design.md`):
   - **Panel en `/plataforma`**, para root y soporte, con una sección por pantalla:
     - Comercios (por omisión; el detalle en `/plataforma/comercios/<slug>` con créditos, acciones de
-      cobro, bonos, miembros y suspender), Usuarios, Pedidos, Demos, Cobranzas, Soporte (solo root),
-      Registro y Configuración (solo root).
+      cobro, bonos, miembros y suspender), Usuarios, Pedidos, Demos, Embudo, Visitantes (#25; la
+      historia en `/plataforma/visitantes/<id>`), Cobranzas, Soporte (solo root), Registro y
+      Configuración (solo root).
     - **Las secciones están en el menú lateral, sin solapas** (#81): root y soporte no tienen comercios
       (#16), así que su menú es el de la plataforma (`components/platform/platform-sections.tsx`) y
       su cabecera no tiene el selector de comercios. Impersonando se ve el menú del usuario.
@@ -544,6 +575,7 @@ plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) 
 usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). M8
 (#24, hecha): demos v2 con un comercio por rubro, una caja por visitante, reinicios y el portal
 adelantado de M10 con el acceso anónimo de la demo. M10 (#26, hecha): el portal de las cajas reales,
-"mi caja" de solo consulta desde `/MINI`. Sigue M9 (#25). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
+"mi caja" de solo consulta desde `/MINI`. M9 (#25, hecha): el embudo de punta a punta, con el id de
+visitante, los contactos y las secciones Embudo y Visitantes. Sigue M11 (#27). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
 En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).
