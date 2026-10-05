@@ -6,8 +6,6 @@ import {
   extendGrace,
   registerRefund,
   changeHolder,
-  fetchOwners,
-  ownersSignal,
   sheetTextSignal,
   sheetRowsSignal,
   sheetAppliedSignal,
@@ -65,26 +63,28 @@ describe('estado de la plataforma de cobro (#21)', () => {
 
   const writes = () => calls.filter((c) => c.method !== 'GET');
 
-  it('registrar un pago pega a la plataforma con el comercio activo y deja viejo Uso y pagos', async () => {
+  it('registrar un pago pega a la plataforma con el comercio indicado y deja viejos el detalle y Uso y pagos (#23)', async () => {
     reply.body = { movementId: 'pm-1', settled: 0 };
     queryClient.setQueryData(tenantKey('tienda-test', 'credits', 'summary'), {});
-    expect(await registerPayment({ day: '2026-10-05', amount: 5000, info: 'op 1' })).toBe(true);
-    expect(writes()).toEqual([{ url: '/api/platform/tenants/tienda-test/payments', method: 'POST', body: { day: '2026-10-05', amount: 5000, info: 'op 1' } }]);
+    queryClient.setQueryData(['platform', 'tenant', 'tienda-test'], {});
+    expect(await registerPayment('otro-id', { day: '2026-10-05', amount: 5000, info: 'op 1' })).toBe(true);
+    expect(writes()).toEqual([{ url: '/api/platform/tenants/otro-id/payments', method: 'POST', body: { day: '2026-10-05', amount: 5000, info: 'op 1' } }]);
     expect(queryClient.getQueryState(tenantKey('tienda-test', 'credits', 'summary'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(['platform', 'tenant', 'tienda-test'])?.isInvalidated).toBe(true);
   });
 
   it('un error devuelve false', async () => {
     reply = { status: 400, body: { error: 'El importe tiene que ser mayor que 0' } };
-    expect(await registerPayment({ day: '2026-10-05', amount: 0 })).toBe(false);
+    expect(await registerPayment('tienda-test', { day: '2026-10-05', amount: 0 })).toBe(false);
   });
 
   it('otorgar, anular, gracia, devolución y titular', async () => {
     reply.body = { id: 'g-1', success: true };
-    await grantCredits({ amount: 1000, expiresOn: '2026-12-31', reason: 'Cortesía' });
-    await voidCredit('g-1', 'Error');
-    await extendGrace('2026-10-20');
-    await registerRefund({ amount: 100, info: 'Baja' });
-    await changeHolder('u-2');
+    await grantCredits('tienda-test', { amount: 1000, expiresOn: '2026-12-31', reason: 'Cortesía' });
+    await voidCredit('tienda-test', 'g-1', 'Error');
+    await extendGrace('tienda-test', '2026-10-20');
+    await registerRefund('tienda-test', { amount: 100, info: 'Baja' });
+    await changeHolder('tienda-test', 'u-2');
     expect(writes()).toEqual([
       { url: '/api/platform/tenants/tienda-test/gift-credits', method: 'POST', body: { amount: 1000, expiresOn: '2026-12-31', reason: 'Cortesía' } },
       { url: '/api/platform/tenants/tienda-test/gift-credits/g-1', method: 'DELETE', body: { reason: 'Error' } },
@@ -92,20 +92,6 @@ describe('estado de la plataforma de cobro (#21)', () => {
       { url: '/api/platform/tenants/tienda-test/refunds', method: 'POST', body: { amount: 100, info: 'Baja' } },
       { url: '/api/platform/tenants/tienda-test/holder', method: 'PUT', body: { userId: 'u-2' } },
     ]);
-  });
-
-  it('los owners activos para elegir el titular', async () => {
-    reply.body = {
-      members: [
-        { userId: 'u-1', name: 'Ana', email: 'a@x.com', role: 'owner', status: 'active' },
-        { userId: 'u-2', name: 'Beto', email: 'b@x.com', role: 'admin', status: 'active' },
-        { userId: 'u-3', name: 'Caro', email: 'c@x.com', role: 'owner', status: 'disabled' },
-      ],
-      invitations: [],
-    };
-    await fetchOwners();
-    expect(calls[0]?.url).toBe('/api/tenants/tienda-test/users');
-    expect(ownersSignal.value.map((o) => o.userId)).toEqual(['u-1']);
   });
 
   it('la planilla: vista previa y después aplicar', async () => {
@@ -121,8 +107,8 @@ describe('estado de la plataforma de cobro (#21)', () => {
     expect(sheetAppliedSignal.value).toBe(true);
   });
 
-  it('en /plataforma pide pagos y configuración (#59)', async () => {
-    navigate('/plataforma');
+  it('en /plataforma/cobranzas pide pagos y configuración (#59)', async () => {
+    navigate('/plataforma/cobranzas');
     await vi.waitFor(() => {
       expect(calls.map((c) => c.url)).toEqual(expect.arrayContaining(['/api/platform/payments', '/api/platform/settings']));
     });

@@ -1,7 +1,7 @@
 import { computed, signal } from '@preact/signals';
 import {
   adminUrl, buildUrl, decodeFilters, encodeFilters, parseLocation,
-  type FiltersOf, type NavSection, type Route, type TabId, type TenantSection,
+  type FiltersOf, type NavSection, type Params, type Route, type TabId, type TenantSection,
 } from '../routing/admin-routes.ts';
 
 /**
@@ -106,6 +106,13 @@ export function setFilters<S extends TenantSection>(section: S, patch: Partial<F
   if (route.kind !== 'admin' || route.section !== section || route.tenantSlug === null) return;
   const next: FiltersOf[S] = { ...decodeFilters(section, route.params), ...patch };
   navigate(buildUrl({ ...route, params: encodeFilters(section, next) }), { replace: true });
+}
+
+/** Cambia los filtros de la solapa de `/plataforma` activa (#23), sin agregar una entrada al historial. */
+export function setPlatformFilters(patch: Params): void {
+  const route = routeSignal.peek();
+  if (route.kind !== 'plataforma' || route.tenantSlug !== null) return;
+  navigate(buildUrl({ ...route, params: { ...route.params, ...patch } }), { replace: true });
 }
 
 /** El mismo lugar en otro comercio: sección y solapa, sin filtros (sucursal, caja o producto son de cada uno). */

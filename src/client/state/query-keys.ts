@@ -16,8 +16,11 @@ export function tenantKey(tenantId: string, domain: TenantDomain, ...params: rea
   return ['t', tenantId, domain, ...params];
 }
 
-export function platformKey(name: 'payments' | 'settings'): QueryKey {
-  return ['platform', name];
+/** Lo de `/plataforma` (#21, #23); los parámetros son el filtro o el comercio del detalle. */
+export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' | 'users' | 'staff' | 'audit';
+
+export function platformKey(name: PlatformQueryName, ...params: readonly unknown[]): QueryKey {
+  return ['platform', name, ...params];
 }
 
 const sameTenant = (previous: QueryKey, next: QueryKey): boolean => previous[0] === 't' && next[0] === 't' && previous[1] === next[1];

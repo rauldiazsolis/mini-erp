@@ -10,11 +10,10 @@ import {
   whatsappPayUrl,
   type CreditsTab,
 } from '../../state/credits-state.ts';
-import { activeTenantSignal, isRootOrSupportSignal } from '../../state/auth-state.ts';
+import { activeTenantSignal } from '../../state/auth-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { formatDateTime, formatDay, formatMoney } from '../../format.ts';
 import { PageHeader } from '../ui/PageHeader.tsx';
-import { StatCard } from '../ui/StatCard.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
@@ -22,7 +21,7 @@ import { Pagination } from '../ui/Pagination.tsx';
 import { Link } from '../ui/Link.tsx';
 import { tabUrl } from '../../state/route-state.ts';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
-import { PlatformActionsBar, GiftVoidAction } from './PlatformActionsBar.tsx';
+import { CreditsStats } from './CreditsStats.tsx';
 import type { CreditMovementItem, GiftItem } from '../../../shared/credits-types.ts';
 
 const TABS: Array<{ id: CreditsTab; label: string }> = [
@@ -197,7 +196,6 @@ function MovementsTab() {
 
 function GiftsTab() {
   const items = giftsSignal.value;
-  const withActions = isRootOrSupportSignal.value;
   return (
     <TableContainer>
       {items.length === 0 ? (
@@ -214,7 +212,6 @@ function GiftsTab() {
                 <Th>Estado</Th>
                 <Th>Otorgó</Th>
                 <Th>Motivo</Th>
-                {withActions && <Th />}
               </Tr>
             </Thead>
             <Tbody>
@@ -227,11 +224,6 @@ function GiftsTab() {
                   <Td>{GIFT_STATUS[g.status]}</Td>
                   <Td>{g.grantedByName ?? ''}</Td>
                   <Td>{g.reason ?? ''}</Td>
-                  {withActions && (
-                    <Td class="text-right">
-                      <GiftVoidAction gift={g} />
-                    </Td>
-                  )}
                 </Tr>
               ))}
             </Tbody>
@@ -244,7 +236,7 @@ function GiftsTab() {
 
 /**
  * Uso y pagos (#21, #55), para owner y admin: saldos, cómo pagar, consumo por caja y día, movimientos y
- * bonos. Root y soporte suman las acciones de plataforma sobre el comercio.
+ * bonos. Las acciones de plataforma están en el detalle del comercio en `/plataforma` (#23).
  */
 export function CreditsView() {
   const credits = creditsSignal.value;
@@ -252,35 +244,7 @@ export function CreditsView() {
   return (
     <div class="space-y-6">
       <PageHeader title="Uso y pagos" subtitle="Tu saldo, lo que consume cada caja por día y cómo pagar" />
-      {isRootOrSupportSignal.value && <PlatformActionsBar />}
-      {credits !== null && (
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Saldo pagado"
-            value={formatMoney(credits.paidBalance)}
-            subtitle="Es tuyo: si dejás de usar mini contax, te devolvemos lo que quede"
-            variant="primary"
-          />
-          <StatCard
-            title="Bonos"
-            value={formatMoney(credits.giftBalance)}
-            subtitle={credits.nextGiftExpiry === null ? 'Sin bonos vigentes' : `El próximo vence el ${formatDateTime(credits.nextGiftExpiry)}`}
-            variant="success"
-          />
-          <StatCard
-            title="Deuda"
-            value={formatMoney(credits.debt)}
-            subtitle={credits.deadline === null ? 'Sin deuda' : `Pagá antes del ${formatDay(credits.deadline)}`}
-            variant={credits.debt > 0 ? 'danger' : 'default'}
-          />
-          <StatCard
-            title="Te alcanza para"
-            value={credits.daysCovered === null ? '—' : `${String(credits.daysCovered)} días`}
-            subtitle={`Consumo diario estimado: ${formatMoney(credits.dailyBurn)}`}
-            variant={credits.state === 'ok' ? 'default' : 'warning'}
-          />
-        </div>
-      )}
+      {credits !== null && <CreditsStats credits={credits} />}
       <HowToPay />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {TABS.map((t) => (

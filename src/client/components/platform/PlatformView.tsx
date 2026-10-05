@@ -1,24 +1,30 @@
 import { platformTabSignal, type PlatformTab } from '../../state/platform-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
+import { routeSignal } from '../../state/route-state.ts';
 import { platformUrl } from '../../routing/admin-routes.ts';
 import { Link } from '../ui/Link.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { PaymentSheetCard } from './PaymentSheetCard.tsx';
 import { PlatformSettingsCard } from './PlatformSettingsCard.tsx';
+import { TenantsTab } from './TenantsTab.tsx';
+import { TenantDetailView } from './TenantDetailView.tsx';
 
 const TABS: Array<{ id: PlatformTab; label: string; rootOnly: boolean }> = [
+  { id: 'tenants', label: 'Comercios', rootOnly: false },
   { id: 'payments', label: 'Cobranzas', rootOnly: false },
   { id: 'settings', label: 'Configuración', rootOnly: true },
 ];
 
-/** Plataforma (#21), para root y soporte: cobranzas de todos los comercios y, para root, la configuración. */
+/** Plataforma (#21, #23), para root y soporte: comercios, cobranzas y, para root, la configuración. */
 export function PlatformView() {
+  const route = routeSignal.value;
+  if (route.kind === 'plataforma' && route.tenantSlug !== null) return <TenantDetailView />;
   const isRoot = currentUserSignal.value?.globalRole === 'root';
   const tabs = TABS.filter((t) => isRoot || !t.rootOnly);
-  const tab = tabs.some((t) => t.id === platformTabSignal.value) ? platformTabSignal.value : 'payments';
+  const tab = tabs.some((t) => t.id === platformTabSignal.value) ? platformTabSignal.value : 'tenants';
   return (
     <div class="space-y-6">
-      <PageHeader title="Plataforma" subtitle="Cobranzas de todos los comercios y configuración del cobro" />
+      <PageHeader title="Plataforma" subtitle="Comercios, usuarios, cobro y equipo de mini contax" />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {tabs.map((t) => (
           <Link
@@ -36,6 +42,7 @@ export function PlatformView() {
           </Link>
         ))}
       </div>
+      {tab === 'tenants' && <TenantsTab />}
       {tab === 'payments' && <PaymentSheetCard />}
       {tab === 'settings' && <PlatformSettingsCard />}
     </div>
