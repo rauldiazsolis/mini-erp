@@ -23,7 +23,9 @@ export default defineConfig({
   webServer: {
     command: 'node e2e/serve.ts',
     url: `http://localhost:${String(E2E_PORT)}/health`,
-    env: { PORT: String(E2E_PORT), DATA_DIR: E2E_DATA_DIR },
+    // Todos los specs piden login, alta e invitaciones desde la misma IP: el límite de 20 cada 15
+    // minutos (que prueba Vitest) los haría fallar según el orden de los workers (#81)
+    env: { PORT: String(E2E_PORT), DATA_DIR: E2E_DATA_DIR, AUTH_RATE_LIMIT: '1000' },
     reuseExistingServer: false,
     timeout: 120_000,
   },
