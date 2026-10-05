@@ -3,6 +3,9 @@ import { createDbAtVersion } from './helpers/db-at-version.ts';
 import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { migrateDb } from '../src/server/db/migrations/migrate.ts';
 
+/** Solo hasta la v7: cada test de migración prueba la suya. */
+const HASTA_V7 = { ...SYSTEM_SCHEMA, migrations: SYSTEM_SCHEMA.migrations.filter((m) => m.version <= 7) };
+
 describe('migración de sistema v7 plataforma (#23)', () => {
   it('suma estado de usuarios, suspensiones, invitaciones de soporte y el impersonador de la auditoría sin perder datos', () => {
     const db = createDbAtVersion(SYSTEM_SCHEMA, 6);
@@ -14,7 +17,7 @@ describe('migración de sistema v7 plataforma (#23)', () => {
     ).run(at, at, at);
     db.prepare("INSERT INTO audit_log (id, at, actor_user_id, tenant_id, action, details) VALUES ('a1', ?, 'u1', 'k', 'tenant.created', '{}')").run(at);
 
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V7);
 
     expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 });
     expect(db.prepare('SELECT id, status FROM users').all()).toEqual([{ id: 'u1', status: 'active' }]);
