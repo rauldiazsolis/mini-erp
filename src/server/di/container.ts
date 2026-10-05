@@ -25,6 +25,7 @@ import { DiscrepancyService } from '../discrepancy/discrepancy-service.ts';
 import { SalesQueryService } from '../sales/sales-query-service.ts';
 import { RegisterService } from '../registers/register-service.ts';
 import { SuspensionService } from '../platform/suspension-service.ts';
+import { UserStatusService } from '../platform/user-status-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
@@ -94,6 +95,9 @@ export const invitationServiceDef = fn.singleton(
 
 export const suspensionServiceDef = fn.singleton(
   (c) => new SuspensionService({ db: c.use(systemDbDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
+);
+export const userStatusServiceDef = fn.singleton(
+  (c) => new UserStatusService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef) }),
 );
 export const altaServiceDef = fn.singleton(
   (c) =>

@@ -3,11 +3,13 @@ import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePlatformRole } from '../middleware/platform-role-middleware.ts';
 import type { SuspensionService } from '../platform/suspension-service.ts';
-import { sendError } from '../errors.ts';
+import type { UserStatusService } from '../platform/user-status-service.ts';
+import type { PasswordResetService } from '../users/password-reset-service.ts';
+import { DomainError, sendError } from '../errors.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
 
-export type PlatformAdminDeps = { suspensions: SuspensionService };
+export type PlatformAdminDeps = { suspensions: SuspensionService; userStatus: UserStatusService; resets: PasswordResetService };
 
 /** Panel de plataforma (#23, M7a), para root y soporte. Lo de cobro sigue en platform-routes.ts. */
 export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
@@ -33,6 +35,27 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     try {
       deps.suspensions.reactivate({ tenantId: req.params['tenantId'] ?? '', actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  // Desactivar y reactivar cuentas: las reglas de quién a quién están en el servicio
+  for (const [path, status] of [['disable', 'disabled'], ['enable', 'active']] as const) {
+    router.post(`/users/:userId/${path}`, staff, (req: AuthenticatedAdminRequest, res: Response) => {
+      try {
+        if (req.user === undefined) throw new DomainError(401, 'No autorizado');
+        deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: req.params['userId'] ?? '', status });
+        res.status(200).json({ success: true });
+      } catch (err: unknown) {
+        sendError(res, err, 500);
+      }
+    });
+  }
+
+  router.post('/users/:userId/password-reset', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      res.status(201).json(deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: req.params['userId'] ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

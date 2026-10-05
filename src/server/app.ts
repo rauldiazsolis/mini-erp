@@ -46,6 +46,7 @@ import {
   registerServiceDef,
   billingServiceDef,
   suspensionServiceDef,
+  userStatusServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
@@ -144,7 +145,15 @@ export function createApp(deps?: AppDependencies): {
   // Plataforma de cobro (#21): root y soporte
   app.use('/api/platform', requireAdmin, createPlatformRoutes({ billing, audit: auditLog }));
   // Panel de plataforma (#23): comercios, usuarios, soporte y registro
-  app.use('/api/platform', requireAdmin, createPlatformAdminRoutes({ suspensions: rootContainer.use(suspensionServiceDef) }));
+  app.use(
+    '/api/platform',
+    requireAdmin,
+    createPlatformAdminRoutes({
+      suspensions: rootContainer.use(suspensionServiceDef),
+      userStatus: rootContainer.use(userStatusServiceDef),
+      resets: passwordResetService,
+    }),
+  );
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager }));

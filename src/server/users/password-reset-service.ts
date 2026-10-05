@@ -8,7 +8,7 @@ import type { TenantRole } from '../../shared/permissions.ts';
 import { DomainError } from '../errors.ts';
 import { LINK_GONE_MESSAGE, LINK_TTL_MS } from './invitation-service.ts';
 
-type ResetRow = { id: string; user_id: string; tenant_id: string; expires_at: string; email: string; name: string };
+type ResetRow = { id: string; user_id: string; tenant_id: string | null; expires_at: string; email: string; name: string };
 
 /**
  * Links de restablecimiento de contraseña (#19): un solo uso, 48 h. Los genera el owner para su
@@ -43,22 +43,29 @@ export class PasswordResetService {
       throw new DomainError(403, 'Este usuario también está en otro comercio: pedíselo a soporte');
     }
 
+    return this.issue(params.targetUserId, params.actor.userId, params.tenantId);
+  }
+
+  /** Desde la plataforma (#23): root y soporte, para cualquier cuenta de comercio; sin comercio. */
+  createFromPlatform(params: { actorUserId: string; targetUserId: string }): { token: string; expiresAt: string } {
+    const target = this.db.prepare('SELECT global_role FROM users WHERE id = ?').get(params.targetUserId) as { global_role: string } | undefined;
+    if (target === undefined) throw new DomainError(404, 'Usuario no encontrado');
+    if (target.global_role !== 'user') throw new DomainError(403, 'El equipo de soporte restablece su contraseña con root');
+    return this.issue(params.targetUserId, params.actorUserId, null);
+  }
+
+  private issue(targetUserId: string, actorUserId: string, tenantId: string | null): { token: string; expiresAt: string } {
     const now = this.now();
     // Un link nuevo invalida los pendientes
-    this.db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(params.targetUserId);
+    this.db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(targetUserId);
     const { raw, hash } = generateLinkToken();
     const expiresAt = new Date(now.getTime() + LINK_TTL_MS).toISOString();
     this.db
       .prepare(
         'INSERT INTO password_resets (id, user_id, token_hash, created_by, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(`pwr_${randomUUID()}`, params.targetUserId, hash, params.actor.userId, params.tenantId, now.toISOString(), expiresAt);
-    this.audit.record({
-      actorUserId: params.actor.userId,
-      tenantId: params.tenantId,
-      action: 'password.reset_link_created',
-      targetUserId: params.targetUserId,
-    });
+      .run(`pwr_${randomUUID()}`, targetUserId, hash, actorUserId, tenantId, now.toISOString(), expiresAt);
+    this.audit.record({ actorUserId, tenantId, action: 'password.reset_link_created', targetUserId });
     return { token: raw, expiresAt };
   }
 

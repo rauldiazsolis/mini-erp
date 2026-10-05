@@ -98,9 +98,9 @@ export class AuthService {
   } {
     const email = params.email.trim().toLowerCase();
     const userRow = this.systemDb
-      .prepare('SELECT id, email, password_hash, name, global_role FROM users WHERE email = ?')
+      .prepare('SELECT id, email, password_hash, name, global_role, status FROM users WHERE email = ?')
       .get(email) as
-      | { id: string; email: string; password_hash: string; name: string; global_role: string }
+      | { id: string; email: string; password_hash: string; name: string; global_role: string; status: string }
       | undefined;
 
     if (userRow === undefined) {
@@ -110,6 +110,10 @@ export class AuthService {
     const valid = verifyPassword(params.password, userRow.password_hash);
     if (!valid) {
       throw new Error('Credenciales inválidas');
+    }
+    // Cuenta desactivada desde la plataforma (#23): solo se avisa con la contraseña correcta
+    if (userRow.status === 'disabled') {
+      throw new Error('Cuenta desactivada: escribile a soporte');
     }
 
     const token = this.createSession(userRow.id);
@@ -146,7 +150,7 @@ export class AuthService {
         `SELECT u.id, u.email, u.name, u.global_role, s.expires_at 
          FROM sessions s 
          JOIN users u ON s.user_id = u.id 
-         WHERE s.token = ?`,
+         WHERE s.token = ? AND u.status = 'active'`,
       )
       .get(token) as
       | { id: string; email: string; name: string; global_role: string; expires_at: string }
