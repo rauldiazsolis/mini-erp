@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { navItems } from '../src/client/components/shell/Sidebar.tsx';
 
 describe('Orden del menú lateral', () => {
-  it('Uso y pagos va después de Configuración & POS y antes de Plataforma', () => {
+  it('Uso y pagos va al final, después de Configuración & POS (#81: Plataforma es su propio menú)', () => {
     expect(navItems.map((item) => item.id)).toEqual([
       'dashboard',
       'sales',
@@ -13,7 +13,6 @@ describe('Orden del menú lateral', () => {
       'users',
       'settings',
       'credits',
-      'platform',
     ]);
   });
 

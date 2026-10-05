@@ -5,7 +5,7 @@ import { tokenSignal } from './auth-state.ts';
 import { inSection, routeSignal } from './route-state.ts';
 import { platformKey } from './query-keys.ts';
 import { invalidateAfter } from './invalidation.ts';
-import type { PlatformTabId } from '../routing/admin-routes.ts';
+import type { PlatformSectionId } from '../routing/admin-routes.ts';
 import { showToast } from './toast-state.ts';
 import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../../shared/credits-types.ts';
 
@@ -14,12 +14,12 @@ import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../..
  * `/plataforma/comercios/<slug>`, #23) y lo global (planilla de cobranzas, pagos y configuración).
  */
 
-export type PlatformTab = PlatformTabId;
+export type PlatformSection = PlatformSectionId;
 
-/** La solapa de `/plataforma` (#59). */
-export const platformTabSignal = computed<PlatformTab>(() => {
+/** La sección de `/plataforma` (#59), la del ítem activo del menú (#81); el detalle de un comercio es Comercios. */
+export const platformSectionSignal = computed<PlatformSection>(() => {
   const route = routeSignal.value;
-  return route.kind === 'plataforma' ? route.tab : 'tenants';
+  return route.kind === 'plataforma' ? route.section : 'tenants';
 });
 export const sheetTextSignal = signal<string>('');
 export const sheetRowsSignal = signal<SheetResultRow[] | null>(null);

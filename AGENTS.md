@@ -269,7 +269,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `ANONYMOUS_DENIED` en `shared/permissions.ts`); `requireOwnSession` la rechaza. En el cliente,
     `/portal` canjea y guarda la sesión en el `sessionStorage` de la pestaña (solo `auth-state`), abre
     Ventas en la caja del visitante con la franja de la demo y, con un 401, "Esta demo terminó".
-  - **Plataforma**: solapa Demos (`/plataforma/demos`, root y soporte) con el estado de cada comercio
+  - **Plataforma**: sección Demos (`/plataforma/demos`, root y soporte) con el estado de cada comercio
     demo y los reinicios parcial y total, auditados como `demo.reset` (el automático, con el actor
     `system`, "Automático").
   - El alta desde una demo crea un **comercio nuevo**; el rubro se preselecciona con el `template` que
@@ -320,10 +320,18 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55) y los
     créditos regalados se muestran como **bonos** (solapa `/uso-y-pagos/bonos`).
 - **Plataforma** (#23, M7a y M7b; spec `docs/superpowers/specs/2026-10-04-m7-plataforma-design.md`):
-  - **Panel en `/plataforma`**, para root y soporte: Comercios (por omisión; el detalle en
-    `/plataforma/comercios/<slug>` con créditos, acciones de cobro, bonos, miembros y suspender),
-    Usuarios, Pedidos, Cobranzas, Soporte (solo root), Registro y Configuración (solo root). Filtros en la URL
-    (`?q=`, `?comercio=`) con `setPlatformFilters`; estado en `state/platform-panel-state.ts`.
+  - **Panel en `/plataforma`**, para root y soporte, con una sección por pantalla:
+    - Comercios (por omisión; el detalle en `/plataforma/comercios/<slug>` con créditos, acciones de
+      cobro, bonos, miembros y suspender), Usuarios, Pedidos, Demos, Cobranzas, Soporte (solo root),
+      Registro y Configuración (solo root).
+    - **Las secciones están en el menú lateral, sin solapas** (#81): root y soporte no tienen comercios
+      (#16), así que su menú es el de la plataforma (`components/platform/platform-sections.tsx`) y
+      su cabecera no tiene el selector de comercios. Impersonando se ve el menú del usuario.
+    - Quién ve cada sección lo dice `isPlatformSectionAllowed` (`state/permissions-state.ts`); si
+      soporte entra por URL a una de root, `registerPermissionEffects` lo manda a `/plataforma`.
+    - El ítem activo es `platformSectionSignal`; el detalle de un comercio marca Comercios.
+    - Las rutas son `PLATFORM_SECTIONS` en `routing/admin-routes.ts` (`route.section`). Filtros en la
+      URL (`?q=`, `?comercio=`) con `setPlatformFilters`; estado en `state/platform-panel-state.ts`.
   - Servidor: servicios de sistema en `src/server/platform/` (suspensiones, estado de cuentas,
     invitaciones de soporte, consultas del panel) y rutas en `routes/platform-admin-routes.ts`, junto
     a las de cobro en `/api/platform`. `requirePlatformRole` marca sus roles y
@@ -361,7 +369,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     - "Pedir ayuda" en la cabecera (sin impersonar y con WhatsApp de soporte): crea el pedido con la
       pantalla actual (validada contra el admin de ese comercio), cierra el anterior, vence a las 24 h
       y abre WhatsApp con el link `/ayuda/<id>`.
-    - Soporte abre el link (o "Atender" en la solapa Pedidos, últimas 48 h) y entra como el usuario
+    - Soporte abre el link (o "Atender" en la sección Pedidos, últimas 48 h) y entra como el usuario
       en esa pantalla; vencido o cerrado, 410 "Este pedido venció".
     - El usuario ve su pedido abierto, los accesos de soporte de 7 días y "Soporte está viendo tu
       cuenta" (`GET /api/me/support-access`, `state/help-state.ts`).

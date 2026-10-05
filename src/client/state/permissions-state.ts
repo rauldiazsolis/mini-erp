@@ -1,8 +1,8 @@
 import { computed, effect } from '@preact/signals';
 import { canAs, type Capability, type TenantRole } from '../../shared/permissions.ts';
-import { activeTenantSignal, anonymousSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
+import { activeTenantSignal, anonymousSignal, currentUserSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
 import { navigate, routeSignal } from './route-state.ts';
-import { adminUrl, type NavSection } from '../routing/admin-routes.ts';
+import { adminUrl, type NavSection, type PlatformSectionId } from '../routing/admin-routes.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
 
 /** El rol con el que se opera el comercio activo (#19): el de la membresía (impersonando, la del usuario). */
@@ -49,6 +49,15 @@ export function isViewAllowed(view: NavSection): boolean {
   return view === 'platform' ? isRootOrSupportSignal.value : canDo(VIEW_CAPABILITY[view]);
 }
 
+/** Las secciones de la plataforma (#23, #81): todas para root; Soporte y Configuración, solo root. */
+const ROOT_ONLY_PLATFORM_SECTIONS: ReadonlySet<PlatformSectionId> = new Set<PlatformSectionId>(['staff', 'settings']);
+
+export function isPlatformSectionAllowed(section: PlatformSectionId): boolean {
+  const role = currentUserSignal.value?.globalRole;
+  if (role === 'root') return true;
+  return role === 'support' && !ROOT_ONLY_PLATFORM_SECTIONS.has(section);
+}
+
 export function isSettingsTabAllowed(tab: SettingsTab): boolean {
   // Cuenta es de una cuenta: el acceso anónimo de una demo (#24) no tiene contraseña
   if (tab === 'account' && anonymousSignal.value !== null) return false;
@@ -57,13 +66,16 @@ export function isSettingsTabAllowed(tab: SettingsTab): boolean {
 
 /**
  * Una sección no permitida para el rol vuelve al dashboard, una solapa de Configuración no permitida a
- * Apariencia y Plataforma sin ser root o soporte, a /admin (#59).
+ * Apariencia y Plataforma sin ser root o soporte, a /admin (#59). Una sección de la plataforma que es solo
+ * de root, para soporte, vuelve a Comercios (#81).
  */
 export function registerPermissionEffects(): () => void {
   return effect(() => {
     const route = routeSignal.value;
     if (route.kind === 'plataforma') {
-      if (profileLoadedSignal.value && !isRootOrSupportSignal.value) navigate('/admin', { replace: true });
+      if (!profileLoadedSignal.value) return;
+      if (!isRootOrSupportSignal.value) navigate('/admin', { replace: true });
+      else if (!isPlatformSectionAllowed(route.section)) navigate('/plataforma', { replace: true });
       return;
     }
     if (route.kind !== 'admin' || route.tenantSlug === null || activeRoleSignal.value === null) return;

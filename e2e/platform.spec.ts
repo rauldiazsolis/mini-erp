@@ -79,3 +79,52 @@ test('root invita a soporte; soporte suspende y reactiva un comercio y desactiva
   await supportContext.close();
   await ownerContext.close();
 });
+
+/** Las secciones de la plataforma en el menú lateral (#81): root ve ocho, soporte seis, sin solapas ni selector. */
+test('root y soporte recorren la plataforma desde el menú lateral', async ({ browser, request }) => {
+  const openAs = async (email: string) => {
+    const login = await request.post('/api/auth/login', { data: { email, password: 'admin123' } });
+    const { token } = (await login.json()) as { token: string };
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.addInitScript((t) => {
+      window.localStorage.setItem('mini_erp_token', t);
+    }, token);
+    return { context, page };
+  };
+  const all = ['Comercios', 'Usuarios', 'Pedidos', 'Demos', 'Cobranzas', 'Soporte', 'Registro', 'Configuración'];
+
+  const { context: rootContext, page: root } = await openAs('root@local.test');
+  await root.goto('/admin');
+  await expect(root).toHaveURL(/\/plataforma$/);
+  const menu = root.getByRole('navigation');
+  await expect(menu.getByRole('link')).toHaveText(all);
+  await expect(menu.getByRole('link', { name: 'Comercios' })).toHaveAttribute('aria-current', 'page');
+  await expect(root.getByRole('tab')).toHaveCount(0);
+  await expect(root.getByText('Seleccionar Comercio')).toHaveCount(0);
+
+  // Cada ítem lleva a su URL de siempre, con su título
+  await menu.getByRole('link', { name: 'Registro' }).click();
+  await expect(root).toHaveURL(/\/plataforma\/registro$/);
+  await expect(root.getByRole('heading', { name: 'Registro', level: 1 })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'Registro' })).toHaveAttribute('aria-current', 'page');
+  await menu.getByRole('link', { name: 'Configuración' }).click();
+  await expect(root).toHaveURL(/\/plataforma\/configuracion$/);
+  await root.goBack();
+  await expect(root).toHaveURL(/\/plataforma\/registro$/);
+
+  // El detalle de un comercio marca Comercios
+  await menu.getByRole('link', { name: 'Comercios' }).click();
+  await root.getByRole('main').getByRole('link', { name: 'Kiosco Don Pepe' }).first().click();
+  await expect(root).toHaveURL(/\/plataforma\/comercios\/[^/]+$/);
+  await expect(menu.getByRole('link', { name: 'Comercios' })).toHaveAttribute('aria-current', 'page');
+  await rootContext.close();
+
+  // Soporte: seis secciones; Soporte y Configuración, por URL, vuelven a Comercios
+  const { context: supContext, page: sup } = await openAs('soporte@local.test');
+  await sup.goto('/plataforma/configuracion');
+  await expect(sup).toHaveURL(/\/plataforma$/);
+  await expect(sup.getByRole('navigation').getByRole('link')).toHaveText(all.filter((l) => l !== 'Soporte' && l !== 'Configuración'));
+  await expect(sup.getByText('Seleccionar Comercio')).toHaveCount(0);
+  await supContext.close();
+});

@@ -1,15 +1,17 @@
 import type { ComponentChildren } from 'preact';
 import { mobileMenuOpenSignal, toggleMobileMenu } from '../../state/navigation-state.ts';
-import { activeSectionSignal } from '../../state/route-state.ts';
-import { homeTenantSlugSignal } from '../../state/auth-state.ts';
-import { adminUrl, type NavSection } from '../../routing/admin-routes.ts';
+import { activeSectionSignal, routeSignal } from '../../state/route-state.ts';
+import { homeTenantSlugSignal, isRootOrSupportSignal } from '../../state/auth-state.ts';
+import { adminUrl, platformUrl, type TenantSection } from '../../routing/admin-routes.ts';
 import { Link } from '../ui/Link.tsx';
 import { versionLabel } from '../../state/app-version.ts';
 import { isViewAllowed } from '../../state/permissions-state.ts';
 import { Logo } from '../ui/Logo.tsx';
+import { visiblePlatformNavItems } from '../platform/platform-sections.tsx';
+import { platformSectionSignal } from '../../state/platform-state.ts';
 
 type NavItem = {
-  id: NavSection;
+  id: TenantSection;
   label: string;
   badge?: string;
   icon: (active: boolean) => ComponentChildren;
@@ -183,36 +185,43 @@ export const navItems: NavItem[] = [
       </svg>
     ),
   },
-  {
-    id: 'platform',
-    label: 'Plataforma',
-    icon: (active) => (
-      <svg
-        class={`w-5 h-5 ${active ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-        />
-      </svg>
-    ),
-  },
 ];
 
-/** El href de un ítem: la sección en el comercio de la URL (o el de inicio); Plataforma, aparte (#59). */
-function itemHref(id: NavSection): string {
-  if (id === 'platform') return '/plataforma';
+/** El href de un ítem: la sección en el comercio de la URL (o el de inicio) (#59). */
+function itemHref(id: TenantSection): string {
   const slug = homeTenantSlugSignal.value;
   return slug === null ? '/admin' : adminUrl(slug, id);
 }
 
-export function Sidebar() {
+type MenuEntry = { key: string; href: string; label: string; badge?: string | undefined; active: boolean; icon: (active: boolean) => ComponentChildren };
+
+/**
+ * Root y soporte, sin impersonar, ven las secciones de la plataforma (#81): no tienen comercios
+ * propios (#16). El resto (y una pestaña que impersona), las del comercio.
+ */
+function menuEntries(): MenuEntry[] {
+  if (isRootOrSupportSignal.value) {
+    const inPlatform = routeSignal.value.kind === 'plataforma';
+    return visiblePlatformNavItems().map((item) => ({
+      key: item.id,
+      href: platformUrl(item.id),
+      label: item.label,
+      active: inPlatform && platformSectionSignal.value === item.id,
+      icon: item.icon,
+    }));
+  }
   const currentView = activeSectionSignal.value;
+  return navItems.filter((item) => isViewAllowed(item.id)).map((item) => ({
+    key: item.id,
+    href: itemHref(item.id),
+    label: item.label,
+    badge: item.badge,
+    active: currentView === item.id,
+    icon: item.icon,
+  }));
+}
+
+export function Sidebar() {
   const isMobileOpen = mobileMenuOpenSignal.value;
 
   const content = (
@@ -226,12 +235,13 @@ export function Sidebar() {
 
         {/* Navigation Items */}
         <nav class="space-y-1">
-          {navItems.filter((item) => isViewAllowed(item.id)).map((item) => {
-            const isActive = currentView === item.id;
+          {menuEntries().map((item) => {
+            const isActive = item.active;
             return (
               <Link
-                key={item.id}
-                href={itemHref(item.id)}
+                key={item.key}
+                href={item.href}
+                aria-current={isActive ? 'page' : undefined}
                 onNavigate={() => { mobileMenuOpenSignal.value = false; }}
                 class={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive

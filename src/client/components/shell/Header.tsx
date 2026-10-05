@@ -8,6 +8,7 @@ import {
   effectiveTenantIdSignal,
   isAnonymousSignal,
   isImpersonatingSignal,
+  isRootOrSupportSignal,
   signOut,
 } from '../../state/auth-state.ts';
 import { toggleMobileMenu } from '../../state/navigation-state.ts';
@@ -60,8 +61,8 @@ export function Header() {
           </svg>
         </button>
 
-        {/* Tenant Selector Dropdown */}
-        <div class="relative">
+        {/* Tenant Selector Dropdown: root y soporte no tienen comercios propios (#16, #81) */}
+        {!isRootOrSupportSignal.value && <div class="relative">
           <button
             type="button"
             onClick={toggleTenantDropdown}
@@ -136,7 +137,7 @@ export function Header() {
               )}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Derecha: Selector de Tema, Usuario y Logout */}

@@ -36,7 +36,7 @@ describe('pedidos de ayuda en el cliente (#23, M7b)', () => {
   });
 
   it('la solapa Pedidos de la plataforma', () => {
-    expect(parseLocation('/plataforma/pedidos', '')).toEqual({ kind: 'plataforma', tab: 'requests', tenantSlug: null, params: {} });
+    expect(parseLocation('/plataforma/pedidos', '')).toEqual({ kind: 'plataforma', section: 'requests', tenantSlug: null, params: {} });
     expect(platformUrl('requests')).toBe('/plataforma/pedidos');
   });
 });

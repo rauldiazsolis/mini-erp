@@ -108,7 +108,7 @@ export function setFilters<S extends TenantSection>(section: S, patch: Partial<F
   navigate(buildUrl({ ...route, params: encodeFilters(section, next) }), { replace: true });
 }
 
-/** Cambia los filtros de la solapa de `/plataforma` activa (#23), sin agregar una entrada al historial. */
+/** Cambia los filtros de la sección de `/plataforma` activa (#23), sin agregar una entrada al historial. */
 export function setPlatformFilters(patch: Params): void {
   const route = routeSignal.peek();
   if (route.kind !== 'plataforma' || route.tenantSlug !== null) return;

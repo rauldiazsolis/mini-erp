@@ -39,8 +39,8 @@ export const SECTION_TABS = {
   credits: [{ id: 'charges', slug: '' }, { id: 'movements', slug: 'movimientos' }, { id: 'gifts', slug: 'bonos' }],
 } as const;
 
-/** Las solapas de `/plataforma` (#23); el detalle de un comercio es `/plataforma/comercios/<slug>`. */
-export const PLATFORM_TABS = [
+/** Las secciones de `/plataforma` (#23), cada una con su ítem en el menú (#81); el detalle de un comercio es `/plataforma/comercios/<slug>`. */
+export const PLATFORM_SECTIONS = [
   { id: 'tenants', slug: '' },
   { id: 'users', slug: 'usuarios' },
   { id: 'requests', slug: 'pedidos' },
@@ -52,7 +52,7 @@ export const PLATFORM_TABS = [
 ] as const;
 
 export type TabId<S extends TenantSection> = (typeof SECTION_TABS)[S][number]['id'];
-export type PlatformTabId = (typeof PLATFORM_TABS)[number]['id'];
+export type PlatformSectionId = (typeof PLATFORM_SECTIONS)[number]['id'];
 
 type Tab = { readonly id: string; readonly slug: string };
 
@@ -297,7 +297,7 @@ function canonParams(section: TenantSection, p: Params): Params {
 // --- Rutas ---
 
 export type AdminRoute = { kind: 'admin'; tenantSlug: string | null; section: TenantSection; tab: string; params: Params };
-export type PlatformRoute = { kind: 'plataforma'; tab: PlatformTabId; tenantSlug: string | null; params: Params };
+export type PlatformRoute = { kind: 'plataforma'; section: PlatformSectionId; tenantSlug: string | null; params: Params };
 /** La pestaña nueva que entra como un usuario (#23) y el link de un pedido de ayuda. */
 export type EnterRoute = { kind: 'entrar'; userId: string | null; tenantSlug: string | null };
 export type HelpRoute = { kind: 'ayuda'; requestId: string };
@@ -332,10 +332,10 @@ export function parseLocation(pathname: string, search: string): Route {
   if (first === 'ayuda' && second !== undefined && third === undefined) return { kind: 'ayuda', requestId: decodeSlug(second) };
   if (first === 'plataforma') {
     if (second === 'comercios' && third !== undefined) {
-      return { kind: 'plataforma', tab: 'tenants', tenantSlug: decodeSlug(third), params: {} };
+      return { kind: 'plataforma', section: 'tenants', tenantSlug: decodeSlug(third), params: {} };
     }
-    const tab = PLATFORM_TABS.find((t) => t.slug !== '' && t.slug === second)?.id ?? 'tenants';
-    return { kind: 'plataforma', tab, tenantSlug: null, params: platformParams(tab, readSearch(search)) };
+    const section = PLATFORM_SECTIONS.find((s) => s.slug !== '' && s.slug === second)?.id ?? 'tenants';
+    return { kind: 'plataforma', section, tenantSlug: null, params: platformParams(section, readSearch(search)) };
   }
   if (first !== 'admin') return { kind: 'landing' };
   if (second === undefined) return { kind: 'admin', tenantSlug: null, section: 'dashboard', tab: firstTab('dashboard'), params: {} };
@@ -364,9 +364,9 @@ export function buildUrl(route: Route): string {
       return `/ayuda/${encodeURIComponent(route.requestId)}`;
     case 'plataforma': {
       if (route.tenantSlug !== null) return `/plataforma/comercios/${encodeURIComponent(route.tenantSlug)}`;
-      const slug = PLATFORM_TABS.find((t) => t.id === route.tab)?.slug ?? '';
+      const slug = PLATFORM_SECTIONS.find((s) => s.id === route.section)?.slug ?? '';
       const path = slug === '' ? '/plataforma' : `/plataforma/${slug}`;
-      const query = new URLSearchParams(platformParams(route.tab, route.params)).toString();
+      const query = new URLSearchParams(platformParams(route.section, route.params)).toString();
       return query === '' ? path : `${path}?${query}`;
     }
     case 'admin': {
@@ -394,24 +394,24 @@ export function adminUrl<S extends TenantSection>(
   });
 }
 
-/** Los filtros de cada solapa de la plataforma (#23): búsqueda en Comercios y Usuarios, comercio en Registro. */
-const PLATFORM_FILTERS: Partial<Record<PlatformTabId, readonly string[]>> = { tenants: ['q'], users: ['q'], audit: ['comercio'] };
+/** Los filtros de cada sección de la plataforma (#23): búsqueda en Comercios y Usuarios, comercio en Registro. */
+const PLATFORM_FILTERS: Partial<Record<PlatformSectionId, readonly string[]>> = { tenants: ['q'], users: ['q'], audit: ['comercio'] };
 
-function platformParams(tab: PlatformTabId, p: Params): Params {
+function platformParams(section: PlatformSectionId, p: Params): Params {
   const out: Record<string, string> = {};
-  for (const name of PLATFORM_FILTERS[tab] ?? []) {
+  for (const name of PLATFORM_FILTERS[section] ?? []) {
     const value = p[name]?.trim();
     if (value !== undefined && value !== '') out[name] = value;
   }
   return out;
 }
 
-export function platformUrl(tab: PlatformTabId, filters: Params = {}): string {
-  return buildUrl({ kind: 'plataforma', tab, tenantSlug: null, params: filters });
+export function platformUrl(section: PlatformSectionId, filters: Params = {}): string {
+  return buildUrl({ kind: 'plataforma', section, tenantSlug: null, params: filters });
 }
 
 export function platformTenantUrl(slug: string): string {
-  return buildUrl({ kind: 'plataforma', tab: 'tenants', tenantSlug: slug, params: {} });
+  return buildUrl({ kind: 'plataforma', section: 'tenants', tenantSlug: slug, params: {} });
 }
 
 /** La pestaña que entra como un usuario (#23); sin comercio, el servidor elige su membresía más reciente. */
