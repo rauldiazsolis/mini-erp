@@ -1,5 +1,5 @@
 import { PASSWORD_MIN_LENGTH } from '../../../shared/password.ts';
-import { currentUserSignal } from '../../state/auth-state.ts';
+import { currentUserSignal, isImpersonatingSignal } from '../../state/auth-state.ts';
 import {
   accountFormSignal,
   accountErrorSignal,
@@ -14,6 +14,15 @@ import { Input } from '../ui/Input.tsx';
 export function AccountSection() {
   const form = accountFormSignal.value;
   const user = currentUserSignal.value;
+
+  // Quien impersona no cambia la contraseña del usuario (#23)
+  if (isImpersonatingSignal.value) {
+    return (
+      <Card class="max-w-lg">
+        <CardHeader title="Cambiar contraseña" description="No disponible mientras ves como otro usuario." />
+      </Card>
+    );
+  }
 
   return (
     <div class="space-y-6 animate-in fade-in duration-150">

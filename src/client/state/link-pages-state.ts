@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { adoptSession, rememberTenant } from './auth-state.ts';
+import { adoptSession, isImpersonatingSignal, rememberTenant } from './auth-state.ts';
 import { navigate, routeFromPath } from './route-state.ts';
 import { PASSWORD_MIN_LENGTH, PASSWORD_MIN_MESSAGE } from '../../shared/password.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
@@ -104,6 +104,11 @@ function checkNewPassword(): boolean {
 
 export async function submitInvitation(): Promise<void> {
   linkErrorSignal.value = null;
+  // Quien impersona no acepta invitaciones (#23)
+  if (isImpersonatingSignal.value) {
+    linkErrorSignal.value = 'No disponible mientras ves como otro usuario';
+    return;
+  }
   const staff = linkKindSignal.value === 'staff';
   const info = staff ? staffInfoSignal.value : invitationInfoSignal.value;
   if (info === null) return;
