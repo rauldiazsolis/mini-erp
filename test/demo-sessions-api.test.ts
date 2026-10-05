@@ -48,7 +48,7 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     expect(body).toMatchObject({ branch: 'CENTRAL', template: 'kiosco' });
     expect(body.pointOfSale).toMatch(/^Demo [0-9A-F]{4}$/);
     expect(body.onboarding.label).toBe('Crear mi comercio');
-    expect(body.onboarding.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/alta\?template=kiosco$/);
+    expect(body.onboarding.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/alta\?template=kiosco&demo=[0-9a-f-]{36}$/);
     expect(body).not.toHaveProperty('baseUrl');
   });
 
@@ -56,7 +56,7 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     const { app } = makeApp({ publicUrl: 'https://erp.example.com' });
     const res = await startDemo(app, { template: 'almacen' });
     expect(res.status).toBe(201);
-    expect((res.body as DemoBody).onboarding.url).toBe('https://erp.example.com/alta?template=almacen');
+    expect((res.body as DemoBody).onboarding.url).toMatch(/^https:\/\/erp\.example\.com\/alta\?template=almacen&demo=[0-9a-f-]{36}$/);
   });
 
   it('la key de la demo sincroniza el catálogo del template y declara la capacidad', async () => {

@@ -95,7 +95,7 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
         readAltaParams(
           'http://localhost:4100/alta?template=almacen&return_url=https%3A%2F%2Foffline-pos.pages.dev%2F0.1.0%2F&wipe_key=wk-9',
         ),
-      ).toEqual({ returnUrl: 'https://offline-pos.pages.dev/0.1.0/', wipeKey: 'wk-9', template: 'almacen' });
+      ).toEqual({ returnUrl: 'https://offline-pos.pages.dev/0.1.0/', wipeKey: 'wk-9', template: 'almacen', demo: null });
     });
 
     it('ignora un template desconocido y los parámetros viejos', () => {
@@ -103,6 +103,7 @@ describe('Merchant Onboarding Express (Orientado a Comerciantes)', () => {
         returnUrl: null,
         wipeKey: null,
         template: null,
+        demo: null,
       });
     });
   });

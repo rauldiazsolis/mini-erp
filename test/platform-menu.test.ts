@@ -45,15 +45,17 @@ describe('Las secciones de la plataforma en el menú lateral (#81)', () => {
   it('el menú tiene un ítem por sección de la plataforma, en el orden de las URLs', () => {
     expect(platformNavItems.map((i) => i.id)).toEqual(PLATFORM_SECTIONS.map((s) => s.id));
     expect(platformNavItems.map((i) => i.label)).toEqual([
-      'Comercios', 'Usuarios', 'Pedidos', 'Demos', 'Cobranzas', 'Soporte', 'Registro', 'Configuración',
+      'Comercios', 'Usuarios', 'Pedidos', 'Demos', 'Embudo', 'Visitantes', 'Cobranzas', 'Soporte', 'Registro', 'Configuración',
     ]);
   });
 
-  it('root ve las ocho secciones; soporte, seis (sin Soporte ni Configuración)', () => {
+  it('root ve las diez secciones; soporte, ocho (sin Soporte ni Configuración)', () => {
     currentUserSignal.value = root;
-    expect(visiblePlatformNavItems().map((i) => i.id)).toEqual(['tenants', 'users', 'requests', 'demos', 'payments', 'staff', 'audit', 'settings']);
+    expect(visiblePlatformNavItems().map((i) => i.id)).toEqual([
+      'tenants', 'users', 'requests', 'demos', 'funnel', 'visitors', 'payments', 'staff', 'audit', 'settings',
+    ]);
     currentUserSignal.value = support;
-    expect(visiblePlatformNavItems().map((i) => i.id)).toEqual(['tenants', 'users', 'requests', 'demos', 'payments', 'audit']);
+    expect(visiblePlatformNavItems().map((i) => i.id)).toEqual(['tenants', 'users', 'requests', 'demos', 'funnel', 'visitors', 'payments', 'audit']);
     currentUserSignal.value = user;
     expect(visiblePlatformNavItems()).toEqual([]);
   });

@@ -18,7 +18,8 @@ export function tenantKey(tenantId: string, domain: TenantDomain, ...params: rea
 }
 
 /** Lo de `/plataforma` (#21, #23); los parámetros son el filtro o el comercio del detalle. */
-export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' | 'users' | 'staff' | 'audit' | 'help-requests' | 'demos';
+export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' | 'users' | 'staff' | 'audit' | 'help-requests' | 'demos'
+  | 'funnel' | 'visitors' | 'visitor' | 'contacts-pending';
 
 export function platformKey(name: PlatformQueryName, ...params: readonly unknown[]): QueryKey {
   return ['platform', name, ...params];

@@ -36,6 +36,12 @@ const RUTAS: Record<string, Need> = {
   // Demos (#24)
   'GET /demos': 'staff',
   'POST /demos/reset': 'staff',
+  // Embudo (#25)
+  'GET /funnel': 'staff',
+  'GET /visitors': 'staff',
+  'GET /visitors/:visitorId': 'staff',
+  'GET /contacts/pending-count': 'staff',
+  'POST /contacts/:contactId/handled': 'staff',
 };
 
 type Layer = {

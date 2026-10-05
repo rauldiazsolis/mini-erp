@@ -13,6 +13,7 @@ import { CONTRACT_MAJOR, CONTRACT_VERSION, majorOf } from '../../shared/contract
 import type { RegisterService } from '../registers/register-service.ts';
 import type { BillingService } from '../billing/billing-service.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
+import type { FunnelService } from '../funnel/funnel-service.ts';
 
 /** Servicios de sistema que usa el Connector API (#21, #58). */
 export type ConnectorDeps = {
@@ -20,6 +21,7 @@ export type ConnectorDeps = {
   billing: BillingService;
   tenants: Pick<TenantManager, 'getTenantName'>;
   portal: PortalService;
+  funnel: FunnelService;
 };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
@@ -99,7 +101,8 @@ export function createConnectorRoutes(
       pointOfSale: session.pointOfSale,
       template: session.template,
       onboarding: {
-        url: `${origin}/alta?template=${encodeURIComponent(session.template)}`,
+        // El id de la demo viaja al alta (#25): el comercio que nazca queda ligado a su visitante
+        url: `${origin}/alta?template=${encodeURIComponent(session.template)}&demo=${encodeURIComponent(session.sessionId)}`,
         label: 'Crear mi comercio',
       },
     });
@@ -168,6 +171,9 @@ export function createConnectorRoutes(
       } catch (err: unknown) {
         console.error('[cobro] no se pudo generar el cargo:', err);
       }
+      // La primera venta de una caja de visitante (#25): el reinicio de la demo la borra, así que se registra
+      const demo = demoSessions.activeSessionOfRegister(registerId);
+      if (demo !== undefined) deps.funnel.tryRecord('demo-sale', { demoSessionId: demo.id });
     }
 
     // Logging detallado del lote recibido

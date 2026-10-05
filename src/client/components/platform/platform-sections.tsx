@@ -58,6 +58,20 @@ export const platformNavItems: PlatformNavItem[] = [
     ]),
   },
   {
+    id: 'funnel',
+    label: 'Embudo',
+    subtitle: 'Del landing al pago, por etapa y por rubro',
+    icon: icon(['M3 4h18l-7 8v6l-4 2v-8L3 4z']),
+  },
+  {
+    id: 'visitors',
+    label: 'Visitantes',
+    subtitle: 'Las demos, los contactos y las altas, con su historia',
+    icon: icon([
+      'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
+    ]),
+  },
+  {
     id: 'payments',
     label: 'Cobranzas',
     subtitle: 'La planilla de cobranzas y los pagos registrados',
@@ -83,7 +97,7 @@ export const platformNavItems: PlatformNavItem[] = [
   },
 ];
 
-/** Las secciones que ve quien está logueado: ocho para root, seis para soporte, ninguna para el resto. */
+/** Las secciones que ve quien está logueado: diez para root, ocho para soporte, ninguna para el resto. */
 export function visiblePlatformNavItems(): PlatformNavItem[] {
   return platformNavItems.filter((item) => isPlatformSectionAllowed(item.id));
 }

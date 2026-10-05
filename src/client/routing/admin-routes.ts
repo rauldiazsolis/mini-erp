@@ -39,12 +39,17 @@ export const SECTION_TABS = {
   credits: [{ id: 'charges', slug: '' }, { id: 'movements', slug: 'movimientos' }, { id: 'gifts', slug: 'bonos' }],
 } as const;
 
-/** Las secciones de `/plataforma` (#23), cada una con su ítem en el menú (#81); el detalle de un comercio es `/plataforma/comercios/<slug>`. */
+/**
+ * Las secciones de `/plataforma` (#23), cada una con su ítem en el menú (#81); el detalle de un comercio es
+ * `/plataforma/comercios/<slug>` y la historia de un visitante, `/plataforma/visitantes/<id>` (#25).
+ */
 export const PLATFORM_SECTIONS = [
   { id: 'tenants', slug: '' },
   { id: 'users', slug: 'usuarios' },
   { id: 'requests', slug: 'pedidos' },
   { id: 'demos', slug: 'demos' }, // #24
+  { id: 'funnel', slug: 'embudo' }, // #25
+  { id: 'visitors', slug: 'visitantes' }, // #25
   { id: 'payments', slug: 'cobranzas' },
   { id: 'staff', slug: 'soporte' },
   { id: 'audit', slug: 'registro' },
@@ -334,6 +339,9 @@ export function parseLocation(pathname: string, search: string): Route {
     if (second === 'comercios' && third !== undefined) {
       return { kind: 'plataforma', section: 'tenants', tenantSlug: decodeSlug(third), params: {} };
     }
+    if (second === 'visitantes' && third !== undefined) {
+      return { kind: 'plataforma', section: 'visitors', tenantSlug: null, params: { id: decodeSlug(third) } };
+    }
     const section = PLATFORM_SECTIONS.find((s) => s.slug !== '' && s.slug === second)?.id ?? 'tenants';
     return { kind: 'plataforma', section, tenantSlug: null, params: platformParams(section, readSearch(search)) };
   }
@@ -364,6 +372,8 @@ export function buildUrl(route: Route): string {
       return `/ayuda/${encodeURIComponent(route.requestId)}`;
     case 'plataforma': {
       if (route.tenantSlug !== null) return `/plataforma/comercios/${encodeURIComponent(route.tenantSlug)}`;
+      const visitorId = route.section === 'visitors' ? route.params['id'] : undefined;
+      if (visitorId !== undefined) return `/plataforma/visitantes/${encodeURIComponent(visitorId)}`;
       const slug = PLATFORM_SECTIONS.find((s) => s.id === route.section)?.slug ?? '';
       const path = slug === '' ? '/plataforma' : `/plataforma/${slug}`;
       const query = new URLSearchParams(platformParams(route.section, route.params)).toString();
@@ -394,8 +404,17 @@ export function adminUrl<S extends TenantSection>(
   });
 }
 
-/** Los filtros de cada sección de la plataforma (#23): búsqueda en Comercios y Usuarios, comercio en Registro. */
-const PLATFORM_FILTERS: Partial<Record<PlatformSectionId, readonly string[]>> = { tenants: ['q'], users: ['q'], audit: ['comercio'] };
+/**
+ * Los filtros de cada sección de la plataforma (#23): búsqueda en Comercios y Usuarios, comercio en Registro, y
+ * rango, rubro, etapa, tipo y búsqueda en el embudo (#25).
+ */
+const PLATFORM_FILTERS: Partial<Record<PlatformSectionId, readonly string[]>> = {
+  tenants: ['q'],
+  users: ['q'],
+  audit: ['comercio'],
+  funnel: ['desde', 'hasta', 'rubro'],
+  visitors: ['desde', 'hasta', 'rubro', 'etapa', 'filtro', 'q'],
+};
 
 function platformParams(section: PlatformSectionId, p: Params): Params {
   const out: Record<string, string> = {};
@@ -408,6 +427,11 @@ function platformParams(section: PlatformSectionId, p: Params): Params {
 
 export function platformUrl(section: PlatformSectionId, filters: Params = {}): string {
   return buildUrl({ kind: 'plataforma', section, tenantSlug: null, params: filters });
+}
+
+/** La historia de un visitante del embudo (#25): el id de su demo, `c-<contacto>` o `t-<comercio>`. */
+export function visitorUrl(id: string): string {
+  return buildUrl({ kind: 'plataforma', section: 'visitors', tenantSlug: null, params: { id } });
 }
 
 export function platformTenantUrl(slug: string): string {

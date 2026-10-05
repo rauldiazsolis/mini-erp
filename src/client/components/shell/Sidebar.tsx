@@ -9,6 +9,7 @@ import { isViewAllowed } from '../../state/permissions-state.ts';
 import { Logo } from '../ui/Logo.tsx';
 import { visiblePlatformNavItems } from '../platform/platform-sections.tsx';
 import { platformSectionSignal } from '../../state/platform-state.ts';
+import { pendingContactsSignal } from '../../state/funnel-state.ts';
 
 type NavItem = {
   id: TenantSection;
@@ -206,6 +207,8 @@ function menuEntries(): MenuEntry[] {
       key: item.id,
       href: platformUrl(item.id),
       label: item.label,
+      // Los contactos sin atender del embudo (#25)
+      badge: item.id === 'visitors' && pendingContactsSignal.value > 0 ? String(pendingContactsSignal.value) : undefined,
       active: inPlatform && platformSectionSignal.value === item.id,
       icon: item.icon,
     }));

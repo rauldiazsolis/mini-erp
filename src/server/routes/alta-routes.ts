@@ -11,6 +11,8 @@ import { sendImpersonating } from '../middleware/own-session-middleware.ts';
 const businessSchema = z.object({
   businessName: z.string().trim().min(2, 'Escribí el nombre de tu comercio'),
   businessType: z.enum(BUSINESS_TYPES, { error: 'Elegí el rubro de tu comercio' }),
+  // La demo de la que viene (#25): liga el comercio nuevo a su visitante
+  demoSessionId: z.string().max(64).optional(),
 });
 
 const accountSchema = z.object({

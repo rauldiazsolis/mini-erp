@@ -82,7 +82,7 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   // /ALTA → alta del mini-erp, con el rubro de la demo
   await commandBar.fill('/ALTA');
   await commandBar.press('Enter');
-  await expect(page).toHaveURL(/\/alta\?template=kiosco&return_url=.*&wipe_key=/);
+  await expect(page).toHaveURL(/\/alta\?template=kiosco&demo=[0-9a-f-]{36}&return_url=.*&wipe_key=/);
 
   await page.getByPlaceholder('Ej: Martín Rodríguez').fill('Alta E2E');
   await page.getByPlaceholder('ejemplo@comercio.com').fill(email);

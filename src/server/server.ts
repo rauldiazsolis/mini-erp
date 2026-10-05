@@ -23,9 +23,9 @@ const started = await startServer({
     const bundle = createApp();
     let sweepers: NodeJS.Timeout[] = [];
     try {
-      // Barridos de demos (#9) y de cobro (#21), y datos de desarrollo solo fuera de producción (#3)
+      // Barridos de demos (#9), de cobro (#21) y del embudo (#25), y datos de desarrollo solo fuera de producción (#3)
       const booted = bootstrap({ env: process.env, bundle });
-      sweepers = [booted.sweeper, booted.billingSweeper];
+      sweepers = [booted.sweeper, booted.billingSweeper, booted.funnelSweeper];
       devInfo = booted.devInfo;
       await setupClient(bundle.app);
       return bundle.app;

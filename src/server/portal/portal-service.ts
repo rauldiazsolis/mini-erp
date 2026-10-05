@@ -5,6 +5,7 @@ import { DomainError } from '../errors.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { REGISTER_ACTOR, type AuditLog } from '../audit/audit-log.ts';
 import type { PortalRedeemResponse } from '../../shared/portal-types.ts';
+import type { FunnelService } from '../funnel/funnel-service.ts';
 
 const LINK_TTL_MS = 60 * 1000;
 /** Una sesión de caja real vence a las 2 h sin uso (M10), como la impersonación. */
@@ -37,12 +38,14 @@ export class PortalService {
   private now: () => Date;
   private demos: DemoSessionService;
   private audit: AuditLog;
+  private funnel: FunnelService;
 
-  constructor(deps: { systemDb: DatabaseSync; now: () => Date; demos: DemoSessionService; audit: AuditLog }) {
+  constructor(deps: { systemDb: DatabaseSync; now: () => Date; demos: DemoSessionService; audit: AuditLog; funnel: FunnelService }) {
     this.db = deps.systemDb;
     this.now = deps.now;
     this.demos = deps.demos;
     this.audit = deps.audit;
+    this.funnel = deps.funnel;
   }
 
   createLink(p: { tenantId: string; registerId: string; keyId: string; origin: string }): { url: string; expiresAt: string } {
@@ -93,13 +96,15 @@ export class PortalService {
       this.db.exec('ROLLBACK');
       throw err;
     }
+    // Mini desde el POS (#25): la sesión anónima se borra al revocar, así que se registra
+    if (demo !== undefined) this.funnel.tryRecord('portal-opened', { demoSessionId: demo.id });
     const base = {
       token: session,
       tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
       branch: register.branch,
       pointOfSale: register.point_of_sale,
     };
-    return demo === undefined ? { access: 'register', ...base, registerName: register.name } : { access: 'demo', ...base, template: demo.template };
+    return demo === undefined ? { access: 'register', ...base, registerName: register.name } : { access: 'demo', ...base, template: demo.template, demoSessionId: demo.id };
   }
 
   /** La sesión anónima del token, si sigue valiendo; si no, la borra. Usarla corre su último uso. */
