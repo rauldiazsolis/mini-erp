@@ -61,7 +61,7 @@ describe('listados del panel de plataforma (#23)', () => {
     expect(byId.status).toBe(200);
     expect(byId.body).toMatchObject({
       tenant: { slug: 'kiosco', status: 'suspended' },
-      suspension: { reason: 'Prueba' },
+      suspension: { reason: 'Prueba', byName: 'Root' },
       members: [{ name: 'Owner', email: 'owner@x.com', role: 'owner', status: 'active' }],
     });
     const detail = byId.body as PlatformTenantDetail;

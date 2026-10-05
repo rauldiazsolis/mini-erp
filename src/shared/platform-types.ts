@@ -22,7 +22,7 @@ export type PlatformMemberItem = { userId: string; name: string; email: string; 
 
 export type PlatformTenantDetail = {
   tenant: PlatformTenantItem;
-  suspension: { since: string; reason: string } | null;
+  suspension: { since: string; reason: string; byName: string } | null;
   credits: BillingSummary;
   gifts: GiftItem[];
   members: PlatformMemberItem[];

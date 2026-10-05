@@ -10,7 +10,6 @@ import { ROLE_LABEL } from '../../state/permissions-state.ts';
 import { platformUrl } from '../../routing/admin-routes.ts';
 import { formatDateTime, formatMoney } from '../../format.ts';
 import { Button } from '../ui/Button.tsx';
-import { Card } from '../ui/Card.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Link } from '../ui/Link.tsx';
 import { Modal } from '../ui/Modal.tsx';
@@ -190,9 +189,13 @@ export function TenantDetailView() {
         </div>
       </PageHeader>
       {suspension !== null && (
-        <Card class="border-rose-300 dark:border-rose-500/30 text-sm">
-          Suspendido desde el {formatDateTime(suspension.since)}: {suspension.reason}
-        </Card>
+        <div role="status" class="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 space-y-1 text-rose-900 dark:text-rose-100">
+          <p class="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">Motivo de la suspensión</p>
+          <p class="text-base font-semibold">{suspension.reason}</p>
+          <p class="text-xs text-rose-700/80 dark:text-rose-300/80">
+            Suspendido desde el {formatDateTime(suspension.since)} por {suspension.byName}
+          </p>
+        </div>
       )}
       <CreditsStats credits={credits} />
       <PlatformActionsBar tenantId={tenant.id} owners={activeOwners(detail)} paidBalance={credits.paidBalance} />

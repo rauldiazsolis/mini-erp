@@ -3,12 +3,18 @@ import type { DatabaseSync } from 'node:sqlite';
 const OFFSET_MS = 3 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** El período abierto de suspensión del comercio, si lo hay (#23). */
-export function currentSuspension(db: DatabaseSync, tenantId: string): { since: string; reason: string } | null {
+export type CurrentSuspension = { since: string; reason: string; byName: string };
+
+/** El período abierto de suspensión del comercio, si lo hay (#23), con quién lo suspendió. */
+export function currentSuspension(db: DatabaseSync, tenantId: string): CurrentSuspension | null {
   const row = db
-    .prepare('SELECT from_at, reason FROM tenant_suspensions WHERE tenant_id = ? AND to_at IS NULL ORDER BY from_at DESC LIMIT 1')
-    .get(tenantId) as { from_at: string; reason: string } | undefined;
-  return row === undefined ? null : { since: row.from_at, reason: row.reason };
+    .prepare(
+      `SELECT s.from_at, s.reason, COALESCE(u.name, 'Usuario borrado') AS by_name
+       FROM tenant_suspensions s LEFT JOIN users u ON u.id = s.created_by
+       WHERE s.tenant_id = ? AND s.to_at IS NULL ORDER BY s.from_at DESC LIMIT 1`,
+    )
+    .get(tenantId) as { from_at: string; reason: string; by_name: string } | undefined;
+  return row === undefined ? null : { since: row.from_at, reason: row.reason, byName: row.by_name };
 }
 
 export function isSuspended(db: DatabaseSync, tenantId: string): boolean {
