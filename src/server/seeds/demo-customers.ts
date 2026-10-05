@@ -1,3 +1,5 @@
+import type { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import type { SeedCustomer } from './types.ts';
 
 export const DEMO_CUSTOMERS: SeedCustomer[] = [
@@ -42,3 +44,33 @@ export const DEMO_CUSTOMERS: SeedCustomer[] = [
     unrestricted: true, // Fiado sin límite
   },
 ];
+
+/** Los clientes demo, con su saldo inicial en el libro. Los usan la semilla de las demos y la de desarrollo. */
+export function insertDemoCustomers(db: DatabaseSync, now: string): void {
+  const insertCust = db.prepare(
+    'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+
+  for (const c of DEMO_CUSTOMERS) {
+    const custId = c.id ?? `cust_${randomUUID()}`;
+    insertCust.run(
+      custId,
+      c.name,
+      c.document ?? null,
+      c.phone ?? null,
+      c.creditLimit,
+      c.margin,
+      c.balance,
+      c.unrestricted ? 1 : 0,
+      now,
+      now,
+    );
+
+    if (c.balance > 0) {
+      db.prepare(
+        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
+         VALUES (?, ?, 'adjustment', ?, ?, 'Saldo inicial cuenta corriente', NULL, ?)`,
+      ).run(`mov_init_${custId}`, custId, c.balance, c.balance, now);
+    }
+  }
+}

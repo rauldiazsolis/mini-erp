@@ -4,7 +4,7 @@ import type { BusinessPreset, SeedProduct } from './types.ts';
 import { KIOSCO_PRODUCTS } from './kiosco.ts';
 import { FERRETERIA_PRODUCTS } from './ferreteria.ts';
 import { ALMACEN_PRODUCTS } from './almacen.ts';
-import { DEMO_CUSTOMERS } from './demo-customers.ts';
+import { insertDemoCustomers } from './demo-customers.ts';
 import { generateHistoricalDemoActivity } from './demo-activity-generator.ts';
 
 export * from './types.ts';
@@ -13,6 +13,7 @@ export * from './ferreteria.ts';
 export * from './almacen.ts';
 export * from './demo-customers.ts';
 export * from './demo-activity-generator.ts';
+export * from './demo-commerce.ts';
 
 export function getPresetProducts(preset: BusinessPreset): SeedProduct[] {
   switch (preset) {
@@ -111,33 +112,4 @@ export function isDemoTemplate(value: string): value is DemoTemplate {
 export function seedDemoSession(db: DatabaseSync, template: DemoTemplate): void {
   applyPreset(db, template);
   insertDemoCustomers(db, new Date().toISOString());
-}
-
-function insertDemoCustomers(db: DatabaseSync, now: string): void {
-  const insertCust = db.prepare(
-    'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  );
-
-  for (const c of DEMO_CUSTOMERS) {
-    const custId = c.id ?? `cust_${randomUUID()}`;
-    insertCust.run(
-      custId,
-      c.name,
-      c.document ?? null,
-      c.phone ?? null,
-      c.creditLimit,
-      c.margin,
-      c.balance,
-      c.unrestricted ? 1 : 0,
-      now,
-      now,
-    );
-
-    if (c.balance > 0) {
-      db.prepare(
-        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-         VALUES (?, ?, 'adjustment', ?, ?, 'Saldo inicial cuenta corriente', NULL, ?)`,
-      ).run(`mov_init_${custId}`, custId, c.balance, c.balance, now);
-    }
-  }
 }
