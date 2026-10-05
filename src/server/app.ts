@@ -10,7 +10,7 @@ import { createAuthRoutes } from './routes/auth-routes.ts';
 import { createTenantRoutes } from './routes/tenant-routes.ts';
 import { createAltaRoutes } from './routes/alta-routes.ts';
 import { createUserRoutes } from './routes/user-routes.ts';
-import { createInvitationLinkRoutes, createPasswordResetLinkRoutes } from './routes/link-routes.ts';
+import { createInvitationLinkRoutes, createPasswordResetLinkRoutes, createStaffInvitationLinkRoutes } from './routes/link-routes.ts';
 import { createConnectorRoutes } from './routes/connector-routes.ts';
 import { createCatalogRoutes } from './routes/catalog-routes.ts';
 import { createStockRoutes } from './routes/stock-routes.ts';
@@ -47,6 +47,8 @@ import {
   billingServiceDef,
   suspensionServiceDef,
   userStatusServiceDef,
+  staffInvitationServiceDef,
+  platformQueryServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
@@ -94,6 +96,7 @@ export function createApp(deps?: AppDependencies): {
   const passwordResetService = rootContainer.use(passwordResetServiceDef);
   const registers = rootContainer.use(registerServiceDef);
   const billing = rootContainer.use(billingServiceDef);
+  const staffInvitations = rootContainer.use(staffInvitationServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -123,6 +126,7 @@ export function createApp(deps?: AppDependencies): {
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit));
   app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
+  app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
@@ -152,6 +156,8 @@ export function createApp(deps?: AppDependencies): {
       suspensions: rootContainer.use(suspensionServiceDef),
       userStatus: rootContainer.use(userStatusServiceDef),
       resets: passwordResetService,
+      staffInvitations,
+      queries: rootContainer.use(platformQueryServiceDef),
     }),
   );
 
