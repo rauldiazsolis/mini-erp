@@ -22,6 +22,7 @@ import { createSalesRoutes } from './routes/sales-routes.ts';
 import { createDiscrepancyRoutes } from './routes/discrepancy-routes.ts';
 import { createRegisterRoutes } from './routes/register-routes.ts';
 import { createPlatformRoutes } from './routes/platform-routes.ts';
+import { createPlatformAdminRoutes } from './routes/platform-admin-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
@@ -44,6 +45,7 @@ import {
   passwordResetServiceDef,
   registerServiceDef,
   billingServiceDef,
+  suspensionServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
@@ -112,7 +114,7 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(membershipService, tenantManager, rootContainer);
+  const requireTenantContext = createTenantContextMiddleware(systemDb, membershipService, tenantManager, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));
@@ -141,6 +143,8 @@ export function createApp(deps?: AppDependencies): {
 
   // Plataforma de cobro (#21): root y soporte
   app.use('/api/platform', requireAdmin, createPlatformRoutes({ billing, audit: auditLog }));
+  // Panel de plataforma (#23): comercios, usuarios, soporte y registro
+  app.use('/api/platform', requireAdmin, createPlatformAdminRoutes({ suspensions: rootContainer.use(suspensionServiceDef) }));
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager }));

@@ -24,6 +24,7 @@ import { PasswordResetService } from '../users/password-reset-service.ts';
 import { DiscrepancyService } from '../discrepancy/discrepancy-service.ts';
 import { SalesQueryService } from '../sales/sales-query-service.ts';
 import { RegisterService } from '../registers/register-service.ts';
+import { SuspensionService } from '../platform/suspension-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
@@ -88,6 +89,11 @@ export const invitationServiceDef = fn.singleton(
       audit: c.use(auditLogDef),
       now: c.use(clockDef),
     }),
+);
+// --- PLATAFORMA (#23) ---
+
+export const suspensionServiceDef = fn.singleton(
+  (c) => new SuspensionService({ db: c.use(systemDbDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
 );
 export const altaServiceDef = fn.singleton(
   (c) =>

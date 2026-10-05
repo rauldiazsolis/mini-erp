@@ -23,7 +23,14 @@ export type AuditAction =
   | 'billing.grace_extended'
   | 'billing.refund'
   | 'billing.holder_changed'
-  | 'billing.settings_updated';
+  | 'billing.settings_updated'
+  | 'tenant.suspended'
+  | 'tenant.reactivated'
+  | 'user.disabled'
+  | 'user.enabled'
+  | 'staff.invited'
+  | 'staff.invitation_revoked'
+  | 'staff.joined';
 
 export type AuditEntry = {
   id: string;
