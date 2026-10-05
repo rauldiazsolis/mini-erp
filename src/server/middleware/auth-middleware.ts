@@ -19,7 +19,7 @@ export interface AuthenticatedAdminRequest extends Request {
   tenantScope?: IContainer;
   /** El rol con el que opera el comercio activo (#19); lo pone requireTenantContext. */
   tenantRole?: TenantRole;
-  /** El acceso anónimo de una demo (#24): sin usuario; solo entra por /api/tenants/:tenantId. */
+  /** El acceso anónimo (#24, M10), de una demo o de una caja real: sin usuario; solo entra por /api/tenants/:tenantId. */
   anonymous?: AnonymousContext;
 }
 
@@ -41,7 +41,7 @@ export function bearerToken(req: Request): string | undefined {
 export function createAdminAuthMiddleware(
   authService: AuthService,
   tenantManager: TenantManager,
-  /** Con el portal, un token de sesión anónima (#24) vale como el admin de su comercio demo. */
+  /** Con el portal, un token de sesión anónima (#24, M10) vale por su demo o su caja. */
   portal?: PortalService,
 ) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {

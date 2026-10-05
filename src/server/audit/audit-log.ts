@@ -34,7 +34,8 @@ export type AuditAction =
   | 'staff.joined'
   | 'impersonation.started'
   | 'impersonation.ended'
-  | 'demo.reset';
+  | 'demo.reset'
+  | 'portal.opened';
 
 export type AuditEntry = {
   id: string;
@@ -50,8 +51,12 @@ export type AuditEntry = {
 /** El actor de lo que hace el servidor solo, como el reinicio automático de las demos (#24). */
 export const SYSTEM_ACTOR = 'system';
 
-/** El nombre del actor: el usuario, "Automático" si lo hizo el servidor o "Usuario borrado". */
-function actorName(actorUserId: string, name: string | null): string {
+/** La caja que abrió mini desde el POS (M10): el actor de `portal.opened`. */
+export const REGISTER_ACTOR = 'register';
+
+/** El nombre del actor: el usuario, la caja, "Automático" si lo hizo el servidor o "Usuario borrado". */
+function actorName(actorUserId: string, name: string | null, registerName: string | null): string {
+  if (actorUserId === REGISTER_ACTOR) return `${registerName ?? 'Caja borrada'} (desde el POS)`;
   if (name !== null) return name;
   return actorUserId === SYSTEM_ACTOR ? 'Automático' : 'Usuario borrado';
 }
@@ -69,6 +74,8 @@ export class AuditLog {
   record(params: {
     actorUserId: string;
     impersonatorUserId?: string | undefined;
+    /** La caja, si el actor es `REGISTER_ACTOR` (M10). */
+    actorRegisterId?: string | undefined;
     tenantId: string | null;
     action: AuditAction;
     targetUserId?: string | undefined;
@@ -76,13 +83,14 @@ export class AuditLog {
   }): void {
     this.db
       .prepare(
-        'INSERT INTO audit_log (id, at, actor_user_id, impersonator_user_id, tenant_id, action, target_user_id, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO audit_log (id, at, actor_user_id, impersonator_user_id, actor_register_id, tenant_id, action, target_user_id, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         `aud_${randomUUID()}`,
         this.now().toISOString(),
         params.actorUserId,
         params.impersonatorUserId ?? null,
+        params.actorRegisterId ?? null,
         params.tenantId,
         params.action,
         params.targetUserId ?? null,
@@ -94,11 +102,12 @@ export class AuditLog {
     const rows = this.db
       .prepare(
         `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, actor.name AS actor_name, target.name AS target_name,
-           imp.name AS impersonator_name
+           imp.name AS impersonator_name, reg.name AS register_name
          FROM audit_log a
          LEFT JOIN users actor ON actor.id = a.actor_user_id
          LEFT JOIN users imp ON imp.id = a.impersonator_user_id
          LEFT JOIN users target ON target.id = a.target_user_id
+         LEFT JOIN registers reg ON reg.id = a.actor_register_id
          WHERE a.tenant_id = ?
          ORDER BY a.at DESC
          LIMIT ?`,
@@ -112,12 +121,13 @@ export class AuditLog {
       actor_name: string | null;
       target_name: string | null;
       impersonator_name: string | null;
+      register_name: string | null;
     }[];
     return rows.map((r) => ({
       id: r.id,
       at: r.at,
       action: r.action,
-      actorName: actorName(r.actor_user_id, r.actor_name),
+      actorName: actorName(r.actor_user_id, r.actor_name, r.register_name),
       impersonatorName: r.impersonator_name,
       targetName: r.target_name,
       details: parseDetails(r.details),
@@ -130,11 +140,12 @@ export class AuditLog {
     const rows = this.db
       .prepare(
         `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, a.tenant_id, t.name AS tenant_name,
-           actor.name AS actor_name, target.name AS target_name, imp.name AS impersonator_name
+           actor.name AS actor_name, target.name AS target_name, imp.name AS impersonator_name, reg.name AS register_name
          FROM audit_log a
          LEFT JOIN users actor ON actor.id = a.actor_user_id
          LEFT JOIN users imp ON imp.id = a.impersonator_user_id
          LEFT JOIN users target ON target.id = a.target_user_id
+         LEFT JOIN registers reg ON reg.id = a.actor_register_id
          LEFT JOIN tenants t ON t.id = a.tenant_id
          WHERE (? IS NULL OR a.tenant_id = ?)
          ORDER BY a.at DESC, a.rowid DESC
@@ -151,12 +162,13 @@ export class AuditLog {
       actor_name: string | null;
       target_name: string | null;
       impersonator_name: string | null;
+      register_name: string | null;
     }[];
     return rows.map((r) => ({
       id: r.id,
       at: r.at,
       action: r.action,
-      actorName: actorName(r.actor_user_id, r.actor_name),
+      actorName: actorName(r.actor_user_id, r.actor_name, r.register_name),
       impersonatorName: r.impersonator_name,
       targetName: r.target_name,
       tenantId: r.tenant_id,

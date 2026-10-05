@@ -8,6 +8,8 @@ export type ValidatedPosKey = {
   pointOfSale: string;
   /** La caja de la key (#21). */
   registerId: string;
+  /** La key (M10): la sesión del portal queda atada a ella. */
+  keyId: string;
 };
 
 export class ApiKeyService {
@@ -66,11 +68,11 @@ export class ApiKeyService {
     const keyHash = hashApiKey(rawKey);
     const row = this.systemDb
       .prepare(
-        `SELECT k.tenant_id, r.branch, r.point_of_sale, r.id AS register_id
+        `SELECT k.id AS key_id, k.tenant_id, r.branch, r.point_of_sale, r.id AS register_id
          FROM tenant_api_keys k JOIN registers r ON r.id = k.register_id
          WHERE k.key_hash = ? AND k.active = 1 AND r.active = 1`,
       )
-      .get(keyHash) as { tenant_id: string; branch: string; point_of_sale: string; register_id: string } | undefined;
+      .get(keyHash) as { key_id: string; tenant_id: string; branch: string; point_of_sale: string; register_id: string } | undefined;
 
     if (row === undefined) {
       return undefined;
@@ -81,6 +83,7 @@ export class ApiKeyService {
       branch: row.branch,
       pointOfSale: row.point_of_sale,
       registerId: row.register_id,
+      keyId: row.key_id,
     };
   }
 }

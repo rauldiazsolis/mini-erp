@@ -375,7 +375,8 @@ export function adoptAnonymous(start: PortalRedeemResponse): void {
   storages.session?.setItem(ANONYMOUS_KEY, JSON.stringify(start));
   demoEndedSignal.value = null;
   impersonationEndedSignal.value = null;
-  applyAnonymous({ tenant: start.tenant, pointOfSale: start.pointOfSale, template: start.template }, start.token);
+  // La caja real (M10) llega en la Tarea 5 del plan; mientras, el cliente sigue tratando todo como demo
+  applyAnonymous({ tenant: start.tenant, pointOfSale: start.pointOfSale, template: start.access === 'demo' ? start.template : '' }, start.token);
 }
 
 /** Vuelve a la sesión propia de la pestaña (después de "Salir" o de que terminó la impersonación). */

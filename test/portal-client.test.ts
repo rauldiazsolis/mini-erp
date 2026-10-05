@@ -34,6 +34,7 @@ class MemoryStorage implements StorageLike {
 }
 
 const start = {
+  access: 'demo',
   token: 'tok-anon',
   tenant: { id: 'demo-kiosco', slug: 'demo-kiosco', name: 'Kiosco Demo' },
   branch: 'CENTRAL',

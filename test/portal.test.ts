@@ -70,6 +70,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     const first = await redeem(token);
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({
+      access: 'demo',
       tenant: { id: 'demo-kiosco', slug: 'demo-kiosco', name: 'Kiosco Demo' },
       branch: 'CENTRAL',
       pointOfSale,
@@ -123,9 +124,23 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     await request(app).get(SALES).set({ Authorization: `Bearer ${session}` });
     expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: clock.toISOString() });
   });
+});
 
-  it('con la key de un comercio real devuelve el login de mini, sin link guardado', async () => {
-    const alta = await request(app).post('/api/alta').send({
+describe('portal de una caja real (M10, #26)', () => {
+  let app: Express;
+  let systemDb: DatabaseSync;
+  let clock: Date;
+
+  beforeEach(() => {
+    systemDb = openSystemDb(':memory:');
+    const tenantManager = new TenantManager(systemDb, { inMemory: true });
+    clock = new Date('2026-10-05T15:00:00.000Z');
+    app = createApp({ systemDb, tenantManager, now: () => clock }).app;
+  });
+
+  type Kiosco = { tenantId: string; key: string; owner: string; registerId: string };
+  const alta = async (): Promise<Kiosco> => {
+    const res = await request(app).post('/api/alta').send({
       name: 'Ana',
       email: 'ana@kiosco.com',
       password: 'clave-segura',
@@ -133,10 +148,112 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
       businessName: 'Kiosco Ana',
       businessType: 'kiosco',
     });
-    const body = alta.body as { tenant: { id: string }; posKey: { key: string } };
-    const res = await link(body.posKey.key);
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ url: expect.stringMatching(new RegExp(`/admin/${body.tenant.id}$`)) as unknown });
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM portal_links').get()).toEqual({ n: 0 });
+    const body = res.body as { token: string; tenant: { id: string }; posKey: { key: string } };
+    const regs = await request(app).get(`/api/tenants/${body.tenant.id}/pos-registers`).set({ Authorization: `Bearer ${body.token}` });
+    const registerId = (regs.body as { id: string }[])[0]?.id ?? '';
+    return { tenantId: body.tenant.id, key: body.posKey.key, owner: body.token, registerId };
+  };
+  const pos = (apiKey: string) => ({ Authorization: `Bearer ${apiKey}`, ...V });
+  const tokenOf = (url: string): string => new URL(url).hash.replace('#t=', '');
+  const open = async (k: Kiosco) => {
+    const link = await request(app).post('/connector/portal-links').set(pos(k.key));
+    expect(link.status).toBe(201);
+    return request(app).post('/api/portal/redeem').send({ token: tokenOf((link.body as { url: string }).url) });
+  };
+  const sessionOf = async (k: Kiosco): Promise<string> => ((await open(k)).body as { token: string }).token;
+  const products = (k: Kiosco, session: string) => request(app).get(`/api/tenants/${k.tenantId}/products`).set({ Authorization: `Bearer ${session}` });
+  const asOwner = (k: Kiosco) => ({ Authorization: `Bearer ${k.owner}` });
+
+  it('da un link de un uso que vence en 60 s, como en la demo', async () => {
+    const k = await alta();
+    const res = await request(app).post('/connector/portal-links').set(pos(k.key));
+    expect(res.body).toEqual({
+      url: expect.stringMatching(/\/portal#t=[\w-]{43}$/) as unknown,
+      expiresAt: new Date(clock.getTime() + 60_000).toISOString(),
+    });
+    const token = tokenOf((res.body as { url: string }).url);
+    clock = new Date(clock.getTime() + 61_000);
+    expect((await request(app).post('/api/portal/redeem').send({ token })).status).toBe(410);
+  });
+
+  it('el canje da la sesión de la caja, una sola vez', async () => {
+    const k = await alta();
+    const link = await request(app).post('/connector/portal-links').set(pos(k.key));
+    const token = tokenOf((link.body as { url: string }).url);
+    const first = await request(app).post('/api/portal/redeem').send({ token });
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      access: 'register',
+      tenant: { id: k.tenantId, name: 'Kiosco Ana' },
+      branch: 'CENTRAL',
+      pointOfSale: 'Caja 1',
+      registerName: 'Caja 1',
+    });
+    expect(first.body).not.toHaveProperty('template');
+    expect((await request(app).post('/api/portal/redeem').send({ token })).status).toBe(410);
+  });
+
+  it('consulta pero no opera: catálogo y ventas sí; dashboard, edición, cajas y cuenta no', async () => {
+    const k = await alta();
+    const as = { Authorization: `Bearer ${await sessionOf(k)}` };
+    const t = `/api/tenants/${k.tenantId}`;
+    expect((await request(app).get(`${t}/products`).set(as)).status).toBe(200);
+    expect((await request(app).get(`${t}/sales?from=2026-10-05&to=2026-10-05`).set(as)).status).toBe(200);
+    expect((await request(app).get(`${t}/billing-status`).set(as)).status).toBe(200);
+    expect((await request(app).get(`${t}/dashboard/summary`).set(as)).status).toBe(403);
+    expect((await request(app).post(`${t}/products`).set(as).send({ name: 'X', price: 1 })).status).toBe(403);
+    expect((await request(app).get(`${t}/pos-registers`).set(as)).status).toBe(403);
+    expect((await request(app).get('/api/auth/me').set(as)).status).toBe(401);
+    expect((await request(app).get('/api/tenants/otro/products').set(as)).status).toBe(403);
+  });
+
+  it('rotar la key corta la sesión y la borra', async () => {
+    const k = await alta();
+    const session = await sessionOf(k);
+    const rotated = await request(app).post(`/api/tenants/${k.tenantId}/pos-registers/${k.registerId}/rotate-key`).set(asOwner(k));
+    expect(rotated.status).toBe(200);
+    expect((await products(k, session)).status).toBe(401);
+    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM anonymous_sessions').get()).toEqual({ n: 0 });
+  });
+
+  it('desactivar la caja corta la sesión; desligar el equipo no', async () => {
+    const k = await alta();
+    const session = await sessionOf(k);
+    await request(app).post(`/api/tenants/${k.tenantId}/pos-registers/${k.registerId}/unbind`).set(asOwner(k));
+    expect((await products(k, session)).status).toBe(200);
+    await request(app).delete(`/api/tenants/${k.tenantId}/pos-registers/${k.registerId}`).set(asOwner(k));
+    expect((await products(k, session)).status).toBe(401);
+  });
+
+  it('vence a las 2 h sin uso; usarla la estira', async () => {
+    const k = await alta();
+    const session = await sessionOf(k);
+    clock = new Date(clock.getTime() + 90 * 60_000);
+    expect((await products(k, session)).status).toBe(200);
+    clock = new Date(clock.getTime() + 90 * 60_000);
+    expect((await products(k, session)).status).toBe(200);
+    clock = new Date(clock.getTime() + 2 * 60 * 60_000 + 1000);
+    expect((await products(k, session)).status).toBe(401);
+  });
+
+  it('cada apertura queda en la actividad del comercio, con la caja como origen', async () => {
+    const k = await alta();
+    await sessionOf(k);
+    const audit = await request(app).get(`/api/tenants/${k.tenantId}/audit`).set(asOwner(k));
+    const entries = audit.body as { action: string; actorName: string }[];
+    expect(entries.find((e) => e.action === 'portal.opened')).toMatchObject({ actorName: 'Caja 1 (desde el POS)' });
+    expect(systemDb.prepare("SELECT actor_user_id, actor_register_id FROM audit_log WHERE action = 'portal.opened'").get()).toEqual({
+      actor_user_id: 'register',
+      actor_register_id: k.registerId,
+    });
+  });
+
+  it('un comercio suspendido no deja entrar a la caja', async () => {
+    const k = await alta();
+    const session = await sessionOf(k);
+    systemDb
+      .prepare("INSERT INTO tenant_suspensions (id, tenant_id, from_at, reason, created_by) VALUES ('susp_1', ?, ?, 'deuda', 'u')")
+      .run(k.tenantId, new Date(clock.getTime() - 60_000).toISOString());
+    expect((await products(k, session)).status).toBe(403);
   });
 });
