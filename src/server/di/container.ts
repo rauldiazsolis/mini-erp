@@ -33,6 +33,7 @@ import { PlatformQueryService } from '../platform/platform-query-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
 import { ImpersonationService } from '../impersonation/impersonation-service.ts';
 import { HelpRequestService } from '../help/help-request-service.ts';
+import { FunnelService } from '../funnel/funnel-service.ts';
 
 // --- DEFINICIONES DE BASE DE DATOS ---
 
@@ -96,9 +97,19 @@ export const billingServiceDef = fn.singleton((c) => new BillingService({ db: c.
 
 export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), c.use(clockDef)));
 
+// El embudo (#25): eventos, totales del landing y contactos
+export const funnelServiceDef = fn.singleton((c) => new FunnelService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
+
 // El portal y el acceso anónimo (#24, M10): demos y cajas reales; audita las aperturas de las cajas
 export const portalServiceDef = fn.singleton(
-  (c) => new PortalService({ systemDb: c.use(systemDbDef), now: c.use(clockDef), demos: c.use(demoSessionServiceDef), audit: c.use(auditLogDef) }),
+  (c) =>
+    new PortalService({
+      systemDb: c.use(systemDbDef),
+      now: c.use(clockDef),
+      demos: c.use(demoSessionServiceDef),
+      audit: c.use(auditLogDef),
+      funnel: c.use(funnelServiceDef),
+    }),
 );
 export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef), { now: c.use(clockDef), audit: c.use(auditLogDef) }));
 export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemDbDef), c.use(auditLogDef)));
@@ -142,6 +153,7 @@ export const altaServiceDef = fn.singleton(
       apiKeys: c.use(apiKeyServiceDef),
       audit: c.use(auditLogDef),
       billing: c.use(billingServiceDef),
+      funnel: c.use(funnelServiceDef),
     }),
 );
 

@@ -58,12 +58,14 @@ import {
   platformQueryServiceDef,
   impersonationServiceDef,
   helpRequestServiceDef,
+  funnelServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
 import type { AuditLog } from './audit/audit-log.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
 import type { DemoResetService } from './demo/demo-reset-service.ts';
+import type { FunnelService } from './funnel/funnel-service.ts';
 import { APP_VERSION } from './app-version.ts';
 
 export type AppDependencies = {
@@ -85,6 +87,7 @@ export function createApp(deps?: AppDependencies): {
   demoResets: DemoResetService;
   auditLog: AuditLog;
   billing: BillingService;
+  funnel: FunnelService;
   rootContainer: Container;
 } {
   const app = express();
@@ -112,6 +115,7 @@ export function createApp(deps?: AppDependencies): {
   const billing = rootContainer.use(billingServiceDef);
   const staffInvitations = rootContainer.use(staffInvitationServiceDef);
   const helpRequests = rootContainer.use(helpRequestServiceDef);
+  const funnel = rootContainer.use(funnelServiceDef);
 
   // Límite de pedidos por IP (#3): demos, y login y registro con un contador compartido
   const now = rootContainer.use(clockDef);
@@ -162,7 +166,7 @@ export function createApp(deps?: AppDependencies): {
     createCustomerRoutes(),
     createDiscrepancyRoutes(),
     createBulkRoutes(),
-    createIoRoutes(tenantManager),
+    createIoRoutes(tenantManager, funnel),
     createDashboardRoutes(),
     createSalesRoutes(),
     createRegisterRoutes(registers, auditLog),
@@ -192,7 +196,7 @@ export function createApp(deps?: AppDependencies): {
   app.use('/api/platform', requireAdmin, createPlatformDemoRoutes({ resets: demoResets, audit: auditLog }));
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal }));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal, funnel }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -211,6 +215,7 @@ export function createApp(deps?: AppDependencies): {
     demoResets,
     auditLog,
     billing,
+    funnel,
     rootContainer,
   };
 }

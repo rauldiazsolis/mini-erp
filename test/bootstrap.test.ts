@@ -17,6 +17,7 @@ function boot(env: NodeJS.ProcessEnv) {
     const result = bootstrap({ env, bundle });
     clearInterval(result.sweeper);
     clearInterval(result.billingSweeper);
+    clearInterval(result.funnelSweeper);
     return result;
   };
   return { result: run(), run, systemDb, tenantManager, bundle };

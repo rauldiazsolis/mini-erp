@@ -4,6 +4,7 @@ import type { ApiKeyService } from '../tenant/api-key-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { BillingService } from '../billing/billing-service.ts';
 import type { BusinessType } from '../../shared/business-type.ts';
+import type { FunnelService } from '../funnel/funnel-service.ts';
 import { DomainError } from '../errors.ts';
 import { slugify } from './slug.ts';
 
@@ -28,13 +29,22 @@ export class AltaService {
   private apiKeys: ApiKeyService;
   private audit: AuditLog;
   private billing: BillingService;
+  private funnel: FunnelService;
 
-  constructor(deps: { auth: AuthService; tenants: TenantManager; apiKeys: ApiKeyService; audit: AuditLog; billing: BillingService }) {
+  constructor(deps: {
+    auth: AuthService;
+    tenants: TenantManager;
+    apiKeys: ApiKeyService;
+    audit: AuditLog;
+    billing: BillingService;
+    funnel: FunnelService;
+  }) {
     this.auth = deps.auth;
     this.tenants = deps.tenants;
     this.apiKeys = deps.apiKeys;
     this.audit = deps.audit;
     this.billing = deps.billing;
+    this.funnel = deps.funnel;
   }
 
   create(params: {
@@ -42,6 +52,7 @@ export class AltaService {
     account?: { name: string; email: string; password: string; whatsapp: string } | undefined;
     businessName: string;
     businessType: BusinessType;
+    demoSessionId?: string | undefined;
   }): AltaResult {
     let user = params.user;
     let token: string | undefined;
@@ -71,6 +82,14 @@ export class AltaService {
         businessType: params.businessType,
       });
       createdTenantId = tenant.id;
+      // El comercio queda ligado a la demo de la que salió (#25); si no se puede, el alta sigue
+      if (params.demoSessionId !== undefined) {
+        try {
+          this.funnel.linkTenant(tenant.id, params.demoSessionId);
+        } catch (err: unknown) {
+          console.error('[embudo] no se pudo ligar el comercio a su demo:', err);
+        }
+      }
       const key = this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
       // El bono de alta (#21): créditos regalados del comercio, con vencimiento
       this.billing.grantSignupBonus(tenant.id, user.id);

@@ -8,6 +8,7 @@ import { DomainError, sendError } from '../errors.ts';
 import { isImportFieldName, type ImportMapping } from '../../shared/import-fields.ts';
 import { hasExampleCatalog } from '../../shared/business-type.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
+import type { FunnelService } from '../funnel/funnel-service.ts';
 
 const importBodySchema = z.object({
   csv: z.string({ error: (iss) => (iss.input === undefined ? 'Falta el contenido del archivo' : undefined) }),
@@ -35,7 +36,17 @@ function getImportExportService(req: AuthenticatedAdminRequest): ImportExportSer
   throw new Error('Tenant DB o Scope no inicializado en la petición');
 }
 
-export function createIoRoutes(tenants: TenantManager): Router {
+/** La carga del embudo (#25): la primera vez que un comercio real carga algo, nunca en un comercio demo. */
+function recordLoad(funnel: FunnelService, tenantId: string | undefined, source: string): void {
+  if (tenantId === undefined) return;
+  try {
+    if (!funnel.isDemoTenant(tenantId)) funnel.record('catalog-loaded', { tenantId, data: { source } });
+  } catch (err: unknown) {
+    console.error('[embudo] no se pudo registrar la carga:', err);
+  }
+}
+
+export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): Router {
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
@@ -92,7 +103,9 @@ export function createIoRoutes(tenants: TenantManager): Router {
       const service = req.tenantScope?.use(importServiceDef);
       if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
-      res.status(200).json(service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) }));
+      const result = service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
+      if (!dryRun && result.totals.create + result.totals.update > 0) recordLoad(funnel, req.activeTenantId, `import-${entity}`);
+      res.status(200).json(result);
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -118,6 +131,7 @@ export function createIoRoutes(tenants: TenantManager): Router {
       }
       // Idempotente: el preset saltea los SKU que ya existen
       const { productsCreated } = getImportExportService(req).applyBusinessPreset(businessType);
+      if (productsCreated > 0) recordLoad(funnel, req.activeTenantId, 'example');
       res.status(200).json({ productsCreated });
     } catch (err: unknown) {
       sendError(res, err, 500);
