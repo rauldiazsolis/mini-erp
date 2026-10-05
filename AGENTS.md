@@ -349,6 +349,13 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `index.html` y `ThemeToggle.tsx` en `Header.tsx`, `AuthView.tsx`, `MerchantOnboardingView.tsx`
     y la solapa Apariencia de configuración (`AppearanceSection.tsx`).
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
+  - **Modales y drawers en la top layer** (#56, spec `docs/superpowers/specs/2026-10-04-modales-top-layer-design.md`):
+    todo overlay va por `Modal` o `Drawer`, que se abren con `<dialog>` y `showModal()`
+    (`ui/DialogShell.tsx`, de clase, sin hooks). Ningún contenedor los recorta (un `Card` con
+    `backdrop-blur`), el resto queda inerte, Escape y el fondo piden `onClose` y el foco vuelve solo;
+    con un diálogo abierto el body no scrollea (`index.css`). Los toasts los dibuja el diálogo de más
+    arriba (`state/dialog-stack.ts`): afuera quedarían inertes. `test/overlay-guard.test.ts` falla si
+    aparece otro `fixed inset-0` o `<dialog`.
   - **Fechas, horas y números según la configuración del navegador** (su locale y su preferencia de
     12 o 24 horas), nunca con un locale fijo. La moneda es siempre ARS; solo cambia cómo se escribe.
     Todo pasa por `src/client/format.ts` (#51): montos con centavos (`formatMoney`) o en pesos
@@ -412,8 +419,10 @@ las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hech
 (#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
 hecha) y M6 importación (#22, hecha).
 Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0
-(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, sin el portal) y después
-#51 → #59 → #56 → #6.
+(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, hecha sin el portal: la capacidad
+`portal` queda para M10, #26, y por eso el issue sigue abierto), formato según el navegador (#51,
+hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
+top layer (#56, hecha) y después #6.
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
