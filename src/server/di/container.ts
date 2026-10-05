@@ -16,6 +16,7 @@ import { DashboardService } from '../dashboard/dashboard-service.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
 import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
 import { DemoSessionService } from '../demo/demo-session-service.ts';
+import { DemoResetService } from '../demo/demo-reset-service.ts';
 import { AuditLog } from '../audit/audit-log.ts';
 import { MembershipService } from '../users/membership-service.ts';
 import { AltaService } from '../alta/alta-service.ts';
@@ -68,6 +69,16 @@ export const demoSessionServiceDef = fn.singleton(
       tenantManager: c.use(tenantManagerDef),
       apiKeyService: c.use(apiKeyServiceDef),
       config: c.use(demoConfigDef),
+      now: c.use(clockDef),
+    }),
+);
+
+export const demoResetServiceDef = fn.singleton(
+  (c) =>
+    new DemoResetService({
+      systemDb: c.use(systemDbDef),
+      tenantManager: c.use(tenantManagerDef),
+      sessions: c.use(demoSessionServiceDef),
       now: c.use(clockDef),
     }),
 );

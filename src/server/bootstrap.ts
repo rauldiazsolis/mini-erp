@@ -5,7 +5,7 @@ import { startBillingSweeper } from './billing/reconcile.ts';
 
 export type { DevInfo };
 
-type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'billing'>;
+type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'demoResets' | 'billing'>;
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 

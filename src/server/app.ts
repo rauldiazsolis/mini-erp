@@ -40,6 +40,7 @@ import {
   authServiceDef,
   apiKeyServiceDef,
   demoSessionServiceDef,
+  demoResetServiceDef,
   clockDef,
   membershipServiceDef,
   altaServiceDef,
@@ -58,6 +59,7 @@ import {
 import type { BillingService } from './billing/billing-service.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
+import type { DemoResetService } from './demo/demo-reset-service.ts';
 import { APP_VERSION } from './app-version.ts';
 
 export type AppDependencies = {
@@ -76,6 +78,7 @@ export function createApp(deps?: AppDependencies): {
   authService: AuthService;
   apiKeyService: ApiKeyService;
   demoSessions: DemoSessionService;
+  demoResets: DemoResetService;
   billing: BillingService;
   rootContainer: Container;
 } {
@@ -95,6 +98,7 @@ export function createApp(deps?: AppDependencies): {
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
   const demoSessions = rootContainer.use(demoSessionServiceDef);
+  const demoResets = rootContainer.use(demoResetServiceDef);
   const membershipService = rootContainer.use(membershipServiceDef);
   const invitationService = rootContainer.use(invitationServiceDef);
   const auditLog = rootContainer.use(auditLogDef);
@@ -191,6 +195,7 @@ export function createApp(deps?: AppDependencies): {
     authService,
     apiKeyService,
     demoSessions,
+    demoResets,
     billing,
     rootContainer,
   };
