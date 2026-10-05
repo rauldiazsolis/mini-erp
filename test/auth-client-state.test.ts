@@ -84,7 +84,7 @@ describe('Capa de Estado Reactivo, Cliente API y Auth (Etapa 3.3)', () => {
       tokenSignal.value = 'token-root';
       userTenantsSignal.value = [
         { tenantId: 'tenant-a', slug: 't-a', name: 'Tenant A', status: 'active', role: 'owner' },
-        { tenantId: 'tenant-b', slug: 't-b', name: 'Tenant B', status: 'active', role: 'root_impersonator' },
+        { tenantId: 'tenant-b', slug: 't-b', name: 'Tenant B', status: 'active', role: 'owner' },
       ];
       atTenant('tenant-a');
 

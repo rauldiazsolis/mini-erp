@@ -72,8 +72,8 @@ describe('suspender comercios (#23)', () => {
     expect((await request(app).get(`/api/tenants/${tenantId}/credits`).set(as('owner'))).status).toBe(200);
     expect((await request(app).get(`/api/tenants/${tenantId}/billing-status`).set(as('owner'))).status).toBe(200);
     expect((await request(app).get(`/api/tenants/${tenantId}/export/products`).set(as('owner'))).status).toBe(200);
-    // Root y soporte siguen mirando (hasta M7b, como owners implícitos)
-    expect((await request(app).get(`/api/tenants/${tenantId}/products`).set(as('support'))).status).toBe(200);
+    // Sin membresía, soporte no entra (#16); impersonando al owner, sí (impersonation-rules.test.ts)
+    expect((await request(app).get(`/api/tenants/${tenantId}/products`).set(as('support'))).status).toBe(403);
     expect(audit('tenant.suspended')).toEqual([{ tenant_id: tenantId, details: JSON.stringify({ reason: 'Pedido del dueño' }) }]);
   });
 

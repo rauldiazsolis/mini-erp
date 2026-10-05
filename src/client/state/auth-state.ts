@@ -3,7 +3,7 @@ import { ApiError, apiFetch, setOnUnauthorized } from '../api/client.ts';
 import { queryClient } from '../api/query-client.ts';
 import { adminUrl } from '../routing/admin-routes.ts';
 import { currentTenantSlugSignal, navigate, routeSignal, switchTenantUrl } from './route-state.ts';
-import type { MembershipRole } from '../../shared/permissions.ts';
+import type { TenantRole } from '../../shared/permissions.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
 
@@ -19,7 +19,7 @@ export type TenantMembershipItem = {
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: MembershipRole;
+  role: TenantRole;
 };
 
 const TOKEN_KEY = 'mini_erp_token';

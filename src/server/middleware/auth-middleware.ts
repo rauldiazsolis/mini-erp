@@ -61,7 +61,7 @@ export function createAdminAuthMiddleware(
     const tenantHeader = req.headers['x-tenant-id'];
     if (typeof tenantHeader === 'string' && tenantHeader.trim() !== '') {
       const requestedTenantId = tenantHeader.trim();
-      const accessibleTenants = authService.listUserTenants(user.id, user.globalRole);
+      const accessibleTenants = authService.listUserTenants(user.id);
       const isAllowed = accessibleTenants.some((t) => t.tenantId === requestedTenantId);
 
       if (!isAllowed) {

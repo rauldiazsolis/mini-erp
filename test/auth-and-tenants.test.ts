@@ -99,30 +99,23 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     expect(listAfterBody.find((k) => k.id === keyBody.id)?.active).toBe(false);
   });
 
-  it('el usuario root puede ver y acceder a todos los tenants (impersonación)', async () => {
-    // 1. Root por ensureRoot (#3: el registro ya no da root) y login
+  it('root y soporte no ven comercios ajenos como propios ni entran sin impersonar (#16)', async () => {
+    // Root por ensureRoot (#3: el registro ya no da root) y login
     authService.ensureRoot({ email: 'root@sistema.com', password: 'password-root-123', name: 'Root' });
-    const rootRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'root@sistema.com', password: 'password-root-123' });
-    const rootBody = rootRes.body as unknown as { token: string };
-    const rootToken = rootBody.token;
+    const rootRes = await request(app).post('/api/auth/login').send({ email: 'root@sistema.com', password: 'password-root-123' });
+    const rootToken = (rootRes.body as { token: string }).token;
 
-    // 2. Un comerciante se da de alta con su comercio
+    // Un comerciante se da de alta con su comercio
     await request(app)
       .post('/api/alta')
       .send({ email: 'comerciante@local.com', password: 'password123', name: 'Comerciante', businessName: 'Zapatería Real', businessType: 'otro', whatsapp: '1155550000' });
 
-    // 3. Root consulta tenants disponibles
-    const rootTenantsRes = await request(app)
-      .get('/api/tenants')
-      .set('Authorization', `Bearer ${rootToken}`);
-
-    expect(rootTenantsRes.status).toBe(200);
-    const rootTenantsBody = rootTenantsRes.body as unknown as Array<{ tenantId: string; role: string }>;
-    expect(rootTenantsBody.length).toBe(1);
-    expect(rootTenantsBody[0]?.tenantId).toBe('zapateria-real');
-    expect(rootTenantsBody[0]?.role).toBe('root_impersonator');
+    const tenants = await request(app).get('/api/tenants').set('Authorization', `Bearer ${rootToken}`);
+    expect(tenants.status).toBe(200);
+    expect(tenants.body).toEqual([]);
+    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${rootToken}`);
+    expect((me.body as { tenants: unknown[] }).tenants).toEqual([]);
+    expect((await request(app).get('/api/tenants/zapateria-real/products').set('Authorization', `Bearer ${rootToken}`)).status).toBe(403);
   });
   it('changePassword cierra las otras sesiones y deja la actual (#19)', () => {
     const a = authService.createUser({ email: 'pepa@kiosco.com', password: 'clave-vieja', name: 'Pepa' });
@@ -139,6 +132,6 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     const a = authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
     tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
     systemDb.prepare("UPDATE memberships SET status = 'disabled' WHERE user_id = ?").run(a.user.id);
-    expect(authService.listUserTenants(a.user.id, 'user')).toEqual([]);
+    expect(authService.listUserTenants(a.user.id)).toEqual([]);
   });
 });

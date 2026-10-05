@@ -68,7 +68,7 @@ export function createAuthRoutes(
       return;
     }
 
-    const tenants = authService.listUserTenants(req.user.id, req.user.globalRole);
+    const tenants = authService.listUserTenants(req.user.id);
     res.status(200).json({
       user: req.user,
       impersonator: req.impersonator ?? null,

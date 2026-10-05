@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { impersonate } from './helpers/impersonate.ts';
 import request from 'supertest';
 import type { Express } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
@@ -14,6 +15,7 @@ describe('restricción del admin por deuda (#21)', () => {
   let tenantManager: TenantManager;
   let billing: BillingService;
   let tokens: { owner: string; member: string; root: string };
+  let ownerId: string;
   let apiKey: string;
   const tenantId = 'kiosco';
 
@@ -27,6 +29,7 @@ describe('restricción del admin por deuda (#21)', () => {
     const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    ownerId = owner.user.id;
     new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, member: member.token, root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token };
     const key = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(as('owner')).send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
@@ -55,8 +58,10 @@ describe('restricción del admin por deuda (#21)', () => {
     expect((await get('/billing-status', 'member')).body).toEqual({ state: 'restricted', debt: 1000, deadline: '2026-10-15' });
   });
 
-  it('root impersonando no se restringe', async () => {
-    expect((await get('/products', 'root')).status).toBe(200);
+  it('quien impersona al owner no se restringe; root sin membresía no entra (#16)', async () => {
+    const imp = await impersonate(app, tokens.root, ownerId);
+    expect((await request(app).get(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${imp}`)).status).toBe(200);
+    expect((await get('/products', 'root')).status).toBe(403);
   });
 
   it('el POS sigue vendiendo y sincronizando', async () => {

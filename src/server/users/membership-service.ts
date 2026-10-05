@@ -29,15 +29,8 @@ export class MembershipService {
     this.audit = audit;
   }
 
-  /** El rol con el que el usuario opera el comercio; root y support, owner hasta M7. */
+  /** El rol con el que el usuario opera el comercio: su membresía activa. Root y soporte no son miembros (#16). */
   resolveRole(user: UserSession, tenantId: string): TenantRole | undefined {
-    if (user.globalRole === 'root' || user.globalRole === 'support') {
-      // Las demos (#9) no se impersonan desde el admin
-      const tenant = this.db
-        .prepare('SELECT id FROM tenants WHERE id = ? AND id NOT IN (SELECT tenant_id FROM demo_sessions)')
-        .get(tenantId);
-      return tenant === undefined ? undefined : 'owner';
-    }
     const membership = this.getMembership(tenantId, user.id);
     return membership?.status === 'active' ? membership.role : undefined;
   }

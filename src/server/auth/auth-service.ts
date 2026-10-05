@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword, generateSessionToken } from './crypto.ts';
 import { DomainError } from '../errors.ts';
-import type { MembershipRole } from '../../shared/permissions.ts';
+import type { TenantRole } from '../../shared/permissions.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 
 export type UserRole = 'root' | 'support' | 'user';
@@ -50,7 +50,7 @@ export type TenantMembershipInfo = {
   slug: string;
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
-  role: MembershipRole;
+  role: TenantRole;
 };
 
 export class AuthService {
@@ -330,29 +330,8 @@ export class AuthService {
     this.revokeSessions(params.userId, params.currentToken);
   }
 
-  listUserTenants(userId: string, globalRole: UserRole): TenantMembershipInfo[] {
-    if (globalRole === 'root' || globalRole === 'support') {
-      // Impersonación: root y support tienen acceso a todos los tenants
-      const rows = this.systemDb
-        .prepare(
-          // Las demos (#9) no se listan: en la web serían cientos
-          `SELECT id, slug, name, status FROM tenants
-           WHERE id NOT IN (SELECT tenant_id FROM demo_sessions)
-           ORDER BY created_at DESC`,
-        )
-        .all() as { id: string; slug: string; name: string; status: string }[];
-
-      const role = globalRole === 'root' ? 'root_impersonator' : 'support_impersonator';
-
-      return rows.map((r) => ({
-        tenantId: r.id,
-        slug: r.slug,
-        name: r.name,
-        status: r.status as TenantMembershipInfo['status'],
-        role,
-      }));
-    }
-
+  /** "Tus comercios": las membresías activas. Root y soporte no son miembros implícitos (#16). */
+  listUserTenants(userId: string): TenantMembershipInfo[] {
     const rows = this.systemDb
       .prepare(
         `SELECT t.id, t.slug, t.name, t.status, m.role 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, assignableRoles, effectiveTenantRole, type Capability, type TenantRole } from '../src/shared/permissions.ts';
+import { can, assignableRoles, type Capability, type TenantRole } from '../src/shared/permissions.ts';
 import { passwordSchema, PASSWORD_MIN_LENGTH } from '../src/shared/password.ts';
 
 describe('matriz de capacidades (#19)', () => {
@@ -24,12 +24,6 @@ describe('matriz de capacidades (#19)', () => {
     expect(assignableRoles('owner')).toEqual(['owner', 'admin', 'member']);
     expect(assignableRoles('admin')).toEqual(['admin', 'member']);
     expect(assignableRoles('member')).toEqual([]);
-  });
-
-  it('root y support impersonando cuentan como owner hasta M7', () => {
-    expect(effectiveTenantRole('root_impersonator')).toBe('owner');
-    expect(effectiveTenantRole('support_impersonator')).toBe('owner');
-    expect(effectiveTenantRole('member')).toBe('member');
   });
 
   it('la contraseña pide 8 caracteres', () => {

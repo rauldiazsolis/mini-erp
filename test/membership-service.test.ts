@@ -19,12 +19,12 @@ describe('MembershipService y AuditLog (#19)', () => {
     members = new MembershipService(systemDb);
   });
 
-  it('resuelve el rol: membresía activa, nada si está desactivada, owner para root', () => {
+  it('resuelve el rol: membresía activa, nada si está desactivada ni para root sin membresía (#16)', () => {
     const ana = auth.createUser({ email: 'ana@x.com', password: 'password123', name: 'Ana' }).user;
     const root = auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' }).user;
     tm.createTenant({ id: 'kiosco-a', slug: 'kiosco-a', name: 'A', ownerUserId: ana.id });
     expect(members.resolveRole(ana, 'kiosco-a')).toBe('owner');
-    expect(members.resolveRole(root, 'kiosco-a')).toBe('owner');
+    expect(members.resolveRole(root, 'kiosco-a')).toBeUndefined();
     expect(members.resolveRole(root, 'no-existe')).toBeUndefined();
     systemDb.prepare("UPDATE memberships SET status = 'disabled'").run();
     expect(members.resolveRole(ana, 'kiosco-a')).toBeUndefined();

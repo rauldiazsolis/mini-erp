@@ -105,7 +105,7 @@ describe('TenantManager y demos (#9)', () => {
     manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
     markAsDemo(sys, 'demo-d');
 
-    const ids = auth.listUserTenants(user.id, 'root').map((t) => t.tenantId);
+    const ids = auth.listUserTenants(user.id).map((t) => t.tenantId);
     expect(ids).toEqual(['tienda']);
   });
 });
