@@ -1,6 +1,7 @@
 import type { Schema } from './types.ts';
 import { v5CreditosYCobro } from './system/v5-creditos-y-cobro.ts';
 import { v6AltaWhatsappRubro } from './system/v6-alta-whatsapp-rubro.ts';
+import { v7Plataforma } from './system/v7-plataforma.ts';
 
 /** Base de sistema (#47): línea de base 4 (la de M2). Desde acá, todo cambio es una migración. */
 export const SYSTEM_SCHEMA: Schema = {
@@ -106,5 +107,5 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_log (tenant_id, at);
 `,
-  migrations: [v5CreditosYCobro, v6AltaWhatsappRubro],
+  migrations: [v5CreditosYCobro, v6AltaWhatsappRubro, v7Plataforma],
 };
