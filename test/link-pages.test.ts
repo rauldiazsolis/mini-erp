@@ -8,10 +8,14 @@ import {
   linkErrorSignal,
   loadInvitation,
   loadReset,
+  linkKindSignal,
+  readLinkKind,
+  staffInfoSignal,
   submitInvitation,
   submitReset,
 } from '../src/client/state/link-pages-state.ts';
 import { tokenSignal, lastTenantIdSignal, logout } from '../src/client/state/auth-state.ts';
+import { locationSignal } from '../src/client/state/route-state.ts';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -31,6 +35,29 @@ describe('páginas de links (#19)', () => {
     resetInfoSignal.value = null;
     linkTokenSignal.value = null;
     linkFormSignal.value = { name: '', password: '', confirm: '' };
+  });
+
+  it('una invitación de soporte consulta y acepta en /api/staff-invitations y entra a /plataforma (#23)', async () => {
+    expect(readLinkKind('#t=tk&tipo=soporte')).toBe('staff');
+    expect(readLinkKind('#t=tk')).toBe('tenant');
+    linkKindSignal.value = 'staff';
+    linkTokenSignal.value = 'tk';
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(json({ email: 'ana@x.com', invitedByName: 'Root', accountExists: false, expiresAt: '' }))
+      .mockResolvedValueOnce(json({ token: 'sesion', user: { id: 's' } }))
+      .mockResolvedValueOnce(json({ user: { id: 's', email: 'ana@x.com', name: 'Ana', globalRole: 'support' }, tenants: [] }));
+    await loadInvitation();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/staff-invitations/lookup');
+    expect(staffInfoSignal.value?.email).toBe('ana@x.com');
+    linkFormSignal.value = { name: 'Ana', password: 'clave-ana-12', confirm: 'clave-ana-12' };
+    await submitInvitation();
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/staff-invitations/accept');
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ token: 'tk', password: 'clave-ana-12', name: 'Ana' }));
+    expect(tokenSignal.value).toBe('sesion');
+    expect(locationSignal.value.pathname).toBe('/plataforma');
+    linkKindSignal.value = 'tenant';
+    staffInfoSignal.value = null;
   });
 
   it('lee el token del fragmento', () => {

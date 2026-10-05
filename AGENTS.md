@@ -282,10 +282,31 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `billing_settings` (precio por caja y día, bono, proporción, gracia, umbral de saldo bajo, cómo
     pagar). Rutas del comercio en `routes/credits-routes.ts` (`credits.view`: owner y admin) y de
     plataforma en `routes/platform-routes.ts` (`requirePlatformRole`; devoluciones y configuración,
-    solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`).
+    solo root), con planilla de cobranzas CSV idempotente (`billing/payment-sheet.ts`). Las acciones
+    de plataforma sobre un comercio (pago, bono, gracia, titular, devolución) están en su detalle de
+    `/plataforma` (#23), no en Uso y pagos.
   - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
   - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55) y los
     créditos regalados se muestran como **bonos** (solapa `/uso-y-pagos/bonos`).
+- **Plataforma** (#23, M7a; spec `docs/superpowers/specs/2026-10-04-m7-plataforma-design.md`):
+  - **Panel en `/plataforma`**, para root y soporte: Comercios (por omisión; el detalle en
+    `/plataforma/comercios/<slug>` con créditos, acciones de cobro, bonos, miembros y suspender),
+    Usuarios, Cobranzas, Soporte (solo root), Registro y Configuración (solo root). Filtros en la URL
+    (`?q=`, `?comercio=`) con `setPlatformFilters`; estado en `state/platform-panel-state.ts`.
+  - Servidor: servicios de sistema en `src/server/platform/` (suspensiones, estado de cuentas,
+    invitaciones de soporte, consultas del panel) y rutas en `routes/platform-admin-routes.ts`, junto
+    a las de cobro en `/api/platform`. `requirePlatformRole` marca sus roles y
+    `test/platform-permissions.test.ts` tiene la tabla de todas las rutas: una ruta nueva va ahí.
+  - **Suspender un comercio** (con motivo, `tenant_suspensions`): sus usuarios reciben
+    `403 tenant-suspended` en todo menos Uso y pagos, `billing-status` y exportar
+    (`middleware/tenant-path.ts`, lo mismo que la restricción por deuda) y el admin muestra "Este
+    comercio está suspendido" sin pedir lo demás (`state/suspension-state.ts`). El POS sigue
+    sincronizando y los días suspendidos (día argentino) no se cobran.
+  - **Cuentas desactivadas** (`users.status`): no entran y se cierran sus sesiones. Nadie toca a root
+    ni a sí mismo; a soporte, solo root. Root y soporte generan links de restablecimiento sin comercio.
+  - **Soporte por invitación** (`staff_invitations`, solo root): link `/invitacion#t=…&tipo=soporte`,
+    un solo uso, 48 h; crea la cuenta de soporte o promueve una sin comercios (con comercios, 409).
+  - Migración de sistema v7. `audit_log.impersonator_user_id` queda para la impersonación de M7b.
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
@@ -428,7 +449,9 @@ Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisi
 `portal` queda para M10, #26, y por eso el issue sigue abierto), formato según el navegador (#51,
 hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
 top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
-Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
+Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 va en dos PR: M7a (panel de
+plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) y M7b (impersonación de
+usuario por pestaña, root y soporte sin membresía implícita y pedidos de ayuda; sigue #23). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
 En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).

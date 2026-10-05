@@ -1,14 +1,7 @@
 import type { NextFunction, Response } from 'express';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 import type { BillingService } from '../billing/billing-service.ts';
-
-/** Lo que sigue abierto con el comercio restringido (#21): Créditos, el estado de cobro y exportar. */
-const OPEN = /^\/(credits(\/.*)?|billing-status|export\/[^/]+)\/?$/;
-
-/** El camino dentro del comercio: `/products` en `/api/tenants/kiosco/products`. */
-function tenantPath(req: AuthenticatedAdminRequest): string {
-  return req.originalUrl.split('?')[0]?.replace(/^\/api\/tenants\/[^/]+/, '') ?? '';
-}
+import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
 
 /**
  * Pasada la gracia, el admin del comercio queda restringido (#21): `402 billing-restricted` en todo
@@ -18,7 +11,7 @@ function tenantPath(req: AuthenticatedAdminRequest): string {
 export function createBillingRestriction(billing: BillingService) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
     const role = req.user?.globalRole;
-    if (role === 'root' || role === 'support' || OPEN.test(tenantPath(req))) {
+    if (role === 'root' || role === 'support' || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       next();
       return;
     }

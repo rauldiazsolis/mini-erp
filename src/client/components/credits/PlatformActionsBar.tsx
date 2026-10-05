@@ -6,10 +6,7 @@ import {
   extendGrace,
   registerRefund,
   changeHolder,
-  fetchOwners,
-  ownersSignal,
 } from '../../state/platform-state.ts';
-import { creditsSignal } from '../../state/credits-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
 import { argentinaToday, shiftDay } from '../../../shared/argentina-day.ts';
 import { formatMoney } from '../../format.ts';
@@ -19,6 +16,7 @@ import { Input } from '../ui/Input.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import type { GiftItem } from '../../../shared/credits-types.ts';
+import type { PlatformMemberItem } from '../../../shared/platform-types.ts';
 
 type ActionKind = 'payment' | 'grant' | 'grace' | 'refund' | 'holder' | 'void';
 
@@ -37,17 +35,20 @@ const openActionSignal = signal<ActionKind | null>(null);
 const draftSignal = signal<Draft>(emptyDraft());
 const actionErrorSignal = signal<string | null>(null);
 const actionBusySignal = signal<boolean>(false);
+/** El comercio sobre el que se abre una acción, con sus owners activos (para el titular) y su saldo pagado. */
+type Target = { tenantId: string; owners: PlatformMemberItem[]; paidBalance: number };
+const targetSignal = signal<Target | null>(null);
 
 function emptyDraft(): Draft {
   const today = argentinaToday(new Date());
   return { day: today, amount: '', info: '', expiresOn: shiftDay(today, 90), reason: '', until: '', userId: '', creditId: '' };
 }
 
-function openAction(kind: ActionKind, patch: Partial<Draft> = {}): void {
+function openAction(target: Target, kind: ActionKind, patch: Partial<Draft> = {}): void {
+  targetSignal.value = target;
   draftSignal.value = { ...emptyDraft(), ...patch };
   actionErrorSignal.value = null;
   openActionSignal.value = kind;
-  if (kind === 'holder') void fetchOwners();
 }
 
 function closeAction(): void {
@@ -72,7 +73,8 @@ function optional(text: string): string | undefined {
 async function submit(): Promise<void> {
   const kind = openActionSignal.value;
   const d = draftSignal.value;
-  if (kind === null) return;
+  const target = targetSignal.value;
+  if (kind === null || target === null) return;
   const needsAmount = kind === 'payment' || kind === 'grant' || kind === 'refund';
   const amount = parseAmount(d.amount);
   if (needsAmount && amount === null) {
@@ -93,26 +95,26 @@ async function submit(): Promise<void> {
   }
   actionErrorSignal.value = null;
   actionBusySignal.value = true;
-  const ok = await run(kind, d, amount ?? 0).finally(() => {
+  const ok = await run(target.tenantId, kind, d, amount ?? 0).finally(() => {
     actionBusySignal.value = false;
   });
   if (ok) closeAction();
 }
 
-function run(kind: ActionKind, d: Draft, amount: number): Promise<boolean> {
+function run(tenantId: string, kind: ActionKind, d: Draft, amount: number): Promise<boolean> {
   switch (kind) {
     case 'payment':
-      return registerPayment({ day: d.day, amount, info: optional(d.info) });
+      return registerPayment(tenantId, { day: d.day, amount, info: optional(d.info) });
     case 'grant':
-      return grantCredits({ amount, expiresOn: d.expiresOn, reason: optional(d.reason) });
+      return grantCredits(tenantId, { amount, expiresOn: d.expiresOn, reason: optional(d.reason) });
     case 'grace':
-      return extendGrace(d.until);
+      return extendGrace(tenantId, d.until);
     case 'refund':
-      return registerRefund({ amount, info: optional(d.info) });
+      return registerRefund(tenantId, { amount, info: optional(d.info) });
     case 'holder':
-      return changeHolder(d.userId);
+      return changeHolder(tenantId, d.userId);
     case 'void':
-      return voidCredit(d.creditId, d.reason.trim());
+      return voidCredit(tenantId, d.creditId, d.reason.trim());
   }
 }
 
@@ -127,7 +129,7 @@ const TITLES: Record<ActionKind, { title: string; subtitle: string; submit: stri
 
 function ActionFields(props: { kind: ActionKind }) {
   const d = draftSignal.value;
-  const paidBalance = creditsSignal.value?.paidBalance ?? 0;
+  const paidBalance = targetSignal.value?.paidBalance ?? 0;
   switch (props.kind) {
     case 'payment':
       return (
@@ -167,7 +169,7 @@ function ActionFields(props: { kind: ActionKind }) {
       return (
         <Select label="Nuevo titular" value={d.userId} onChange={(e) => { setDraft({ userId: e.currentTarget.value }); }}>
           <option value="">Elegí un owner…</option>
-          {ownersSignal.value.map((m) => (
+          {(targetSignal.value?.owners ?? []).map((m) => (
             <option key={m.userId} value={m.userId}>
               {m.name} ({m.email})
             </option>
@@ -216,39 +218,40 @@ function ActionModal() {
   );
 }
 
-/** El botón Anular de un bono vigente, en la solapa Bonos. */
-export function GiftVoidAction(props: { gift: GiftItem }) {
+/** El botón Anular de un bono vigente, en los bonos del detalle del comercio. */
+export function GiftVoidAction(props: { target: Target; gift: GiftItem }) {
   if (props.gift.status !== 'active') return null;
   return (
-    <Button size="sm" variant="outline" onClick={() => { openAction('void', { creditId: props.gift.id }); }}>
+    <Button size="sm" variant="outline" onClick={() => { openAction(props.target, 'void', { creditId: props.gift.id }); }}>
       Anular
     </Button>
   );
 }
 
-/** Acciones de root y soporte sobre el comercio que se impersona (#21), en su pantalla Uso y pagos. */
-export function PlatformActionsBar() {
+/** Acciones de root y soporte sobre un comercio (#21), en su detalle de la plataforma (#23). */
+export function PlatformActionsBar(props: Target) {
   const isRoot = currentUserSignal.value?.globalRole === 'root';
+  const target: Target = { tenantId: props.tenantId, owners: props.owners, paidBalance: props.paidBalance };
   // El modal puede ir adentro del Card: Modal se abre en la top layer (#56)
   return (
     <Card class="space-y-3 border-amber-300 dark:border-amber-500/30">
       <h3 class="text-sm font-bold text-amber-700 dark:text-amber-300">Acciones de plataforma</h3>
       <div class="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => { openAction('payment'); }}>
+        <Button size="sm" onClick={() => { openAction(target, 'payment'); }}>
           Registrar pago
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => { openAction('grant'); }}>
+        <Button size="sm" variant="secondary" onClick={() => { openAction(target, 'grant'); }}>
           Otorgar bono
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => { openAction('grace'); }}>
+        <Button size="sm" variant="secondary" onClick={() => { openAction(target, 'grace'); }}>
           Extender gracia
         </Button>
         {isRoot && (
-          <Button size="sm" variant="secondary" onClick={() => { openAction('refund'); }}>
+          <Button size="sm" variant="secondary" onClick={() => { openAction(target, 'refund'); }}>
             Devolución
           </Button>
         )}
-        <Button size="sm" variant="secondary" onClick={() => { openAction('holder'); }}>
+        <Button size="sm" variant="secondary" onClick={() => { openAction(target, 'holder'); }}>
           Cambiar titular
         </Button>
       </div>

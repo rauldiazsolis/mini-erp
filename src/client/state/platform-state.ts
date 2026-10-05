@@ -1,19 +1,17 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { createSignalQuery, type QuerySource } from '../api/query-client.ts';
-import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
+import { tokenSignal } from './auth-state.ts';
 import { inSection, routeSignal } from './route-state.ts';
 import { platformKey } from './query-keys.ts';
 import { invalidateAfter } from './invalidation.ts';
 import type { PlatformTabId } from '../routing/admin-routes.ts';
 import { showToast } from './toast-state.ts';
-import { refreshCredits } from './credits-state.ts';
-import type { MemberItem } from './users-state.ts';
 import type { BillingSettings, PlatformPaymentItem, SheetResultRow } from '../../shared/credits-types.ts';
 
 /**
- * Plataforma de cobro (#21), para root y soporte: las acciones sobre el comercio que se impersona
- * (en su pantalla Uso y pagos) y lo global (planilla de cobranzas, pagos y configuración).
+ * Plataforma de cobro (#21), para root y soporte: las acciones sobre un comercio (desde su detalle en
+ * `/plataforma/comercios/<slug>`, #23) y lo global (planilla de cobranzas, pagos y configuración).
  */
 
 export type PlatformTab = PlatformTabId;
@@ -21,9 +19,8 @@ export type PlatformTab = PlatformTabId;
 /** La solapa de `/plataforma` (#59). */
 export const platformTabSignal = computed<PlatformTab>(() => {
   const route = routeSignal.value;
-  return route.kind === 'plataforma' ? route.tab : 'payments';
+  return route.kind === 'plataforma' ? route.tab : 'tenants';
 });
-export const ownersSignal = signal<MemberItem[]>([]);
 export const sheetTextSignal = signal<string>('');
 export const sheetRowsSignal = signal<SheetResultRow[] | null>(null);
 export const sheetAppliedSignal = signal<boolean>(false);
@@ -31,11 +28,6 @@ export const sheetBusySignal = signal<boolean>(false);
 
 function token(): string | null {
   return tokenSignal.value;
-}
-
-function tenantBase(): string | null {
-  const tenantId = effectiveTenantIdSignal.value;
-  return tenantId ? `/api/platform/tenants/${tenantId}` : null;
 }
 
 function fail(err: unknown, title: string): false {
@@ -68,20 +60,20 @@ const settingsQuery = createSignalQuery<BillingSettings>({
 export const platformPaymentsSignal = computed<PlatformPaymentItem[]>(() => paymentsQuery.data.value ?? []);
 export const platformSettingsSignal = computed<BillingSettings | null>(() => settingsQuery.data.value ?? null);
 
-/** Una acción sobre el comercio activo: avisa, deja viejo Uso y pagos y devuelve si salió bien. */
+/** Una acción sobre un comercio: avisa, deja viejos el panel y Uso y pagos y devuelve si salió bien. */
 async function tenantAction(
+  tenantId: string,
   path: string,
   method: 'POST' | 'PUT' | 'DELETE',
   body: Record<string, unknown>,
   done: string,
 ): Promise<boolean> {
-  const base = tenantBase();
   const t = token();
-  if (base === null || t === null) return false;
+  if (t === null) return false;
   try {
-    await apiFetch(`${base}${path}`, { method, token: t, body });
+    await apiFetch(`/api/platform/tenants/${encodeURIComponent(tenantId)}${path}`, { method, token: t, body });
     showToast({ type: 'success', title: 'Listo', message: done });
-    await refreshCredits();
+    await invalidateAfter('platform-changed');
     return true;
   } catch (err: unknown) {
     return fail(err, 'No se pudo completar');
@@ -93,41 +85,28 @@ function compact(input: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined && v !== ''));
 }
 
-export function registerPayment(input: { day: string; amount: number; info?: string | undefined }): Promise<boolean> {
-  return tenantAction('/payments', 'POST', compact(input), 'Pago registrado');
+export function registerPayment(tenantId: string, input: { day: string; amount: number; info?: string | undefined }): Promise<boolean> {
+  return tenantAction(tenantId, '/payments', 'POST', compact(input), 'Pago registrado');
 }
 
-export function grantCredits(input: { amount: number; expiresOn: string; reason?: string | undefined }): Promise<boolean> {
-  return tenantAction('/gift-credits', 'POST', compact(input), 'Bono otorgado');
+export function grantCredits(tenantId: string, input: { amount: number; expiresOn: string; reason?: string | undefined }): Promise<boolean> {
+  return tenantAction(tenantId, '/gift-credits', 'POST', compact(input), 'Bono otorgado');
 }
 
-export function voidCredit(creditId: string, reason: string): Promise<boolean> {
-  return tenantAction(`/gift-credits/${creditId}`, 'DELETE', { reason }, 'Bono anulado');
+export function voidCredit(tenantId: string, creditId: string, reason: string): Promise<boolean> {
+  return tenantAction(tenantId, `/gift-credits/${creditId}`, 'DELETE', { reason }, 'Bono anulado');
 }
 
-export function extendGrace(until: string): Promise<boolean> {
-  return tenantAction('/grace', 'POST', { until }, 'Gracia extendida');
+export function extendGrace(tenantId: string, until: string): Promise<boolean> {
+  return tenantAction(tenantId, '/grace', 'POST', { until }, 'Gracia extendida');
 }
 
-export function registerRefund(input: { amount: number; info?: string | undefined }): Promise<boolean> {
-  return tenantAction('/refunds', 'POST', compact(input), 'Devolución registrada');
+export function registerRefund(tenantId: string, input: { amount: number; info?: string | undefined }): Promise<boolean> {
+  return tenantAction(tenantId, '/refunds', 'POST', compact(input), 'Devolución registrada');
 }
 
-export function changeHolder(userId: string): Promise<boolean> {
-  return tenantAction('/holder', 'PUT', { userId }, 'Titular cambiado');
-}
-
-/** Los owners activos del comercio: los únicos que pueden ser titulares. */
-export async function fetchOwners(): Promise<void> {
-  const tenantId = effectiveTenantIdSignal.value;
-  const t = token();
-  if (!tenantId || t === null) return;
-  try {
-    const res = await apiFetch<{ members: MemberItem[] }>(`tenants/${tenantId}/users`, { token: t });
-    ownersSignal.value = res.members.filter((m) => m.role === 'owner' && m.status === 'active');
-  } catch (err: unknown) {
-    fail(err, 'No se pudieron cargar los owners');
-  }
+export function changeHolder(tenantId: string, userId: string): Promise<boolean> {
+  return tenantAction(tenantId, '/holder', 'PUT', { userId }, 'Titular cambiado');
 }
 
 async function sendSheet(dryRun: boolean): Promise<void> {

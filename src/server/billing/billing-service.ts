@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { allocateCharge, type GiftBalance } from './allocation.ts';
 import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
 import { DomainError } from '../errors.ts';
+import { suspendedDays } from '../platform/suspensions.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
   BillingSettings,
@@ -47,8 +48,10 @@ export class BillingService {
       if (demo === undefined) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
       return 0;
     }
+    // Los días con el comercio suspendido no se cobran (#23)
+    const skip = suspendedDays(this.db, p.tenantId, p.days);
     let created = 0;
-    for (const day of [...new Set(p.days)].sort()) {
+    for (const day of [...new Set(p.days)].filter((d) => !skip.has(d)).sort()) {
       if (this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;
     }
     return created;

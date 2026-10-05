@@ -54,6 +54,26 @@ describe('createSignalQuery (#59)', () => {
     q.dispose();
   });
 
+  it('después de clear() (otra sesión), la misma clave no muestra el dato anterior (#68)', async () => {
+    const token = signal('tok-a');
+    let release: (value: string) => void = () => undefined;
+    const q = createSignalQuery<string>({
+      source: () => {
+        const t = token.value;
+        return { key: ['t', 'A', 'billing-status'], fn: () => new Promise<string>((resolve) => { release = (v) => { resolve(`${v} (${t})`); }; }) };
+      },
+      keepPrevious: sameTenant,
+    });
+    release('dato');
+    await vi.waitFor(() => { expect(q.data.value).toBe('dato (tok-a)'); });
+    queryClient.clear();
+    token.value = 'tok-b';
+    expect(q.data.value).toBeUndefined();
+    release('dato');
+    await vi.waitFor(() => { expect(q.data.value).toBe('dato (tok-b)'); });
+    q.dispose();
+  });
+
   it('sin fuente no hay datos ni pedido', () => {
     const fn = vi.fn(() => Promise.resolve(1));
     const q = createSignalQuery({ source: () => null });

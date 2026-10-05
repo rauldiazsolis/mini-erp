@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import type { PlatformAuditItem } from '../../shared/platform-types.ts';
 
 export type AuditAction =
   | 'tenant.created'
@@ -23,7 +24,14 @@ export type AuditAction =
   | 'billing.grace_extended'
   | 'billing.refund'
   | 'billing.holder_changed'
-  | 'billing.settings_updated';
+  | 'billing.settings_updated'
+  | 'tenant.suspended'
+  | 'tenant.reactivated'
+  | 'user.disabled'
+  | 'user.enabled'
+  | 'staff.invited'
+  | 'staff.invitation_revoked'
+  | 'staff.joined';
 
 export type AuditEntry = {
   id: string;
@@ -91,6 +99,43 @@ export class AuditLog {
       action: r.action,
       actorName: r.actor_name ?? 'Usuario borrado',
       targetName: r.target_name,
+      details: parseDetails(r.details),
+    }));
+  }
+
+  /** Toda la auditoría, o la de un comercio, para el registro de plataforma (#23). */
+  listPlatform(p: { tenantId?: string | undefined; limit?: number | undefined } = {}): PlatformAuditItem[] {
+    const tenantId = p.tenantId ?? null;
+    const rows = this.db
+      .prepare(
+        `SELECT a.id, a.at, a.action, a.details, a.tenant_id, t.name AS tenant_name,
+           actor.name AS actor_name, target.name AS target_name
+         FROM audit_log a
+         LEFT JOIN users actor ON actor.id = a.actor_user_id
+         LEFT JOIN users target ON target.id = a.target_user_id
+         LEFT JOIN tenants t ON t.id = a.tenant_id
+         WHERE (? IS NULL OR a.tenant_id = ?)
+         ORDER BY a.at DESC, a.rowid DESC
+         LIMIT ?`,
+      )
+      .all(tenantId, tenantId, p.limit ?? 200) as {
+      id: string;
+      at: string;
+      action: string;
+      details: string;
+      tenant_id: string | null;
+      tenant_name: string | null;
+      actor_name: string | null;
+      target_name: string | null;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      at: r.at,
+      action: r.action,
+      actorName: r.actor_name ?? 'Usuario borrado',
+      targetName: r.target_name,
+      tenantId: r.tenant_id,
+      tenantName: r.tenant_name,
       details: parseDetails(r.details),
     }));
   }

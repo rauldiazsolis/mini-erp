@@ -14,6 +14,8 @@ import { activeSectionSignal } from '../../state/route-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { CreditsBanner } from '../credits/CreditsBanner.tsx';
+import { SuspendedNotice } from './SuspendedNotice.tsx';
+import { suspendedNoticeSignal } from '../../state/suspension-state.ts';
 
 export function AppShell(props: { children: ComponentChildren }) {
   const activeTenant = activeTenantSignal.value;
@@ -86,6 +88,8 @@ export function AppShell(props: { children: ComponentChildren }) {
                 Crear mi comercio
               </Button>
             </div>
+          ) : suspendedNoticeSignal.value ? (
+            <SuspendedNotice />
           ) : (
             props.children
           )}
