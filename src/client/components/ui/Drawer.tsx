@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { DialogShell } from './DialogShell.tsx';
 
 export type DrawerProps = {
   isOpen: boolean;
@@ -14,16 +15,13 @@ export function Drawer(props: DrawerProps) {
   if (!props.isOpen) return null;
 
   return (
-    <div
-      class="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm z-50 flex justify-end animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          props.onClose();
-        }
-      }}
+    <DialogShell
+      label={props.title}
+      onClose={props.onClose}
+      overlayClass="w-full h-full bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm flex justify-end"
     >
       <div
-        class={`w-full ${props.maxWidth ?? 'max-w-2xl'} bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-200 text-slate-900 dark:text-slate-100`}
+        class={`w-full ${props.maxWidth ?? 'max-w-2xl'} bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col h-full text-slate-900 dark:text-slate-100`}
       >
         {/* Cabecera del Drawer */}
         <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
@@ -61,6 +59,6 @@ export function Drawer(props: DrawerProps) {
           {props.children}
         </div>
       </div>
-    </div>
+    </DialogShell>
   );
 }

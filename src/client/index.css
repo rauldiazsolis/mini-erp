@@ -12,3 +12,8 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Con un Modal o un Drawer abierto (#56), la página de atrás no scrollea */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
