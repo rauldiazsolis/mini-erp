@@ -27,8 +27,8 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
   con el nombre vacío) y declara las capacidades `customer-payment-void` (siempre: la anulación de
   una cobranza es otra cobranza, en negativo) y `demo-sessions` (si las demos están prendidas:
   `POST /connector/demo-sessions` y la vuelta del onboarding con `#connect` desde `/alta`, #9) y
-  `portal` con `{ command: 'MINI', label: 'Abrir mini' }` (con cualquier key; adelantada de M10 en
-  #24). El pull manda `notices` y el backend cumple las reglas de evolución (tests en
+  `portal` con `{ command: 'MINI', label: 'Abrir mini' }` (con cualquier key: una caja real abre "mi
+  caja" de solo consulta y una demo, el admin del comercio demo; #24 y M10, #26). El pull manda `notices` y el backend cumple las reglas de evolución (tests en
   `test/contract-evolution.test.ts`). La revocación activa de demos está hecha (#24): una caja de
   visitante revocada (reinicio total o `DEMO_TTL_HOURS` sin uso) da `401` a todo, el POS lo toma
   como "la demo terminó" y puede ir igual al alta.
@@ -149,7 +149,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `{ version: N, name, up(db) }` (N = la última + 1), agregado al final de la lista. `up` no abre
     transacciones (la abre `migrateDb`, una por migración) y no depende de datos de fuera de su base.
   - Su test parte de una base de la versión anterior **con datos** (`createDbAtVersion` en
-    `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`).
+    `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`). Migra
+    con el esquema cortado en su versión (`HASTA_VN`, como `test/system-migration-v9.test.ts`): así
+    una migración posterior no lo rompe.
   - Solo el arranque migra bases con datos (`runMigrations`, en un worker): antes copia lo que va a
     migrar a `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas.
     `openSystemDb` y `openTenantDb` crean bases nuevas y verifican las existentes (`checkDb`), nunca
@@ -169,13 +171,16 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   son miembros de ningún comercio (#16): entran impersonando a un usuario (#23).
 - **Roles de comercio e invitaciones** (#19, spec `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`):
   - Matriz en `src/shared/permissions.ts` (TS puro, la usan servidor y cliente): roles `owner`,
-    `admin`, `member` y capacidades `tenant.use`, `bulk`, `settings.manage`, `users.manage`,
-    `owners.manage`, `credits.view`. Permisos fijos. Quien impersona opera con el rol del usuario.
+    `admin`, `member` y capacidades `tenant.view` y `sales.view` (consultar el comercio y Ventas &
+    Caja, M10), `tenant.use` (operar), `bulk`, `settings.manage`, `users.manage`, `owners.manage` y
+    `credits.view`. Permisos fijos. Quien impersona opera con el rol del usuario.
+  - `canAs(rol, capacidad, acceso)` resta según el tipo de acceso (`user`, `demo` o `register`; ver
+    "Portal y acceso anónimo").
   - `requireTenantContext` resuelve el rol (`MembershipService.resolveRole`, solo membresías
     activas) y **cada** ruta de `/api/tenants/:tenantId` lleva `requirePermission(<capacidad>)`.
     La tabla de todas las rutas está en `test/helpers/tenant-routes.ts`: `test/permissions-api.test.ts`
     falla si una ruta nueva no está o exige otra capacidad, y `test/anonymous-permissions.test.ts`
-    la recorre con el acceso anónimo de una demo.
+    la recorre con el acceso anónimo de una demo y con el de una caja real.
   - El cliente esconde lo que el rol no permite con `canDo` (`state/permissions-state.ts`).
   - **Sin registro suelto**: una cuenta nace en `POST /api/alta` (cuenta con WhatsApp, comercio vacío
     con su rubro y key de "Caja 1", atómico; #22) o aceptando una invitación.
@@ -260,20 +265,39 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
     caído, al arrancar), revoca las cajas inactivas y repone el stock que bajó de un cuarto del de la
     semilla ("Reposición automática"). Loguea `[demos] barrido: …`.
-  - **Portal y acceso anónimo** (adelantado de M10): `POST /connector/portal-links` da, con una caja de
-    demo, `<origen>/portal#t=<token>` (un uso, 60 s, en `portal_links` su sha256) y, con una caja
-    real, `<origen>/admin/<slug>`. `POST /api/portal/redeem` lo canjea por una sesión anónima
-    (`anonymous_sessions`, `PortalService`) que vale mientras su caja esté activa. Solo entra por la
-    cadena `/api/tenants/:tenantId` (`req.anonymous`, sin `req.user`) como `admin` de su comercio, sin
-    `settings.manage`, `users.manage`, `owners.manage` ni `credits.view` (`canAs` y
-    `ANONYMOUS_DENIED` en `shared/permissions.ts`); `requireOwnSession` la rechaza. En el cliente,
-    `/portal` canjea y guarda la sesión en el `sessionStorage` de la pestaña (solo `auth-state`), abre
-    Ventas en la caja del visitante con la franja de la demo y, con un 401, "Esta demo terminó".
+  - **Portal**: el visitante abre el admin del comercio demo desde el POS con `/MINI` (ver "Portal y
+    acceso anónimo").
   - **Plataforma**: sección Demos (`/plataforma/demos`, root y soporte) con el estado de cada comercio
     demo y los reinicios parcial y total, auditados como `demo.reset` (el automático, con el actor
     `system`, "Automático").
   - El alta desde una demo crea un **comercio nuevo**; el rubro se preselecciona con el `template` que
     viaja en `onboarding.url`.
+- **Portal y acceso anónimo** (#24, M10 #26, spec `docs/superpowers/specs/2026-10-05-m10-portal-design.md`):
+  - `POST /connector/portal-links` da, con **cualquier** caja, `<origen>/portal#t=<token>`: un uso, 60 s,
+    en `portal_links` su sha256 con la caja y la key (`ValidatedPosKey.keyId`). La key nunca va en la URL.
+  - `POST /api/portal/redeem` (con `AUTH_RATE_LIMIT`) lo canjea por una sesión anónima
+    (`anonymous_sessions`, `PortalService`) **atada a la key** que pidió el link, con su tipo:
+    - `demo` (la caja tiene una demo activa): `admin` del comercio demo, sin `settings.manage`,
+      `users.manage`, `owners.manage` ni `credits.view` (`ANONYMOUS_DENIED`); vive mientras su demo.
+    - `register` (una caja real): `member` de **solo consulta**, `tenant.view` y `sales.view`
+      (`REGISTER_ALLOWED`). Muere al rotar la key o desactivar la caja (desligar el equipo no la corta)
+      y a las **2 h sin uso** (el último uso, a lo sumo por minuto). La suspensión y la restricción por
+      deuda del comercio valen como para un usuario.
+  - Solo entra por la cadena `/api/tenants/:tenantId` (`req.anonymous`, sin `req.user`; `canAs` con
+    `req.anonymous.kind`); `requireOwnSession` la rechaza.
+  - **La caja fija**: con `register`, `routes/sales-routes.ts` reemplaza la sucursal y el punto de venta
+    de la query por los de la caja, una venta ajena da 404 y `/registers` devuelve solo la suya.
+  - Cada apertura de una caja real se audita como `portal.opened` con `actor_user_id = 'register'`
+    (`REGISTER_ACTOR`) y `audit_log.actor_register_id`: "Caja 1 (desde el POS) abrió mini".
+  - Cliente: `/portal` canjea y guarda la sesión en el `sessionStorage` de la pestaña (solo
+    `auth-state`; `AnonymousState` por `access`, lo guardado sin `access` es una demo). La demo abre
+    Ventas en la caja del visitante con su franja y, con un 401, "Esta demo terminó". La caja abre el
+    resumen de hoy de su caja con `RegisterBar` ("Caja 1 · Comercio, desde el POS, solo consulta" y
+    "Entrar con tu cuenta", que suelta la caja y vuelve a la sesión propia o al login), el menú de
+    Ventas & Caja, Productos, Stock y Clientes sin ediciones (`canDo('tenant.use')`) ni filtro de caja
+    y, con un 401, "Este acceso terminó". `/MINI` abre "mi caja" aunque en el navegador haya un usuario
+    logueado.
+  - Migración de sistema v10 (`kind`, `api_key_id` y `actor_register_id`).
 - **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
   - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
     y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
@@ -512,14 +536,14 @@ las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hech
 (#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
 hecha) y M6 importación (#22, hecha).
 Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0
-(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, hecha sin el portal: la capacidad
-`portal` queda para M10, #26, y por eso el issue sigue abierto), formato según el navegador (#51,
+(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, hecha; el portal llegó con M10, #26), formato según el navegador (#51,
 hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
 top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 fue en dos PR: M7a (panel de
 plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) y M7b (impersonación de
 usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). M8
 (#24, hecha): demos v2 con un comercio por rubro, una caja por visitante, reinicios y el portal
-adelantado de M10 con el acceso anónimo de la demo. Sigue M9 (#25). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
+adelantado de M10 con el acceso anónimo de la demo. M10 (#26, hecha): el portal de las cajas reales,
+"mi caja" de solo consulta desde `/MINI`. Sigue M9 (#25). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
 En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).
