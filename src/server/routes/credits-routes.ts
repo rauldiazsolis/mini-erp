@@ -45,7 +45,7 @@ export function createCreditsRoutes(billing: BillingService): Router {
     res.status(200).json(billing.listGifts(tenantOf(req)));
   });
 
-  router.get('/billing-status', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/billing-status', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     const summary = billing.summary(tenantOf(req));
     const body: BillingStatus = { state: summary.state, debt: summary.debt, deadline: summary.deadline };
     res.status(200).json(body);

@@ -129,13 +129,13 @@ describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
     expect(body.portal).toEqual({ command: 'MINI', label: 'Abrir mini' });
   });
 
-  it('POST /portal-links con la key de un comercio real devuelve el login de mini (#24)', async () => {
+  it('POST /portal-links con la key de un comercio real devuelve un link de un uso (#24, M10)', async () => {
     const res = await request(app)
       .post('/connector/portal-links')
       .set('Authorization', `Bearer ${apiKey}`)
       .set('X-POS-Contract-Version', '4.6.0');
     expect(res.status).toBe(201);
-    expect((res.body as { url: string }).url).toMatch(/\/admin\/[\w-]+$/);
+    expect((res.body as { url: string }).url).toMatch(/\/portal#t=[\w-]{43}$/);
   });
 
   it('un POS 4.4.0 sigue sincronizando con el backend 4.6.0', async () => {

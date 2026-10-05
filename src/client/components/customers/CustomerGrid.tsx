@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   filteredCustomersSignal,
   customerLoadingSignal,
@@ -19,6 +20,8 @@ import {
 import { formatMoney } from '../../format.ts';
 
 export function CustomerGrid() {
+  // Una caja desde el POS (M10) solo consulta
+  const canEdit = canDo('tenant.use');
   const customers = filteredCustomersSignal.value;
   const isLoading = customerLoadingSignal.value;
 
@@ -150,7 +153,8 @@ export function CustomerGrid() {
                 <Td class="text-right">
                   <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
                     {/* Cobranza */}
-                    <button
+                    {canEdit && (
+<button
                       type="button"
                       onClick={() => { openPaymentModal(c); }}
                       title="Registrar pago / cobranza"
@@ -159,8 +163,10 @@ export function CustomerGrid() {
                       <span class="text-sm">💵</span>
                     </button>
 
+)}
                     {/* Ajuste de Saldo */}
-                    <button
+                    {canEdit && (
+<button
                       type="button"
                       onClick={() => { openBalanceAdjustModal(c); }}
                       title="Ajuste manual de saldo"
@@ -169,6 +175,7 @@ export function CustomerGrid() {
                       <span class="text-sm">⚖️</span>
                     </button>
 
+)}
                     {/* Extracto de Movimientos */}
                     <button
                       type="button"
@@ -180,7 +187,8 @@ export function CustomerGrid() {
                     </button>
 
                     {/* Editar Datos */}
-                    <button
+                    {canEdit && (
+<button
                       type="button"
                       onClick={() => { openEditCustomerModal(c); }}
                       title="Editar datos de cliente"
@@ -195,7 +203,8 @@ export function CustomerGrid() {
                         />
                       </svg>
                     </button>
-                  </div>
+
+)}                  </div>
                 </Td>
               </Tr>
             );

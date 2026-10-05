@@ -22,7 +22,13 @@ describe('cajas con equipo ligado (#21)', () => {
 
   it('crear una caja genera su key, que valida con la caja', () => {
     const created = nueva();
-    expect(keys.validateApiKey(created.rawKey)).toEqual({ tenantId: 't1', branch: 'CENTRAL', pointOfSale: 'Caja 1', registerId: created.id });
+    expect(keys.validateApiKey(created.rawKey)).toEqual({
+      tenantId: 't1',
+      branch: 'CENTRAL',
+      pointOfSale: 'Caja 1',
+      registerId: created.id,
+      keyId: expect.any(String) as unknown,
+    });
   });
 
   it('createApiKey (alta, demos) también crea la caja', () => {

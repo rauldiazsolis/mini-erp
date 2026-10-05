@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   catalogSearchSignal,
   catalogCategoryFilterSignal,
@@ -14,6 +15,8 @@ import { Button } from '../ui/Button.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 
 export function CatalogToolbar() {
+  // Una caja desde el POS (M10) solo consulta
+  const canEdit = canDo('tenant.use');
   const search = catalogSearchSignal.value;
   const selectedCategory = catalogCategoryFilterSignal.value;
   const selectedBlocked = catalogBlockedFilterSignal.value;
@@ -82,12 +85,14 @@ export function CatalogToolbar() {
             </svg>
           </button>
 
+          {canEdit && (
           <Button size="sm" onClick={openNewProductModal} class="shadow-md shadow-indigo-600/20">
             <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             Nuevo Producto
           </Button>
+          )}
         </div>
       </div>
 

@@ -60,11 +60,15 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await expect(page.getByText('DEMO', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Crear mi comercio (/ALTA)' })).toBeVisible();
 
-  // La demo es una caja de visitante en el comercio demo del rubro (#24)
+  // La demo es una caja de visitante en el comercio demo del rubro (#24). Se busca por la caja del
+  // título del POS ("Demo XXXX - CENTRAL"), no por la más nueva: el e2e de demos crea otras en paralelo
+  await expect(page).toHaveTitle(/^Demo [0-9A-F]{4} - /);
+  const titlePos = (await page.title()).split(' - ')[0] ?? '';
   const [demo] = query<{ tenant_id: string; template: string; pos: string }>(
     'system.sqlite',
     `SELECT s.tenant_id, s.template, r.point_of_sale AS pos FROM demo_sessions s JOIN registers r ON r.id = s.register_id
-     ORDER BY s.created_at DESC LIMIT 1`,
+     WHERE r.point_of_sale = ?`,
+    titlePos,
   );
   expect(demo?.template).toBe('kiosco');
   expect(demo?.tenant_id).toBe('demo-kiosco');

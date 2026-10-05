@@ -1,3 +1,4 @@
+import { accessSignal } from '../../state/auth-state.ts';
 import { applyPreset, rangePresetSignal, rangeSignal, registerSignal, registersSignal, setCustomRange, setRegister, type RangePreset } from '../../state/sales-state.ts';
 import { parseRegisterKey, registerKey, registerLabel } from '../../state/sales-labels.ts';
 import { Button } from '../ui/Button.tsx';
@@ -41,7 +42,8 @@ export function SalesRangeBar() {
           <Input type="date" label="Desde" value={range.from} onChange={(e) => { setCustomRange({ from: e.currentTarget.value, to: range.to }); }} />
           <Input type="date" label="Hasta" value={range.to} onChange={(e) => { setCustomRange({ from: range.from, to: e.currentTarget.value }); }} />
         </div>
-        <div class="lg:w-64">
+        {/* Una caja desde el POS (M10) ve solo la suya: el servidor la fija */}
+        {accessSignal.value !== 'register' && <div class="lg:w-64">
           <Select label="Caja" value={current} onChange={(e) => { setRegister(parseRegisterKey(e.currentTarget.value)); }}>
             <option value="">Todas las cajas</option>
             {options.map((o) => (
@@ -50,7 +52,7 @@ export function SalesRangeBar() {
               </option>
             ))}
           </Select>
-        </div>
+        </div>}
       </div>
     </FilterToolbar>
   );

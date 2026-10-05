@@ -1,8 +1,8 @@
 import { computed, effect } from '@preact/signals';
 import { canAs, type Capability, type TenantRole } from '../../shared/permissions.ts';
-import { activeTenantSignal, anonymousSignal, currentUserSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
+import { accessSignal, activeTenantSignal, currentUserSignal, isRootOrSupportSignal, profileLoadedSignal } from './auth-state.ts';
 import { navigate, routeSignal } from './route-state.ts';
-import { adminUrl, type NavSection, type PlatformSectionId } from '../routing/admin-routes.ts';
+import { adminUrl, TENANT_SECTIONS, type NavSection, type PlatformSectionId, type TenantSection } from '../routing/admin-routes.ts';
 import { activeSettingsTabSignal, type SettingsTab } from './settings-state.ts';
 
 /** El rol con el que se opera el comercio activo (#19): el de la membresía (impersonando, la del usuario). */
@@ -14,8 +14,8 @@ export const activeRoleSignal = computed<TenantRole | null>(() => {
 /** Si el rol activo tiene la capacidad. Lee `activeRoleSignal`: un componente que lo usa se re-renderiza. */
 export function canDo(capability: Capability): boolean {
   const role = activeRoleSignal.value;
-  // El acceso anónimo de una demo (#24): admin sin usuarios, owners, créditos ni configuración
-  return role !== null && canAs(role, capability, anonymousSignal.value !== null);
+  // El acceso anónimo (#24, M10): la demo y la caja restan capacidades
+  return role !== null && canAs(role, capability, accessSignal.value);
 }
 
 export const ROLE_LABEL: Record<TenantRole, string> = {
@@ -26,10 +26,10 @@ export const ROLE_LABEL: Record<TenantRole, string> = {
 
 const VIEW_CAPABILITY: Record<Exclude<NavSection, 'platform'>, Capability> = {
   dashboard: 'tenant.use',
-  sales: 'tenant.use',
-  catalog: 'tenant.use',
-  stock: 'tenant.use',
-  customers: 'tenant.use',
+  sales: 'sales.view',
+  catalog: 'tenant.view',
+  stock: 'tenant.view',
+  customers: 'tenant.view',
   bulk: 'bulk',
   users: 'users.manage',
   settings: 'tenant.use',
@@ -49,6 +49,11 @@ export function isViewAllowed(view: NavSection): boolean {
   return view === 'platform' ? isRootOrSupportSignal.value : canDo(VIEW_CAPABILITY[view]);
 }
 
+/** La primera sección del menú que el acceso puede ver (M10: una caja no ve el dashboard). */
+export function firstAllowedSection(): TenantSection | null {
+  return TENANT_SECTIONS.find((s) => isViewAllowed(s)) ?? null;
+}
+
 /** Las secciones de la plataforma (#23, #81): todas para root; Soporte y Configuración, solo root. */
 const ROOT_ONLY_PLATFORM_SECTIONS: ReadonlySet<PlatformSectionId> = new Set<PlatformSectionId>(['staff', 'settings']);
 
@@ -59,13 +64,13 @@ export function isPlatformSectionAllowed(section: PlatformSectionId): boolean {
 }
 
 export function isSettingsTabAllowed(tab: SettingsTab): boolean {
-  // Cuenta es de una cuenta: el acceso anónimo de una demo (#24) no tiene contraseña
-  if (tab === 'account' && anonymousSignal.value !== null) return false;
+  // Cuenta es de una cuenta: el acceso anónimo (#24, M10) no tiene contraseña
+  if (tab === 'account' && accessSignal.value !== 'user') return false;
   return canDo(TAB_CAPABILITY[tab]);
 }
 
 /**
- * Una sección no permitida para el rol vuelve al dashboard, una solapa de Configuración no permitida a
+ * Una sección no permitida para el rol vuelve a la primera permitida (M10), una solapa de Configuración no permitida a
  * Apariencia y Plataforma sin ser root o soporte, a /admin (#59). Una sección de la plataforma que es solo
  * de root, para soporte, vuelve a Comercios (#81).
  */
@@ -80,7 +85,7 @@ export function registerPermissionEffects(): () => void {
     }
     if (route.kind !== 'admin' || route.tenantSlug === null || activeRoleSignal.value === null) return;
     if (!isViewAllowed(route.section)) {
-      navigate(adminUrl(route.tenantSlug, 'dashboard'), { replace: true });
+      navigate(adminUrl(route.tenantSlug, firstAllowedSection() ?? 'dashboard'), { replace: true });
     } else if (route.section === 'settings' && !isSettingsTabAllowed(activeSettingsTabSignal.value)) {
       navigate(adminUrl(route.tenantSlug, 'settings', { tab: 'appearance' }), { replace: true });
     }

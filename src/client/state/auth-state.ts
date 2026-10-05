@@ -4,8 +4,8 @@ import { queryClient } from '../api/query-client.ts';
 import { adminUrl } from '../routing/admin-routes.ts';
 import { currentTenantSlugSignal, navigate, routeSignal, switchTenantUrl } from './route-state.ts';
 import { z } from '../../shared/zod.ts';
-import type { TenantRole } from '../../shared/permissions.ts';
-import type { PortalRedeemResponse } from '../../shared/portal-types.ts';
+import type { Access, TenantRole } from '../../shared/permissions.ts';
+import type { PortalRedeemResponse, PortalTenant } from '../../shared/portal-types.ts';
 
 export type GlobalRole = 'root' | 'support' | 'user';
 
@@ -37,7 +37,7 @@ const TOKEN_KEY = 'mini_erp_token';
 const TENANT_KEY = 'mini_erp_tenant_id';
 /** La impersonación de la pestaña (#23): solo en su sessionStorage, que `noopener` no hereda. */
 const IMPERSONATION_KEY = 'mini_erp_impersonation';
-/** La sesión anónima de una demo (#24): también solo en el sessionStorage de su pestaña. */
+/** La sesión anónima de una demo (#24) o de una caja (M10): también solo en el sessionStorage de su pestaña. */
 const ANONYMOUS_KEY = 'mini_erp_demo';
 
 const storedImpersonationSchema = z.object({
@@ -47,16 +47,33 @@ const storedImpersonationSchema = z.object({
   tenantSlug: z.string(),
 });
 
-const storedAnonymousSchema = z.object({
+const storedTenantSchema = z.object({ id: z.string(), slug: z.string(), name: z.string() });
+const storedRegisterSchema = z.object({
+  access: z.literal('register'),
   token: z.string().min(1),
-  tenant: z.object({ id: z.string(), slug: z.string(), name: z.string() }),
+  tenant: storedTenantSchema,
+  branch: z.string(),
+  pointOfSale: z.string(),
+  registerName: z.string(),
+});
+// Lo guardado antes de M10 no tiene `access`: es una demo
+const storedDemoSchema = z.object({
+  access: z.literal('demo').default('demo'),
+  token: z.string().min(1),
+  tenant: storedTenantSchema,
   branch: z.string(),
   pointOfSale: z.string(),
   template: z.string(),
 });
+const storedAnonymousSchema = z.union([storedRegisterSchema, storedDemoSchema]);
 
-/** El acceso anónimo de la pestaña (#24): el comercio demo, la caja del visitante y el rubro. */
-export type AnonymousState = { tenant: { id: string; slug: string; name: string }; pointOfSale: string; template: string };
+/**
+ * El acceso anónimo de la pestaña: el comercio demo, la caja del visitante y el rubro (#24), o el
+ * comercio y la caja que abrió mini desde el POS (M10).
+ */
+export type AnonymousState =
+  | { access: 'demo'; tenant: PortalTenant; branch: string; pointOfSale: string; template: string }
+  | { access: 'register'; tenant: PortalTenant; branch: string; pointOfSale: string; registerName: string };
 
 function browserStorage(kind: 'localStorage' | 'sessionStorage'): StorageLike | null {
   try {
@@ -133,8 +150,12 @@ export const isRootOrSupportSignal = computed<boolean>(() => {
 /** El acceso anónimo de la demo de esta pestaña (#24), o `null`. */
 export const anonymousSignal = signal<AnonymousState | null>(null);
 export const isAnonymousSignal = computed<boolean>(() => anonymousSignal.value !== null);
+/** El tipo de acceso de la pestaña (M10): lo usa `canDo`. */
+export const accessSignal = computed<Access>(() => anonymousSignal.value?.access ?? 'user');
 /** La demo de la pestaña terminó (su caja se revocó): "Esta demo terminó". */
 export const demoEndedSignal = signal<{ template: string } | null>(null);
+/** El acceso de la caja de la pestaña terminó (M10: key rotada, caja desactivada o 2 h sin uso). */
+export const registerEndedSignal = signal<{ registerName: string; tenantSlug: string } | null>(null);
 
 /** El "usuario" de un acceso anónimo: no es una cuenta, solo lo que muestra la cabecera. */
 const VISITOR: AuthUser = { id: 'demo', email: '', name: 'Visitante', globalRole: 'user' };
@@ -144,13 +165,17 @@ export const profileLoadedSignal = signal<boolean>(false);
 /** El último comercio usado (#59): solo decide adónde va `/admin` pelado. */
 export const lastTenantIdSignal = signal<string | null>(null);
 
-/** Deja la pestaña con la sesión anónima: el "Visitante" y el comercio demo como admin, sin pedir `auth/me`. */
+/**
+ * Deja la pestaña con la sesión anónima, sin pedir `auth/me`: el "Visitante" como admin del comercio
+ * demo, o la caja como member de su comercio (M10).
+ */
 function applyAnonymous(state: AnonymousState, token: string): void {
   anonymousSignal.value = state;
   impersonationSignal.value = null;
   tokenSignal.value = token;
-  currentUserSignal.value = VISITOR;
-  userTenantsSignal.value = [{ tenantId: state.tenant.id, slug: state.tenant.slug, name: state.tenant.name, status: 'active', role: 'admin' }];
+  currentUserSignal.value = state.access === 'demo' ? VISITOR : { ...VISITOR, id: 'register', name: state.registerName };
+  const role = state.access === 'demo' ? 'admin' : 'member';
+  userTenantsSignal.value = [{ tenantId: state.tenant.id, slug: state.tenant.slug, name: state.tenant.name, status: 'active', role }];
   profileLoadedSignal.value = true;
   lastTenantIdSignal.value = null;
 }
@@ -159,7 +184,8 @@ function applyAnonymous(state: AnonymousState, token: string): void {
 export function loadSessionFromStorage(): void {
   const anon = readAnonymous();
   if (anon !== null) {
-    applyAnonymous({ tenant: anon.tenant, pointOfSale: anon.pointOfSale, template: anon.template }, anon.token);
+    const { token, ...state } = anon;
+    applyAnonymous(state, token);
     return;
   }
   anonymousSignal.value = null;
@@ -220,9 +246,10 @@ export function rememberTenant(tenantId: string | null): void {
 
 // Un 401 con sesión (#23): impersonando, solo termina la pestaña y se avisa
 setOnUnauthorized(() => {
-  // La sesión anónima de una demo (#24): su caja se revocó
+  // La sesión anónima (#24, M10): la demo o el acceso de la caja terminó
   const anon = anonymousSignal.peek();
-  if (anon !== null) demoEndedSignal.value = { template: anon.template };
+  if (anon?.access === 'demo') demoEndedSignal.value = { template: anon.template };
+  if (anon?.access === 'register') registerEndedSignal.value = { registerName: anon.registerName, tenantSlug: anon.tenant.slug };
   const imp = impersonationSignal.peek();
   if (imp !== null) impersonationEndedSignal.value = { userName: imp.user.name };
   logout();
@@ -367,13 +394,29 @@ export async function adoptImpersonation(start: ImpersonationStart): Promise<boo
   return fetchProfile();
 }
 
-/** La pestaña pasa a ser el acceso anónimo de la demo que dio el canje del portal (#24). */
+/** La pestaña pasa a ser el acceso anónimo que dio el canje del portal: una demo (#24) o una caja (M10). */
 export function adoptAnonymous(start: PortalRedeemResponse): void {
   queryClient.clear();
   storages.session?.setItem(ANONYMOUS_KEY, JSON.stringify(start));
   demoEndedSignal.value = null;
+  registerEndedSignal.value = null;
   impersonationEndedSignal.value = null;
-  applyAnonymous({ tenant: start.tenant, pointOfSale: start.pointOfSale, template: start.template }, start.token);
+  const { token, ...state } = start;
+  applyAnonymous(state, token);
+}
+
+/** "Entrar con tu cuenta" (M10): suelta el acceso de la caja de la pestaña y va al comercio con la sesión propia (o el login). */
+export async function leaveAnonymous(): Promise<boolean> {
+  const slug = anonymousSignal.peek()?.tenant.slug ?? null;
+  queryClient.clear();
+  dropAnonymous();
+  registerEndedSignal.value = null;
+  loadSessionFromStorage();
+  currentUserSignal.value = null;
+  userTenantsSignal.value = [];
+  profileLoadedSignal.value = false;
+  navigate(slug === null ? '/admin' : `/admin/${encodeURIComponent(slug)}`);
+  return fetchProfile();
 }
 
 /** Vuelve a la sesión propia de la pestaña (después de "Salir" o de que terminó la impersonación). */

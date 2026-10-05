@@ -6,6 +6,7 @@ import { PageToasts } from '../ui/ToastContainer.tsx';
 import { isRootOrSupportSignal, userTenantsSignal } from '../../state/auth-state.ts';
 import { ImpersonationBar } from './ImpersonationBar.tsx';
 import { DemoBar } from './DemoBar.tsx';
+import { RegisterBar } from './RegisterBar.tsx';
 import { HelpModal } from '../help/HelpModal.tsx';
 import { activeSectionSignal } from '../../state/route-state.ts';
 import { Button } from '../ui/Button.tsx';
@@ -28,6 +29,9 @@ export function AppShell(props: { children: ComponentChildren }) {
 
         {/* Franja de la demo anónima (#24) */}
         <DemoBar />
+
+        {/* Franja de la caja que abrió mini desde el POS (M10) */}
+        <RegisterBar />
 
         {/* Franja de créditos (#21) */}
         <CreditsBanner />

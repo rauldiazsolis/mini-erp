@@ -21,6 +21,7 @@ describe('permisos en el cliente (#19)', () => {
     expect(isViewAllowed('bulk')).toBe(false);
     expect(isViewAllowed('users')).toBe(false);
     expect(isViewAllowed('catalog')).toBe(true);
+    expect(isViewAllowed('sales')).toBe(true);
     expect(isViewAllowed('settings')).toBe(true);
     expect(isSettingsTabAllowed('pos')).toBe(false);
     expect(isSettingsTabAllowed('branches')).toBe(false);

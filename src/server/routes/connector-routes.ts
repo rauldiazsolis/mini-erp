@@ -117,7 +117,7 @@ export function createConnectorRoutes(
   // El resto de los endpoints validan la versión del contrato
   router.use(checkContractVersion);
 
-  // POST /portal-links (4.6.0, capacidad portal; adelantado de M10 en #24): la URL para abrir mini
+  // POST /portal-links (4.6.0, capacidad portal; #24 y M10): el link de un uso para abrir mini en la caja de la key
   router.post('/portal-links', (req: AuthenticatedPosRequest, res: Response) => {
     const ctx = req.posContext;
     if (ctx === undefined) {
@@ -125,7 +125,7 @@ export function createConnectorRoutes(
       return;
     }
     const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
-    res.status(201).json(deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, origin }));
+    res.status(201).json(deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, keyId: ctx.keyId, origin }));
   });
 
   // POST /sync/push (con Idempotency-Key)

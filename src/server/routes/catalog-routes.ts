@@ -59,7 +59,7 @@ export function createCatalogRoutes(): Router {
 
   // --- SUCURSALES ---
 
-  router.get('/branches', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const branches = service.listBranches();
@@ -87,7 +87,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/branches/:branchId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches/:branchId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     const branchId = req.params['branchId'];
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
@@ -137,7 +137,7 @@ export function createCatalogRoutes(): Router {
 
   // --- PRODUCTOS ---
 
-  router.get('/products', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const search = typeof req.query['search'] === 'string' ? req.query['search'] : (typeof req.query['q'] === 'string' ? req.query['q'] : undefined);
@@ -180,7 +180,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products/:productId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = req.params['productId'];
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -251,7 +251,7 @@ export function createCatalogRoutes(): Router {
 
   // --- CATEGORÍAS ---
 
-  router.get('/categories', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/categories', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const categories = service.listCategories();

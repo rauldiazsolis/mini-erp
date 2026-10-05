@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   filteredStockSignal,
   stockBranchesSignal,
@@ -18,6 +19,8 @@ import {
 import { formatQty } from '../../format.ts';
 
 export function StockMatrixTable() {
+  // Una caja desde el POS (M10) solo consulta
+  const canEdit = canDo('tenant.use');
   const stockItems = filteredStockSignal.value;
   const branches = stockBranchesSignal.value;
   const isLoading = stockLoadingSignal.value;
@@ -119,9 +122,9 @@ export function StockMatrixTable() {
                   return (
                     <Td
                       key={b.id}
-                      class="text-center font-mono cursor-pointer"
-                      onClick={() => { openAdjustModal(item, b.id); }}
-                      title={`Hacer clic para ajustar stock de ${item.name} en ${b.name}`}
+                      class={`text-center font-mono ${canEdit ? 'cursor-pointer' : ''}`}
+                      onClick={canEdit ? () => { openAdjustModal(item, b.id); } : undefined}
+                      title={canEdit ? `Hacer clic para ajustar stock de ${item.name} en ${b.name}` : undefined}
                     >
                       {!item.tracksStock ? (
                         <span class="text-slate-400 dark:text-slate-500">∞</span>
@@ -163,7 +166,8 @@ export function StockMatrixTable() {
 
                 {/* Acciones */}
                 <Td class="text-right">
-                  <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                  {canEdit && (
+<div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
                     {/* Ajustar Stock */}
                     <button
                       type="button"
@@ -198,7 +202,8 @@ export function StockMatrixTable() {
                       </svg>
                     </button>
                   </div>
-                </Td>
+
+)}                </Td>
               </Tr>
             );
           })}

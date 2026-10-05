@@ -22,16 +22,21 @@ export function createTenantContextMiddleware(
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
     const tenantId = req.params['tenantId'] ?? req.params['id'] ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
 
-    // El acceso anónimo de una demo (#24): admin de su comercio demo, de ningún otro
+    // El acceso anónimo (#24, M10): la demo es admin de su comercio demo; una caja real, member de su
+    // comercio, con su suspensión. De ningún otro comercio.
     if (req.anonymous !== undefined) {
       if (tenantId !== req.anonymous.tenantId) {
         res.status(403).json({ error: 'No tienes acceso a este tenant' });
         return;
       }
+      if (req.anonymous.kind === 'register' && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+        res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
+        return;
+      }
       const tenantDb = tenantManager.getTenantDb(tenantId);
       req.activeTenantId = tenantId;
       req.activeTenantDb = tenantDb;
-      req.tenantRole = 'admin';
+      req.tenantRole = req.anonymous.kind === 'demo' ? 'admin' : 'member';
       if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantDb);
       next();
       return;

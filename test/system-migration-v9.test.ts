@@ -4,6 +4,8 @@ import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { migrateDb } from '../src/server/db/migrations/migrate.ts';
 
 const at = '2026-10-04T12:00:00.000Z';
+/** El esquema hasta v9: las migraciones de después cambian estas tablas (v10, M10). */
+const HASTA_V9 = { ...SYSTEM_SCHEMA, migrations: SYSTEM_SCHEMA.migrations.filter((m) => m.version <= 9) };
 
 function baseV8() {
   const db = createDbAtVersion(SYSTEM_SCHEMA, 8);
@@ -16,7 +18,7 @@ function baseV8() {
 describe('migración de sistema v9 demos-v2 (#24)', () => {
   it('las demos de antes quedan en legacy_demo_sessions, con sus datos', () => {
     const db = baseV8();
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V9);
     expect(db.prepare('SELECT tenant_id, template, created_at, last_used_at FROM legacy_demo_sessions').all()).toEqual([
       { tenant_id: 'demo-ab12', template: 'kiosco', created_at: at, last_used_at: at },
     ]);
@@ -25,7 +27,7 @@ describe('migración de sistema v9 demos-v2 (#24)', () => {
 
   it('crea demo_tenants, la demo_sessions nueva, anonymous_sessions y portal_links vacías', () => {
     const db = baseV8();
-    migrateDb(db, SYSTEM_SCHEMA);
+    migrateDb(db, HASTA_V9);
     for (const table of ['demo_tenants', 'demo_sessions', 'anonymous_sessions', 'portal_links']) {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
     }
