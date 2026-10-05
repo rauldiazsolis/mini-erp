@@ -6,13 +6,9 @@ import {
   userTenantsSignal,
   selectTenant,
   effectiveTenantIdSignal,
-  isRootOrSupportSignal,
   signOut,
 } from '../../state/auth-state.ts';
-import {
-  toggleMobileMenu,
-  openImpersonationModal,
-} from '../../state/navigation-state.ts';
+import { toggleMobileMenu } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { ROLE_LABEL } from '../../state/permissions-state.ts';
@@ -115,27 +111,6 @@ export function Header() {
               </div>
 
               <div class="p-1.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-1">
-                {isRootOrSupportSignal.value && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      closeTenantDropdown();
-                      openImpersonationModal();
-                    }}
-                    class="w-full px-2.5 py-1.5 text-left text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
-                    Impersonar comercio...
-                  </button>
-                )}
-
                 <button
                   type="button"
                   onClick={() => {

@@ -1,34 +1,17 @@
 import type { ComponentChildren } from 'preact';
 import { Sidebar } from './Sidebar.tsx';
 import { Header } from './Header.tsx';
-import { ImpersonationModal } from './ImpersonationModal.tsx';
 import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
 import { PageToasts } from '../ui/ToastContainer.tsx';
-import {
-  isImpersonatingSignal,
-  activeTenantSignal,
-  userTenantsSignal,
-  stopImpersonation,
-} from '../../state/auth-state.ts';
+import { userTenantsSignal } from '../../state/auth-state.ts';
 import { activeSectionSignal } from '../../state/route-state.ts';
-import { showToast } from '../../state/toast-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { CreditsBanner } from '../credits/CreditsBanner.tsx';
 import { SuspendedNotice } from './SuspendedNotice.tsx';
 import { suspendedNoticeSignal } from '../../state/suspension-state.ts';
 
 export function AppShell(props: { children: ComponentChildren }) {
-  const activeTenant = activeTenantSignal.value;
   const tenants = userTenantsSignal.value;
-
-  const handleStopImpersonating = () => {
-    stopImpersonation();
-    showToast({
-      type: 'info',
-      title: 'Impersonación finalizada',
-      message: 'Has retornado a tu comercio predeterminado',
-    });
-  };
 
   return (
     <div class="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-row selection:bg-indigo-500 selection:text-white antialiased font-sans transition-colors">
@@ -37,29 +20,6 @@ export function AppShell(props: { children: ComponentChildren }) {
 
       {/* Área Principal de Contenido */}
       <div class="flex-1 flex flex-col min-w-0">
-        {/* Banner de Impersonación Activa */}
-        {isImpersonatingSignal.value && (
-          <div class="bg-amber-500/15 border-b border-amber-500/30 px-4 sm:px-6 py-2.5 flex items-center justify-between text-xs text-amber-600 dark:text-amber-300 z-40 sticky top-0 backdrop-blur-md">
-            <div class="flex items-center gap-2">
-              <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shadow-sm shadow-amber-500/50"></span>
-              <span>
-                <strong>Modo Impersonación Activo:</strong> Operando como el comercio{' '}
-                <span class="text-slate-900 dark:text-white font-semibold underline underline-offset-2">
-                  {activeTenant?.name ?? 'Comercio'}
-                </span>{' '}
-                ({activeTenant?.tenantId})
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleStopImpersonating}
-              class="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-200 hover:text-amber-900 dark:hover:text-white rounded-lg font-semibold transition-colors cursor-pointer text-[11px]"
-            >
-              Salir de Impersonación
-            </button>
-          </div>
-        )}
-
         {/* Franja de créditos (#21) */}
         <CreditsBanner />
 
@@ -95,9 +55,6 @@ export function AppShell(props: { children: ComponentChildren }) {
           )}
         </main>
       </div>
-
-      {/* Modales */}
-      <ImpersonationModal />
 
       {/* Contenedor de Notificaciones Toast */}
       <PageToasts />

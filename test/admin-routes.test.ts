@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   TENANT_SECTIONS, SECTION_TABS, PLATFORM_TABS, adminUrl, buildUrl, decodeFilters, encodeFilters, parseLocation, platformUrl,
   platformTenantUrl,
+  enterUrl,
+  helpRequestUrl,
   type Route,
 } from '../src/client/routing/admin-routes.ts';
 
@@ -99,5 +101,14 @@ describe('Rutas del admin (#59)', () => {
     expect(decodeFilters('dashboard', { periodo: 'mes', sucursal: 'b1' })).toEqual({ period: 'month', branch: 'b1' });
     expect(decodeFilters('credits', { desde: '2026-09-01', hasta: '2026-09-30', pagina: '3' })).toEqual({ from: '2026-09-01', to: '2026-09-30', page: 3 });
     expect(encodeFilters('customers', { q: '', debtorsOnly: true, blocked: 'all' })).toEqual({ deudores: '1' });
+  });
+
+  it('las rutas de la impersonación: entrar y tomar un pedido (#23)', () => {
+    expect(parseLocation('/plataforma/entrar', '?usuario=u-1&comercio=kiosco')).toEqual({ kind: 'entrar', userId: 'u-1', tenantSlug: 'kiosco' });
+    expect(parseLocation('/plataforma/entrar', '')).toEqual({ kind: 'entrar', userId: null, tenantSlug: null });
+    expect(parseLocation('/ayuda/help_abc', '')).toEqual({ kind: 'ayuda', requestId: 'help_abc' });
+    expect(enterUrl('u-1', 'kiosco')).toBe('/plataforma/entrar?usuario=u-1&comercio=kiosco');
+    expect(enterUrl('u-1')).toBe('/plataforma/entrar?usuario=u-1');
+    expect(helpRequestUrl('help_abc')).toBe('/ayuda/help_abc');
   });
 });

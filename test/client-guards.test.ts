@@ -35,4 +35,9 @@ describe('Guardianes del cliente (#59)', () => {
     expect(isPlainLeftClick({ ...base, button: 1 })).toBe(false);
     expect(isPlainLeftClick({ ...base, defaultPrevented: true })).toBe(false);
   });
+
+  it('solo auth-state toca el sessionStorage (#23)', () => {
+    const offenders = files.filter((f) => f !== 'state/auth-state.ts' && /sessionStorage/.test(read(f)));
+    expect(offenders).toEqual([]);
+  });
 });

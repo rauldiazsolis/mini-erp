@@ -2,9 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   mobileMenuOpenSignal,
   toggleMobileMenu,
-  impersonationModalOpenSignal,
-  openImpersonationModal,
-  closeImpersonationModal,
 } from '../src/client/state/navigation-state.ts';
 import {
   toastsSignal,
@@ -15,10 +12,7 @@ import {
   currentUserSignal,
   tokenSignal,
   userTenantsSignal,
-  impersonateTenant,
-  stopImpersonation,
   activeTenantSignal,
-  isImpersonatingSignal,
   effectiveTenantIdSignal,
   logout,
 } from '../src/client/state/auth-state.ts';
@@ -31,7 +25,6 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
     logout();
     atTenant('t1');
     mobileMenuOpenSignal.value = false;
-    impersonationModalOpenSignal.value = false;
     toastsSignal.value = [];
   });
 
@@ -65,12 +58,6 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
       expect(mobileMenuOpenSignal.value).toBe(false);
     });
 
-    it('controla la apertura y cierre de modales', () => {
-      openImpersonationModal();
-      expect(impersonationModalOpenSignal.value).toBe(true);
-      closeImpersonationModal();
-      expect(impersonationModalOpenSignal.value).toBe(false);
-    });
   });
 
   describe('Sistema de Toasts Reactivo', () => {
@@ -93,7 +80,7 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
     });
   });
 
-  describe('Selector de Tenant e Impersonación en App Shell', () => {
+  describe('Selector de Tenant en App Shell', () => {
     it('muestra el tenant activo y permite conmutar', () => {
       tokenSignal.value = 'fake-token';
       currentUserSignal.value = {
@@ -116,32 +103,5 @@ describe('App Shell, Navegación y Toasts (Etapa 3.4)', () => {
       expect(effectiveTenantIdSignal.value).toBe('t-norte');
     });
 
-    it('gestiona el flujo completo de impersonación y retorno', () => {
-      currentUserSignal.value = {
-        id: 'usr-root',
-        email: 'root@demo.test',
-        name: 'Root User',
-        globalRole: 'root',
-      };
-      tokenSignal.value = 'token-root';
-      userTenantsSignal.value = [
-        { tenantId: 'propio', slug: 'propio', name: 'Mi Comercio', status: 'active', role: 'owner' },
-        { tenantId: 'ajeno', slug: 'ajeno', name: 'Comercio Cliente', status: 'active', role: 'owner' },
-      ];
-
-      atTenant('propio');
-      expect(isImpersonatingSignal.value).toBe(false);
-      expect(effectiveTenantIdSignal.value).toBe('propio');
-
-      impersonateTenant('ajeno');
-      expect(isImpersonatingSignal.value).toBe(true);
-      expect(effectiveTenantIdSignal.value).toBe('ajeno');
-      expect(activeTenantSignal.value?.name).toBe('Comercio Cliente');
-
-      stopImpersonation();
-      expect(isImpersonatingSignal.value).toBe(false);
-      expect(effectiveTenantIdSignal.value).toBe('propio');
-      expect(activeTenantSignal.value?.name).toBe('Mi Comercio');
-    });
   });
 });

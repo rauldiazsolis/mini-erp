@@ -101,7 +101,11 @@ describe('estado de Uso y pagos (#21, #55)', () => {
     billing = { state: 'restricted', debt: 1000, deadline: '2026-10-13' };
     await fetchBillingStatus();
     expect(isRestrictedSignal.value).toBe(true);
-    impersonationSignal.value = { slug: 'tienda-test', fromSlug: null };
+    impersonationSignal.value = {
+      user: { id: 'u', email: 'u@x.com', name: 'U', globalRole: 'user' },
+      impersonator: { id: 'r', name: 'Root', globalRole: 'root' },
+      tenantSlug: 'tienda-test',
+    };
     expect(isRestrictedSignal.value).toBe(false);
   });
 
