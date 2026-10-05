@@ -8,7 +8,7 @@ export function demoAltaUrl(template: string): string {
 /** La franja fija del acceso anónimo de una demo (#24): qué es y "Crear mi comercio". */
 export function DemoBar() {
   const state = anonymousSignal.value;
-  if (state === null) return null;
+  if (state?.access !== 'demo') return null;
   return (
     <div
       role="status"

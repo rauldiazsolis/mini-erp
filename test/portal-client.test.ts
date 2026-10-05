@@ -1,21 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
+  accessSignal,
   adoptSession,
   anonymousSignal,
   currentUserSignal,
   demoEndedSignal,
   fetchProfile,
   isAnonymousSignal,
+  leaveAnonymous,
   loadSessionFromStorage,
   logout,
   profileLoadedSignal,
+  registerEndedSignal,
   setStoragesForTests,
   tokenSignal,
   userTenantsSignal,
   type StorageLike,
 } from '../src/client/state/auth-state.ts';
 import { portalStatusSignal, redeemFromHash } from '../src/client/state/portal-state.ts';
-import { canDo, isSettingsTabAllowed } from '../src/client/state/permissions-state.ts';
+import { canDo, firstAllowedSection, isSettingsTabAllowed, isViewAllowed } from '../src/client/state/permissions-state.ts';
 import { apiFetch } from '../src/client/api/client.ts';
 import { locationSignal, navigate, setHistoryForTests } from '../src/client/state/route-state.ts';
 import { buildUrl, parseLocation } from '../src/client/routing/admin-routes.ts';
@@ -155,5 +158,90 @@ describe('acceso anónimo de la demo en el cliente (#24)', () => {
     expect(session.data.has('mini_erp_demo')).toBe(false);
     expect(local.data.get('mini_erp_token')).toBe('tok-de-otro');
     expect(anonymousSignal.value).toBeNull();
+  });
+});
+
+const caja = {
+  access: 'register',
+  token: 'tok-caja',
+  tenant: { id: 't-ana', slug: 'kiosco-ana', name: 'Kiosco Ana' },
+  branch: 'CENTRAL',
+  pointOfSale: 'Caja 1',
+  registerName: 'Caja 1',
+};
+
+describe('acceso de una caja real en el cliente (M10)', () => {
+  let local: MemoryStorage;
+  let session: MemoryStorage;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    setHistoryForTests(null);
+    local = new MemoryStorage();
+    session = new MemoryStorage();
+    setStoragesForTests({ local, session });
+    logout();
+    loadSessionFromStorage();
+    demoEndedSignal.value = null;
+    registerEndedSignal.value = null;
+    portalStatusSignal.value = { kind: 'idle' };
+    navigate('/');
+  });
+
+  it('canjea y abre el resumen de hoy de su caja, como member de solo consulta', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(caja));
+    await redeemFromHash('#t=abc');
+    expect(path()).toBe('/admin/kiosco-ana/ventas/resumen?sucursal=CENTRAL&caja=Caja+1');
+    expect(accessSignal.value).toBe('register');
+    expect(currentUserSignal.value?.name).toBe('Caja 1');
+    expect(userTenantsSignal.value[0]?.role).toBe('member');
+    expect(canDo('sales.view')).toBe(true);
+    expect(canDo('tenant.view')).toBe(true);
+    expect(canDo('tenant.use')).toBe(false);
+    expect(isViewAllowed('dashboard')).toBe(false);
+    expect(isViewAllowed('settings')).toBe(false);
+    expect(isViewAllowed('catalog')).toBe(true);
+    expect(firstAllowedSection()).toBe('sales');
+    expect(local.data.size).toBe(0);
+  });
+
+  it('lo guardado de antes, sin access, se lee como demo', () => {
+    session.data.set(
+      'mini_erp_demo',
+      JSON.stringify({ token: 'tok-anon', tenant: start.tenant, branch: start.branch, pointOfSale: start.pointOfSale, template: start.template }),
+    );
+    loadSessionFromStorage();
+    expect(accessSignal.value).toBe('demo');
+    expect(userTenantsSignal.value[0]?.role).toBe('admin');
+  });
+
+  it('al recargar, recupera la caja de la pestaña', () => {
+    session.data.set('mini_erp_demo', JSON.stringify(caja));
+    loadSessionFromStorage();
+    expect(accessSignal.value).toBe('register');
+    expect(tokenSignal.value).toBe('tok-caja');
+  });
+
+  it('un 401 dice que el acceso terminó, no la demo', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json(caja));
+    await redeemFromHash('#t=abc');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json({ error: 'Sesión expirada' }, 401));
+    await expect(apiFetch('tenants/t-ana/products', { token: tokenSignal.value })).rejects.toThrow();
+    expect(registerEndedSignal.value).toEqual({ registerName: 'Caja 1', tenantSlug: 'kiosco-ana' });
+    expect(demoEndedSignal.value).toBeNull();
+    expect(session.data.has('mini_erp_demo')).toBe(false);
+  });
+
+  it('"Entrar con tu cuenta" suelta la caja y vuelve a la sesión propia en ese comercio', async () => {
+    local.data.set('mini_erp_token', 'tok-ana');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json(caja));
+    await redeemFromHash('#t=abc');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ user: { id: 'u1', email: 'a@b.com', name: 'Ana', globalRole: 'user' }, tenants: [] }));
+    await leaveAnonymous();
+    expect(session.data.has('mini_erp_demo')).toBe(false);
+    expect(local.data.get('mini_erp_token')).toBe('tok-ana');
+    expect(tokenSignal.value).toBe('tok-ana');
+    expect(anonymousSignal.value).toBeNull();
+    expect(path()).toBe('/admin/kiosco-ana');
   });
 });
