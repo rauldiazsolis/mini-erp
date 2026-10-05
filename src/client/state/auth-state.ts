@@ -64,6 +64,8 @@ const storedDemoSchema = z.object({
   branch: z.string(),
   pointOfSale: z.string(),
   template: z.string(),
+  // El visitante del embudo (#25); lo guardado antes de M9 no lo tiene
+  demoSessionId: z.string().optional(),
 });
 const storedAnonymousSchema = z.union([storedRegisterSchema, storedDemoSchema]);
 
@@ -72,7 +74,7 @@ const storedAnonymousSchema = z.union([storedRegisterSchema, storedDemoSchema]);
  * comercio y la caja que abrió mini desde el POS (M10).
  */
 export type AnonymousState =
-  | { access: 'demo'; tenant: PortalTenant; branch: string; pointOfSale: string; template: string }
+  | { access: 'demo'; tenant: PortalTenant; branch: string; pointOfSale: string; template: string; demoSessionId?: string | undefined }
   | { access: 'register'; tenant: PortalTenant; branch: string; pointOfSale: string; registerName: string };
 
 function browserStorage(kind: 'localStorage' | 'sessionStorage'): StorageLike | null {
@@ -153,7 +155,7 @@ export const isAnonymousSignal = computed<boolean>(() => anonymousSignal.value !
 /** El tipo de acceso de la pestaña (M10): lo usa `canDo`. */
 export const accessSignal = computed<Access>(() => anonymousSignal.value?.access ?? 'user');
 /** La demo de la pestaña terminó (su caja se revocó): "Esta demo terminó". */
-export const demoEndedSignal = signal<{ template: string } | null>(null);
+export const demoEndedSignal = signal<{ template: string; demoSessionId?: string | undefined } | null>(null);
 /** El acceso de la caja de la pestaña terminó (M10: key rotada, caja desactivada o 2 h sin uso). */
 export const registerEndedSignal = signal<{ registerName: string; tenantSlug: string } | null>(null);
 
@@ -248,7 +250,9 @@ export function rememberTenant(tenantId: string | null): void {
 setOnUnauthorized(() => {
   // La sesión anónima (#24, M10): la demo o el acceso de la caja terminó
   const anon = anonymousSignal.peek();
-  if (anon?.access === 'demo') demoEndedSignal.value = { template: anon.template };
+  if (anon?.access === 'demo') {
+    demoEndedSignal.value = anon.demoSessionId === undefined ? { template: anon.template } : { template: anon.template, demoSessionId: anon.demoSessionId };
+  }
   if (anon?.access === 'register') registerEndedSignal.value = { registerName: anon.registerName, tenantSlug: anon.tenant.slug };
   const imp = impersonationSignal.peek();
   if (imp !== null) impersonationEndedSignal.value = { userName: imp.user.name };

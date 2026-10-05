@@ -16,6 +16,7 @@ import { resetImport } from './import-state.ts';
 import { invalidateAfter } from './invalidation.ts';
 import type { BusinessType } from '../../shared/business-type.ts';
 import { normalizeWhatsapp, WHATSAPP_MESSAGE } from '../../shared/whatsapp.ts';
+import { beaconOnce } from './funnel-public-state.ts';
 
 export type MerchantProvisionResult = {
   tenantId: string;
@@ -38,6 +39,8 @@ export const merchantOnboardingActiveSignal = signal<boolean>(false);
 // Parámetros de URL capturados (ej: desde POS demo o Landing)
 export const returnUrlSignal = signal<string | null>(null);
 export const wipeKeySignal = signal<string | null>(null);
+/** La demo de la que viene el alta (#25), para ligar el comercio nuevo a su visitante. */
+export const demoSessionIdSignal = signal<string | null>(null);
 
 // Estado de pasos: 1: Cuenta, 2: Negocio/Rubro, 3: Aprovisionando, 4: Éxito
 /**
@@ -79,6 +82,7 @@ export function readAltaParams(href: string): {
   returnUrl: string | null;
   wipeKey: string | null;
   template: AltaTemplate | null;
+  demo: string | null;
 } {
   const params = new URL(href).searchParams;
   const template = params.get('template');
@@ -86,6 +90,8 @@ export function readAltaParams(href: string): {
     returnUrl: params.get('return_url') || null,
     wipeKey: params.get('wipe_key') || null,
     template: template !== null && isAltaTemplate(template) ? template : null,
+    // La demo de la que viene (#25): liga el comercio que nazca a su visitante
+    demo: params.get('demo') || null,
   };
 }
 
@@ -100,9 +106,12 @@ export function initMerchantOnboardingFromUrl(): void {
   if (routeFromPath(url.pathname) !== 'alta') return;
 
   merchantOnboardingActiveSignal.value = true;
-  const { returnUrl, wipeKey, template } = readAltaParams(url.href);
+  const { returnUrl, wipeKey, template, demo } = readAltaParams(url.href);
   returnUrlSignal.value = returnUrl;
   wipeKeySignal.value = wipeKey;
+  demoSessionIdSignal.value = demo;
+  // El alta abierta (#25): con demo, el evento del visitante; sin demo, el total anónimo del día
+  beaconOnce('alta-open', demo ?? undefined);
   if (template !== null) {
     selectedBusinessTypeSignal.value = template;
   }
@@ -236,6 +245,7 @@ export async function executeMerchantProvisioning(): Promise<void> {
     const businessName = businessNameSignal.value.trim();
     const businessType = selectedBusinessTypeSignal.value;
     const authenticated = isAuthenticatedSignal.value;
+    const demo = demoSessionIdSignal.value === null ? {} : { demoSessionId: demoSessionIdSignal.value };
     const res = await apiFetch<{
       token?: string;
       tenant: { id: string; name: string };
@@ -244,7 +254,7 @@ export async function executeMerchantProvisioning(): Promise<void> {
       method: 'POST',
       token: authenticated ? tokenSignal.value : null,
       body: authenticated
-        ? { businessName, businessType }
+        ? { businessName, businessType, ...demo }
         : {
             name: userNameSignal.value.trim(),
             email: userEmailSignal.value.trim(),
@@ -252,6 +262,7 @@ export async function executeMerchantProvisioning(): Promise<void> {
             whatsapp: userWhatsappSignal.value.trim(),
             businessName,
             businessType,
+            ...demo,
           },
     });
 

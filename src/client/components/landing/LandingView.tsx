@@ -3,6 +3,8 @@ import { Logo } from '../ui/Logo.tsx';
 import { versionLabel } from '../../state/app-version.ts';
 import { buildDemoUrl, posBaseUrl, publishedPosOrigin } from '../../state/demo-link.ts';
 import { POS_CHANNEL } from '../../../shared/contract-version.ts';
+import { beaconOnce, contactSentSignal, openContact, sendFunnelBeacon } from '../../state/funnel-public-state.ts';
+import { ContactModal } from '../funnel/ContactModal.tsx';
 
 /**
  * Landing en la raíz (#9, #18): le habla al comerciante y abre el POS en demo contra este backend. En
@@ -14,6 +16,8 @@ export function LandingView() {
   const useLocalCopy = import.meta.env.DEV;
   const posOrigin = publishedPosOrigin(import.meta.env.VITE_POS_URL);
   const demoUrl = buildDemoUrl(posBaseUrl(origin, useLocalCopy, posOrigin), origin);
+  // El landing cuenta como total anónimo del día (#25): una vez por carga
+  beaconOnce('landing');
 
   return (
     <div class="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
@@ -41,6 +45,9 @@ export function LandingView() {
           </p>
           <a
             href={demoUrl}
+            onClick={() => {
+              sendFunnelBeacon('demo-click');
+            }}
             class="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/25"
           >
             Probar la demo
@@ -50,7 +57,23 @@ export function LandingView() {
               ? `Abre una copia local del POS del canal ${POS_CHANNEL}, servida por este backend.`
               : 'Se abre el punto de venta con un comercio de ejemplo.'}
           </p>
+          <p class="text-sm">
+            {contactSentSignal.value ? (
+              <span class="text-slate-600 dark:text-slate-400">Listo, te escribimos por WhatsApp</span>
+            ) : (
+              <button
+                type="button"
+                class="text-indigo-600 dark:text-indigo-400 hover:underline"
+                onClick={() => {
+                  openContact('landing');
+                }}
+              >
+                ¿Querés que te ayudemos a empezar?
+              </button>
+            )}
+          </p>
         </div>
+        <ContactModal />
       </main>
       <footer class="px-4 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
         {versionLabel()} · powered by{' '}
