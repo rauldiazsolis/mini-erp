@@ -70,6 +70,31 @@ describe('parseBatchEvent (#1)', () => {
     });
   });
 
+  it('conserva los campos desconocidos en todos los niveles', () => {
+    const extra = { futuro: { x: 1 } };
+    const sale = {
+      ...validEvents.sale,
+      ...extra,
+      origin: { ...envelope.origin, ...extra },
+      sale: { ...validEvents.sale.sale, ...extra, payments: [{ method: 'cash', amount: 100, ...extra }] },
+    };
+    const customer = {
+      ...validEvents.customer,
+      customer: { ...validEvents.customer.customer, ...extra, blocked: { reason: 'Mora', ...extra } },
+    };
+    const cash = { ...validEvents['cash-movement'], movement: { ...validEvents['cash-movement'].movement, ...extra } };
+    const payment = { ...validEvents['customer-payment'], payment: { ...validEvents['customer-payment'].payment, ...extra } };
+    const movement = { ...validEvents['stock-movement'], movement: { ...validEvents['stock-movement'].movement, ...extra } };
+    expect(parseBatchEvent(sale)).toMatchObject({
+      ok: true,
+      event: { ...extra, origin: extra, sale: { ...extra, payments: [extra] } },
+    });
+    expect(parseBatchEvent(customer)).toMatchObject({ ok: true, event: { customer: { ...extra, blocked: extra } } });
+    expect(parseBatchEvent(cash)).toMatchObject({ ok: true, event: { movement: extra } });
+    expect(parseBatchEvent(payment)).toMatchObject({ ok: true, event: { payment: extra } });
+    expect(parseBatchEvent(movement)).toMatchObject({ ok: true, event: { movement: extra } });
+  });
+
   it('acepta un medio de pago o un motivo que no conoce (reglas de evolución)', () => {
     const sale = {
       ...validEvents.sale,
