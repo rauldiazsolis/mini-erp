@@ -20,7 +20,7 @@ export type MemberItem = {
 export type InvitationItem = { id: string; email: string; role: TenantRole; createdAt: string; expiresAt: string; invitedByName: string };
 export type AuditItem = { id: string; at: string; action: string; actorName: string; targetName: string | null; details: Record<string, unknown> };
 /** Un link recién generado: se muestra una sola vez (#19). */
-export type LinkReady = { kind: 'invitation' | 'reset'; url: string; email: string; expiresAt: string };
+export type LinkReady = { kind: 'invitation' | 'reset' | 'staff-invitation'; url: string; email: string; expiresAt: string };
 
 export const inviteModalOpenSignal = signal<boolean>(false);
 export const inviteFormSignal = signal<{ email: string; role: TenantRole }>({ email: '', role: 'member' });
@@ -50,14 +50,24 @@ export const AUDIT_LABEL: Record<string, string> = {
   'billing.grace_extended': 'extendió la gracia',
   'billing.refund': 'registró una devolución',
   'billing.holder_changed': 'cambió el titular a',
+  // Plataforma (#23)
+  'tenant.suspended': 'suspendió el comercio',
+  'tenant.reactivated': 'reactivó el comercio',
+  'user.disabled': 'desactivó la cuenta de',
+  'user.enabled': 'reactivó la cuenta de',
+  'staff.invited': 'invitó a soporte a',
+  'staff.invitation_revoked': 'revocó la invitación a soporte de',
+  'staff.joined': 'se sumó a soporte',
 };
 
 /** El token va en el fragmento: no llega al servidor ni a los logs. */
 export function buildLinkUrl(kind: LinkReady['kind'], token: string, origin: string): string {
+  if (kind === 'staff-invitation') return `${origin}/invitacion#t=${token}&tipo=soporte`;
   return `${origin}/${kind === 'invitation' ? 'invitacion' : 'restablecer'}#t=${token}`;
 }
 
 export function linkShareText(link: LinkReady, tenantName: string): string {
+  if (link.kind === 'staff-invitation') return `Te invito al equipo de soporte de mini contax: ${link.url} (sirve una vez y vence en 48 h)`;
   return link.kind === 'invitation'
     ? `Te invito a ${tenantName} en mini contax: ${link.url} (sirve una vez y vence en 48 h)`
     : `Para elegir tu nueva contraseña de mini contax: ${link.url} (sirve una vez y vence en 48 h)`;
@@ -75,7 +85,7 @@ function base(): string {
   return `tenants/${effectiveTenantIdSignal.value ?? ''}`;
 }
 
-function origin(): string {
+export function linkOrigin(): string {
   return typeof window === 'undefined' ? 'http://localhost:4100' : window.location.origin;
 }
 
@@ -118,7 +128,7 @@ async function invite(email: string, role: TenantRole): Promise<void> {
     token: tokenSignal.value,
     body: { email, role },
   });
-  linkReadySignal.value = { kind: 'invitation', url: buildLinkUrl('invitation', res.token, origin()), email, expiresAt: res.expiresAt };
+  linkReadySignal.value = { kind: 'invitation', url: buildLinkUrl('invitation', res.token, linkOrigin()), email, expiresAt: res.expiresAt };
   await reloadAll();
 }
 
@@ -204,7 +214,7 @@ export async function createResetLink(member: MemberItem): Promise<void> {
       method: 'POST',
       token: tokenSignal.value,
     });
-    linkReadySignal.value = { kind: 'reset', url: buildLinkUrl('reset', res.token, origin()), email: member.email, expiresAt: res.expiresAt };
+    linkReadySignal.value = { kind: 'reset', url: buildLinkUrl('reset', res.token, linkOrigin()), email: member.email, expiresAt: res.expiresAt };
     await reloadAll();
   } catch (err: unknown) {
     fail('No se pudo generar el link', err);

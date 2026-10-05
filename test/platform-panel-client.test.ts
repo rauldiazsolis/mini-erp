@@ -5,7 +5,16 @@ import {
   activeOwners,
   suspendTenant,
   reactivateTenant,
+  platformUsersSignal,
+  staffSignal,
+  platformAuditSignal,
+  setUserStatus,
+  createPlatformResetLink,
+  inviteStaff,
+  revokeStaffInvitation,
 } from '../src/client/state/platform-panel-state.ts';
+import { linkReadySignal } from '../src/client/state/users-state.ts';
+import { canManageAccount } from '../src/client/components/platform/UsersTab.tsx';
 import { currentUserSignal } from '../src/client/state/auth-state.ts';
 import { navigate, setHistoryForTests, setPlatformFilters, locationSignal } from '../src/client/state/route-state.ts';
 import { queryClient } from '../src/client/api/query-client.ts';
@@ -96,5 +105,77 @@ describe('panel de plataforma: comercios (#23)', () => {
   it('un error al suspender devuelve false', async () => {
     reply = { status: 409, body: { error: 'El comercio ya está suspendido' } };
     expect(await suspendTenant('kiosco-id', 'x')).toBe(false);
+  });
+
+  it('Usuarios pide la lista con su búsqueda', async () => {
+    reply.body = [{ id: 'u1', email: 'a@x.com' }];
+    navigate('/plataforma/usuarios?q=ana');
+    await vi.waitFor(() => { expect(gets()).toContain('/api/platform/users?q=ana'); });
+    await vi.waitFor(() => { expect(platformUsersSignal.value).toEqual([{ id: 'u1', email: 'a@x.com' }]); });
+  });
+
+  it('Usuarios: desactivar, activar y link de restablecimiento', async () => {
+    reply.body = { success: true };
+    expect(await setUserStatus('u1', 'disabled')).toBe(true);
+    expect(await setUserStatus('u1', 'active')).toBe(true);
+    reply.body = { token: 'tok', expiresAt: '2026-10-07T00:00:00.000Z' };
+    await createPlatformResetLink({ id: 'u1', email: 'a@x.com' });
+    expect(writes().map((w) => w.url)).toEqual([
+      '/api/platform/users/u1/disable',
+      '/api/platform/users/u1/enable',
+      '/api/platform/users/u1/password-reset',
+    ]);
+    expect(linkReadySignal.value).toMatchObject({ kind: 'reset', url: 'http://localhost:4100/restablecer#t=tok', email: 'a@x.com' });
+    linkReadySignal.value = null;
+  });
+
+  it('Soporte: pide el equipo; invitar arma el link con tipo=soporte y revocar pega a la invitación', async () => {
+    reply.body = { members: [], invitations: [{ id: 'i1', email: 'b@x.com' }] };
+    navigate('/plataforma/soporte');
+    await vi.waitFor(() => { expect(staffSignal.value?.invitations).toEqual([{ id: 'i1', email: 'b@x.com' }]); });
+    expect(gets()).toContain('/api/platform/staff');
+    reply.body = { id: 'i2', token: 'tok', expiresAt: '2026-10-07T00:00:00.000Z' };
+    expect(await inviteStaff('ana@x.com')).toBe(true);
+    expect(linkReadySignal.value).toMatchObject({ kind: 'staff-invitation', url: 'http://localhost:4100/invitacion#t=tok&tipo=soporte', email: 'ana@x.com' });
+    linkReadySignal.value = null;
+    reply.body = { success: true };
+    await revokeStaffInvitation('i1');
+    expect(writes()).toEqual([
+      { url: '/api/platform/staff/invitations', method: 'POST', body: { email: 'ana@x.com' } },
+      { url: '/api/platform/staff/invitations/i1', method: 'DELETE', body: undefined },
+    ]);
+  });
+
+  it('Soporte no pide el equipo si quien mira no es root', async () => {
+    currentUserSignal.value = { id: 's', email: 's@x.com', name: 'S', globalRole: 'support' };
+    navigate('/plataforma/soporte');
+    await vi.waitFor(() => { expect(queryClient.isFetching()).toBe(0); });
+    expect(gets()).not.toContain('/api/platform/staff');
+  });
+
+  it('Registro pide con el comercio de la URL y la lista de comercios para el selector', async () => {
+    reply.body = [];
+    navigate('/plataforma/registro?comercio=kiosco');
+    await vi.waitFor(() => { expect(gets()).toContain('/api/platform/audit?tenantSlug=kiosco'); });
+    expect(gets()).toContain('/api/platform/tenants');
+    navigate('/plataforma/registro');
+    await vi.waitFor(() => { expect(gets()).toContain('/api/platform/audit'); });
+    expect(platformAuditSignal.value).toEqual([]);
+  });
+});
+
+describe('quién puede tocar una cuenta desde Usuarios (#23)', () => {
+  const user = (id: string, globalRole: 'root' | 'support' | 'user') => ({
+    id, name: id, email: `${id}@x.com`, whatsapp: null, globalRole, status: 'active' as const, createdAt: '', tenants: [],
+  });
+  it('nadie a root ni a sí mismo; a soporte solo root', () => {
+    const root = { id: 'r', globalRole: 'root' };
+    const support = { id: 's', globalRole: 'support' };
+    expect(canManageAccount(support, user('u', 'user'))).toBe(true);
+    expect(canManageAccount(support, user('s2', 'support'))).toBe(false);
+    expect(canManageAccount(root, user('s2', 'support'))).toBe(true);
+    expect(canManageAccount(root, user('r2', 'root'))).toBe(false);
+    expect(canManageAccount(support, user('s', 'support'))).toBe(false);
+    expect(canManageAccount(null, user('u', 'user'))).toBe(false);
   });
 });

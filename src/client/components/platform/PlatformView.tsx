@@ -8,14 +8,21 @@ import { PaymentSheetCard } from './PaymentSheetCard.tsx';
 import { PlatformSettingsCard } from './PlatformSettingsCard.tsx';
 import { TenantsTab } from './TenantsTab.tsx';
 import { TenantDetailView } from './TenantDetailView.tsx';
+import { UsersTab } from './UsersTab.tsx';
+import { StaffTab } from './StaffTab.tsx';
+import { AuditTab } from './AuditTab.tsx';
+import { LinkReadyModal } from '../users/LinkReadyModal.tsx';
 
 const TABS: Array<{ id: PlatformTab; label: string; rootOnly: boolean }> = [
   { id: 'tenants', label: 'Comercios', rootOnly: false },
+  { id: 'users', label: 'Usuarios', rootOnly: false },
   { id: 'payments', label: 'Cobranzas', rootOnly: false },
+  { id: 'staff', label: 'Soporte', rootOnly: true },
+  { id: 'audit', label: 'Registro', rootOnly: false },
   { id: 'settings', label: 'Configuración', rootOnly: true },
 ];
 
-/** Plataforma (#21, #23), para root y soporte: comercios, cobranzas y, para root, la configuración. */
+/** Plataforma (#21, #23), para root y soporte: comercios, usuarios, cobranzas, registro y, para root, el equipo y la configuración. */
 export function PlatformView() {
   const route = routeSignal.value;
   if (route.kind === 'plataforma' && route.tenantSlug !== null) return <TenantDetailView />;
@@ -43,8 +50,12 @@ export function PlatformView() {
         ))}
       </div>
       {tab === 'tenants' && <TenantsTab />}
+      {tab === 'users' && <UsersTab />}
       {tab === 'payments' && <PaymentSheetCard />}
+      {tab === 'staff' && <StaffTab />}
+      {tab === 'audit' && <AuditTab />}
       {tab === 'settings' && <PlatformSettingsCard />}
+      <LinkReadyModal />
     </div>
   );
 }

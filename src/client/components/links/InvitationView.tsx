@@ -3,6 +3,8 @@ import { ROLE_LABEL } from '../../state/permissions-state.ts';
 import {
   invitationInfoSignal,
   linkErrorSignal,
+  linkKindSignal,
+  staffInfoSignal,
   linkFormSignal,
   linkSubmittingSignal,
   setLinkField,
@@ -12,9 +14,14 @@ import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
 import { LinkGone, LinkPageFrame } from './LinkPageFrame.tsx';
 
-/** Aceptar una invitación (#19): crea la cuenta o suma la membresía a una existente. */
+/**
+ * Aceptar una invitación (#19): crea la cuenta o suma la membresía a una existente. La del equipo de
+ * soporte (#23) crea una cuenta de soporte o promueve una existente.
+ */
 export function InvitationView() {
-  const info = invitationInfoSignal.value;
+  const tenantInfo = invitationInfoSignal.value;
+  const staffInfo = staffInfoSignal.value;
+  const info = linkKindSignal.value === 'staff' ? staffInfo : tenantInfo;
   const error = linkErrorSignal.value;
   const form = linkFormSignal.value;
 
@@ -36,8 +43,16 @@ export function InvitationView() {
         }}
       >
         <p class="text-sm text-slate-700 dark:text-slate-300 text-center">
-          <strong>{info.invitedByName}</strong> te invitó a <strong>{info.tenantName}</strong> como{' '}
-          <strong>{ROLE_LABEL[info.role]}</strong>
+          {tenantInfo !== null && linkKindSignal.value === 'tenant' ? (
+            <>
+              <strong>{tenantInfo.invitedByName}</strong> te invitó a <strong>{tenantInfo.tenantName}</strong> como{' '}
+              <strong>{ROLE_LABEL[tenantInfo.role]}</strong>
+            </>
+          ) : (
+            <>
+              Te invitaron al equipo de soporte de mini contax{staffInfo === null ? '' : ` (${staffInfo.invitedByName})`}
+            </>
+          )}
         </p>
 
         {info.accountExists ? (

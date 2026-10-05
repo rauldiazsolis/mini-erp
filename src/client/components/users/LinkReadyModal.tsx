@@ -23,7 +23,7 @@ export function LinkReadyModal() {
       isOpen
       onClose={close}
       title={`Link listo para ${link.email}`}
-      subtitle={link.kind === 'invitation' ? 'Invitación a mini contax' : 'Restablecer la contraseña'}
+      subtitle={link.kind === 'reset' ? 'Restablecer la contraseña' : link.kind === 'staff-invitation' ? 'Invitación al equipo de soporte' : 'Invitación a mini contax'}
       maxWidth="lg"
       footer={
         <div class="flex justify-end">
