@@ -10,7 +10,7 @@ sin recortes por el contenedor, con Escape, foco atrapado y devuelto, y sin scro
 **Arquitectura:** un `DialogShell` de clase (Preact, sin hooks) monta el `<dialog>`, llama a
 `showModal()` al montarse y a `close()` al desmontarse, y traduce Escape, el clic en el fondo y un
 `close` externo a `onClose()`. `Modal` y `Drawer` solo cambian su `div` exterior por el shell. Los
-toasts pasan a un `popover="manual"` para quedar arriba del modal. Un guardián estático impide overlays
+toasts se dibujan adentro del diálogo de más arriba. Un guardián estático impide overlays
 fuera del shell.
 
 **Stack:** Preact 10 + `@preact/signals`, Tailwind CSS v4, Vitest (Node, sin DOM), Playwright.
@@ -410,160 +410,29 @@ git commit -m "test: guardián de overlays y el modal de acciones de plataforma 
 
 ### Tarea 4: toasts arriba de los diálogos
 
+> Cambió durante la ejecución: el `popover="manual"` del plan original se veía arriba, pero inerte (el
+> clic en su X le llegaba al fondo y cerraba el modal). Con el OK del usuario, los toasts se dibujan
+> adentro del diálogo de más arriba. Detalle en la spec.
+
 **Archivos:**
-- Modificar: `src/client/components/ui/ToastContainer.tsx`
-- Test: `test/toast-layer.test.ts`
+- Crear: `src/client/state/dialog-stack.ts`
+- Modificar: `src/client/components/ui/DialogShell.tsx`, `src/client/components/ui/ToastContainer.tsx`
+  (agrega `PageToasts`), `src/client/components/shell/AppShell.tsx`
+- Test: `test/dialog-toasts.test.ts`
 
 **Interfaces:**
-- Produce: `class ToastContainer extends Component` (el uso `<ToastContainer />` en `AppShell.tsx` no
-  cambia), con campo público `layer: PopoverLike | null` y método público `syncLayer(): void`;
-  `type PopoverLike = Pick<HTMLElement, 'showPopover' | 'hidePopover'>`.
+- Produce: `openDialogsSignal`, `anyDialogOpenSignal`, `pushDialog(): number`,
+  `popDialog(id: number): void`, `isTopDialog(id: number | null): boolean`; `PageToasts()`.
 
-- [ ] **Paso 1: test que falla**
-
-`test/toast-layer.test.ts`:
-
-```ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToastContainer } from '../src/client/components/ui/ToastContainer.tsx';
-import { toastsSignal } from '../src/client/state/toast-state.ts';
-
-function setup() {
-  const container = new ToastContainer({});
-  const layer = { showPopover: vi.fn(), hidePopover: vi.fn() };
-  container.layer = layer;
-  return { container, layer };
-}
-
-const toast = { id: 't1', type: 'error' as const, title: 'No se pudo guardar' };
-
-describe('Toasts sobre los diálogos (#56)', () => {
-  beforeEach(() => { toastsSignal.value = []; });
-
-  it('sin toasts la capa queda oculta', () => {
-    const { container, layer } = setup();
-    container.syncLayer();
-    expect(layer.showPopover).not.toHaveBeenCalled();
-  });
-
-  it('con un toast nuevo la capa se vuelve a mostrar, arriba del último diálogo', () => {
-    const { container, layer } = setup();
-    toastsSignal.value = [toast];
-    container.syncLayer();
-    toastsSignal.value = [toast, { ...toast, id: 't2' }];
-    container.syncLayer();
-    expect(layer.showPopover).toHaveBeenCalledTimes(2);
-    expect(layer.hidePopover).toHaveBeenCalledTimes(1);
-  });
-
-  it('cuando se van todos, se oculta', () => {
-    const { container, layer } = setup();
-    toastsSignal.value = [toast];
-    container.syncLayer();
-    toastsSignal.value = [];
-    container.syncLayer();
-    expect(layer.hidePopover).toHaveBeenCalledTimes(1);
-  });
-
-  it('la capa es un popover manual', () => {
-    const tree = new ToastContainer({}).render();
-    expect(tree.props).toMatchObject({ popover: 'manual' });
-  });
-});
-```
-
-`type: 'error' as const` es un literal, no un `as` que calle un error; si el lint lo objeta, tipar
-`toast` como `ToastItem`.
-
-- [ ] **Paso 2: verlo fallar**
-
-Run: `pnpm vitest run test/toast-layer.test.ts`
-Esperado: FAIL (`ToastContainer` es una función, no una clase).
-
-- [ ] **Paso 3: implementación**
-
-`ToastContainer.tsx` pasa a clase. El JSX de cada toast y `typeStyles` no cambian (mover `typeStyles`
-afuera, como constante del módulo). La raíz se dibuja siempre (el popover necesita el nodo) y el
-navegador la oculta mientras no se muestre:
-
-```tsx
-import { Component } from 'preact';
-import { toastsSignal, dismissToast, type ToastType } from '../../state/toast-state.ts';
-
-/** Lo que la capa usa del popover: alcanza para probarlo sin DOM. */
-export type PopoverLike = Pick<HTMLElement, 'showPopover' | 'hidePopover'>;
-
-const typeStyles: Record<ToastType, { border: string; bg: string; iconBg: string; text: string }> = {
-  /* los estilos de hoy, sin cambios */
-};
-
-/**
- * Los toasts van en un popover (#56): como los diálogos, está en la top layer, y al volver a
- * mostrarlo con cada toast nuevo queda arriba del último Modal o Drawer abierto.
- */
-export class ToastContainer extends Component {
-  layer: PopoverLike | null = null;
-  private shown = false;
-
-  setLayer = (el: HTMLDivElement | null): void => {
-    if (el !== null) this.layer = el;
-  };
-
-  componentDidMount(): void {
-    this.syncLayer();
-  }
-
-  componentDidUpdate(): void {
-    this.syncLayer();
-  }
-
-  syncLayer(): void {
-    if (this.layer === null) return;
-    if (this.shown) this.layer.hidePopover();
-    this.shown = toastsSignal.value.length > 0;
-    if (this.shown) this.layer.showPopover();
-  }
-
-  render() {
-    const toasts = toastsSignal.value;
-    return (
-      <div
-        ref={this.setLayer}
-        popover="manual"
-        class="fixed inset-auto bottom-4 right-4 m-0 border-0 bg-transparent overflow-visible flex flex-col gap-2 max-w-sm w-full pointer-events-none p-2"
-      >
-        {toasts.map((toast) => {
-          /* el toast de hoy, sin cambios */
-        })}
-      </div>
-    );
-  }
-}
-```
-
-Notas: `[popover]:not(:popover-open)` del navegador (`display: none`) le gana a `flex` por
-especificidad, así que cerrado no se ve. `z-50` se va (la top layer no usa `z-index`). La señal se lee
-en `render`: `@preact/signals` redibuja también los componentes de clase.
-
-- [ ] **Paso 4: verlo pasar**
-
-Run: `pnpm vitest run test/toast-layer.test.ts`
-Esperado: 4 tests PASS.
-
-- [ ] **Paso 5: verificación en el navegador integrado**
-
-Con un modal abierto, provocar un toast con un error real de una mutación (por ejemplo, en "Invitar"
-un correo que ya es miembro del comercio). El toast se ve arriba del fondo del modal y se va solo. Sin modal, los toasts se
-ven como siempre, abajo a la derecha, en claro y oscuro.
-
-- [ ] **Paso 6: verificación y commit**
-
-Run: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
-
-```bash
-git add src/client/components/ui/ToastContainer.tsx test/toast-layer.test.ts
-git commit -m "feat: los toasts van en un popover, arriba de los modales abiertos (#56)"
-```
+- [x] Test que falla: la pila (abrir dos, cerrar el de arriba), solo el diálogo de más arriba dibuja
+  `ToastContainer` y `PageToasts` es `null` con un diálogo abierto.
+- [x] Implementación: `DialogShell` hace `pushDialog()` en `componentDidMount`, `popDialog()` en
+  `componentWillUnmount` y dibuja `{isTopDialog(this.stackId) && <ToastContainer />}` al lado del
+  fondo; `AppShell` usa `<PageToasts />`.
+- [x] Navegador: con un modal abierto, un clic real en la X del toast lo descarta y el modal sigue
+  abierto; al cerrar el modal, un toast visible pasa a la página.
+- [ ] Verificación (`pnpm lint && pnpm typecheck && pnpm test && pnpm build`) y commit
+  `feat: los toasts se dibujan adentro del diálogo de más arriba (#56)`.
 
 ---
 
@@ -615,7 +484,8 @@ En la sección del cliente, después de "Componentes propios estilo shadcn…":
     todo overlay va por `Modal` o `Drawer`, que se abren con `<dialog>` y `showModal()`
     (`ui/DialogShell.tsx`, de clase, sin hooks). Ningún contenedor los recorta, el resto queda inerte,
     Escape y el fondo piden `onClose` y el foco vuelve solo; con un diálogo abierto el body no
-    scrollea (`index.css`). Los toasts van en un `popover` para quedar arriba.
+    scrollea (`index.css`). Los toasts los dibuja el diálogo de más arriba
+    (`state/dialog-stack.ts`): afuera quedarían inertes.
     `test/overlay-guard.test.ts` falla si aparece otro `fixed inset-0` o `<dialog`.
 ```
 

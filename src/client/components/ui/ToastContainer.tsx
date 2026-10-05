@@ -1,4 +1,5 @@
 import { toastsSignal, dismissToast, type ToastType } from '../../state/toast-state.ts';
+import { anyDialogOpenSignal } from '../../state/dialog-stack.ts';
 
 export function ToastContainer() {
   const toasts = toastsSignal.value;
@@ -92,4 +93,9 @@ export function ToastContainer() {
       })}
     </div>
   );
+}
+
+/** Los toasts de la página: con un Modal o un Drawer abierto los dibuja el diálogo de más arriba (#56). */
+export function PageToasts() {
+  return anyDialogOpenSignal.value ? null : <ToastContainer />;
 }

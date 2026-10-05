@@ -53,11 +53,20 @@ Las 18 pantallas que los usan no se tocan.
 
 ### Toasts
 
-Un toast que aparece con un modal abierto (el error al guardar) quedaría debajo del fondo del modal.
-`ToastContainer` pasa a ser un `popover="manual"`: se muestra con `showPopover()` cuando hay toasts y,
-con cada toast nuevo, se oculta y se vuelve a mostrar para quedar arriba del diálogo más reciente en la
-top layer. Si el botón de descartar queda inerte con un modal abierto, se acepta: los toasts se van
-solos (4 s por defecto). Se verifica en el navegador.
+Un toast que aparece con un modal abierto (el error al guardar) quedaría debajo del fondo del modal y,
+además, inerte: el clic en su X atraviesa el toast, le llega al fondo y cierra el modal. Se probó un
+`popover="manual"` (va a la top layer y se ve arriba), pero sigue inerte por estar fuera del diálogo:
+descartado.
+
+Los toasts se dibujan **adentro del diálogo de más arriba**:
+
+- `state/dialog-stack.ts`: la pila de diálogos abiertos en un signal; `DialogShell` se agrega al
+  montarse y se saca al desmontarse.
+- El diálogo de más arriba dibuja `<ToastContainer />` adentro de su `<dialog>`, al lado del fondo (no
+  dentro de él, que tiene `backdrop-blur`): queda arriba del fondo y se puede clickear.
+- `AppShell` usa `PageToasts`, que dibuja los toasts solo sin diálogos abiertos. Si un modal se cierra
+  con un toast visible, el toast pasa a la página (viven en su signal).
+- `ToastContainer` no cambia.
 
 ### "Acciones de plataforma"
 
@@ -84,7 +93,8 @@ Vitest corre en Node, sin DOM:
   `fixed inset-0` fuera de `DialogShell` (salvo `Sidebar`, documentado), si aparece `<dialog` fuera de
   `DialogShell`, o si falta la regla del scroll en `index.css`. Así un overlay nuevo solo puede abrirse
   por la top layer, esté donde esté en el árbol.
-- `ToastContainer`: la raíz es un `popover="manual"`.
+- `test/dialog-toasts.test.ts`: la pila de diálogos, que solo el de más arriba dibuja los toasts y que
+  `PageToasts` no los dibuja con un diálogo abierto.
 - e2e: en `sales-cash`, un drawer se cierra con Escape y se verifica `getByRole('dialog')`.
   `roles-invitations` y `navigation` deberían pasar sin cambios.
 
