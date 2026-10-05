@@ -2,6 +2,7 @@ import { effect } from '@preact/signals';
 import type { QueryKey } from '@tanstack/query-core';
 import { createSignalQuery, queryClient, type SignalQuery } from '../api/query-client.ts';
 import { effectiveTenantIdSignal, tokenSignal } from './auth-state.ts';
+import { suspendedNoticeSignal } from './suspension-state.ts';
 
 /**
  * Claves de la caché (#59): `['t', comercio, dominio, …parámetros]` y `['platform', nombre]`. El
@@ -22,6 +23,9 @@ export type PlatformQueryName = 'payments' | 'settings' | 'tenants' | 'tenant' |
 export function platformKey(name: PlatformQueryName, ...params: readonly unknown[]): QueryKey {
   return ['platform', name, ...params];
 }
+
+/** Lo que sigue abierto con el comercio suspendido (#23): el resto daría 403 detrás del aviso. */
+const OPEN_WHEN_SUSPENDED: readonly TenantDomain[] = ['billing-status', 'credits'];
 
 const sameTenant = (previous: QueryKey, next: QueryKey): boolean => previous[0] === 't' && next[0] === 't' && previous[1] === next[1];
 
@@ -44,7 +48,7 @@ export function createTenantParamQuery<T, P extends readonly unknown[]>(
       if (tenantId === null || !token || params === null) return null;
       return { key: tenantKey(tenantId, o.domain, ...params), fn: () => o.fn({ tenantId, token, params }) };
     },
-    enabled: o.enabled,
+    enabled: () => (OPEN_WHEN_SUSPENDED.includes(o.domain) || !suspendedNoticeSignal.value) && (o.enabled?.() ?? true),
     refetchInterval: o.refetchInterval,
     onError: o.onError,
     keepPrevious: sameTenant,
