@@ -71,8 +71,12 @@ test('ventas, anulación y cobranza del POS en Ventas & Caja, con su resumen y e
   await expect(page.getByText('Resumen del día')).toBeVisible();
   await expect(page.getByText(/2[.,]000[.,]00/).first()).toBeVisible();
 
+  // #56: el drawer es un diálogo modal y Escape lo cierra
+  await expect(page.getByRole('dialog', { name: 'Resumen del día' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
   // Drill-down: Facturación del dashboard lleva a la lista
-  await page.getByRole('button', { name: 'Cerrar panel' }).click();
   await page.getByRole('link', { name: 'Dashboard' }).click();
   await page.getByRole('button', { name: /Facturación Total/ }).click();
   await expect(page.getByText(/^3 tickets/)).toBeVisible();
