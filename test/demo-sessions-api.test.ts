@@ -73,7 +73,7 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     expect(skus).toContain('FER-001');
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
-    expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['customer-payment-void', 'demo-sessions']);
+    expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['customer-payment-void', 'demo-sessions', 'portal']);
     expect((info.body as { company?: { name: string } }).company).toEqual({ name: 'Ferretería Demo' });
   });
 
@@ -133,7 +133,7 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     expect((await info()).status).toBe(401);
   });
 
-  it('sin demos, /info declara solo customer-payment-void', async () => {
+  it('sin demos, /info no declara demo-sessions', async () => {
     const { app } = makeApp({ enabled: false });
     const alta = await request(app)
       .post('/api/alta')
@@ -147,7 +147,7 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
       .get('/connector/info')
       .set('Authorization', `Bearer ${(key.body as { rawKey: string }).rawKey}`);
     expect(info.status).toBe(200);
-    expect((info.body as { capabilities: string[] }).capabilities).toEqual(['customer-payment-void']);
+    expect((info.body as { capabilities: string[] }).capabilities).toEqual(['customer-payment-void', 'portal']);
   });
 });
 

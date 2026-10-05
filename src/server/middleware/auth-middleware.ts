@@ -6,6 +6,7 @@ import type { ApiKeyService, ValidatedPosKey } from '../tenant/api-key-service.t
 import type { TenantManager } from '../db/tenant-manager.ts';
 import { createTenantScope } from '../di/container.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
+import type { AnonymousContext, PortalService } from '../portal/portal-service.ts';
 
 export interface AuthenticatedAdminRequest extends Request {
   user?: UserSession;
@@ -18,6 +19,8 @@ export interface AuthenticatedAdminRequest extends Request {
   tenantScope?: IContainer;
   /** El rol con el que opera el comercio activo (#19); lo pone requireTenantContext. */
   tenantRole?: TenantRole;
+  /** El acceso anónimo de una demo (#24): sin usuario; solo entra por /api/tenants/:tenantId. */
+  anonymous?: AnonymousContext;
 }
 
 export interface AuthenticatedPosRequest extends Request {
@@ -38,11 +41,21 @@ export function bearerToken(req: Request): string | undefined {
 export function createAdminAuthMiddleware(
   authService: AuthService,
   tenantManager: TenantManager,
+  /** Con el portal, un token de sesión anónima (#24) vale como el admin de su comercio demo. */
+  portal?: PortalService,
 ) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
     const token = bearerToken(req);
     if (token === undefined) {
       res.status(401).json({ error: 'Falta cabecera Authorization: Bearer <token>' });
+      return;
+    }
+
+    const anonymous = portal?.resolveAnonymous(token);
+    if (anonymous !== undefined) {
+      req.anonymous = anonymous;
+      req.sessionToken = token;
+      next();
       return;
     }
 

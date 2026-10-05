@@ -20,6 +20,14 @@ export function can(role: TenantRole, capability: Capability): boolean {
   return MATRIX[capability].includes(role);
 }
 
+/** Lo que no puede el acceso anónimo de una demo (#24): usuarios, owners, créditos ni configuración. */
+export const ANONYMOUS_DENIED: readonly Capability[] = ['settings.manage', 'users.manage', 'owners.manage', 'credits.view'];
+
+/** `can`, restando lo que no puede un acceso anónimo. */
+export function canAs(role: TenantRole, capability: Capability, anonymous: boolean): boolean {
+  return can(role, capability) && !(anonymous && ANONYMOUS_DENIED.includes(capability));
+}
+
 export function assignableRoles(actor: TenantRole): TenantRole[] {
   if (actor === 'owner') return ['owner', 'admin', 'member'];
   if (actor === 'admin') return ['admin', 'member'];

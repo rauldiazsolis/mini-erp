@@ -10,6 +10,11 @@ export function sendImpersonating(res: Response): void {
 
 /** Lo que solo hace el usuario con su sesión (#23): contraseña, owners, links, comercios y plataforma. */
 export function requireOwnSession(req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void {
+  // El acceso anónimo de una demo (#24) tampoco: no es una cuenta
+  if (req.anonymous !== undefined) {
+    res.status(403).json({ code: 'anonymous', error: 'No disponible en la demo' });
+    return;
+  }
   if (req.impersonator !== undefined) {
     sendImpersonating(res);
     return;

@@ -27,6 +27,7 @@ import { createImpersonationRoutes } from './routes/impersonation-routes.ts';
 import { createHelpRoutes } from './routes/help-routes.ts';
 import { createMeRoutes } from './routes/me-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
+import { createPortalRoutes } from './routes/portal-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
@@ -41,6 +42,7 @@ import {
   apiKeyServiceDef,
   demoSessionServiceDef,
   demoResetServiceDef,
+  portalServiceDef,
   clockDef,
   membershipServiceDef,
   altaServiceDef,
@@ -115,6 +117,9 @@ export function createApp(deps?: AppDependencies): {
   const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now, body: 'api' });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
+  // La cadena del comercio acepta también la sesión anónima de una demo (#24); el resto, solo usuarios
+  const portal = rootContainer.use(portalServiceDef);
+  const requireTenantSession = createAdminAuthMiddleware(authService, tenantManager, portal);
   const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (key) => {
     demoSessions.touchRegister(key.registerId);
   });
@@ -139,12 +144,14 @@ export function createApp(deps?: AppDependencies): {
   // Sin registro suelto (#19): una cuenta nace en el alta o aceptando una invitación
   app.use('/api/alta', createAltaRoutes(authService, rootContainer.use(altaServiceDef), authLimit));
   app.use('/api/invitations', createInvitationLinkRoutes(invitationService, authLimit, authService));
+  // El portal (#24): canje del link del POS por la sesión anónima de la demo
+  app.use('/api/portal', createPortalRoutes(portal, authLimit));
   app.use('/api/password-resets', createPasswordResetLinkRoutes(passwordResetService, authLimit));
   app.use('/api/staff-invitations', createStaffInvitationLinkRoutes(staffInvitations, authLimit, authService));
   app.use('/api/tenants', createTenantRoutes(authService, requireAdmin));
   app.use(
     '/api/tenants/:tenantId',
-    requireAdmin,
+    requireTenantSession,
     requireTenantContext,
     createBillingRestriction(billing),
     createCatalogRoutes(),
@@ -179,7 +186,7 @@ export function createApp(deps?: AppDependencies): {
   );
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
-  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager }));
+  app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal }));
 
   // Manejador centralizado de errores
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

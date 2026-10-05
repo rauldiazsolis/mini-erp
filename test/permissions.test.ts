@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { can, assignableRoles, type Capability, type TenantRole } from '../src/shared/permissions.ts';
+import { can, canAs, assignableRoles, type Capability, type TenantRole } from '../src/shared/permissions.ts';
 import { passwordSchema, PASSWORD_MIN_LENGTH } from '../src/shared/password.ts';
 
 describe('matriz de capacidades (#19)', () => {
@@ -30,5 +30,16 @@ describe('matriz de capacidades (#19)', () => {
     expect(PASSWORD_MIN_LENGTH).toBe(8);
     expect(passwordSchema.safeParse('1234567').success).toBe(false);
     expect(passwordSchema.safeParse('12345678').success).toBe(true);
+  });
+});
+
+describe('acceso anónimo de una demo (#24)', () => {
+  it('es admin sin usuarios, owners, créditos ni configuración', () => {
+    expect(canAs('admin', 'tenant.use', true)).toBe(true);
+    expect(canAs('admin', 'bulk', true)).toBe(true);
+    for (const cap of ['settings.manage', 'users.manage', 'owners.manage', 'credits.view'] as const) {
+      expect(canAs('admin', cap, true)).toBe(false);
+      expect(canAs('admin', cap, false)).toBe(can('admin', cap));
+    }
   });
 });

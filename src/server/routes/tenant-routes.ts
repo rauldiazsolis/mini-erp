@@ -8,10 +8,9 @@ export function createTenantRoutes(
 ): Router {
   const router = Router();
 
-  router.use(requireAdmin);
-
-  // Listar tenants a los que el usuario tiene acceso
-  router.get('/', (req: AuthenticatedAdminRequest, res: Response) => {
+  // Listar tenants a los que el usuario tiene acceso. Solo esta ruta pide usuario: con `router.use`
+  // cortaría también la cadena de /api/tenants/:tenantId, que acepta la sesión anónima de una demo (#24)
+  router.get('/', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;

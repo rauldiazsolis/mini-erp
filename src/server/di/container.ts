@@ -17,6 +17,7 @@ import { ConnectorService } from '../connector/connector-service.ts';
 import { readDemoConfig, type DemoConfig } from '../demo/demo-config.ts';
 import { DemoSessionService } from '../demo/demo-session-service.ts';
 import { DemoResetService } from '../demo/demo-reset-service.ts';
+import { PortalService } from '../portal/portal-service.ts';
 import { AuditLog } from '../audit/audit-log.ts';
 import { MembershipService } from '../users/membership-service.ts';
 import { AltaService } from '../alta/alta-service.ts';
@@ -81,6 +82,11 @@ export const demoResetServiceDef = fn.singleton(
       sessions: c.use(demoSessionServiceDef),
       now: c.use(clockDef),
     }),
+);
+
+// El portal y el acceso anónimo de las demos (#24)
+export const portalServiceDef = fn.singleton(
+  (c) => new PortalService({ systemDb: c.use(systemDbDef), now: c.use(clockDef), demos: c.use(demoSessionServiceDef) }),
 );
 
 // --- CAJAS (#21) ---
