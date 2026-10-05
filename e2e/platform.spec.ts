@@ -92,7 +92,8 @@ test('root y soporte recorren la plataforma desde el menú lateral', async ({ br
     }, token);
     return { context, page };
   };
-  const all = ['Comercios', 'Usuarios', 'Pedidos', 'Demos', 'Cobranzas', 'Soporte', 'Registro', 'Configuración'];
+  // Visitantes puede llevar el contador de contactos sin atender (#25): otros e2e dejan contactos
+  const all = ['Comercios', 'Usuarios', 'Pedidos', 'Demos', 'Embudo', /^Visitantes\d*$/, 'Cobranzas', 'Soporte', 'Registro', 'Configuración'];
 
   const { context: rootContext, page: root } = await openAs('root@local.test');
   await root.goto('/admin');
