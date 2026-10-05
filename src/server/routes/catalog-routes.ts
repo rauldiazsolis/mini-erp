@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { CatalogService } from '../catalog/catalog-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
@@ -73,7 +73,7 @@ export function createCatalogRoutes(): Router {
   router.post('/branches', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createBranchSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de sucursal inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de sucursal inválidos' });
       return;
     }
 
@@ -117,7 +117,7 @@ export function createCatalogRoutes(): Router {
 
     const parseResult = updateBranchSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
 
@@ -166,7 +166,7 @@ export function createCatalogRoutes(): Router {
   router.post('/products', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createProductSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de producto inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de producto inválidos' });
       return;
     }
 
@@ -210,7 +210,7 @@ export function createCatalogRoutes(): Router {
 
     const parseResult = updateProductSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
 

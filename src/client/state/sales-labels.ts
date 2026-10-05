@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { methodKey, type MethodKey } from '../../shared/payment-methods.ts';
 import type { CustomerRef, SaleKind } from '../../shared/sales-types.ts';
 

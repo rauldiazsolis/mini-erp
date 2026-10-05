@@ -1,5 +1,5 @@
 import { Router, type Request, type RequestHandler, type Response, type NextFunction } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
 import { ConnectorService } from '../connector/connector-service.ts';
 import { summarizeForLog } from '../connector/push-events.ts';
@@ -53,7 +53,7 @@ const pullBatchSchema = z.object({
   pendingLotIds: z.array(z.string()),
 });
 
-const demoSessionRequestSchema = z.object({ template: z.string().optional() }).passthrough();
+const demoSessionRequestSchema = z.looseObject({ template: z.string().optional() });
 
 const accountHoldSchema = z.object({
   customerId: z.string().min(1, 'customerId requerido'),
@@ -77,7 +77,7 @@ export function createConnectorRoutes(
     const body: unknown = req.body ?? {};
     const parsed = demoSessionRequestSchema.safeParse(body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Payload inválido' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Payload inválido' });
       return;
     }
     const template = parsed.data.template ?? DEFAULT_DEMO_TEMPLATE;
@@ -126,7 +126,7 @@ export function createConnectorRoutes(
 
     const parseResult = pushBatchSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Payload inválido' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
     }
 
@@ -178,7 +178,7 @@ export function createConnectorRoutes(
   router.post('/sync/pull', (req: AuthenticatedPosRequest, res: Response) => {
     const parseResult = pullBatchSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Payload inválido' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
     }
 
@@ -227,7 +227,7 @@ export function createConnectorRoutes(
 
     const parseResult = accountHoldSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Payload inválido' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
     }
 

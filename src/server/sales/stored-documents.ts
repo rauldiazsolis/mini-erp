@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
 import type { Numbered, PaymentLine } from '../../shared/sales-types.ts';
 import { parseSaleLines, type SaleLine } from '../dashboard/sale-lines.ts';
@@ -8,7 +8,7 @@ import { parseSaleLines, type SaleLine } from '../dashboard/sale-lines.ts';
  * se omite. Un payload roto nunca da un 500 en las consultas.
  */
 
-const recordSchema = z.record(z.unknown());
+const recordSchema = z.record(z.string(), z.unknown());
 const numberedSchema = z.object({ date: z.string().regex(DAY_PATTERN), number: z.number().int() });
 const paymentSchema = z.object({ method: z.string(), amount: z.number(), reference: z.string().optional() });
 const countSchema = z.object({ expected: z.number(), counted: z.number() });

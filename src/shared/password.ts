@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod.ts';
 
 /** El mismo mínimo para todos (#19): alta, invitación, restablecimiento, cambio y root. */
 export const PASSWORD_MIN_LENGTH = 8;

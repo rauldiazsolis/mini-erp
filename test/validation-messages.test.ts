@@ -78,6 +78,14 @@ describe('textos de validación de /api (#6)', () => {
     expect(errorOf(res)).toBe('Email inválido');
   });
 
+  it('una invitación con un email inválido da "Email inválido" y una con espacios se acepta', async () => {
+    const bad = await tenantPost('/invitations', { email: 'no-es-email', role: 'member' });
+    expect(bad.status).toBe(400);
+    expect(errorOf(bad)).toBe('Email inválido');
+    const ok = await tenantPost('/invitations', { email: '  nueva@x.com  ', role: 'member' });
+    expect(ok.status).toBe(201);
+  });
+
   it('importación sin csv o sin dryRun dice qué falta', async () => {
     expect(errorOf(await tenantPost('/import/customers', { dryRun: true }))).toBe('Falta el contenido del archivo');
     expect(errorOf(await tenantPost('/import/customers', { csv: 'Nombre\nAna\n' }))).toBe('Falta indicar si es una vista previa');
@@ -99,6 +107,12 @@ describe('textos de validación de /api (#6)', () => {
     const base = { productId: 'p1', branchId: 'b1', type: 'set', quantity: 3, reason: 'conteo' };
     expect(errorOf(await tenantPost('/stock/adjust', { ...base, type: 'sumar' }))).toBe("El tipo de ajuste debe ser 'set' o 'delta'");
     expect(errorOf(await tenantPost('/stock/adjust', { ...base, quantity: 'tres' }))).toBe('La cantidad debe ser numérica');
+  });
+
+  it('un dato sin texto propio da el mensaje de Zod en castellano', async () => {
+    const res = await tenantPost('/customers/c1/payments', {});
+    expect(res.status).toBe(400);
+    expect(errorOf(res)).toBe('Entrada inválida: se esperaba número, recibido indefinido');
   });
 
   it('un pago de plataforma con un importe que no es número', async () => {

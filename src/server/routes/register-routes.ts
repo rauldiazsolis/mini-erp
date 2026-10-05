@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import type { RegisterService } from '../registers/register-service.ts';
@@ -49,7 +49,7 @@ export function createRegisterRoutes(registers: RegisterService, audit: AuditLog
   router.post('/pos-registers', manage, (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     const created = registers.create({ tenantId: req.activeTenantId ?? '', ...parsed.data });
@@ -67,7 +67,7 @@ export function createRegisterRoutes(registers: RegisterService, audit: AuditLog
   router.post('/pos-registers/:registerId/transfer', manage, (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = transferSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     act(req, res, 'register.transferred', (tenantId, registerId) => {

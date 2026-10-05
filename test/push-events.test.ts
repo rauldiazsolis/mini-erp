@@ -70,6 +70,13 @@ describe('parseBatchEvent (#1)', () => {
     });
   });
 
+  it('los mensajes de Zod de un issue están en castellano (#6)', () => {
+    expect(parseBatchEvent(brokenEvents.sale)).toEqual({
+      ok: false,
+      issue: { eventId: 'e-sale', message: 'Evento sale inválido: sale.total: Entrada inválida: se esperaba número, recibido texto' },
+    });
+  });
+
   it('conserva los campos desconocidos en todos los niveles', () => {
     const extra = { futuro: { x: 1 } };
     const sale = {

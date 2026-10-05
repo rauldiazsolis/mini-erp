@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { discrepancyServiceDef } from '../di/container.ts';
@@ -35,7 +35,7 @@ export function createDiscrepancyRoutes(): Router {
     (req: AuthenticatedAdminRequest, res: Response) => {
       const parsed = dismissSchema.safeParse(req.body);
       if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Motivo inválido' });
+        res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Motivo inválido' });
         return;
       }
       const id = req.params['discrepancyId'];

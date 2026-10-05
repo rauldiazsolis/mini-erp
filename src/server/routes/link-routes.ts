@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { InvitationService } from '../users/invitation-service.ts';
 import type { PasswordResetService } from '../users/password-reset-service.ts';
 import { passwordSchema } from '../../shared/password.ts';
@@ -31,7 +31,7 @@ export function createInvitationLinkRoutes(invitations: InvitationService, limit
   router.post('/accept', limit, (req, res) => {
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
@@ -39,7 +39,7 @@ export function createInvitationLinkRoutes(invitations: InvitationService, limit
       if (!invitations.lookup(parsed.data.token).accountExists) {
         const pw = passwordSchema.safeParse(parsed.data.password);
         if (!pw.success) {
-          res.status(400).json({ error: pw.error.errors[0]?.message ?? 'Contraseña inválida' });
+          res.status(400).json({ error: pw.error.issues[0]?.message ?? 'Contraseña inválida' });
           return;
         }
       }
@@ -74,7 +74,7 @@ export function createPasswordResetLinkRoutes(resets: PasswordResetService, limi
   router.post('/complete', limit, (req, res) => {
     const parsed = completeSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {

@@ -1,5 +1,5 @@
 import { Router, type RequestHandler, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
@@ -7,7 +7,7 @@ import { passwordSchema } from '../../shared/password.ts';
 import { sendError } from '../errors.ts';
 
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.email('Email inválido'),
   password: z.string().min(1, 'Contraseña requerida'),
 });
 
@@ -27,7 +27,7 @@ export function createAuthRoutes(
   router.post('/login', limit, (req, res) => {
     const parseResult = loginSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
 
@@ -48,7 +48,7 @@ export function createAuthRoutes(
     }
     const parsed = changePasswordSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {

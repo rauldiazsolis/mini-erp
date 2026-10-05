@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { salesQueryServiceDef } from '../di/container.ts';
@@ -46,11 +46,11 @@ function getService(req: AuthenticatedAdminRequest): SalesQueryService {
 }
 
 /** Valida la query con `schema` y responde lo que devuelve `run`; un error de negocio va con su estado. */
-function handle<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, run: (service: SalesQueryService, query: T) => unknown) {
+function handle<T>(schema: z.ZodType<T>, run: (service: SalesQueryService, query: T) => unknown) {
   return (req: AuthenticatedAdminRequest, res: Response): void => {
     const parsed = schema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Consulta inválida' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
     try {

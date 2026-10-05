@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import type { MembershipService } from '../users/membership-service.ts';
@@ -10,7 +10,7 @@ import { TENANT_ROLES, type TenantRole } from '../../shared/permissions.ts';
 import { DomainError, sendError } from '../errors.ts';
 
 const inviteSchema = z.object({
-  email: z.string().trim().email('Email inválido'),
+  email: z.string().trim().pipe(z.email('Email inválido')),
   role: z.enum(TENANT_ROLES),
 });
 
@@ -51,7 +51,7 @@ export function createUserRoutes(deps: {
   router.post('/invitations', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = inviteSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
@@ -73,7 +73,7 @@ export function createUserRoutes(deps: {
   router.patch('/users/:userId', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {

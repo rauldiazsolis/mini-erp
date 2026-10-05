@@ -1,8 +1,8 @@
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 
 /**
  * Eventos del push del Connector API 4.4.0 (`OutboxBatchItem`). Cada tipo valida lo que el mini-erp
- * lee y deja pasar el resto (`passthrough`), así el ERP guarda el evento completo aunque el contrato
+ * lee y deja pasar el resto (`z.looseObject`), así el ERP guarda el evento completo aunque el contrato
  * sume campos. Los enums abiertos (medio de pago, motivo de stock) son `string` por las reglas de
  * evolución del contrato. Un evento inválido es un `LotIssue` del lote, nunca un error del request.
  */
@@ -10,76 +10,61 @@ import { z } from 'zod';
 export type LotIssue = { message: string; eventId?: string };
 
 /** Sobre común. Un POS anterior puede mandar un evento sin `origin` ni `createdAt`. */
-const envelopeSchema = z
-  .object({
-    id: z.string().min(1),
-    type: z.string().min(1),
-    createdAt: z.string().optional(),
-    origin: z
-      .object({ branch: z.string().optional(), pointOfSale: z.string().optional() })
-      .passthrough()
-      .optional(),
-  })
-  .passthrough();
+const envelopeSchema = z.looseObject({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  createdAt: z.string().optional(),
+  origin: z.looseObject({ branch: z.string().optional(), pointOfSale: z.string().optional() }).optional(),
+});
 
-const paymentSchema = z
-  .object({ method: z.string(), amount: z.number(), reference: z.string().optional() })
-  .passthrough();
+const paymentSchema = z.looseObject({ method: z.string(), amount: z.number(), reference: z.string().optional() });
 
 /** Número de ticket (4.1.0) o de recibo (4.2.0) en su día. */
 const numberedSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) });
 
 /** Venta: total, cliente, anulación, pagos, el número de ticket (4.1.0) y su `createdAt` (el día, #20). */
-const saleSchema = z
-  .object({
-    id: z.string().min(1),
-    total: z.number(),
-    customerId: z.string().optional(),
-    voidsSaleId: z.string().optional(),
-    payments: z.array(paymentSchema),
-    ticket: numberedSchema.optional(),
-    createdAt: z.string().optional(),
-  })
-  .passthrough();
+const saleSchema = z.looseObject({
+  id: z.string().min(1),
+  total: z.number(),
+  customerId: z.string().optional(),
+  voidsSaleId: z.string().optional(),
+  payments: z.array(paymentSchema),
+  ticket: numberedSchema.optional(),
+  createdAt: z.string().optional(),
+});
 
-const stockMovementSchema = z
-  .object({
-    id: z.string().min(1),
-    productId: z.string().min(1),
-    delta: z.number(),
-    reason: z.string(),
-    saleId: z.string().optional(),
-  })
-  .passthrough();
+const stockMovementSchema = z.looseObject({
+  id: z.string().min(1),
+  productId: z.string().min(1),
+  delta: z.number(),
+  reason: z.string(),
+  saleId: z.string().optional(),
+});
 
-const customerSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string(),
-    document: z.string().optional(),
-    phone: z.string().optional(),
-    creditLimit: z.number().optional(),
-    margin: z.number().optional(),
-    balance: z.number().optional(),
-    unrestricted: z.boolean().optional(),
-    blocked: z.object({ reason: z.string() }).passthrough().optional(),
-  })
-  .passthrough();
+const customerSchema = z.looseObject({
+  id: z.string().min(1),
+  name: z.string(),
+  document: z.string().optional(),
+  phone: z.string().optional(),
+  creditLimit: z.number().optional(),
+  margin: z.number().optional(),
+  balance: z.number().optional(),
+  unrestricted: z.boolean().optional(),
+  blocked: z.looseObject({ reason: z.string() }).optional(),
+});
 
 /** Movimiento de caja: el mini-erp lo guarda completo; necesita el id y su `createdAt` (el día, #20). */
-const cashMovementSchema = z.object({ id: z.string().min(1), createdAt: z.string().optional() }).passthrough();
+const cashMovementSchema = z.looseObject({ id: z.string().min(1), createdAt: z.string().optional() });
 
 /** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). El recibo y `createdAt` dan su día (#20). */
-const customerPaymentSchema = z
-  .object({
-    id: z.string().min(1),
-    customerId: z.string().min(1),
-    total: z.number(),
-    voidsPaymentId: z.string().min(1).optional(),
-    receipt: numberedSchema.optional(),
-    createdAt: z.string().optional(),
-  })
-  .passthrough();
+const customerPaymentSchema = z.looseObject({
+  id: z.string().min(1),
+  customerId: z.string().min(1),
+  total: z.number(),
+  voidsPaymentId: z.string().min(1).optional(),
+  receipt: numberedSchema.optional(),
+  createdAt: z.string().optional(),
+});
 
 const pushEventSchema = z.discriminatedUnion('type', [
   envelopeSchema.extend({ type: z.literal('sale'), sale: saleSchema }),

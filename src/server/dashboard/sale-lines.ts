@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 
 /** Líneas de venta del contrato (`ProductSaleLine` / `FreeformSaleLine`), para leer el payload guardado. */
 const discountSchema = z.object({ type: z.enum(['amount', 'percentage']), value: z.number() });

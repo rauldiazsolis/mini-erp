@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 
 /**
  * Qué archivos forman una versión publicada del POS (#9), leyendo su `index.html` y sus bundles.
@@ -49,9 +49,7 @@ export function bundleAssetRefs(text: string, filePath: string): string[] {
   return unique([...rooted, ...relative]);
 }
 
-const manifestSchema = z
-  .object({ icons: z.array(z.object({ src: z.string() }).passthrough()).optional() })
-  .passthrough();
+const manifestSchema = z.looseObject({ icons: z.array(z.looseObject({ src: z.string() })).optional() });
 
 /** Los íconos que nombra el manifest de la PWA (`icons[].src`), relativos a su carpeta (#58). */
 export function manifestAssetRefs(text: string, filePath: string): string[] {

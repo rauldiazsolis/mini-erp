@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { DashboardService } from '../dashboard/dashboard-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
@@ -27,7 +27,7 @@ export function createDashboardRoutes(): Router {
   router.get('/dashboard/summary', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = summaryQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Parámetros inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Parámetros inválidos' });
       return;
     }
 
