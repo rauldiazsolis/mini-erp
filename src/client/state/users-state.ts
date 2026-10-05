@@ -66,7 +66,22 @@ export const AUDIT_LABEL: Record<string, string> = {
   'staff.invited': 'invitó a soporte a',
   'staff.invitation_revoked': 'revocó la invitación a soporte de',
   'staff.joined': 'se sumó a soporte',
+  // Impersonación (#23)
+  'impersonation.started': 'entró como',
+  'impersonation.ended': 'salió de la cuenta de',
 };
+
+/** Por qué terminó una impersonación (#23). */
+export const IMPERSONATION_END_LABEL: Record<string, string> = {
+  exit: 'salió',
+  expired: 'venció por falta de uso',
+  'parent-ended': 'se cerró la sesión de soporte',
+};
+
+/** El actor de una línea de auditoría (#23): "Ana (soporte) como Juan" si fue impersonando. */
+export function auditActorText(e: { actorName: string; impersonatorName: string | null }): string {
+  return e.impersonatorName === null ? e.actorName : `${e.impersonatorName} (soporte) como ${e.actorName}`;
+}
 
 /** El token va en el fragmento: no llega al servidor ni a los logs. */
 export function buildLinkUrl(kind: LinkReady['kind'], token: string, origin: string): string {

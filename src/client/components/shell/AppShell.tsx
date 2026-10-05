@@ -5,6 +5,7 @@ import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts
 import { PageToasts } from '../ui/ToastContainer.tsx';
 import { isRootOrSupportSignal, userTenantsSignal } from '../../state/auth-state.ts';
 import { ImpersonationBar } from './ImpersonationBar.tsx';
+import { HelpModal } from '../help/HelpModal.tsx';
 import { activeSectionSignal } from '../../state/route-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { CreditsBanner } from '../credits/CreditsBanner.tsx';
@@ -62,6 +63,9 @@ export function AppShell(props: { children: ComponentChildren }) {
       </div>
 
       {/* Contenedor de Notificaciones Toast */}
+      {/* Pedir ayuda (#23) */}
+      <HelpModal />
+
       <PageToasts />
     </div>
   );

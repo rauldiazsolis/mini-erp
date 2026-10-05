@@ -1,6 +1,6 @@
 import { platformAuditLoadingSignal, platformAuditSignal, platformTenantsSignal } from '../../state/platform-panel-state.ts';
 import { routeSignal, setPlatformFilters } from '../../state/route-state.ts';
-import { AUDIT_LABEL } from '../../state/users-state.ts';
+import { AUDIT_LABEL, IMPERSONATION_END_LABEL, auditActorText } from '../../state/users-state.ts';
 import { formatDateTime } from '../../format.ts';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 import { Select } from '../ui/Select.tsx';
@@ -39,13 +39,14 @@ export function AuditTab() {
               <Tbody>
                 {entries.map((e) => {
                   const email = typeof e.details['email'] === 'string' ? e.details['email'] : null;
-                  const reason = typeof e.details['reason'] === 'string' ? e.details['reason'] : null;
+                  const rawReason = typeof e.details['reason'] === 'string' ? e.details['reason'] : null;
+                  const reason = rawReason !== null && e.action === 'impersonation.ended' ? (IMPERSONATION_END_LABEL[rawReason] ?? rawReason) : rawReason;
                   return (
                     <Tr key={e.id}>
                       <Td class="whitespace-nowrap">{formatDateTime(e.at)}</Td>
                       <Td>{e.tenantName ?? '—'}</Td>
                       <Td>
-                        <strong>{e.actorName}</strong> {AUDIT_LABEL[e.action] ?? e.action}
+                        <strong>{auditActorText(e)}</strong> {AUDIT_LABEL[e.action] ?? e.action}
                         {e.targetName !== null && e.targetName !== e.actorName && <strong> {e.targetName}</strong>}
                         {email !== null && <span class="text-slate-500"> {email}</span>}
                         {reason !== null && <span class="text-slate-500"> ({reason})</span>}

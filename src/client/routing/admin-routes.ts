@@ -43,6 +43,7 @@ export const SECTION_TABS = {
 export const PLATFORM_TABS = [
   { id: 'tenants', slug: '' },
   { id: 'users', slug: 'usuarios' },
+  { id: 'requests', slug: 'pedidos' },
   { id: 'payments', slug: 'cobranzas' },
   { id: 'staff', slug: 'soporte' },
   { id: 'audit', slug: 'registro' },

@@ -13,6 +13,8 @@ import { toggleMobileMenu } from '../../state/navigation-state.ts';
 import { showToast } from '../../state/toast-state.ts';
 import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { ROLE_LABEL } from '../../state/permissions-state.ts';
+import { canAskHelpSignal, helpModalOpenSignal, supportInsideSignal } from '../../state/help-state.ts';
+import { Button } from '../ui/Button.tsx';
 
 export const tenantDropdownOpenSignal = signal(false);
 
@@ -136,6 +138,18 @@ export function Header() {
 
       {/* Derecha: Selector de Tema, Usuario y Logout */}
       <div class="flex items-center gap-3 sm:gap-4">
+        {/* Transparencia (#23): el usuario ve cuando soporte está adentro de su cuenta */}
+        {supportInsideSignal.value && (
+          <span role="status" class="hidden sm:inline text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            Soporte está viendo tu cuenta
+          </span>
+        )}
+        {canAskHelpSignal.value && (
+          <Button size="sm" variant="outline" onClick={() => { helpModalOpenSignal.value = true; }}>
+            Pedir ayuda
+          </Button>
+        )}
+
         {/* Toggle de Tema Compacto */}
         <ThemeToggle compact />
 
