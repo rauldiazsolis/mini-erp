@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   accountDrawerOpenSignal,
   accountTargetCustomerSignal,
@@ -122,7 +123,7 @@ export function AccountStatementDrawer() {
         {/* Footer */}
         <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div>
-            {customer.balance > 0 && (
+            {canDo('tenant.use') && customer.balance > 0 && (
               <Button
                 size="sm"
                 onClick={() => {

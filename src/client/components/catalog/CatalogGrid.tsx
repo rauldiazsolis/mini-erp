@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   filteredProductsSignal,
   catalogLoadingSignal,
@@ -23,6 +24,8 @@ import {
 import { formatMoney, formatQty } from '../../format.ts';
 
 export function CatalogGrid() {
+  // Una caja desde el POS (M10) solo consulta
+  const canEdit = canDo('tenant.use');
   const products = filteredProductsSignal.value;
   const isLoading = catalogLoadingSignal.value;
   const stockMap = stockMapSignal.value;
@@ -113,7 +116,7 @@ export function CatalogGrid() {
                 {/* SKU */}
                 <Td
                   class="font-mono text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer"
-                  onDblClick={() => { startInlineEdit(p.id, 'sku', p.sku); }}
+                  onDblClick={canEdit ? () => { startInlineEdit(p.id, 'sku', p.sku); } : undefined}
                   title="Doble clic para editar SKU"
                 >
                   {isEditingSku ? (
@@ -139,7 +142,7 @@ export function CatalogGrid() {
                 {/* Nombre */}
                 <Td
                   class="font-semibold text-slate-900 dark:text-white cursor-pointer"
-                  onDblClick={() => { startInlineEdit(p.id, 'name', p.name); }}
+                  onDblClick={canEdit ? () => { startInlineEdit(p.id, 'name', p.name); } : undefined}
                   title="Doble clic para editar nombre"
                 >
                   {isEditingName ? (
@@ -172,7 +175,7 @@ export function CatalogGrid() {
                 {/* Categoría */}
                 <Td
                   class="text-slate-600 dark:text-slate-300 cursor-pointer"
-                  onDblClick={() => { startInlineEdit(p.id, 'category', p.category); }}
+                  onDblClick={canEdit ? () => { startInlineEdit(p.id, 'category', p.category); } : undefined}
                   title="Doble clic para editar categoría"
                 >
                   {isEditingCategory ? (
@@ -200,7 +203,7 @@ export function CatalogGrid() {
                 {/* Precio Venta */}
                 <Td
                   class="text-right font-mono font-bold text-slate-900 dark:text-white cursor-pointer"
-                  onDblClick={() => { startInlineEdit(p.id, 'price', p.price.toString()); }}
+                  onDblClick={canEdit ? () => { startInlineEdit(p.id, 'price', p.price.toString()); } : undefined}
                   title="Doble clic para editar precio"
                 >
                   {isEditingPrice ? (
@@ -269,7 +272,8 @@ export function CatalogGrid() {
 
                 {/* Acciones */}
                 <Td class="text-right">
-                  <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                  {canEdit && (
+<div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
                       onClick={() => { openEditProductModal(p); }}
@@ -331,7 +335,8 @@ export function CatalogGrid() {
                       </svg>
                     </button>
                   </div>
-                </Td>
+
+)}                </Td>
               </Tr>
             );
           })}

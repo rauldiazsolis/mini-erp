@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import { CustomerStatsBar } from './CustomerStatsBar.tsx';
 import { CustomerToolbar } from './CustomerToolbar.tsx';
 import { CustomerGrid } from './CustomerGrid.tsx';
@@ -22,8 +23,8 @@ export function CustomerView() {
       {/* Tarjetas KPI de Estado de Cuenta y Deuda */}
       <CustomerStatsBar />
 
-      {/* Movimientos de las cajas para revisar (#2) */}
-      <DiscrepancyBanner />
+      {/* Movimientos de las cajas para revisar (#2); una caja desde el POS (M10) no los ve */}
+      {canDo('tenant.use') && <DiscrepancyBanner />}
 
       {/* Barra de Filtros y Búsqueda */}
       <CustomerToolbar />

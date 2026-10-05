@@ -1,3 +1,4 @@
+import { canDo } from './permissions-state.ts';
 import { computed, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { effectiveTenantIdSignal, tokenSignal } from './auth-state.ts';
@@ -23,7 +24,8 @@ export type DiscrepancyItem = {
 // Sin la lista, la franja no aparece: un error de carga no se muestra
 const discrepanciesQuery = createTenantQuery<DiscrepancyItem[]>({
   domain: 'discrepancies',
-  enabled: () => inSection('customers'),
+  // Una caja desde el POS (M10) no las ve
+  enabled: () => inSection('customers') && canDo('tenant.use'),
   fn: ({ tenantId, token }) => apiFetch<DiscrepancyItem[]>(`tenants/${tenantId}/discrepancies`, { token }),
 });
 

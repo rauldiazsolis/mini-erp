@@ -22,6 +22,7 @@ import { canDo, firstAllowedSection, isSettingsTabAllowed, isViewAllowed } from 
 import { apiFetch } from '../src/client/api/client.ts';
 import { locationSignal, navigate, setHistoryForTests } from '../src/client/state/route-state.ts';
 import { buildUrl, parseLocation } from '../src/client/routing/admin-routes.ts';
+import { AUDIT_LABEL } from '../src/client/state/users-state.ts';
 
 class MemoryStorage implements StorageLike {
   data = new Map<string, string>();
@@ -243,5 +244,9 @@ describe('acceso de una caja real en el cliente (M10)', () => {
     expect(tokenSignal.value).toBe('tok-ana');
     expect(anonymousSignal.value).toBeNull();
     expect(path()).toBe('/admin/kiosco-ana');
+  });
+
+  it('la actividad dice que la caja abrió mini', () => {
+    expect(AUDIT_LABEL['portal.opened']).toBe('abrió mini');
   });
 });

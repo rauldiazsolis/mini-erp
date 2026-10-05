@@ -1,3 +1,4 @@
+import { canDo } from '../../state/permissions-state.ts';
 import {
   customerSearchSignal,
   customerDebtorsOnlySignal,
@@ -13,6 +14,8 @@ import { Button } from '../ui/Button.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
 
 export function CustomerToolbar() {
+  // Una caja desde el POS (M10) solo consulta
+  const canEdit = canDo('tenant.use');
   const search = customerSearchSignal.value;
   const debtorsOnly = customerDebtorsOnlySignal.value;
   const blockedFilter = customerBlockedFilterSignal.value;
@@ -80,12 +83,14 @@ export function CustomerToolbar() {
             </svg>
           </button>
 
+          {canEdit && (
           <Button size="sm" onClick={openNewCustomerModal} class="shadow-md shadow-indigo-600/20">
             <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             Nuevo Cliente
           </Button>
+          )}
         </div>
       </div>
 
