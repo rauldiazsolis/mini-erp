@@ -1,6 +1,6 @@
 import type { createApp } from './app.ts';
 import { ensureDevData, type DevInfo } from './db/dev-seed.ts';
-import { startDemoSweeper } from './demo/demo-session-service.ts';
+import { startDemoSweeper } from './demo/demo-sweeper.ts';
 import { startBillingSweeper } from './billing/reconcile.ts';
 
 export type { DevInfo };
@@ -25,7 +25,7 @@ export function bootstrap(params: {
     const created = bundle.demoSessions.ensureDemoTenants();
     if (created.length > 0) console.log(`[demos] comercios demo creados: ${created.join(', ')}`);
   }
-  const sweeper = startDemoSweeper(bundle.demoSessions, interval);
+  const sweeper = startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets }, interval);
   const billingSweeper = startBillingSweeper(
     { systemDb: bundle.systemDb, tenantManager: bundle.tenantManager, billing: bundle.billing },
     interval,

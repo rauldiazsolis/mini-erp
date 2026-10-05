@@ -1,8 +1,17 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import { writeStock } from '../stock/write-stock.ts';
-import { DEMO_BRANCH_ID, DEMO_CUSTOMERS, demoSeedProducts, seedDemoCommerce, type DemoTemplate, type SeedCustomer } from '../seeds/index.ts';
+import {
+  DEMO_BRANCH_ID,
+  DEMO_CUSTOMERS,
+  demoSeedProducts,
+  isDemoTemplate,
+  seedDemoCommerce,
+  type DemoTemplate,
+  type SeedCustomer,
+} from '../seeds/index.ts';
 import type { DemoSessionService } from './demo-session-service.ts';
+import { lastResetBoundary } from './reset-schedule.ts';
 
 export type DemoResetDeps = {
   systemDb: DatabaseSync;
@@ -89,6 +98,55 @@ export class DemoResetService {
       ).run(at);
     });
     this.deps.systemDb.prepare('UPDATE demo_tenants SET last_partial_reset_at = ? WHERE tenant_id = ?').run(at, tenantId);
+  }
+
+  /** Los rubros cuyo último reinicio total es anterior a la hora del reinicio automático más reciente. */
+  dueTemplates(): DemoTemplate[] {
+    const boundary = lastResetBoundary(this.deps.now(), this.deps.sessions.resetHour()).toISOString();
+    const rows = this.deps.systemDb
+      .prepare('SELECT template FROM demo_tenants WHERE last_full_reset_at < ? ORDER BY rowid')
+      .all(boundary) as { template: string }[];
+    return rows.map((r) => r.template).filter(isDemoTemplate);
+  }
+
+  /** El reinicio automático (#24): hace los que tocan y devuelve cuáles. */
+  runDue(): DemoTemplate[] {
+    const due = this.dueTemplates();
+    for (const t of due) this.resetFull(t);
+    return due;
+  }
+
+  /** Repone los productos de la semilla que bajaron de un cuarto de su cantidad inicial. Un producto borrado no. */
+  restock(): number {
+    const at = this.deps.now().toISOString();
+    let restocked = 0;
+    const rows = this.deps.systemDb.prepare('SELECT tenant_id, template FROM demo_tenants ORDER BY rowid').all() as {
+      tenant_id: string;
+      template: string;
+    }[];
+    for (const row of rows) {
+      const template = row.template;
+      if (!isDemoTemplate(template)) continue;
+      const db = this.deps.tenantManager.getTenantDb(row.tenant_id);
+      const qty = db.prepare('SELECT s.quantity FROM stock s JOIN products p ON p.id = s.product_id WHERE s.product_id = ? AND s.branch_id = ?');
+      inTransaction(db, () => {
+        for (const p of demoSeedProducts(template)) {
+          const current = (qty.get(p.id, DEMO_BRANCH_ID) as { quantity: number } | undefined)?.quantity;
+          if (current === undefined || current >= p.stock / 4) continue;
+          writeStock(db, {
+            productId: p.id,
+            branchId: DEMO_BRANCH_ID,
+            type: 'set',
+            quantity: p.stock,
+            reason: 'restock',
+            notes: 'Reposición automática',
+            now: at,
+          });
+          restocked++;
+        }
+      });
+    }
+    return restocked;
   }
 }
 

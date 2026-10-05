@@ -191,20 +191,3 @@ export class DemoSessionService {
     return rows.length;
   }
 }
-
-/** Barre al arrancar y cada `intervalMs` (#24): demos de antes y cajas inactivas. Loguea lo que hace. */
-export function startDemoSweeper(service: DemoSessionService, intervalMs: number): NodeJS.Timeout {
-  const sweep = (always: boolean): void => {
-    const legacy = service.sweepLegacy();
-    const idle = service.revokeIdle();
-    if (always || legacy + idle > 0) {
-      console.log(`[demos] barrido: ${String(legacy)} demos de antes borradas, ${String(idle)} cajas inactivas revocadas`);
-    }
-  };
-  sweep(true);
-  const timer = setInterval(() => {
-    sweep(false);
-  }, intervalMs);
-  timer.unref();
-  return timer;
-}

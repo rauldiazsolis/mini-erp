@@ -4,7 +4,9 @@ import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { readDemoConfig, type DemoConfig } from '../src/server/demo/demo-config.ts';
-import { DemoSessionService, startDemoSweeper } from '../src/server/demo/demo-session-service.ts';
+import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
+import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
+import { startDemoSweeper } from '../src/server/demo/demo-sweeper.ts';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -25,7 +27,8 @@ function setup(overrides: Partial<DemoConfig> = {}) {
     clock.now = new Date(clock.now.getTime() + ms);
   };
   const registerOf = (rawKey: string): string => apiKeyService.validateApiKey(rawKey)?.registerId ?? '';
-  return { service, tenantManager, apiKeyService, advance, systemDb, clock, registerOf };
+  const resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock.now });
+  return { service, resets, tenantManager, apiKeyService, advance, systemDb, clock, registerOf };
 }
 
 describe('readDemoConfig (#9, #24)', () => {
@@ -163,9 +166,9 @@ describe('startDemoSweeper (#24)', () => {
 
   it('barre al arrancar y en cada intervalo', () => {
     vi.useFakeTimers();
-    const { service } = setup();
+    const { service, resets } = setup();
     const sweep = vi.spyOn(service, 'revokeIdle');
-    const timer = startDemoSweeper(service, 1000);
+    const timer = startDemoSweeper({ sessions: service, resets }, 1000);
     expect(sweep).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(2000);
     expect(sweep).toHaveBeenCalledTimes(3);
@@ -173,9 +176,9 @@ describe('startDemoSweeper (#24)', () => {
   });
 
   it('loguea lo que hizo al arrancar (#3)', () => {
-    const { service } = setup();
+    const { service, resets } = setup();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const timer = startDemoSweeper(service, 1000);
+    const timer = startDemoSweeper({ sessions: service, resets }, 1000);
     expect(log.mock.calls.some(([line]) => typeof line === 'string' && line.startsWith('[demos] barrido'))).toBe(true);
     clearInterval(timer);
     log.mockRestore();
