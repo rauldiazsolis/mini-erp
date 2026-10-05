@@ -4,7 +4,7 @@ import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { salesQueryServiceDef } from '../di/container.ts';
 import type { SalesQueryService } from '../sales/sales-query-service.ts';
-import { sendError } from '../errors.ts';
+import { DomainError, sendError } from '../errors.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'La fecha tiene que ser AAAA-MM-DD');
@@ -45,8 +45,14 @@ function getService(req: AuthenticatedAdminRequest): SalesQueryService {
   return req.tenantScope.use(salesQueryServiceDef);
 }
 
+/** Con una caja real desde el POS (M10), la caja la pone el servidor: nunca la query. */
+function scoped<T extends { branch?: string | undefined; pointOfSale?: string | undefined }>(req: AuthenticatedAdminRequest, query: T): T {
+  const a = req.anonymous;
+  return a?.kind === 'register' ? { ...query, branch: a.branch, pointOfSale: a.pointOfSale } : query;
+}
+
 /** Valida la query con `schema` y responde lo que devuelve `run`; un error de negocio va con su estado. */
-function handle<T>(schema: z.ZodType<T>, run: (service: SalesQueryService, query: T) => unknown) {
+function handle<T extends { branch?: string | undefined; pointOfSale?: string | undefined }>(schema: z.ZodType<T>, run: (service: SalesQueryService, query: T) => unknown) {
   return (req: AuthenticatedAdminRequest, res: Response): void => {
     const parsed = schema.safeParse(req.query);
     if (!parsed.success) {
@@ -54,7 +60,7 @@ function handle<T>(schema: z.ZodType<T>, run: (service: SalesQueryService, query
       return;
     }
     try {
-      res.status(200).json(run(getService(req), parsed.data));
+      res.status(200).json(run(getService(req), scoped(req, parsed.data)));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -66,11 +72,22 @@ export function createSalesRoutes(): Router {
   const router = Router({ mergeParams: true });
   const view = requirePermission('sales.view');
 
-  router.get('/registers', view, handle(z.object({}), (service) => service.registers()));
+  router.get('/registers', view, (req: AuthenticatedAdminRequest, res: Response) => {
+    const a = req.anonymous;
+    try {
+      res.status(200).json(a?.kind === 'register' ? [{ branch: a.branch, pointOfSale: a.pointOfSale }] : getService(req).registers());
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
   router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize })));
   router.get('/sales/:saleId', view, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(getService(req).getSale(req.params['saleId'] ?? ''));
+      const sale = getService(req).getSale(req.params['saleId'] ?? '');
+      // Una venta de otra caja se ve igual que una que no existe
+      const a = req.anonymous;
+      if (a?.kind === 'register' && (sale.branch !== a.branch || sale.pointOfSale !== a.pointOfSale)) throw new DomainError(404, 'Venta no encontrada');
+      res.status(200).json(sale);
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
