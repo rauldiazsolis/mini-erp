@@ -1,7 +1,7 @@
 import { computed, effect, signal } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { createSignalQuery, type QuerySource } from '../api/query-client.ts';
-import { activeTenantSignal, currentUserSignal, isImpersonatingSignal, tokenSignal } from './auth-state.ts';
+import { activeTenantSignal, currentUserSignal, isAnonymousSignal, isImpersonatingSignal, tokenSignal } from './auth-state.ts';
 import { locationSignal } from './route-state.ts';
 import { meKey } from './query-keys.ts';
 import { showToast } from './toast-state.ts';
@@ -16,8 +16,9 @@ export const helpModalOpenSignal = signal<boolean>(false);
 export const helpMessageSignal = signal<string>('');
 export const helpSendingSignal = signal<boolean>(false);
 
-/** Un usuario de comercio con su sesión propia: los únicos que piden ayuda y ven los accesos. */
-const isOwnUser = (): boolean => currentUserSignal.value?.globalRole === 'user' && !isImpersonatingSignal.value;
+/** Un usuario de comercio con su sesión propia: los únicos que piden ayuda y ven los accesos. Un visitante de una demo (#24), no. */
+const isOwnUser = (): boolean =>
+  currentUserSignal.value?.globalRole === 'user' && !isImpersonatingSignal.value && !isAnonymousSignal.value;
 
 const supportAccessQuery = createSignalQuery<SupportAccess>({
   source: (): QuerySource<SupportAccess> | null => {

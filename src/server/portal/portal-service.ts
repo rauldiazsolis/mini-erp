@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { hashLinkToken } from '../auth/crypto.ts';
 import { DomainError } from '../errors.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
+import { DEMO_BRANCH_CODE } from '../seeds/index.ts';
 import type { PortalRedeemResponse } from '../../shared/portal-types.ts';
 
 const LINK_TTL_MS = 60 * 1000;
@@ -69,7 +70,7 @@ export class PortalService {
       this.db.exec('ROLLBACK');
       throw err;
     }
-    return { token: session, tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name }, pointOfSale: demo.pointOfSale, template: demo.template };
+    return { token: session, tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name }, branch: DEMO_BRANCH_CODE, pointOfSale: demo.pointOfSale, template: demo.template };
   }
 
   /** La sesión anónima del token, si su caja sigue activa; si no, la borra. Corre el uso de la demo. */

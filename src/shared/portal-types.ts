@@ -2,6 +2,7 @@
 export type PortalRedeemResponse = {
   token: string;
   tenant: { id: string; slug: string; name: string };
+  branch: string;
   pointOfSale: string;
   template: string;
 };

@@ -300,7 +300,8 @@ export type PlatformRoute = { kind: 'plataforma'; tab: PlatformTabId; tenantSlug
 /** La pestaña nueva que entra como un usuario (#23) y el link de un pedido de ayuda. */
 export type EnterRoute = { kind: 'entrar'; userId: string | null; tenantSlug: string | null };
 export type HelpRoute = { kind: 'ayuda'; requestId: string };
-export type Route = { kind: 'landing' | 'alta' | 'invitacion' | 'restablecer' } | AdminRoute | PlatformRoute | EnterRoute | HelpRoute;
+/** `/portal#t=…` (#24): el link del POS que abre el admin anónimo de la demo. */
+export type Route = { kind: 'landing' | 'alta' | 'invitacion' | 'restablecer' | 'portal' } | AdminRoute | PlatformRoute | EnterRoute | HelpRoute;
 
 function readSearch(search: string): Params {
   return Object.fromEntries(new URLSearchParams(search));
@@ -321,6 +322,7 @@ export function parseLocation(pathname: string, search: string): Route {
   if (segments.length === 1 && (first === 'alta' || first === 'onboarding')) return { kind: 'alta' };
   if (segments.length === 1 && first === 'invitacion') return { kind: 'invitacion' };
   if (segments.length === 1 && first === 'restablecer') return { kind: 'restablecer' };
+  if (segments.length === 1 && first === 'portal') return { kind: 'portal' };
   // Impersonación (#23): la pestaña nueva que entra como un usuario, y el link de un pedido de ayuda
   if (first === 'plataforma' && second === 'entrar' && third === undefined) {
     const p = readSearch(search);
@@ -351,6 +353,8 @@ export function buildUrl(route: Route): string {
       return '/invitacion';
     case 'restablecer':
       return '/restablecer';
+    case 'portal':
+      return '/portal';
     case 'entrar': {
       const query = new URLSearchParams(params({ usuario: route.userId ?? undefined, comercio: route.tenantSlug ?? undefined })).toString();
       return query === '' ? '/plataforma/entrar' : `/plataforma/entrar?${query}`;

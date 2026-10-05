@@ -71,6 +71,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({
       tenant: { id: 'demo-kiosco', slug: 'demo-kiosco', name: 'Kiosco Demo' },
+      branch: 'CENTRAL',
       pointOfSale,
       template: 'kiosco',
     });

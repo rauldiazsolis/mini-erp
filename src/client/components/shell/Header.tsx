@@ -6,6 +6,7 @@ import {
   userTenantsSignal,
   selectTenant,
   effectiveTenantIdSignal,
+  isAnonymousSignal,
   isImpersonatingSignal,
   signOut,
 } from '../../state/auth-state.ts';
@@ -27,6 +28,8 @@ export function closeTenantDropdown(): void {
 }
 
 export function Header() {
+  // La demo anónima (#24): solo el comercio y el tema; ni selector, ni cuenta, ni cerrar sesión
+  if (isAnonymousSignal.value) return <DemoHeader />;
   const user = currentUserSignal.value;
   const activeTenant = activeTenantSignal.value;
   const tenants = userTenantsSignal.value;
@@ -191,6 +194,30 @@ export function Header() {
           </button>
         )}
       </div>
+    </header>
+  );
+}
+
+/** La cabecera del acceso anónimo de una demo (#24): el comercio demo y el tema. */
+function DemoHeader() {
+  return (
+    <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0 transition-colors">
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggleMobileMenu}
+          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-300/80 dark:border-slate-700/80">
+          <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse"></div>
+          <div class="text-xs font-bold text-slate-800 dark:text-white tracking-tight">{activeTenantSignal.value?.name ?? 'Demo'}</div>
+        </div>
+      </div>
+      <ThemeToggle compact />
     </header>
   );
 }

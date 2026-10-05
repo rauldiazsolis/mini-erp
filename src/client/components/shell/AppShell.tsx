@@ -5,6 +5,7 @@ import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts
 import { PageToasts } from '../ui/ToastContainer.tsx';
 import { isRootOrSupportSignal, userTenantsSignal } from '../../state/auth-state.ts';
 import { ImpersonationBar } from './ImpersonationBar.tsx';
+import { DemoBar } from './DemoBar.tsx';
 import { HelpModal } from '../help/HelpModal.tsx';
 import { activeSectionSignal } from '../../state/route-state.ts';
 import { Button } from '../ui/Button.tsx';
@@ -24,6 +25,9 @@ export function AppShell(props: { children: ComponentChildren }) {
       <div class="flex-1 flex flex-col min-w-0">
         {/* Franja de la impersonación (#23) */}
         <ImpersonationBar />
+
+        {/* Franja de la demo anónima (#24) */}
+        <DemoBar />
 
         {/* Franja de créditos (#21) */}
         <CreditsBanner />

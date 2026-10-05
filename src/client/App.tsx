@@ -6,8 +6,12 @@ import {
   fetchProfile,
   tenantAccessSignal,
   impersonationEndedSignal,
+  demoEndedSignal,
 } from './state/auth-state.ts';
 import './state/impersonation-state.ts';
+import './state/portal-state.ts';
+import { PortalView } from './components/portal/PortalView.tsx';
+import { DemoEndedView } from './components/shell/DemoEndedView.tsx';
 import { EnterView } from './components/platform/EnterView.tsx';
 import { ImpersonationEndedView } from './components/shell/ImpersonationEndedView.tsx';
 import { activeSectionSignal, initRouting, routeSignal } from './state/route-state.ts';
@@ -64,6 +68,10 @@ export function App() {
   if (route.kind === 'invitacion') return <InvitationView />;
   if (route.kind === 'restablecer') return <ResetPasswordView />;
   if (route.kind === 'alta' || merchantOnboardingActiveSignal.value) return <MerchantOnboardingView />;
+  // El portal (#24): el link del POS que abre el admin anónimo de la demo
+  if (route.kind === 'portal') return <PortalView />;
+  // La demo de la pestaña terminó (#24): su caja se revocó
+  if (demoEndedSignal.value !== null) return <DemoEndedView />;
   // La impersonación de la pestaña terminó (#23): la sesión de soporte sigue
   if (impersonationEndedSignal.value !== null) return <ImpersonationEndedView />;
   // Sin sesión, el login en la misma URL: al entrar se abre esa pantalla (#59)
