@@ -44,6 +44,7 @@ export const PLATFORM_TABS = [
   { id: 'tenants', slug: '' },
   { id: 'users', slug: 'usuarios' },
   { id: 'requests', slug: 'pedidos' },
+  { id: 'demos', slug: 'demos' }, // #24
   { id: 'payments', slug: 'cobranzas' },
   { id: 'staff', slug: 'soporte' },
   { id: 'audit', slug: 'registro' },

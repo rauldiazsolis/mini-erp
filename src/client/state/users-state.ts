@@ -69,6 +69,8 @@ export const AUDIT_LABEL: Record<string, string> = {
   // Impersonación (#23)
   'impersonation.started': 'entró como',
   'impersonation.ended': 'salió de la cuenta de',
+  // Demos (#24)
+  'demo.reset': 'reinició la demo',
 };
 
 /** Por qué terminó una impersonación (#23). */

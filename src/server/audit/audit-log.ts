@@ -33,7 +33,8 @@ export type AuditAction =
   | 'staff.invitation_revoked'
   | 'staff.joined'
   | 'impersonation.started'
-  | 'impersonation.ended';
+  | 'impersonation.ended'
+  | 'demo.reset';
 
 export type AuditEntry = {
   id: string;
@@ -45,6 +46,15 @@ export type AuditEntry = {
   targetName: string | null;
   details: Record<string, unknown>;
 };
+
+/** El actor de lo que hace el servidor solo, como el reinicio automático de las demos (#24). */
+export const SYSTEM_ACTOR = 'system';
+
+/** El nombre del actor: el usuario, "Automático" si lo hizo el servidor o "Usuario borrado". */
+function actorName(actorUserId: string, name: string | null): string {
+  if (name !== null) return name;
+  return actorUserId === SYSTEM_ACTOR ? 'Automático' : 'Usuario borrado';
+}
 
 /** Registro de auditoría (#19): quién, qué y cuándo. M7 le suma "como quién". */
 export class AuditLog {
@@ -83,7 +93,7 @@ export class AuditLog {
   listForTenant(tenantId: string, limit = 200): AuditEntry[] {
     const rows = this.db
       .prepare(
-        `SELECT a.id, a.at, a.action, a.details, actor.name AS actor_name, target.name AS target_name,
+        `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, actor.name AS actor_name, target.name AS target_name,
            imp.name AS impersonator_name
          FROM audit_log a
          LEFT JOIN users actor ON actor.id = a.actor_user_id
@@ -98,6 +108,7 @@ export class AuditLog {
       at: string;
       action: AuditAction;
       details: string;
+      actor_user_id: string;
       actor_name: string | null;
       target_name: string | null;
       impersonator_name: string | null;
@@ -106,7 +117,7 @@ export class AuditLog {
       id: r.id,
       at: r.at,
       action: r.action,
-      actorName: r.actor_name ?? 'Usuario borrado',
+      actorName: actorName(r.actor_user_id, r.actor_name),
       impersonatorName: r.impersonator_name,
       targetName: r.target_name,
       details: parseDetails(r.details),
@@ -118,7 +129,7 @@ export class AuditLog {
     const tenantId = p.tenantId ?? null;
     const rows = this.db
       .prepare(
-        `SELECT a.id, a.at, a.action, a.details, a.tenant_id, t.name AS tenant_name,
+        `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, a.tenant_id, t.name AS tenant_name,
            actor.name AS actor_name, target.name AS target_name, imp.name AS impersonator_name
          FROM audit_log a
          LEFT JOIN users actor ON actor.id = a.actor_user_id
@@ -136,6 +147,7 @@ export class AuditLog {
       details: string;
       tenant_id: string | null;
       tenant_name: string | null;
+      actor_user_id: string;
       actor_name: string | null;
       target_name: string | null;
       impersonator_name: string | null;
@@ -144,7 +156,7 @@ export class AuditLog {
       id: r.id,
       at: r.at,
       action: r.action,
-      actorName: r.actor_name ?? 'Usuario borrado',
+      actorName: actorName(r.actor_user_id, r.actor_name),
       impersonatorName: r.impersonator_name,
       targetName: r.target_name,
       tenantId: r.tenant_id,

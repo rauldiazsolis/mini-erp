@@ -12,6 +12,8 @@ import {
 } from '../seeds/index.ts';
 import type { DemoSessionService } from './demo-session-service.ts';
 import { lastResetBoundary } from './reset-schedule.ts';
+import { argentinaToday } from '../../shared/argentina-day.ts';
+import type { DemoStatusItem } from '../../shared/demo-types.ts';
 
 export type DemoResetDeps = {
   systemDb: DatabaseSync;
@@ -114,6 +116,42 @@ export class DemoResetService {
     const due = this.dueTemplates();
     for (const t of due) this.resetFull(t);
     return due;
+  }
+
+  /** El estado de los comercios demo para la plataforma (#24): cajas activas, demos y ventas de hoy, reinicios. */
+  status(): DemoStatusItem[] {
+    const today = argentinaToday(this.deps.now());
+    const dayStart = new Date(`${today}T00:00:00.000-03:00`).toISOString();
+    const rows = this.deps.systemDb
+      .prepare(
+        `SELECT d.tenant_id, d.template, d.last_full_reset_at, d.last_partial_reset_at, t.name,
+           (SELECT COUNT(*) FROM demo_sessions s WHERE s.tenant_id = d.tenant_id AND s.revoked_at IS NULL) AS active,
+           (SELECT COUNT(*) FROM demo_sessions s WHERE s.tenant_id = d.tenant_id AND s.created_at >= ?) AS created
+         FROM demo_tenants d JOIN tenants t ON t.id = d.tenant_id ORDER BY d.rowid`,
+      )
+      .all(dayStart) as {
+      tenant_id: string;
+      template: string;
+      last_full_reset_at: string;
+      last_partial_reset_at: string | null;
+      name: string;
+      active: number;
+      created: number;
+    }[];
+    return rows.map((r) => {
+      const db = this.deps.tenantManager.getTenantDb(r.tenant_id);
+      const sales = db.prepare('SELECT COUNT(*) AS n FROM sales WHERE day = ? AND voids_sale_id IS NULL').get(today) as { n: number };
+      return {
+        template: r.template,
+        tenantId: r.tenant_id,
+        name: r.name,
+        activeRegisters: r.active,
+        createdToday: r.created,
+        salesToday: sales.n,
+        lastFullResetAt: r.last_full_reset_at,
+        lastPartialResetAt: r.last_partial_reset_at,
+      };
+    });
   }
 
   /** Repone los productos de la semilla que bajaron de un cuarto de su cantidad inicial. Un producto borrado no. */

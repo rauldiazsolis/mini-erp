@@ -12,12 +12,14 @@ import { UsersTab } from './UsersTab.tsx';
 import { StaffTab } from './StaffTab.tsx';
 import { AuditTab } from './AuditTab.tsx';
 import { HelpRequestsTab } from './HelpRequestsTab.tsx';
+import { DemosTab } from './DemosTab.tsx';
 import { LinkReadyModal } from '../users/LinkReadyModal.tsx';
 
 const TABS: Array<{ id: PlatformTab; label: string; rootOnly: boolean }> = [
   { id: 'tenants', label: 'Comercios', rootOnly: false },
   { id: 'users', label: 'Usuarios', rootOnly: false },
   { id: 'requests', label: 'Pedidos', rootOnly: false },
+  { id: 'demos', label: 'Demos', rootOnly: false },
   { id: 'payments', label: 'Cobranzas', rootOnly: false },
   { id: 'staff', label: 'Soporte', rootOnly: true },
   { id: 'audit', label: 'Registro', rootOnly: false },
@@ -33,7 +35,7 @@ export function PlatformView() {
   const tab = tabs.some((t) => t.id === platformTabSignal.value) ? platformTabSignal.value : 'tenants';
   return (
     <div class="space-y-6">
-      <PageHeader title="Plataforma" subtitle="Comercios, usuarios, cobro y equipo de mini contax" />
+      <PageHeader title="Plataforma" subtitle="Comercios, usuarios, demos, cobro y equipo de mini contax" />
       <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3" role="tablist">
         {tabs.map((t) => (
           <Link
@@ -54,6 +56,7 @@ export function PlatformView() {
       {tab === 'tenants' && <TenantsTab />}
       {tab === 'users' && <UsersTab />}
       {tab === 'requests' && <HelpRequestsTab />}
+      {tab === 'demos' && <DemosTab />}
       {tab === 'payments' && <PaymentSheetCard />}
       {tab === 'staff' && <StaffTab />}
       {tab === 'audit' && <AuditTab />}

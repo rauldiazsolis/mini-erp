@@ -5,7 +5,7 @@ import { startBillingSweeper } from './billing/reconcile.ts';
 
 export type { DevInfo };
 
-type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'demoResets' | 'billing'>;
+type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'demoResets' | 'auditLog' | 'billing'>;
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -25,7 +25,7 @@ export function bootstrap(params: {
     const created = bundle.demoSessions.ensureDemoTenants();
     if (created.length > 0) console.log(`[demos] comercios demo creados: ${created.join(', ')}`);
   }
-  const sweeper = startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets }, interval);
+  const sweeper = startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets, audit: bundle.auditLog }, interval);
   const billingSweeper = startBillingSweeper(
     { systemDb: bundle.systemDb, tenantManager: bundle.tenantManager, billing: bundle.billing },
     interval,

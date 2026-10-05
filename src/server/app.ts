@@ -28,6 +28,7 @@ import { createHelpRoutes } from './routes/help-routes.ts';
 import { createMeRoutes } from './routes/me-routes.ts';
 import { createCreditsRoutes } from './routes/credits-routes.ts';
 import { createPortalRoutes } from './routes/portal-routes.ts';
+import { createPlatformDemoRoutes } from './routes/platform-demo-routes.ts';
 import { createBillingRestriction } from './middleware/billing-restriction-middleware.ts';
 import { requestLogger } from './middleware/logger.ts';
 import { allowPrivateNetwork, CORS_OPTIONS } from './middleware/private-network.ts';
@@ -59,6 +60,7 @@ import {
   helpRequestServiceDef,
 } from './di/container.ts';
 import type { BillingService } from './billing/billing-service.ts';
+import type { AuditLog } from './audit/audit-log.ts';
 import type { DemoConfig } from './demo/demo-config.ts';
 import type { DemoSessionService } from './demo/demo-session-service.ts';
 import type { DemoResetService } from './demo/demo-reset-service.ts';
@@ -81,6 +83,7 @@ export function createApp(deps?: AppDependencies): {
   apiKeyService: ApiKeyService;
   demoSessions: DemoSessionService;
   demoResets: DemoResetService;
+  auditLog: AuditLog;
   billing: BillingService;
   rootContainer: Container;
 } {
@@ -185,6 +188,9 @@ export function createApp(deps?: AppDependencies): {
     }),
   );
 
+  // Demos de la plataforma (#24): estado y reinicios
+  app.use('/api/platform', requireAdmin, createPlatformDemoRoutes({ resets: demoResets, audit: auditLog }));
+
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
   app.use('/connector', createConnectorRoutes(requirePos, demoSessions, demoLimit, { registers, billing, tenants: tenantManager, portal }));
 
@@ -203,6 +209,7 @@ export function createApp(deps?: AppDependencies): {
     apiKeyService,
     demoSessions,
     demoResets,
+    auditLog,
     billing,
     rootContainer,
   };
