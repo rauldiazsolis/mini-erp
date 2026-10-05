@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permission-middleware.ts';
 import type { RegisterService } from '../registers/register-service.ts';
 import type { AuditAction, AuditLog } from '../audit/audit-log.ts';
 import { sendError } from '../errors.ts';
+import { auditActor } from '../audit/audit-actor.ts';
 
 const createSchema = z.object({
   name: z.string().trim().min(2, 'Nombre de la caja requerido'),
@@ -22,7 +23,7 @@ export function createRegisterRoutes(registers: RegisterService, audit: AuditLog
   const manage = requirePermission('settings.manage');
 
   const record = (req: AuthenticatedAdminRequest, action: AuditAction, registerId: string, extra?: Record<string, unknown>): void => {
-    audit.record({ actorUserId: req.user?.id ?? '', tenantId: req.activeTenantId ?? null, action, details: { registerId, ...extra } });
+    audit.record({ ...auditActor(req), tenantId: req.activeTenantId ?? null, action, details: { registerId, ...extra } });
   };
 
   /** Corre una acción sobre una caja: audita si sale bien y traduce los errores de negocio. */

@@ -1,4 +1,7 @@
 import { Router, type RequestHandler } from 'express';
+import type { AuthService } from '../auth/auth-service.ts';
+import { bearerToken } from '../middleware/auth-middleware.ts';
+import { sendImpersonating } from '../middleware/own-session-middleware.ts';
 import { z } from '../../shared/zod.ts';
 import type { InvitationService } from '../users/invitation-service.ts';
 import type { PasswordResetService } from '../users/password-reset-service.ts';
@@ -12,8 +15,21 @@ const acceptSchema = tokenSchema.extend({
   name: z.string().optional(),
 });
 
+/** Aceptar una invitación no se hace desde una impersonación (#23); sin token, como siempre. */
+function rejectImpersonation(auth: AuthService): RequestHandler {
+  return (req, res, next) => {
+    const token = bearerToken(req);
+    const session = token === undefined ? undefined : auth.resolveSession(token);
+    if (session !== undefined && session.impersonator !== null) {
+      sendImpersonating(res);
+      return;
+    }
+    next();
+  };
+}
+
 /** Links públicos de invitación (#19): consultar y aceptar, con el límite de pedidos de auth. */
-export function createInvitationLinkRoutes(invitations: InvitationService, limit: RequestHandler): Router {
+export function createInvitationLinkRoutes(invitations: InvitationService, limit: RequestHandler, auth: AuthService): Router {
   const router = Router();
 
   router.post('/lookup', limit, (req, res) => {
@@ -29,7 +45,7 @@ export function createInvitationLinkRoutes(invitations: InvitationService, limit
     }
   });
 
-  router.post('/accept', limit, (req, res) => {
+  router.post('/accept', limit, rejectImpersonation(auth), (req, res) => {
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -89,7 +105,7 @@ export function createPasswordResetLinkRoutes(resets: PasswordResetService, limi
 }
 
 /** Links públicos de invitación al equipo de soporte (#23): consultar y aceptar. */
-export function createStaffInvitationLinkRoutes(invitations: StaffInvitationService, limit: RequestHandler): Router {
+export function createStaffInvitationLinkRoutes(invitations: StaffInvitationService, limit: RequestHandler, auth: AuthService): Router {
   const router = Router();
 
   router.post('/lookup', limit, (req, res) => {
@@ -105,7 +121,7 @@ export function createStaffInvitationLinkRoutes(invitations: StaffInvitationServ
     }
   });
 
-  router.post('/accept', limit, (req, res) => {
+  router.post('/accept', limit, rejectImpersonation(auth), (req, res) => {
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });

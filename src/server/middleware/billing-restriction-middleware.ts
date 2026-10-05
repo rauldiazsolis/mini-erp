@@ -11,7 +11,7 @@ import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
 export function createBillingRestriction(billing: BillingService) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
     const role = req.user?.globalRole;
-    if (role === 'root' || role === 'support' || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator !== undefined || role === 'root' || role === 'support' || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       next();
       return;
     }

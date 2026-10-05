@@ -38,7 +38,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    if (req.user.globalRole === 'user' && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.user.globalRole === 'user' && req.impersonator === undefined && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
       return;
     }

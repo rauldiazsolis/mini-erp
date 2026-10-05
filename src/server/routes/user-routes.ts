@@ -8,6 +8,7 @@ import type { PasswordResetService } from '../users/password-reset-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import { TENANT_ROLES, type TenantRole } from '../../shared/permissions.ts';
 import { DomainError, sendError } from '../errors.ts';
+import { requireOwnSession, sendImpersonating } from '../middleware/own-session-middleware.ts';
 
 const inviteSchema = z.object({
   email: z.string().trim().pipe(z.email('Email inválido')),
@@ -19,11 +20,19 @@ const patchSchema = z.object({
   status: z.enum(['active', 'disabled']).optional(),
 });
 
-function actorOf(req: AuthenticatedAdminRequest): { tenantId: string; actor: { userId: string; role: TenantRole } } {
+function actorOf(req: AuthenticatedAdminRequest): {
+  tenantId: string;
+  actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
+} {
   if (req.user === undefined || req.tenantRole === undefined || req.activeTenantId === undefined) {
     throw new DomainError(401, 'No autorizado');
   }
-  return { tenantId: req.activeTenantId, actor: { userId: req.user.id, role: req.tenantRole } };
+  const actor = { userId: req.user.id, role: req.tenantRole };
+  return {
+    tenantId: req.activeTenantId,
+    // Impersonando (#23), la auditoría guarda también a quien impersona
+    actor: req.impersonator === undefined ? actor : { ...actor, impersonatorUserId: req.impersonator.id },
+  };
 }
 
 /** Usuarios del comercio, invitaciones y auditoría (#19), en la cadena de /api/tenants/:tenantId. */
@@ -54,6 +63,11 @@ export function createUserRoutes(deps: {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
+    // Quien impersona no nombra owners (#23)
+    if (req.impersonator !== undefined && parsed.data.role === 'owner') {
+      sendImpersonating(res);
+      return;
+    }
     try {
       res.status(201).json(deps.invitations.create({ ...actorOf(req), ...parsed.data }));
     } catch (err: unknown) {
@@ -76,6 +90,12 @@ export function createUserRoutes(deps: {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
+    // Quien impersona no toca owners (#23): ni su rol ni su estado, ni nombra uno nuevo
+    const current = deps.members.getMembership(req.activeTenantId ?? '', req.params['userId'] ?? '');
+    if (req.impersonator !== undefined && (current?.role === 'owner' || parsed.data.role === 'owner')) {
+      sendImpersonating(res);
+      return;
+    }
     try {
       res.status(200).json(deps.members.updateMember({ ...actorOf(req), targetUserId: req.params['userId'] ?? '', ...parsed.data }));
     } catch (err: unknown) {
@@ -83,7 +103,7 @@ export function createUserRoutes(deps: {
     }
   });
 
-  router.post('/users/:userId/password-reset', requirePermission('owners.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/users/:userId/password-reset', requirePermission('owners.manage'), requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       res.status(201).json(deps.resets.create({ ...actorOf(req), targetUserId: req.params['userId'] ?? '' }));
     } catch (err: unknown) {

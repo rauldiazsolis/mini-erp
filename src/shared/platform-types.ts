@@ -44,6 +44,8 @@ export type PlatformAuditItem = {
   at: string;
   action: string;
   actorName: string;
+  /** Quién impersonaba al actor (#23), o `null`. */
+  impersonatorName: string | null;
   targetName: string | null;
   tenantId: string | null;
   tenantName: string | null;

@@ -5,6 +5,7 @@ import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts
 import type { AuditLog } from '../audit/audit-log.ts';
 import { passwordSchema } from '../../shared/password.ts';
 import { sendError } from '../errors.ts';
+import { requireOwnSession } from '../middleware/own-session-middleware.ts';
 
 const loginSchema = z.object({
   email: z.email('Email inválido'),
@@ -41,7 +42,7 @@ export function createAuthRoutes(
   });
 
   // Cambiar la propia contraseña (#19): cierra las sesiones de los otros equipos
-  router.post('/password', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/password', requireAdmin, requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;

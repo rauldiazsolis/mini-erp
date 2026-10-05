@@ -101,7 +101,7 @@ export class MembershipService {
    */
   updateMember(params: {
     tenantId: string;
-    actor: { userId: string; role: TenantRole };
+    actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     targetUserId: string;
     role?: TenantRole | undefined;
     status?: MemberStatus | undefined;
@@ -130,6 +130,7 @@ export class MembershipService {
       this.db.prepare('UPDATE memberships SET role = ? WHERE tenant_id = ? AND user_id = ?').run(params.role, tenantId, targetUserId);
       this.audit?.record({
         actorUserId: actor.userId,
+        impersonatorUserId: actor.impersonatorUserId,
         tenantId,
         action: 'member.role_changed',
         targetUserId,
@@ -140,6 +141,7 @@ export class MembershipService {
       this.db.prepare('UPDATE memberships SET status = ? WHERE tenant_id = ? AND user_id = ?').run(params.status, tenantId, targetUserId);
       this.audit?.record({
         actorUserId: actor.userId,
+        impersonatorUserId: actor.impersonatorUserId,
         tenantId,
         action: params.status === 'disabled' ? 'member.disabled' : 'member.enabled',
         targetUserId,

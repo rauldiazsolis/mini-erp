@@ -18,7 +18,15 @@ export type MemberItem = {
   canReset: boolean;
 };
 export type InvitationItem = { id: string; email: string; role: TenantRole; createdAt: string; expiresAt: string; invitedByName: string };
-export type AuditItem = { id: string; at: string; action: string; actorName: string; targetName: string | null; details: Record<string, unknown> };
+export type AuditItem = {
+  id: string;
+  at: string;
+  action: string;
+  actorName: string;
+  impersonatorName: string | null;
+  targetName: string | null;
+  details: Record<string, unknown>;
+};
 /** Un link recién generado: se muestra una sola vez (#19). */
 export type LinkReady = { kind: 'invitation' | 'reset' | 'staff-invitation'; url: string; email: string; expiresAt: string };
 
