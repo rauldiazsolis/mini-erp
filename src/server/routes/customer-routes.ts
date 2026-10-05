@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { CustomerService } from '../customer/customer-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
@@ -36,7 +36,7 @@ const registerPaymentSchema = z.object({
 
 const adjustBalanceSchema = z.object({
   type: z.enum(['credit', 'debit', 'set'], {
-    errorMap: () => ({ message: "El tipo de ajuste debe ser 'credit', 'debit' o 'set'" }),
+    error: "El tipo de ajuste debe ser 'credit', 'debit' o 'set'",
   }),
   amount: z.number().nonnegative('El monto debe ser mayor o igual a 0'),
   reason: z.string().min(1, 'El motivo del ajuste es obligatorio para auditoría contable'),
@@ -96,7 +96,7 @@ export function createCustomerRoutes(): Router {
   router.post('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createCustomerSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de cliente inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de cliente inválidos' });
       return;
     }
 
@@ -142,7 +142,7 @@ export function createCustomerRoutes(): Router {
 
     const parseResult = updateCustomerSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
 
@@ -193,7 +193,7 @@ export function createCustomerRoutes(): Router {
 
     const parseResult = registerPaymentSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de pago inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de pago inválidos' });
       return;
     }
 
@@ -218,7 +218,7 @@ export function createCustomerRoutes(): Router {
 
     const parseResult = adjustBalanceSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de ajuste inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de ajuste inválidos' });
       return;
     }
 

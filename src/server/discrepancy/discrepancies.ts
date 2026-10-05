@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
 import { DomainError } from '../errors.ts';
 import { discrepancyMessage, type DiscrepancyKind, type DiscrepancyRefType } from './messages.ts';

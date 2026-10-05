@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import type { BillingService } from '../billing/billing-service.ts';
@@ -31,7 +31,7 @@ export function createCreditsRoutes(billing: BillingService): Router {
   router.get('/credits/charges', view, (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = chargesQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Consulta inválida' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
     res.status(200).json(billing.listCharges(tenantOf(req), parsed.data));

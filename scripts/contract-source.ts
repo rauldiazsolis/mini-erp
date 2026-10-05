@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../src/shared/zod.ts';
 import { channelOf } from '../src/shared/contract-version.ts';
 
 /**

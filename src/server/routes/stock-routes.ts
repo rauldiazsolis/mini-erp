@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { StockService } from '../stock/stock-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
@@ -9,9 +9,9 @@ const adjustStockSchema = z.object({
   productId: z.string().min(1, 'El ID de producto es requerido'),
   branchId: z.string().min(1, 'El ID de sucursal es requerido'),
   type: z.enum(['set', 'delta'], {
-    errorMap: () => ({ message: "El tipo de ajuste debe ser 'set' o 'delta'" }),
+    error: "El tipo de ajuste debe ser 'set' o 'delta'",
   }),
-  quantity: z.number({ invalid_type_error: 'La cantidad debe ser numérica' }),
+  quantity: z.number({ error: (iss) => (iss.input === undefined ? undefined : 'La cantidad debe ser numérica') }),
   reason: z.string().min(1, 'El motivo del ajuste es requerido para auditoría'),
   notes: z.string().optional(),
 });
@@ -61,7 +61,7 @@ export function createStockRoutes(): Router {
   router.post('/stock/adjust', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = adjustStockSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.errors[0]?.message ?? 'Datos de ajuste inválidos' });
+      res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de ajuste inválidos' });
       return;
     }
 

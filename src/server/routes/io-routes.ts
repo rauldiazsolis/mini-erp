@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
@@ -10,9 +10,9 @@ import { hasExampleCatalog } from '../../shared/business-type.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 
 const importBodySchema = z.object({
-  csv: z.string({ required_error: 'Falta el contenido del archivo' }),
-  mapping: z.record(z.string().nullable()).optional(),
-  dryRun: z.boolean({ required_error: 'Falta indicar si es una vista previa' }),
+  csv: z.string({ error: (iss) => (iss.input === undefined ? 'Falta el contenido del archivo' : undefined) }),
+  mapping: z.record(z.string(), z.string().nullable()).optional(),
+  dryRun: z.boolean({ error: (iss) => (iss.input === undefined ? 'Falta indicar si es una vista previa' : undefined) }),
 });
 
 /** El mapeo que manda el cliente, con nombres de campo conocidos (el servicio valida el resto). */
@@ -85,7 +85,7 @@ export function createIoRoutes(tenants: TenantManager): Router {
     }
     const parsed = importBodySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos de importación inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos de importación inválidos' });
       return;
     }
     try {

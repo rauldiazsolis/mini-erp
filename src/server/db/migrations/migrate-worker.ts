@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { z } from 'zod';
+import { z } from '../../../shared/zod.ts';
 import { runMigrations } from './run-migrations.ts';
 import type { WorkerMessage } from './worker-runner.ts';
 

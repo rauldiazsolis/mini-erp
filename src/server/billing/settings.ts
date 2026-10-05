@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { BillingSettings } from '../../shared/credits-types.ts';
 
 export type { BillingSettings };

@@ -121,10 +121,15 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   `noUnusedLocals`, `noUnusedParameters` y `erasableSyntaxOnly` (el compilador rechaza la sintaxis
   que Node no puede stripear: parameter properties, `enum`, `namespace`).
 - **Opcionales con `exactOptionalPropertyTypes`**: las entradas de servicios (lo que llega de Zod o
-  de la URL, props de componentes) se tipan `x?: T | undefined`, porque Zod 3 infiere así y el
-  servicio ya trata `undefined` como ausente; en los resultados que arma el propio código, la
-  propiedad se omite si no hay valor (`...(x === undefined ? {} : { x })`). Nunca `as` ni `!` para
-  callar el error.
+  de la URL, props de componentes) se tipan `x?: T | undefined`, porque Zod infiere así (también
+  Zod 4) y el servicio ya trata `undefined` como ausente; en los resultados que arma el propio
+  código, la propiedad se omite si no hay valor (`...(x === undefined ? {} : { x })`). Nunca `as`
+  ni `!` para callar el error.
+- **Zod 4 siempre desde `src/shared/zod.ts`** (#6): configura `z.locales.es()` (los mensajes por
+  defecto, en castellano) y reexporta `z`; el lint prohíbe importar `'zod'` directo. Los textos
+  propios van con `error` (`z.enum(…, { error: '…' })`; para distinguir "falta" de "tipo
+  equivocado", `error: (iss) => (iss.input === undefined ? … : …)`). Idioma configurable: #74;
+  formularios del admin con los esquemas compartidos: #75.
 
 ## Arquitectura
 
@@ -203,7 +208,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   que no haya fugas entre tenants. Detalle en `src/server/di/container.ts` y la Fase 5 de `PLAN.md`.
 - **Connector API** bajo `/connector`:
   - Push validado con Zod al aplicarse, en `src/server/connector/push-events.ts`: los siete tipos
-    de evento validan lo que el mini-erp lee y dejan pasar el resto (`passthrough`); los enums
+    de evento validan lo que el mini-erp lee y dejan pasar el resto (`z.looseObject`); los enums
     abiertos del contrato (medio de pago, motivo de stock) son `string`. Un evento inválido, de tipo
     desconocido o que ni siquiera es un objeto queda como `issue` del lote (con su `eventId` si lo
     tiene), sin tumbar el resto.
@@ -422,7 +427,7 @@ Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisi
 (#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, hecha sin el portal: la capacidad
 `portal` queda para M10, #26, y por eso el issue sigue abierto), formato según el navegador (#51,
 hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
-top layer (#56, hecha) y después #6.
+top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
 Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). La parte del POS está en el
 epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 

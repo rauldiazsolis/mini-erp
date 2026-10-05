@@ -68,6 +68,41 @@ describe('push transaccional (#2)', () => {
     expect(count("SELECT COUNT(*) AS n FROM stock_movements WHERE id = 'm1'")).toBe(0);
   });
 
+  it('un lote con eventos inválidos de cada tipo, un no-objeto y un tipo desconocido responde 200 y aplica lo válido', async () => {
+    const valida = {
+      id: 'ok',
+      type: 'sale',
+      createdAt: at,
+      origin,
+      futuro: 1,
+      sale: { id: 'v9', total: 50, futuro: { x: 1 }, payments: [{ method: 'cash', amount: 50 }] },
+    };
+    const invalidos = [
+      { id: 'b1', type: 'sale', createdAt: at, origin, sale: { id: 'v8', total: 'cien', payments: [] } },
+      { id: 'b2', type: 'stock-movement', createdAt: at, origin, movement: { id: 'm8', productId: 'p1', reason: 'sale' } },
+      { id: 'b3', type: 'customer', createdAt: at, origin, customer: { id: 'c8' } },
+      { id: 'b4', type: 'account-hold-confirm', createdAt: at, origin, holdId: 'h1' },
+      { id: 'b5', type: 'account-hold-release', createdAt: at, origin },
+      { id: 'b6', type: 'cash-movement', createdAt: at, origin, movement: { amount: 10 } },
+      { id: 'b7', type: 'customer-payment', createdAt: at, origin, payment: { id: 'cp8', customerId: 'c1', total: '5' } },
+      { id: 'b8', type: 'session-open', createdAt: at, origin },
+      null,
+    ];
+    const res = await push('lote-mixto', [valida, ...invalidos]);
+    expect(res.status).toBe(200);
+
+    const pull = await request(app)
+      .post('/connector/sync/pull')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .send({ cursors: {}, pendingLotIds: ['lote-mixto'] });
+    const lot = (pull.body as { lots: Record<string, { status: string; issues?: { message: string; eventId?: string }[] }> }).lots['lote-mixto'];
+    expect(lot?.status).toBe('issues');
+    expect(lot?.issues?.map((i) => i.eventId)).toEqual(['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', undefined]);
+
+    const stored = tenantManager.getTenantDb(tenantId).prepare("SELECT payload FROM sales WHERE id = 'v9'").get() as { payload: string } | undefined;
+    expect(JSON.parse(stored?.payload ?? '{}')).toMatchObject({ futuro: { x: 1 } });
+  });
+
   it('repetir el lote no duplica nada', async () => {
     await push('lote-1', lote);
     await push('lote-1', lote);

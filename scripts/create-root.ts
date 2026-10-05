@@ -5,14 +5,14 @@
  */
 import { createInterface } from 'node:readline/promises';
 import { join } from 'node:path';
-import { z } from 'zod';
+import { z } from '../src/shared/zod.ts';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { dataDir } from '../src/server/db/data-dir.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { PASSWORD_MIN_LENGTH, passwordSchema } from '../src/shared/password.ts';
 
 const rootSchema = z.object({
-  email: z.string().trim().email('Email inválido'),
+  email: z.string().trim().pipe(z.email('Email inválido')),
   name: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres'),
   password: passwordSchema,
 });
@@ -69,7 +69,7 @@ if (password !== again) {
 
 const parsed = rootSchema.safeParse({ email, name, password });
 if (!parsed.success) {
-  console.error(parsed.error.errors[0]?.message ?? 'Datos inválidos');
+  console.error(parsed.error.issues[0]?.message ?? 'Datos inválidos');
   process.exit(1);
 }
 

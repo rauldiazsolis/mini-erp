@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { z } from 'zod';
+import { z } from '../../shared/zod.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePlatformRole } from '../middleware/platform-role-middleware.ts';
 import type { BillingService } from '../billing/billing-service.ts';
@@ -11,7 +11,9 @@ import type { SheetResultRow } from '../../shared/credits-types.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'Fecha inválida');
-const amount = z.number({ invalid_type_error: 'Importe inválido' }).positive('El importe tiene que ser mayor que 0');
+const amount = z
+  .number({ error: (iss) => (iss.input === undefined ? undefined : 'Importe inválido') })
+  .positive('El importe tiene que ser mayor que 0');
 const note = z.string().trim().max(200).optional();
 
 const paymentSchema = z.object({ day, amount, info: note });
@@ -35,7 +37,7 @@ export function createPlatformRoutes(deps: Deps): Router {
 
   /** Valida el body, corre la operación y la audita; los errores de negocio salen con su estado. */
   function handle<T>(
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T>,
     action: AuditAction,
     status: number,
     run: (body: T, req: AuthenticatedAdminRequest) => { result: Record<string, unknown>; details: Record<string, unknown>; targetUserId?: string },
@@ -43,7 +45,7 @@ export function createPlatformRoutes(deps: Deps): Router {
     return (req: AuthenticatedAdminRequest, res: Response): void => {
       const parsed = schema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+        res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
         return;
       }
       try {
@@ -124,7 +126,7 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.post('/payments/import', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = sheetSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     const dryRun = req.query['dryRun'] === '1';
