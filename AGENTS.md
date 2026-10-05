@@ -164,12 +164,12 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     (rauldiazsolis/offline-pos#187).
 - **Auth propia**: sin servicios externos; `node:crypto` (`scryptSync`, comparación timing-safe). Las
   cuentas nacen siempre como `user`; el `root` sale de `AuthService.ensureRoot`, que usan el comando
-  `scripts/create-root.ts` (una vez, en el servidor) y el seed de desarrollo. `root` y `support`
-  pueden impersonar cualquier tenant.
+  `scripts/create-root.ts` (una vez, en el servidor) y el seed de desarrollo. `root` y `support` no
+  son miembros de ningún comercio (#16): entran impersonando a un usuario (#23).
 - **Roles de comercio e invitaciones** (#19, spec `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`):
   - Matriz en `src/shared/permissions.ts` (TS puro, la usan servidor y cliente): roles `owner`,
     `admin`, `member` y capacidades `tenant.use`, `bulk`, `settings.manage`, `users.manage`,
-    `owners.manage`, `credits.view`. Permisos fijos. Root y support impersonando cuentan como `owner` hasta M7.
+    `owners.manage`, `credits.view`. Permisos fijos. Quien impersona opera con el rol del usuario.
   - `requireTenantContext` resuelve el rol (`MembershipService.resolveRole`, solo membresías
     activas) y **cada** ruta de `/api/tenants/:tenantId` lleva `requirePermission(<capacidad>)`.
     `test/permissions-api.test.ts` tiene la tabla de todas las rutas y falla si una ruta nueva no
@@ -288,10 +288,10 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - Tipos de la API en `src/shared/credits-types.ts` y `src/shared/register-types.ts`.
   - La sección del admin se llama **Uso y pagos** (`/admin/<comercio>/uso-y-pagos`, #55) y los
     créditos regalados se muestran como **bonos** (solapa `/uso-y-pagos/bonos`).
-- **Plataforma** (#23, M7a; spec `docs/superpowers/specs/2026-10-04-m7-plataforma-design.md`):
+- **Plataforma** (#23, M7a y M7b; spec `docs/superpowers/specs/2026-10-04-m7-plataforma-design.md`):
   - **Panel en `/plataforma`**, para root y soporte: Comercios (por omisión; el detalle en
     `/plataforma/comercios/<slug>` con créditos, acciones de cobro, bonos, miembros y suspender),
-    Usuarios, Cobranzas, Soporte (solo root), Registro y Configuración (solo root). Filtros en la URL
+    Usuarios, Pedidos, Cobranzas, Soporte (solo root), Registro y Configuración (solo root). Filtros en la URL
     (`?q=`, `?comercio=`) con `setPlatformFilters`; estado en `state/platform-panel-state.ts`.
   - Servidor: servicios de sistema en `src/server/platform/` (suspensiones, estado de cuentas,
     invitaciones de soporte, consultas del panel) y rutas en `routes/platform-admin-routes.ts`, junto
@@ -306,7 +306,35 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     ni a sí mismo; a soporte, solo root. Root y soporte generan links de restablecimiento sin comercio.
   - **Soporte por invitación** (`staff_invitations`, solo root): link `/invitacion#t=…&tipo=soporte`,
     un solo uso, 48 h; crea la cuenta de soporte o promueve una sin comercios (con comercios, 409).
-  - Migración de sistema v7. `audit_log.impersonator_user_id` queda para la impersonación de M7b.
+  - Migración de sistema v7 (M7a) y v8 (M7b).
+  - **Impersonación de usuario** (M7b): una fila más de `sessions` con `impersonator_user_id`,
+    `parent_token`, `tenant_id`, `help_request_id` y `last_used_at` (`AuthService.resolveSession`).
+    - Solo root o soporte con su sesión propia (`POST /api/impersonations`, `ImpersonationService`),
+      como cuentas `user` activas con una membresía activa; nunca root, soporte, desactivados ni demos.
+    - Vence a las 2 h sin uso (el último uso se escribe a lo sumo por minuto) y muere con la sesión
+      padre: "Cerrar sesión" la borra en el servidor (`POST /api/auth/logout`). "Salir" es
+      `DELETE /api/impersonations/current`. Las tres cosas se auditan (`impersonation.ended`).
+    - `req.user` es el usuario impersonado y `req.impersonator`, quien impersona: rol, permisos y
+      rutas son los del usuario. Un comercio suspendido o restringido no bloquea a quien impersona.
+    - `requireOwnSession` (403 "No disponible mientras ves como otro usuario"): contraseña, nombrar
+      owners, links de restablecimiento, crear comercios, aceptar invitaciones y toda la plataforma.
+    - La auditoría guarda los dos (`auditActor(req)`, `audit_log.impersonator_user_id`) y se lee
+      "Ana (soporte) como Juan".
+    - Cliente: la pestaña que impersona guarda su sesión en `sessionStorage` (solo `auth-state` lo
+      toca, guardián en `test/client-guards.test.ts`) y nunca escribe `localStorage`, que es de la
+      sesión de soporte. "Entrar como" (Usuarios y miembros del detalle) abre
+      `/plataforma/entrar?usuario=…&comercio=…` con `window.open(…, 'noopener')`
+      (`state/impersonation-state.ts`); la franja tiene "Salir"; un 401 muestra "La sesión como Juan
+      terminó". Root o soporte en `/admin` van a `/plataforma`.
+  - **Pedidos de ayuda** (M7b, `help_requests` y `help_request_takes`, `HelpRequestService`):
+    - "Pedir ayuda" en la cabecera (sin impersonar y con WhatsApp de soporte): crea el pedido con la
+      pantalla actual (validada contra el admin de ese comercio), cierra el anterior, vence a las 24 h
+      y abre WhatsApp con el link `/ayuda/<id>`.
+    - Soporte abre el link (o "Atender" en la solapa Pedidos, últimas 48 h) y entra como el usuario
+      en esa pantalla; vencido o cerrado, 410 "Este pedido venció".
+    - El usuario ve su pedido abierto, los accesos de soporte de 7 días y "Soporte está viendo tu
+      cuenta" (`GET /api/me/support-access`, `state/help-state.ts`).
+    - El seed de desarrollo carga un WhatsApp de soporte de prueba si no hay uno.
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
@@ -449,9 +477,9 @@ Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisi
 `portal` queda para M10, #26, y por eso el issue sigue abierto), formato según el navegador (#51,
 hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
 top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
-Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 va en dos PR: M7a (panel de
+Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 fue en dos PR: M7a (panel de
 plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) y M7b (impersonación de
-usuario por pestaña, root y soporte sin membresía implícita y pedidos de ayuda; sigue #23). La parte del POS está en el
-epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
+usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). Sigue
+M8 (#24). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
 
 En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).
