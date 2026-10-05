@@ -158,6 +158,7 @@ export function createApp(deps?: AppDependencies): {
       resets: passwordResetService,
       staffInvitations,
       queries: rootContainer.use(platformQueryServiceDef),
+      audit: auditLog,
     }),
   );
 

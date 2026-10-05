@@ -104,7 +104,9 @@ export const userStatusServiceDef = fn.singleton(
 export const staffInvitationServiceDef = fn.singleton(
   (c) => new StaffInvitationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
 );
-export const platformQueryServiceDef = fn.singleton((c) => new PlatformQueryService({ db: c.use(systemDbDef) }));
+export const platformQueryServiceDef = fn.singleton(
+  (c) => new PlatformQueryService({ db: c.use(systemDbDef), billing: c.use(billingServiceDef), members: c.use(membershipServiceDef) }),
+);
 export const altaServiceDef = fn.singleton(
   (c) =>
     new AltaService({

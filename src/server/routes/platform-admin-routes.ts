@@ -7,9 +7,12 @@ import type { UserStatusService } from '../platform/user-status-service.ts';
 import type { PasswordResetService } from '../users/password-reset-service.ts';
 import type { StaffInvitationService } from '../platform/staff-invitation-service.ts';
 import type { PlatformQueryService } from '../platform/platform-query-service.ts';
+import type { AuditLog } from '../audit/audit-log.ts';
 import { DomainError, sendError } from '../errors.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
+const searchSchema = z.object({ q: z.string().trim().max(100).optional() });
+const auditQuerySchema = z.object({ tenantId: z.string().trim().max(100).optional(), tenantSlug: z.string().trim().max(100).optional() });
 const staffInviteSchema = z.object({ email: z.string().trim().pipe(z.email('Email inválido')) });
 
 export type PlatformAdminDeps = {
@@ -18,6 +21,7 @@ export type PlatformAdminDeps = {
   resets: PasswordResetService;
   staffInvitations: StaffInvitationService;
   queries: PlatformQueryService;
+  audit: AuditLog;
 };
 
 /** Panel de plataforma (#23, M7a), para root y soporte. Lo de cobro sigue en platform-routes.ts. */
@@ -26,6 +30,48 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   const staff = requirePlatformRole('root', 'support');
   const rootOnly = requirePlatformRole('root');
   const actorOf = (req: AuthenticatedAdminRequest): string => req.user?.id ?? '';
+
+  router.get('/tenants', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    const parsed = searchSchema.safeParse(req.query);
+    res.status(200).json(deps.queries.listTenants(parsed.success ? parsed.data.q : undefined));
+  });
+
+  // Va antes de /tenants/:tenantId: el detalle que se abre desde la URL del panel
+  router.get('/tenants/by-slug/:slug', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      res.status(200).json(deps.queries.tenantDetail(deps.queries.tenantIdBySlug(req.params['slug'] ?? '')));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.get('/tenants/:tenantId', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    try {
+      res.status(200).json(deps.queries.tenantDetail(req.params['tenantId'] ?? ''));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
+
+  router.get('/users', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    const parsed = searchSchema.safeParse(req.query);
+    res.status(200).json(deps.queries.listUsers(parsed.success ? parsed.data.q : undefined));
+  });
+
+  router.get('/audit', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    const parsed = auditQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Filtro inválido' });
+      return;
+    }
+    try {
+      const { tenantId, tenantSlug } = parsed.data;
+      const id = tenantSlug !== undefined && tenantSlug !== '' ? deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
+      res.status(200).json(deps.audit.listPlatform({ tenantId: id }));
+    } catch (err: unknown) {
+      sendError(res, err, 500);
+    }
+  });
 
   router.post('/tenants/:tenantId/suspend', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = reasonSchema.safeParse(req.body ?? {});
