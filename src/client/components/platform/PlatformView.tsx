@@ -1,6 +1,6 @@
 import { platformTabSignal, type PlatformTab } from '../../state/platform-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
-import { buildUrl } from '../../routing/admin-routes.ts';
+import { platformUrl } from '../../routing/admin-routes.ts';
 import { Link } from '../ui/Link.tsx';
 import { PageHeader } from '../ui/PageHeader.tsx';
 import { PaymentSheetCard } from './PaymentSheetCard.tsx';
@@ -23,7 +23,7 @@ export function PlatformView() {
         {tabs.map((t) => (
           <Link
             key={t.id}
-            href={buildUrl({ kind: 'plataforma', tab: t.id })}
+            href={platformUrl(t.id)}
             role="tab"
             aria-selected={tab === t.id}
             class={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${

@@ -39,7 +39,15 @@ export const SECTION_TABS = {
   credits: [{ id: 'charges', slug: '' }, { id: 'movements', slug: 'movimientos' }, { id: 'gifts', slug: 'bonos' }],
 } as const;
 
-export const PLATFORM_TABS = [{ id: 'payments', slug: '' }, { id: 'settings', slug: 'configuracion' }] as const;
+/** Las solapas de `/plataforma` (#23); el detalle de un comercio es `/plataforma/comercios/<slug>`. */
+export const PLATFORM_TABS = [
+  { id: 'tenants', slug: '' },
+  { id: 'users', slug: 'usuarios' },
+  { id: 'payments', slug: 'cobranzas' },
+  { id: 'staff', slug: 'soporte' },
+  { id: 'audit', slug: 'registro' },
+  { id: 'settings', slug: 'configuracion' },
+] as const;
 
 export type TabId<S extends TenantSection> = (typeof SECTION_TABS)[S][number]['id'];
 export type PlatformTabId = (typeof PLATFORM_TABS)[number]['id'];
@@ -287,7 +295,7 @@ function canonParams(section: TenantSection, p: Params): Params {
 // --- Rutas ---
 
 export type AdminRoute = { kind: 'admin'; tenantSlug: string | null; section: TenantSection; tab: string; params: Params };
-export type PlatformRoute = { kind: 'plataforma'; tab: PlatformTabId };
+export type PlatformRoute = { kind: 'plataforma'; tab: PlatformTabId; tenantSlug: string | null; params: Params };
 export type Route = { kind: 'landing' | 'alta' | 'invitacion' | 'restablecer' } | AdminRoute | PlatformRoute;
 
 function readSearch(search: string): Params {
@@ -310,7 +318,11 @@ export function parseLocation(pathname: string, search: string): Route {
   if (segments.length === 1 && first === 'invitacion') return { kind: 'invitacion' };
   if (segments.length === 1 && first === 'restablecer') return { kind: 'restablecer' };
   if (first === 'plataforma') {
-    return { kind: 'plataforma', tab: PLATFORM_TABS.find((t) => t.slug !== '' && t.slug === second)?.id ?? 'payments' };
+    if (second === 'comercios' && third !== undefined) {
+      return { kind: 'plataforma', tab: 'tenants', tenantSlug: decodeSlug(third), params: {} };
+    }
+    const tab = PLATFORM_TABS.find((t) => t.slug !== '' && t.slug === second)?.id ?? 'tenants';
+    return { kind: 'plataforma', tab, tenantSlug: null, params: platformParams(tab, readSearch(search)) };
   }
   if (first !== 'admin') return { kind: 'landing' };
   if (second === undefined) return { kind: 'admin', tenantSlug: null, section: 'dashboard', tab: firstTab('dashboard'), params: {} };
@@ -330,8 +342,11 @@ export function buildUrl(route: Route): string {
     case 'restablecer':
       return '/restablecer';
     case 'plataforma': {
+      if (route.tenantSlug !== null) return `/plataforma/comercios/${encodeURIComponent(route.tenantSlug)}`;
       const slug = PLATFORM_TABS.find((t) => t.id === route.tab)?.slug ?? '';
-      return slug === '' ? '/plataforma' : `/plataforma/${slug}`;
+      const path = slug === '' ? '/plataforma' : `/plataforma/${slug}`;
+      const query = new URLSearchParams(platformParams(route.tab, route.params)).toString();
+      return query === '' ? path : `${path}?${query}`;
     }
     case 'admin': {
       if (route.tenantSlug === null) return '/admin';
@@ -356,4 +371,24 @@ export function adminUrl<S extends TenantSection>(
     tab: options.tab ?? firstTab(section),
     params: options.filters === undefined ? {} : encodeFilters(section, options.filters),
   });
+}
+
+/** Los filtros de cada solapa de la plataforma (#23): búsqueda en Comercios y Usuarios, comercio en Registro. */
+const PLATFORM_FILTERS: Partial<Record<PlatformTabId, readonly string[]>> = { tenants: ['q'], users: ['q'], audit: ['comercio'] };
+
+function platformParams(tab: PlatformTabId, p: Params): Params {
+  const out: Record<string, string> = {};
+  for (const name of PLATFORM_FILTERS[tab] ?? []) {
+    const value = p[name]?.trim();
+    if (value !== undefined && value !== '') out[name] = value;
+  }
+  return out;
+}
+
+export function platformUrl(tab: PlatformTabId, filters: Params = {}): string {
+  return buildUrl({ kind: 'plataforma', tab, tenantSlug: null, params: filters });
+}
+
+export function platformTenantUrl(slug: string): string {
+  return buildUrl({ kind: 'plataforma', tab: 'tenants', tenantSlug: slug, params: {} });
 }

@@ -21,7 +21,7 @@ export type PlatformTab = PlatformTabId;
 /** La solapa de `/plataforma` (#59). */
 export const platformTabSignal = computed<PlatformTab>(() => {
   const route = routeSignal.value;
-  return route.kind === 'plataforma' ? route.tab : 'payments';
+  return route.kind === 'plataforma' ? route.tab : 'tenants';
 });
 export const ownersSignal = signal<MemberItem[]>([]);
 export const sheetTextSignal = signal<string>('');
