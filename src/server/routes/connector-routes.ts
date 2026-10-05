@@ -85,7 +85,6 @@ export function createConnectorRoutes(
       res.status(422).json({ code: 'unknown-template', templates: [...DEMO_TEMPLATES] });
       return;
     }
-    demoSessions.sweepExpired();
     if (demoSessions.isFull()) {
       res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;

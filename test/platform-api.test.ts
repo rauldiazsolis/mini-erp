@@ -109,7 +109,7 @@ describe('API de plataforma de cobro (#21)', () => {
 
     beforeEach(() => {
       systemDb.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('demo-x', 'demo-x', 'Demo', '2026-10-01T00:00:00.000Z')").run();
-      systemDb.prepare("INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES ('demo-x', 'kiosco', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')").run();
+      systemDb.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-x', 'kiosco', '2026-10-01T00:00:00.000Z')").run();
     });
 
     it('la vista previa marca cada fila y no registra nada', async () => {

@@ -12,6 +12,7 @@ import type {
   StaffMemberItem,
   TenantStatus,
 } from '../../shared/platform-types.ts';
+import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 
 type TenantRow = {
   id: string;
@@ -29,7 +30,7 @@ const TENANT_SELECT = `
   SELECT t.id, t.slug, t.name, t.status, t.business_type, t.created_at, t.holder_user_id, h.name AS holder_name,
     (SELECT COUNT(*) FROM memberships m WHERE m.tenant_id = t.id AND m.status = 'active') AS members
   FROM tenants t LEFT JOIN users h ON h.id = t.holder_user_id
-  WHERE t.id NOT IN (SELECT tenant_id FROM demo_sessions)`;
+  WHERE t.id NOT IN ${DEMO_TENANT_IDS_SQL}`;
 
 const USERS_LIMIT = 200;
 

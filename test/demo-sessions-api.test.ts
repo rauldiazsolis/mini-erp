@@ -25,7 +25,7 @@ function makeApp(overrides: Partial<DemoConfig> = {}) {
   const bundle = createApp({
     systemDb,
     tenantManager,
-    demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, ...overrides },
+    demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },
     now: () => clock.now,
   });
   const advance = (ms: number): void => {
@@ -39,13 +39,14 @@ function startDemo(app: ReturnType<typeof makeApp>['app'], body?: object) {
   return body === undefined ? req : req.send(body);
 }
 
-describe('POST /connector/demo-sessions (#9)', () => {
+describe('POST /connector/demo-sessions (#9, #24)', () => {
   it('crea una demo sin autenticación con el template por defecto', async () => {
     const { app } = makeApp();
     const res = await startDemo(app);
     expect(res.status).toBe(201);
     const body = res.body as DemoBody;
-    expect(body).toMatchObject({ branch: 'CENTRAL', pointOfSale: 'Caja 1', template: 'kiosco' });
+    expect(body).toMatchObject({ branch: 'CENTRAL', template: 'kiosco' });
+    expect(body.pointOfSale).toMatch(/^Demo [0-9A-F]{4}$/);
     expect(body.onboarding.label).toBe('Crear mi comercio');
     expect(body.onboarding.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/alta\?template=kiosco$/);
     expect(body).not.toHaveProperty('baseUrl');
@@ -73,7 +74,7 @@ describe('POST /connector/demo-sessions (#9)', () => {
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
     expect((info.body as { capabilities?: string[] }).capabilities).toEqual(['customer-payment-void', 'demo-sessions']);
-    expect((info.body as { company?: { name: string } }).company).toEqual({ name: 'Demo Ferreteria' });
+    expect((info.body as { company?: { name: string } }).company).toEqual({ name: 'Ferretería Demo' });
   });
 
   it('422 con la lista si el template no existe', async () => {
@@ -107,7 +108,16 @@ describe('POST /connector/demo-sessions (#9)', () => {
     expect(res.body).toEqual({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
   });
 
-  it('una demo en uso no vence; una sin uso sí', async () => {
+  it('dos demos del mismo rubro son dos cajas del mismo comercio demo', async () => {
+    const { app, apiKeyService } = makeApp();
+    const a = (await startDemo(app)).body as DemoBody;
+    const b = (await startDemo(app)).body as DemoBody;
+    expect(apiKeyService.validateApiKey(a.apiKey)?.tenantId).toBe('demo-kiosco');
+    expect(apiKeyService.validateApiKey(b.apiKey)?.tenantId).toBe('demo-kiosco');
+    expect(a.pointOfSale).not.toBe(b.pointOfSale);
+  });
+
+  it('una caja en uso no se revoca; una sin uso sí', async () => {
     const { app, advance, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
     const info = () => request(app).get('/connector/info').set('Authorization', `Bearer ${apiKey}`);
@@ -115,11 +125,11 @@ describe('POST /connector/demo-sessions (#9)', () => {
     advance(23 * HOUR);
     expect((await info()).status).toBe(200); // el request la toca
     advance(23 * HOUR);
-    demoSessions.sweepExpired();
+    demoSessions.revokeIdle();
     expect((await info()).status).toBe(200);
 
     advance(25 * HOUR);
-    demoSessions.sweepExpired();
+    demoSessions.revokeIdle();
     expect((await info()).status).toBe(401);
   });
 
@@ -141,12 +151,12 @@ describe('POST /connector/demo-sessions (#9)', () => {
   });
 });
 
-describe('demo revocada (contrato 4.5.0, #58)', () => {
-  it('la key de una demo barrida da 401 en todo el Connector API', async () => {
+describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
+  it('la key de una caja revocada por inactividad da 401 en todo el Connector API', async () => {
     const { app, advance, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
     advance(25 * HOUR);
-    demoSessions.sweepExpired();
+    demoSessions.revokeIdle();
 
     const headers = { Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.5.0' };
     expect((await request(app).get('/connector/info').set(headers)).status).toBe(401);
@@ -163,11 +173,22 @@ describe('demo revocada (contrato 4.5.0, #58)', () => {
     ).toBe(401);
   });
 
+  it('el reinicio total revoca las cajas: su key da 401', async () => {
+    const { app, demoSessions } = makeApp();
+    const { apiKey } = (await startDemo(app)).body as DemoBody;
+    demoSessions.revokeTenant('demo-kiosco', 'reset');
+    const res = await request(app)
+      .post('/connector/sync/pull')
+      .set({ Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.6.0' })
+      .send({ cursors: {}, pendingLotIds: [] });
+    expect(res.status).toBe(401);
+  });
+
   it('una demo vencida puede ir igual al alta: nace un comercio nuevo con su rubro y su caja', async () => {
     const { app, advance, demoSessions, tenantManager } = makeApp();
     expect((await startDemo(app, { template: 'almacen' })).status).toBe(201);
     advance(25 * HOUR);
-    demoSessions.sweepExpired();
+    demoSessions.revokeIdle();
 
     // Lo que hace /alta?template=almacen&return_url=…&wipe_key=…: nunca usa la key de la demo
     const res = await request(app).post('/api/alta').send({

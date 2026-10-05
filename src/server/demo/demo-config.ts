@@ -3,6 +3,8 @@ export type DemoConfig = {
   enabled: boolean;
   ttlHours: number;
   maxActive: number;
+  /** Hora argentina (0 a 23) del reinicio total automático de los comercios demo (#24). */
+  resetHour: number;
   /** URL pública del mini-erp, sin barra final. Ausente = el origen del request. */
   publicUrl?: string;
 };
@@ -18,6 +20,7 @@ export function readDemoConfig(env: NodeJS.ProcessEnv): DemoConfig {
     enabled: env['DEMO_SESSIONS'] !== 'off',
     ttlHours: positiveInt(env['DEMO_TTL_HOURS'], 24),
     maxActive: positiveInt(env['DEMO_MAX_ACTIVE'], 200),
+    resetHour: 4,
     ...(publicUrl === '' ? {} : { publicUrl }),
   };
 }

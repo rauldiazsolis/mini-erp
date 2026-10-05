@@ -22,8 +22,8 @@ function seed(): { dataDir: string; backupDir: string } {
   tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
   systemDb
-    .prepare('INSERT INTO demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
-    .run('demo-abc', 'kiosco', at, at);
+    .prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)')
+    .run('demo-abc', 'kiosco', at);
   tenants.closeAll();
   systemDb.close();
   return { dataDir, backupDir: join(root, 'backups') };

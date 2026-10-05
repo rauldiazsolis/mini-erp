@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 
 const DAY_DIR = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,7 +26,7 @@ export function backupAll(params: { dataDir: string; backupDir: string; now: Dat
   const systemPath = join(params.dataDir, 'system.sqlite');
   const system = new DatabaseSync(systemPath, { readOnly: true, timeout: 10_000 });
   const rows = system
-    .prepare('SELECT id FROM tenants WHERE id NOT IN (SELECT tenant_id FROM demo_sessions) ORDER BY id')
+    .prepare(`SELECT id FROM tenants WHERE id NOT IN ${DEMO_TENANT_IDS_SQL} ORDER BY id`)
     .all() as { id: string }[];
   system.close();
 

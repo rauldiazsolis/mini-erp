@@ -148,7 +148,7 @@ export class TenantManager {
 
   /**
    * Borra un tenant entero: cierra su base, borra sus filas de sistema y su archivo. Lo usa el
-   * barrido de demos vencidas (#9). No depende de `PRAGMA foreign_keys`.
+   * barrido de las demos por visitante de antes de M8 (#9, #24). No depende de `PRAGMA foreign_keys`.
    */
   deleteTenant(id: string): void {
     const db = this.cache.get(id);
@@ -167,7 +167,7 @@ export class TenantManager {
       this.systemDb.prepare('DELETE FROM registers WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM demo_sessions WHERE tenant_id = ?').run(id);
+      this.systemDb.prepare('DELETE FROM legacy_demo_sessions WHERE tenant_id = ?').run(id);
       this.systemDb.prepare('DELETE FROM tenants WHERE id = ?').run(id);
       this.systemDb.exec('COMMIT');
     } catch (err: unknown) {

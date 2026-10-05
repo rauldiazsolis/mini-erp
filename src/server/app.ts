@@ -111,8 +111,8 @@ export function createApp(deps?: AppDependencies): {
   const authLimit = createRateLimit({ limit: limits.authPer15Min, windowMs: 15 * 60 * 1000, now, body: 'api' });
 
   const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (tenantId) => {
-    demoSessions.touch(tenantId);
+  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (key) => {
+    demoSessions.touchRegister(key.registerId);
   });
 
   app.use(allowPrivateNetwork);

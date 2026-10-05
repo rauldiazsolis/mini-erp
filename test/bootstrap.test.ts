@@ -41,11 +41,11 @@ const [kiosco, almacen, ferreteria] = DEV_TENANTS;
 if (kiosco === undefined || almacen === undefined || ferreteria === undefined) throw new Error('Faltan comercios de desarrollo');
 
 describe('bootstrap (#3)', () => {
-  it('en producción no siembra nada', () => {
+  it('en producción no siembra nada de desarrollo: solo los tres comercios demo (#24)', () => {
     const { result, systemDb } = boot({ NODE_ENV: 'production' });
     expect(result.devInfo).toBeUndefined();
     const c = counts(systemDb);
-    expect([c.users, c.tenants, c.keys, c.demos]).toEqual([0, 0, 0, 0]);
+    expect([c.users, c.tenants, c.keys, c.demos]).toEqual([0, 3, 0, 0]);
   });
 });
 
@@ -160,29 +160,43 @@ describe('seed de desarrollo (#21)', () => {
     expect(readBillingSettings(systemDb).supportWhatsapp).toBe('5491177778888');
   });
 
-  it('hay dos demos andando, sin dueño y con key fija', () => {
+  it('crea los tres comercios demo, sin dueño (#24)', () => {
+    const { systemDb } = boot({});
+    expect(systemDb.prepare('SELECT tenant_id FROM demo_tenants ORDER BY tenant_id').all()).toEqual([
+      { tenant_id: 'demo-almacen' },
+      { tenant_id: 'demo-ferreteria' },
+      { tenant_id: 'demo-kiosco' },
+    ]);
+    expect(n(systemDb, "SELECT COUNT(*) AS n FROM memberships WHERE tenant_id LIKE 'demo-%'")).toBe(0);
+  });
+
+  it('en producción también crea los comercios demo (#24)', () => {
+    const { systemDb } = boot({ NODE_ENV: 'production' });
+    expect(n(systemDb, 'SELECT COUNT(*) AS n FROM demo_tenants')).toBe(3);
+  });
+
+  it('hay dos cajas de demo andando, con key fija, en los comercios demo (#24)', () => {
     const { systemDb } = boot({});
     for (const d of DEV_DEMOS) {
       const row = systemDb
         .prepare(
-          `SELECT s.template, (SELECT COUNT(*) FROM memberships m WHERE m.tenant_id = s.tenant_id) AS members
-           FROM tenant_api_keys k JOIN demo_sessions s ON s.tenant_id = k.tenant_id WHERE k.key_hash = ?`,
+          `SELECT s.template, s.tenant_id FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
+           WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`,
         )
         .get(hashApiKey(d.rawKey));
-      expect({ ...row }).toEqual({ template: d.template, members: 0 });
+      expect({ ...row }).toEqual({ template: d.template, tenant_id: `demo-${d.template}` });
     }
   });
 
-  it('una demo vencida se vuelve a crear al arrancar', () => {
-    const { systemDb, tenantManager, run } = boot({});
+  it('una caja de demo revocada se vuelve a crear al arrancar, con la misma key (#24)', () => {
+    const { systemDb, bundle, run } = boot({});
     const first = DEV_DEMOS[0];
     if (first === undefined) throw new Error('Faltan demos');
-    const row = systemDb
-      .prepare('SELECT k.tenant_id FROM tenant_api_keys k WHERE k.key_hash = ?')
-      .get(hashApiKey(first.rawKey)) as { tenant_id: string };
-    tenantManager.deleteTenant(row.tenant_id);
+    bundle.demoSessions.revokeTenant(`demo-${first.template}`, 'reset');
     run();
-    expect(n(systemDb, 'SELECT COUNT(*) AS n FROM tenant_api_keys k JOIN demo_sessions s ON s.tenant_id = k.tenant_id WHERE k.key_hash = ?', hashApiKey(first.rawKey))).toBe(1);
+    const alive = `SELECT COUNT(*) AS n FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
+      WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`;
+    expect(n(systemDb, alive, hashApiKey(first.rawKey))).toBe(1);
   });
 
   it('arrancar otra vez no duplica nada', () => {

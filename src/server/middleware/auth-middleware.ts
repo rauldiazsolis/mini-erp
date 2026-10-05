@@ -81,8 +81,8 @@ export function createPosAuthMiddleware(
   apiKeyService: ApiKeyService,
   tenantManager: TenantManager,
   rootContainer?: Container,
-  /** Se llama con cada key válida: así una demo en uso no vence (#9). */
-  onAuthenticated?: (tenantId: string) => void,
+  /** Se llama con cada key válida: así una caja de demo en uso no se revoca (#24). */
+  onAuthenticated?: (key: ValidatedPosKey) => void,
 ) {
   return (req: AuthenticatedPosRequest, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization;
@@ -98,7 +98,7 @@ export function createPosAuthMiddleware(
       return;
     }
 
-    onAuthenticated?.(validated.tenantId);
+    onAuthenticated?.(validated);
 
     const tenantDb = tenantManager.getTenantDb(validated.tenantId);
 

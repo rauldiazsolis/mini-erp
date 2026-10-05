@@ -3,6 +3,7 @@ import type { AuthService, Impersonator, UserSession } from '../auth/auth-servic
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { HelpRequestService } from '../help/help-request-service.ts';
 import { DomainError } from '../errors.ts';
+import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 
 export type ImpersonationStart = { token: string; user: UserSession; impersonator: Impersonator; tenantSlug: string; path: string };
 
@@ -56,7 +57,7 @@ export class ImpersonationService {
     const tenants = this.db
       .prepare(
         `SELECT t.id, t.slug FROM memberships m JOIN tenants t ON t.id = m.tenant_id
-         WHERE m.user_id = ? AND m.status = 'active' AND t.id NOT IN (SELECT tenant_id FROM demo_sessions)
+         WHERE m.user_id = ? AND m.status = 'active' AND t.id NOT IN ${DEMO_TENANT_IDS_SQL}
          ORDER BY m.created_at DESC, m.rowid DESC`,
       )
       .all(userId) as TargetTenant[];
