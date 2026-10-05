@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { DialogShell } from './DialogShell.tsx';
 
 export type ModalProps = {
   isOpen: boolean;
@@ -25,13 +26,10 @@ export function Modal(props: ModalProps) {
   const maxWidthClass = maxWidthClasses[props.maxWidth ?? 'lg'];
 
   return (
-    <div
-      class="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          props.onClose();
-        }
-      }}
+    <DialogShell
+      label={props.title}
+      onClose={props.onClose}
+      overlayClass="w-full h-full bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
     >
       <div
         class={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 ${maxWidthClass} w-full shadow-2xl transition-all relative text-slate-900 dark:text-slate-100 my-auto`}
@@ -77,6 +75,6 @@ export function Modal(props: ModalProps) {
           </div>
         )}
       </div>
-    </div>
+    </DialogShell>
   );
 }

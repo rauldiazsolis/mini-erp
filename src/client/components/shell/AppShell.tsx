@@ -3,7 +3,7 @@ import { Sidebar } from './Sidebar.tsx';
 import { Header } from './Header.tsx';
 import { ImpersonationModal } from './ImpersonationModal.tsx';
 import { openMerchantOnboarding } from '../../state/merchant-onboarding-state.ts';
-import { ToastContainer } from '../ui/ToastContainer.tsx';
+import { PageToasts } from '../ui/ToastContainer.tsx';
 import {
   isImpersonatingSignal,
   activeTenantSignal,
@@ -96,7 +96,7 @@ export function AppShell(props: { children: ComponentChildren }) {
       <ImpersonationModal />
 
       {/* Contenedor de Notificaciones Toast */}
-      <ToastContainer />
+      <PageToasts />
     </div>
   );
 }
