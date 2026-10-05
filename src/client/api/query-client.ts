@@ -77,7 +77,13 @@ export function createSignalQuery<T>(options: SignalQueryOptions<T>): SignalQuer
       enabled,
       refetchInterval: options.refetchInterval ?? false,
       placeholderData: (previous, previousQuery) =>
-        source !== null && previousQuery !== undefined && options.keepPrevious?.(previousQuery.queryKey, source.key) === true ? previous : undefined,
+        source !== null &&
+        previousQuery !== undefined &&
+        // Después de un clear() (cambio de sesión) la consulta anterior ya no está: nada de placeholder (#68)
+        queryClient.getQueryCache().find({ queryKey: previousQuery.queryKey, exact: true }) === previousQuery &&
+        options.keepPrevious?.(previousQuery.queryKey, source.key) === true
+          ? previous
+          : undefined,
     });
     publish(observer.getCurrentResult());
   });
