@@ -38,7 +38,7 @@ export function StatCard(props: StatCardProps) {
 
   return (
     <div
-      class={`bg-white dark:bg-slate-900/80 backdrop-blur border ${variantBorder} rounded-2xl p-5 shadow-sm dark:shadow-xl transition-all flex flex-col justify-between${
+      class={`bg-white dark:bg-slate-900/80 backdrop-blur border ${variantBorder} rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-xl transition-all flex flex-col justify-between${
         onClick === undefined ? '' : ' cursor-pointer hover:ring-2 hover:ring-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-indigo-500'
       }`}
       {...clickable}
@@ -48,7 +48,7 @@ export function StatCard(props: StatCardProps) {
           {title}
         </span>
         {icon && (
-          <div class="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60 text-slate-600 dark:text-slate-300 shrink-0">
+          <div class="hidden sm:block p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/60 text-slate-600 dark:text-slate-300 shrink-0">
             {icon}
           </div>
         )}

@@ -29,3 +29,11 @@ body {
 html:has(dialog[open]) {
   overflow: hidden;
 }
+
+/* En el teléfono, los campos a 16 px (#91): con menos, Safari agranda la página al enfocarlos.
+   Fuera de las capas de Tailwind, para ganarle a text-xs y text-sm */
+@media (max-width: 639px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}

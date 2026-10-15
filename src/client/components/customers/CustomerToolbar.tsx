@@ -117,7 +117,7 @@ export function CustomerToolbar() {
               <button
                 type="button"
                 onClick={() => { setCustomerFilters({ blocked: 'all' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -128,7 +128,7 @@ export function CustomerToolbar() {
               <button
                 type="button"
                 onClick={() => { setCustomerFilters({ blocked: 'active' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'active'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -139,7 +139,7 @@ export function CustomerToolbar() {
               <button
                 type="button"
                 onClick={() => { setCustomerFilters({ blocked: 'blocked' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
                   blockedFilter === 'blocked'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'

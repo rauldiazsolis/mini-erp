@@ -132,7 +132,7 @@ export function ProductModal() {
           <div>
             <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Precio de Venta ($ ARS) *</label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step="0.01"
               min="0"
               value={data.price || ''}

@@ -38,7 +38,7 @@ export function BulkInterestsCard() {
           <div>
             <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Tasa de Interés (%) *</label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step="0.5"
               min="0.1"
               value={percent}
@@ -51,7 +51,7 @@ export function BulkInterestsCard() {
           <div>
             <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Saldo Mínimo a Financiar ($ ARS)</label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step="500"
               min="0"
               value={minBalance}

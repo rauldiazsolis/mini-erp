@@ -84,7 +84,7 @@ export function PaymentModal() {
             )}
           </div>
           <input
-            type="number"
+            type="number" inputMode="decimal"
             step="100"
             min="1"
             value={form.amount || ''}

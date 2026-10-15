@@ -173,7 +173,7 @@ export function StockMatrixTable() {
                       type="button"
                       onClick={() => { openAdjustModal(item); }}
                       title="Ajustar stock (inventario/merma)"
-                      class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path
@@ -190,7 +190,7 @@ export function StockMatrixTable() {
                       type="button"
                       onClick={() => { openKardex(item); }}
                       title="Ver trazabilidad Kardex"
-                      class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path

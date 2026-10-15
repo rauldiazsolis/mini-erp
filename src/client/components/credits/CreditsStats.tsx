@@ -6,7 +6,7 @@ import type { BillingSummary } from '../../../shared/credits-types.ts';
 export function CreditsStats(props: { credits: BillingSummary }) {
   const { credits } = props;
   return (
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <StatCard
         title="Saldo pagado"
         value={formatMoney(credits.paidBalance)}

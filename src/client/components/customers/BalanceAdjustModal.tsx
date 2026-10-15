@@ -112,7 +112,7 @@ export function BalanceAdjustModal() {
             {form.type === 'set' ? 'Nuevo Saldo Resultante ($ ARS) *' : 'Monto del Ajuste ($ ARS) *'}
           </label>
           <input
-            type="number"
+            type="number" inputMode="decimal"
             step="100"
             min="0"
             value={form.amount || ''}
