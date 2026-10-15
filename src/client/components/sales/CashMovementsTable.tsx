@@ -1,9 +1,12 @@
 import type { CashMovementItem } from '../../../shared/sales-types.ts';
 import { formatDateTime, formatMoney } from '../../format.ts';
 import { countLabel, registerLabel } from '../../state/sales-labels.ts';
-import { movementsFiltersSignal, movementsListSignal, pageSignal, setMovementsFilters, setPage } from '../../state/sales-state.ts';
+import {
+  loadMoreMovements, movementsFiltersSignal, movementsListSignal, salesLoadingMoreSignal, setMovementsFilters,
+} from '../../state/sales-state.ts';
+import { CardList, CardRow, DesktopOnly } from '../ui/CardList.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
-import { Pagination } from '../ui/Pagination.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
 import { Select } from '../ui/Select.tsx';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
 import { amountClass } from './SaleBadges.tsx';
@@ -42,25 +45,39 @@ export function CashMovementsTable() {
         <div class="px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
           {list === null ? 'Cargando…' : `${countLabel(list.count, 'movimiento', 'movimientos')} · Neto ${formatMoney(list.netTotal)}`}
         </div>
-        <Table>
-          <Thead>
-            <Tr><Th>Fecha</Th><Th>Caja</Th><Th>Tipo</Th><Th>Concepto</Th><Th>Descripción</Th><Th class="text-right">Importe</Th></Tr>
-          </Thead>
-          <Tbody>
-            {items.map((m) => (
-              <Tr key={m.id}>
-                <Td>{formatDateTime(m.createdAt)}</Td>
-                <Td>{registerLabel(m.branch, m.pointOfSale)}</Td>
-                <Td>{m.direction === 'in' ? 'Ingreso' : m.direction === 'out' ? 'Egreso' : '—'}</Td>
-                <Td>{concept(m)}</Td>
-                <Td>{m.description ?? '—'}</Td>
-                <Td class={`text-right font-semibold ${amountClass(signed(m))}`}>{formatMoney(signed(m))}</Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
+        <CardList label="Movimientos de caja">
+          {items.map((m) => (
+            <CardRow
+              key={m.id}
+              title={concept(m)}
+              aside={<span class={amountClass(signed(m))}>{formatMoney(signed(m))}</span>}
+              meta={[formatDateTime(m.createdAt), registerLabel(m.branch, m.pointOfSale), m.description].filter((x) => x !== undefined).join(' · ')}
+            />
+          ))}
+        </CardList>
+        <DesktopOnly>
+          <Table>
+            <Thead>
+              <Tr><Th>Fecha</Th><Th>Caja</Th><Th>Tipo</Th><Th>Concepto</Th><Th>Descripción</Th><Th class="text-right">Importe</Th></Tr>
+            </Thead>
+            <Tbody>
+              {items.map((m) => (
+                <Tr key={m.id}>
+                  <Td>{formatDateTime(m.createdAt)}</Td>
+                  <Td>{registerLabel(m.branch, m.pointOfSale)}</Td>
+                  <Td>{m.direction === 'in' ? 'Ingreso' : m.direction === 'out' ? 'Egreso' : '—'}</Td>
+                  <Td>{concept(m)}</Td>
+                  <Td>{m.description ?? '—'}</Td>
+                  <Td class={`text-right font-semibold ${amountClass(signed(m))}`}>{formatMoney(signed(m))}</Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </DesktopOnly>
         {list !== null && items.length === 0 && <TableEmptyState message="No hay movimientos de caja con estos filtros" />}
-        {list !== null && list.count > 0 && <Pagination page={pageSignal.value} pageSize={list.pageSize} count={list.count} onPage={setPage} />}
+        {list !== null && (
+          <InfiniteSentinel shown={items.length} total={list.count} hasMore={list.nextCursor !== null} loading={salesLoadingMoreSignal.value} onMore={loadMoreMovements} />
+        )}
       </TableContainer>
     </div>
   );

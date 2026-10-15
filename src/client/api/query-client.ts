@@ -1,4 +1,7 @@
-import { QueryClient, QueryObserver, notifyManager, type QueryKey, type QueryObserverResult } from '@tanstack/query-core';
+import {
+  InfiniteQueryObserver, QueryClient, QueryObserver, notifyManager, type InfiniteData, type InfiniteQueryObserverResult, type QueryKey,
+  type QueryObserverResult,
+} from '@tanstack/query-core';
 import { effect, signal, type ReadonlySignal } from '@preact/signals';
 import { ApiError } from './client.ts';
 
@@ -97,6 +100,98 @@ export function createSignalQuery<T>(options: SignalQueryOptions<T>): SignalQuer
     },
     setData: (update) => {
       if (key !== null) queryClient.setQueryData<T>(key, update);
+    },
+    dispose: () => {
+      stop();
+      unsubscribe();
+    },
+  };
+}
+
+export type InfiniteQuerySource<P> = { key: QueryKey; fn: (cursor: string | undefined) => Promise<P> };
+
+export type SignalInfiniteQueryOptions<P> = Omit<SignalQueryOptions<P>, 'source' | 'refetchInterval'> & {
+  /** La clave y el pedido de un tramo (sin cursor, el primero); `null` sin sesión o sin comercio. Reactiva. */
+  source: () => InfiniteQuerySource<P> | null;
+  /** El cursor del tramo siguiente; `null` es el final de la lista. */
+  nextCursor: (page: P) => string | null;
+};
+
+export type SignalInfiniteQuery<P> = Omit<SignalQuery<P[]>, 'setData'> & {
+  hasMore: ReadonlySignal<boolean>;
+  loadingMore: ReadonlySignal<boolean>;
+  /** Pide el tramo siguiente; sin más tramos o con uno en camino, no hace nada. */
+  loadMore: () => Promise<void>;
+};
+
+/**
+ * Una lista por tramos (#87) expuesta como signals. Al refrescar, TanStack vuelve a pedir los tramos
+ * ya cargados en orden, cada uno con el cursor del anterior: la lista no queda con huecos.
+ */
+export function createSignalInfiniteQuery<P>(options: SignalInfiniteQueryOptions<P>): SignalInfiniteQuery<P> {
+  const data = signal<P[] | undefined>(undefined);
+  const isLoading = signal(false);
+  const error = signal<Error | null>(null);
+  const hasMore = signal(false);
+  const loadingMore = signal(false);
+  let key: QueryKey | null = null;
+  let lastError: Error | null = null;
+
+  const observer = new InfiniteQueryObserver<P, Error, InfiniteData<P, string | undefined>, QueryKey, string | undefined>(queryClient, {
+    queryKey: IDLE_KEY,
+    enabled: false,
+    initialPageParam: undefined,
+    getNextPageParam: () => undefined,
+  });
+
+  const publish = (result: InfiniteQueryObserverResult<InfiniteData<P, string | undefined>>): void => {
+    data.value = key === null ? undefined : result.data?.pages;
+    isLoading.value = key !== null && result.isLoading;
+    hasMore.value = key !== null && result.hasNextPage;
+    loadingMore.value = key !== null && result.isFetchingNextPage;
+    error.value = key === null ? null : result.error;
+    if (key !== null && result.error !== null && result.error !== lastError) {
+      lastError = result.error;
+      options.onError?.(result.error);
+    }
+  };
+
+  const unsubscribe = observer.subscribe(publish);
+
+  const stop = effect(() => {
+    const source = options.source();
+    const enabled = source !== null && (options.enabled?.() ?? true);
+    key = source?.key ?? null;
+    observer.setOptions({
+      queryKey: source?.key ?? IDLE_KEY,
+      queryFn: source === null ? () => Promise.reject(new Error('Consulta deshabilitada')) : ({ pageParam }) => source.fn(pageParam),
+      enabled,
+      initialPageParam: undefined,
+      getNextPageParam: (last) => options.nextCursor(last) ?? undefined,
+      placeholderData: (previous, previousQuery) =>
+        source !== null &&
+        previousQuery !== undefined &&
+        queryClient.getQueryCache().find({ queryKey: previousQuery.queryKey, exact: true }) === previousQuery &&
+        options.keepPrevious?.(previousQuery.queryKey, source.key) === true
+          ? previous
+          : undefined,
+    });
+    publish(observer.getCurrentResult());
+  });
+
+  return {
+    data,
+    isLoading,
+    error,
+    hasMore,
+    loadingMore,
+    loadMore: async () => {
+      const current = observer.getCurrentResult();
+      if (key === null || !current.hasNextPage || current.isFetching) return;
+      await observer.fetchNextPage();
+    },
+    refetch: async () => {
+      if (key !== null) await observer.refetch();
     },
     dispose: () => {
       stop();

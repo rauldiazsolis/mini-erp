@@ -13,6 +13,7 @@ const base = { from: day, to: day, branch: optionalText, pointOfSale: optionalTe
 const paging = {
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  after: optionalText,
 };
 const status = z.enum(['all', 'valid', 'voided']).optional();
 
@@ -80,7 +81,7 @@ export function createSalesRoutes(): Router {
       sendError(res, err, 500);
     }
   });
-  router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize })));
+  router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize, after: q.after })));
   router.get('/sales/:saleId', view, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const sale = getService(req).getSale(req.params['saleId'] ?? '');
@@ -95,12 +96,12 @@ export function createSalesRoutes(): Router {
   router.get(
     '/customer-payments',
     view,
-    handle(paymentsQuerySchema, (service, q) => service.listCustomerPayments(q, { page: q.page, pageSize: q.pageSize })),
+    handle(paymentsQuerySchema, (service, q) => service.listCustomerPayments(q, { page: q.page, pageSize: q.pageSize, after: q.after })),
   );
   router.get(
     '/cash-movements',
     view,
-    handle(movementsQuerySchema, (service, q) => service.listCashMovements(q, { page: q.page, pageSize: q.pageSize })),
+    handle(movementsQuerySchema, (service, q) => service.listCashMovements(q, { page: q.page, pageSize: q.pageSize, after: q.after })),
   );
   router.get('/cash-summary', view, handle(summaryQuerySchema, (service, q) => service.cashSummary(q)));
   router.get('/cash-summary/day', view, handle(dayQuerySchema, (service, q) => service.daySummary(q)));

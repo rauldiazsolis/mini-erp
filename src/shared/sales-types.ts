@@ -71,7 +71,8 @@ export type CashMovementItem = {
   count?: { expected: number; counted: number };
 };
 
-export type ListResult<T> = { items: T[]; count: number; page: number; pageSize: number; netTotal: number };
+/** `nextCursor` (#87): para pedir el tramo siguiente con `after`; `null` es el final de la lista. */
+export type ListResult<T> = { items: T[]; nextCursor: string | null; count: number; page: number; pageSize: number; netTotal: number };
 
 export type RegisterItem = { branch: string | null; pointOfSale: string | null };
 

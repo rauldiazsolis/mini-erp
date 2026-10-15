@@ -85,14 +85,16 @@ describe('Rutas del admin (#59)', () => {
     expect(roundTrip('/admin/k/usuarios?q=x')).toBe('/admin/k/usuarios');
   });
 
-  it('filtros de ventas: rango, caja vacía ("sin punto de venta"), estado y página', () => {
-    const url = '/admin/k/ventas?desde=2026-10-01&hasta=2026-10-03&sucursal=CENTRAL&caja=&pagina=2&estado=anuladas&producto=p1';
+  it('filtros de ventas: rango, caja vacía ("sin punto de venta") y estado; sin página (#87)', () => {
+    const url = '/admin/k/ventas?desde=2026-10-01&hasta=2026-10-03&sucursal=CENTRAL&caja=&estado=anuladas&producto=p1';
     expect(roundTrip(url)).toBe(url);
+    // Un link viejo con página abre la lista desde arriba
+    expect(roundTrip('/admin/k/ventas?pagina=2&estado=anuladas')).toBe('/admin/k/ventas?estado=anuladas');
     expect(decodeFilters('sales', { desde: '2026-10-01', hasta: '2026-10-03', caja: '' })).toEqual({
-      preset: 'custom', from: '2026-10-01', to: '2026-10-03', pointOfSale: '', page: 1, status: 'all',
+      preset: 'custom', from: '2026-10-01', to: '2026-10-03', pointOfSale: '', status: 'all',
     });
-    expect(decodeFilters('sales', { rango: 'semana' })).toEqual({ preset: 'week', page: 1, status: 'all' });
-    expect(encodeFilters('sales', { preset: 'today', page: 1, status: 'all' })).toEqual({});
+    expect(decodeFilters('sales', { rango: 'semana' })).toEqual({ preset: 'week', status: 'all' });
+    expect(encodeFilters('sales', { preset: 'today', status: 'all' })).toEqual({});
   });
 
   it('filtros de catálogo, stock, clientes, dashboard y uso y pagos', () => {
@@ -100,7 +102,7 @@ describe('Rutas del admin (#59)', () => {
     expect(decodeFilters('stock', { nivel: 'sin-stock', sucursal: 'b1' })).toEqual({ q: '', category: 'all', level: 'out', branch: 'b1' });
     expect(decodeFilters('customers', { deudores: '1', estado: 'activos' })).toEqual({ q: '', debtorsOnly: true, blocked: 'active' });
     expect(decodeFilters('dashboard', { periodo: 'mes', sucursal: 'b1' })).toEqual({ period: 'month', branch: 'b1' });
-    expect(decodeFilters('credits', { desde: '2026-09-01', hasta: '2026-09-30', pagina: '3' })).toEqual({ from: '2026-09-01', to: '2026-09-30', page: 3 });
+    expect(decodeFilters('credits', { desde: '2026-09-01', hasta: '2026-09-30', pagina: '3' })).toEqual({ from: '2026-09-01', to: '2026-09-30' });
     expect(encodeFilters('customers', { q: '', debtorsOnly: true, blocked: 'all' })).toEqual({ deudores: '1' });
   });
 

@@ -95,12 +95,6 @@ function day(p: Params, name: string): string | undefined {
   return value !== undefined && isDay(value) ? value : undefined;
 }
 
-function positiveInt(p: Params, name: string): number | undefined {
-  const value = p[name];
-  if (value === undefined || !/^\d+$/.test(value)) return undefined;
-  const n = Number(value);
-  return n >= 1 ? n : undefined;
-}
 
 /** Valor interno y su texto en la URL. */
 type EnumMap<T extends string> = ReadonlyArray<readonly [T, string]>;
@@ -147,7 +141,6 @@ export type SalesRouteFilters = {
   to?: string | undefined;
   branch?: string | undefined;
   pointOfSale?: string | undefined;
-  page: number;
   status: DocStatus;
   productId?: string | undefined;
   method?: string | undefined;
@@ -180,7 +173,6 @@ const salesCodec: FilterCodec<SalesRouteFilters> = {
       ...(custom ? { from, to } : {}),
       ...(branch === undefined ? {} : { branch }),
       ...(pointOfSale === undefined ? {} : { pointOfSale }),
-      page: positiveInt(p, 'pagina') ?? 1,
       status: fromUrl(STATUSES, p, 'estado') ?? 'all',
       ...(productId === undefined ? {} : { productId }),
       ...(method === undefined ? {} : { method }),
@@ -196,7 +188,6 @@ const salesCodec: FilterCodec<SalesRouteFilters> = {
     hasta: f.preset === 'custom' ? f.to : undefined,
     sucursal: f.branch,
     caja: f.pointOfSale,
-    pagina: f.page > 1 ? String(f.page) : undefined,
     estado: f.status === 'all' ? undefined : toUrl(STATUSES, f.status),
     producto: f.productId,
     medio: f.method,
@@ -250,14 +241,14 @@ const customersCodec: FilterCodec<CustomerFilters> = {
 };
 
 /** Sin `desde` y `hasta` válidos, el consumo muestra los últimos 30 días (lo decide el store). */
-export type CreditsFilters = { from?: string | undefined; to?: string | undefined; page: number };
+export type CreditsFilters = { from?: string | undefined; to?: string | undefined };
 const creditsCodec: FilterCodec<CreditsFilters> = {
   decode: (p) => {
     const from = day(p, 'desde');
     const to = day(p, 'hasta');
-    return { ...(from !== undefined && to !== undefined ? { from, to } : {}), page: positiveInt(p, 'pagina') ?? 1 };
+    return from !== undefined && to !== undefined ? { from, to } : {};
   },
-  encode: (f) => params({ desde: f.from, hasta: f.to, pagina: f.page > 1 ? String(f.page) : undefined }),
+  encode: (f) => params({ desde: f.from, hasta: f.to }),
 };
 
 export type FiltersOf = {

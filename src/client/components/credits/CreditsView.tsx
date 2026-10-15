@@ -5,7 +5,9 @@ import {
   giftsSignal,
   creditsTabSignal,
   chargesRangeSignal,
-  setChargesPage,
+  chargesHasMoreSignal,
+  chargesLoadingMoreSignal,
+  loadMoreCharges,
   setChargesRange,
   whatsappPayUrl,
   type CreditsTab,
@@ -17,7 +19,8 @@ import { PageHeader } from '../ui/PageHeader.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Input } from '../ui/Input.tsx';
-import { Pagination } from '../ui/Pagination.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
+import { CardList, CardRow, DesktopOnly } from '../ui/CardList.tsx';
 import { Link } from '../ui/Link.tsx';
 import { tabUrl } from '../../state/route-state.ts';
 import { Table, TableContainer, TableEmptyState, Tbody, Td, Th, Thead, Tr } from '../ui/Table.tsx';
@@ -123,35 +126,52 @@ function ChargesTab() {
         {items.length === 0 ? (
           <TableEmptyState message="Sin cargos en el período" submessage="Se cobra un día por caja solo si esa caja vendió." />
         ) : (
-          <div class="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Día</Th>
-                  <Th>Caja</Th>
-                  <Th class="text-right">Importe</Th>
-                  <Th class="text-right">Pagado</Th>
-                  <Th class="text-right">Bonos</Th>
-                  <Th class="text-right">Deuda</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {items.map((c) => (
-                  <Tr key={c.id}>
-                    <Td>{formatDay(c.day)}</Td>
-                    <Td>{c.deviceId === null ? c.registerName : `${c.registerName} · otro equipo`}</Td>
-                    <Td class="text-right font-semibold">{formatMoney(c.amount)}</Td>
-                    <Td class="text-right">{formatMoney(c.paidAmount)}</Td>
-                    <Td class="text-right">{formatMoney(c.giftAmount)}</Td>
-                    <Td class={`text-right ${c.debtAmount > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}`}>{formatMoney(c.debtAmount)}</Td>
+          <>
+            <CardList label="Consumo">
+              {items.map((c) => (
+                <CardRow
+                  key={c.id}
+                  title={`${formatDay(c.day)} · ${c.deviceId === null ? c.registerName : `${c.registerName} · otro equipo`}`}
+                  aside={formatMoney(c.amount)}
+                  meta={
+                    <>
+                      Pagado {formatMoney(c.paidAmount)} · Bonos {formatMoney(c.giftAmount)} ·{' '}
+                      <span class={c.debtAmount > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}>Deuda {formatMoney(c.debtAmount)}</span>
+                    </>
+                  }
+                />
+              ))}
+            </CardList>
+            <DesktopOnly>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Día</Th>
+                    <Th>Caja</Th>
+                    <Th class="text-right">Importe</Th>
+                    <Th class="text-right">Pagado</Th>
+                    <Th class="text-right">Bonos</Th>
+                    <Th class="text-right">Deuda</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
+                </Thead>
+                <Tbody>
+                  {items.map((c) => (
+                    <Tr key={c.id}>
+                      <Td>{formatDay(c.day)}</Td>
+                      <Td>{c.deviceId === null ? c.registerName : `${c.registerName} · otro equipo`}</Td>
+                      <Td class="text-right font-semibold">{formatMoney(c.amount)}</Td>
+                      <Td class="text-right">{formatMoney(c.paidAmount)}</Td>
+                      <Td class="text-right">{formatMoney(c.giftAmount)}</Td>
+                      <Td class={`text-right ${c.debtAmount > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}`}>{formatMoney(c.debtAmount)}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </DesktopOnly>
+          </>
         )}
-        {page !== null && page.count > page.pageSize && (
-          <Pagination page={page.page} pageSize={page.pageSize} count={page.count} onPage={(p) => { setChargesPage(p); }} />
+        {page !== null && (
+          <InfiniteSentinel shown={items.length} total={page.count} hasMore={chargesHasMoreSignal.value} loading={chargesLoadingMoreSignal.value} onMore={loadMoreCharges} />
         )}
       </TableContainer>
     </div>
@@ -165,30 +185,42 @@ function MovementsTab() {
       {items.length === 0 ? (
         <TableEmptyState message="Todavía no hay movimientos" />
       ) : (
-        <div class="overflow-x-auto">
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Fecha</Th>
-                <Th>Tipo</Th>
-                <Th class="text-right">Importe</Th>
-                <Th>Detalle</Th>
-                <Th>Por</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {items.map((m) => (
-                <Tr key={m.id}>
-                  <Td>{formatDateTime(m.createdAt)}</Td>
-                  <Td>{MOVEMENT_LABEL[m.kind]}</Td>
-                  <Td class="text-right font-semibold">{m.kind === 'gift-voided' ? '—' : formatMoney(Math.abs(m.amount))}</Td>
-                  <Td>{m.info ?? ''}</Td>
-                  <Td>{m.byName ?? ''}</Td>
+        <>
+          <CardList label="Movimientos">
+            {items.map((m) => (
+              <CardRow
+                key={m.id}
+                title={MOVEMENT_LABEL[m.kind]}
+                aside={m.kind === 'gift-voided' ? '—' : formatMoney(Math.abs(m.amount))}
+                meta={[formatDateTime(m.createdAt), m.info, m.byName].filter((x) => x !== null && x !== '').join(' · ')}
+              />
+            ))}
+          </CardList>
+          <DesktopOnly>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Fecha</Th>
+                  <Th>Tipo</Th>
+                  <Th class="text-right">Importe</Th>
+                  <Th>Detalle</Th>
+                  <Th>Por</Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
+              </Thead>
+              <Tbody>
+                {items.map((m) => (
+                  <Tr key={m.id}>
+                    <Td>{formatDateTime(m.createdAt)}</Td>
+                    <Td>{MOVEMENT_LABEL[m.kind]}</Td>
+                    <Td class="text-right font-semibold">{m.kind === 'gift-voided' ? '—' : formatMoney(Math.abs(m.amount))}</Td>
+                    <Td>{m.info ?? ''}</Td>
+                    <Td>{m.byName ?? ''}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </DesktopOnly>
+        </>
       )}
     </TableContainer>
   );
@@ -201,34 +233,46 @@ function GiftsTab() {
       {items.length === 0 ? (
         <TableEmptyState message="Sin bonos" />
       ) : (
-        <div class="overflow-x-auto">
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Origen</Th>
-                <Th class="text-right">Importe</Th>
-                <Th class="text-right">Remanente</Th>
-                <Th>Vence</Th>
-                <Th>Estado</Th>
-                <Th>Otorgó</Th>
-                <Th>Motivo</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {items.map((g) => (
-                <Tr key={g.id}>
-                  <Td>{g.origin === 'signup' ? 'Bono de alta' : 'Otorgado'}</Td>
-                  <Td class="text-right">{formatMoney(g.amount)}</Td>
-                  <Td class="text-right font-semibold">{formatMoney(g.remaining)}</Td>
-                  <Td>{formatDateTime(g.expiresAt)}</Td>
-                  <Td>{GIFT_STATUS[g.status]}</Td>
-                  <Td>{g.grantedByName ?? ''}</Td>
-                  <Td>{g.reason ?? ''}</Td>
+        <>
+          <CardList label="Bonos">
+            {items.map((g) => (
+              <CardRow
+                key={g.id}
+                title={`${g.origin === 'signup' ? 'Bono de alta' : 'Otorgado'} · ${GIFT_STATUS[g.status]}`}
+                aside={formatMoney(g.remaining)}
+                meta={[`De ${formatMoney(g.amount)}`, `vence ${formatDateTime(g.expiresAt)}`, g.grantedByName, g.reason].filter((x) => x !== null && x !== '').join(' · ')}
+              />
+            ))}
+          </CardList>
+          <DesktopOnly>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Origen</Th>
+                  <Th class="text-right">Importe</Th>
+                  <Th class="text-right">Remanente</Th>
+                  <Th>Vence</Th>
+                  <Th>Estado</Th>
+                  <Th>Otorgó</Th>
+                  <Th>Motivo</Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </div>
+              </Thead>
+              <Tbody>
+                {items.map((g) => (
+                  <Tr key={g.id}>
+                    <Td>{g.origin === 'signup' ? 'Bono de alta' : 'Otorgado'}</Td>
+                    <Td class="text-right">{formatMoney(g.amount)}</Td>
+                    <Td class="text-right font-semibold">{formatMoney(g.remaining)}</Td>
+                    <Td>{formatDateTime(g.expiresAt)}</Td>
+                    <Td>{GIFT_STATUS[g.status]}</Td>
+                    <Td>{g.grantedByName ?? ''}</Td>
+                    <Td>{g.reason ?? ''}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </DesktopOnly>
+        </>
       )}
     </TableContainer>
   );

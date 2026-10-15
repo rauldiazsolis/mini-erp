@@ -42,7 +42,7 @@ describe('La URL como signal (#59)', () => {
   });
 
   it('goTo con filtros y solapa', () => {
-    goTo({ section: 'sales', tab: 'payments', filters: { preset: 'week', page: 1, status: 'voided' } });
+    goTo({ section: 'sales', tab: 'payments', filters: { preset: 'week', status: 'voided' } });
     expect(locationSignal.value).toEqual({ pathname: '/admin/kiosco/ventas/cobranzas', search: '?rango=semana&estado=anuladas' });
   });
 
