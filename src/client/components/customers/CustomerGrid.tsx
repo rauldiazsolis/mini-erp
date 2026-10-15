@@ -84,6 +84,7 @@ export function CustomerGrid() {
               ]
                 .filter((x) => x !== undefined && x !== null && x !== '')
                 .join(' · ')}
+              actionsBelow
               actions={
                 canEdit ? (
                   <>

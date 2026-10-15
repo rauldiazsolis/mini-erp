@@ -30,6 +30,8 @@ export type CardRowProps = {
   meta?: ComponentChildren;
   /** Acciones propias de la fila (íconos); no abren la fila. */
   actions?: ComponentChildren;
+  /** Las acciones en un renglón propio, abajo a la derecha: para más de dos, que no aprieten el nombre. */
+  actionsBelow?: boolean | undefined;
   /** Tocar la tarjeta abre su detalle. */
   onOpen?: (() => void) | undefined;
   class?: string | undefined;
@@ -46,7 +48,7 @@ export function CardRow(props: CardRowProps) {
     </>
   );
   return (
-    <li class={`flex items-center gap-2 px-4 py-3${props.class === undefined ? '' : ` ${props.class}`}`}>
+    <li class={`flex flex-wrap items-center gap-x-2 px-4 py-3${props.class === undefined ? '' : ` ${props.class}`}`}>
       {props.onOpen === undefined ? (
         <div class="flex-1 min-w-0">{body}</div>
       ) : (
@@ -58,7 +60,9 @@ export function CardRow(props: CardRowProps) {
           {body}
         </button>
       )}
-      {props.actions !== undefined && <div class="shrink-0 flex items-center gap-1">{props.actions}</div>}
+      {props.actions !== undefined && (
+        <div class={`flex items-center gap-1 ${props.actionsBelow === true ? 'w-full justify-end -mb-1' : 'shrink-0'}`}>{props.actions}</div>
+      )}
     </li>
   );
 }
