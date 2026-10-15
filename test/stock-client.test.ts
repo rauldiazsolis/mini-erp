@@ -17,6 +17,8 @@ import {
   closeKardex,
   type StockMatrixItem,
   type BranchItem,
+  kardexHasMoreSignal,
+  loadMoreKardex,
 } from '../src/client/state/stock-state.ts';
 import { userTenantsSignal } from '../src/client/state/auth-state.ts';
 import { queryClient } from '../src/client/api/query-client.ts';
@@ -292,6 +294,29 @@ describe('Módulo de Stock Multi-Sucursal y Kardex (Etapa 4.2)', () => {
         await vi.waitFor(() => { expect(urls).toContain('/api/tenants/tienda-test/stock/kardex?productId=prod-2&limit=100'); });
         closeKardex();
         expect(kardexMovementsSignal.value).toEqual([]);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it('el kardex suma de a 100 movimientos al scrollear (#87)', async () => {
+      const urls: string[] = [];
+      const original = globalThis.fetch;
+      const rows = (n: number, from: number) => Array.from({ length: n }, (_, i) => ({ id: `k${String(from + i)}` }));
+      globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        urls.push(url);
+        return json(url.includes('offset=100') ? rows(3, 100) : rows(100, 0));
+      });
+      try {
+        openKardex(mockStockProductB);
+        await vi.waitFor(() => { expect(kardexMovementsSignal.value).toHaveLength(100); });
+        expect(kardexHasMoreSignal.value).toBe(true);
+        await loadMoreKardex();
+        expect(urls).toContain('/api/tenants/tienda-test/stock/kardex?productId=prod-2&limit=100&offset=100');
+        expect(kardexMovementsSignal.value).toHaveLength(103);
+        expect(kardexHasMoreSignal.value).toBe(false);
+        closeKardex();
       } finally {
         globalThis.fetch = original;
       }

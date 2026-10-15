@@ -21,10 +21,10 @@ export function Drawer(props: DrawerProps) {
       overlayClass="w-full h-full bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm flex justify-end"
     >
       <div
-        class={`w-full ${props.maxWidth ?? 'max-w-2xl'} bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col h-full text-slate-900 dark:text-slate-100`}
+        class={`w-full ${props.maxWidth ?? 'max-w-2xl'} bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col h-dvh text-slate-900 dark:text-slate-100`}
       >
         {/* Cabecera del Drawer */}
-        <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div class="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div class="flex items-center gap-3">
             {props.icon && (
               <div class="p-2.5 rounded-2xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700 shrink-0">
@@ -46,7 +46,7 @@ export function Drawer(props: DrawerProps) {
             type="button"
             onClick={props.onClose}
             aria-label="Cerrar panel"
-            class="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            class="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors cursor-pointer"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -55,7 +55,7 @@ export function Drawer(props: DrawerProps) {
         </div>
 
         {/* Cuerpo con scroll independiente */}
-        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {props.children}
         </div>
       </div>

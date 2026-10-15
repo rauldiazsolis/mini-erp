@@ -8,7 +8,7 @@ import {
   fetchBillingStatus,
   markRestrictedFromError,
   refreshCredits,
-  setChargesPage,
+  loadMoreCharges,
   setChargesRange,
   whatsappPayUrl,
 } from '../src/client/state/credits-state.ts';
@@ -54,17 +54,21 @@ describe('estado de Uso y pagos (#21, #55)', () => {
   /** Sin pedidos en curso: el estado de cobro del comercio ya llegó. */
   const settled = (): Promise<void> => vi.waitFor(() => { expect(queryClient.isFetching()).toBe(0); });
 
-  it('al entrar pide el resumen y el consumo del rango y la página de la URL', async () => {
-    reply.body = { state: 'ok', giftBalance: 50000, items: [], count: 0, page: 2, pageSize: 50, total: 0 };
-    atTenant('tienda-test', 'uso-y-pagos?desde=2026-09-06&hasta=2026-10-05&pagina=2');
+  it('al entrar pide el resumen y el primer tramo del consumo del rango de la URL', async () => {
+    reply.body = { state: 'ok', giftBalance: 50000, items: [{ id: 'a' }], count: 2, page: 1, pageSize: 1, total: 0 };
+    atTenant('tienda-test', 'uso-y-pagos?desde=2026-09-06&hasta=2026-10-05');
     await vi.waitFor(() => {
       expect(calls.map((c) => c.url)).toEqual(expect.arrayContaining([
         '/api/tenants/tienda-test/credits',
-        '/api/tenants/tienda-test/credits/charges?from=2026-09-06&to=2026-10-05&page=2&pageSize=50',
+        '/api/tenants/tienda-test/credits/charges?from=2026-09-06&to=2026-10-05&page=1&pageSize=50',
       ]));
     });
     await vi.waitFor(() => { expect(creditsSignal.value).toMatchObject({ giftBalance: 50000 }); });
-    expect(chargesSignal.value?.page).toBe(2);
+    // Scroll infinito (#87): el tramo siguiente es la página que sigue, y se suma a la lista
+    reply.body = { items: [{ id: 'b' }], count: 2, page: 2, pageSize: 1, total: 0 };
+    await loadMoreCharges();
+    expect(calls.map((c) => c.url)).toContain('/api/tenants/tienda-test/credits/charges?from=2026-09-06&to=2026-10-05&page=2&pageSize=50');
+    expect(chargesSignal.value?.items.map((i) => i.id)).toEqual(['a', 'b']);
   });
 
   it('movimientos y bonos se piden en su solapa', async () => {
@@ -84,12 +88,10 @@ describe('estado de Uso y pagos (#21, #55)', () => {
     expect(chargesRangeSignal.value).toEqual({ from: shiftDay(today, -29), to: today });
   });
 
-  it('cambiar el rango vuelve a la primera página; la página va en la URL', () => {
+  it('el rango va en la URL; la página ya no (#87)', () => {
     atTenant('tienda-test', 'uso-y-pagos?pagina=3');
     setChargesRange({ from: '2026-09-01', to: '2026-09-30' });
     expect(locationSignal.value.search).toBe('?desde=2026-09-01&hasta=2026-09-30');
-    setChargesPage(2);
-    expect(locationSignal.value.search).toBe('?desde=2026-09-01&hasta=2026-09-30&pagina=2');
   });
 
   it('el estado de cobro se pide con el comercio, en cualquier pantalla', async () => {

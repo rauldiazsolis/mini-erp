@@ -1,3 +1,5 @@
+import { FoldedFilters } from '../ui/FoldedFilters.tsx';
+import { foldedFilterCount } from '../../routing/admin-routes.ts';
 import { canDo } from '../../state/permissions-state.ts';
 import {
   customerSearchSignal,
@@ -9,6 +11,7 @@ import {
   fetchCustomers,
   setCustomerFilters,
   openNewCustomerModal,
+  customerFiltersSignal,
 } from '../../state/customer-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
@@ -52,7 +55,7 @@ export function CustomerToolbar() {
             <button
               type="button"
               onClick={() => { setCustomerFilters({ q: '' }); }}
-              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
+              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:text-slate-900 dark:active:text-white text-xs"
             >
               ✕
             </button>
@@ -96,60 +99,63 @@ export function CustomerToolbar() {
 
       {/* Filtros secundarios: Solo Deudores, Estado y Conteo */}
       <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
-        <div class="flex flex-wrap items-center gap-3">
-          {/* Toggle Solo Deudores */}
-          <button
-            type="button"
-            onClick={() => { setCustomerFilters({ debtorsOnly: !debtorsOnly }); }}
-            class={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
-              debtorsOnly
-                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-            }`}
-          >
-            <span>⚠️ Solo Deudores</span>
-          </button>
+        {/* En el teléfono, plegados en "Filtros (n)" (#90) */}
+        <FoldedFilters id="customers" active={foldedFilterCount('customers', customerFiltersSignal.value)}>
+          <div class="flex flex-wrap items-center text-xs text-slate-600 dark:text-slate-400 gap-3">
+            {/* Toggle Solo Deudores */}
+            <button
+              type="button"
+              onClick={() => { setCustomerFilters({ debtorsOnly: !debtorsOnly }); }}
+              class={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                debtorsOnly
+                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-950/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              <span>⚠️ Solo Deudores</span>
+            </button>
 
-          {/* Selector de Estado */}
-          <div class="flex items-center gap-1.5">
-            <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
-            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => { setCustomerFilters({ blocked: 'all' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'all'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => { setCustomerFilters({ blocked: 'active' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'active'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Habilitados
-              </button>
-              <button
-                type="button"
-                onClick={() => { setCustomerFilters({ blocked: 'blocked' }); }}
-                class={`px-2 py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  blockedFilter === 'blocked'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Bloqueados
-              </button>
+            {/* Selector de Estado */}
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
+              <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setCustomerFilters({ blocked: 'all' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    blockedFilter === 'all'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCustomerFilters({ blocked: 'active' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    blockedFilter === 'active'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Habilitados
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCustomerFilters({ blocked: 'blocked' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    blockedFilter === 'blocked'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Bloqueados
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </FoldedFilters>
 
         {/* Conteo */}
         <div class="text-slate-500 dark:text-slate-400 font-mono text-[11px]">

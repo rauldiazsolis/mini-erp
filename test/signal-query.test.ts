@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@preact/signals';
 import type { QueryKey } from '@tanstack/query-core';
-import { createSignalQuery, queryClient, shouldRetry } from '../src/client/api/query-client.ts';
+import { createSignalInfiniteQuery, createSignalQuery, queryClient, shouldRetry } from '../src/client/api/query-client.ts';
 import { ApiError } from '../src/client/api/client.ts';
 
 const sameTenant = (a: QueryKey, b: QueryKey): boolean => a[1] === b[1];
@@ -103,5 +103,44 @@ describe('createSignalQuery (#59)', () => {
     expect(shouldRetry(0, new ApiError(503, 'x'))).toBe(true);
     expect(shouldRetry(0, new TypeError('red'))).toBe(true);
     expect(shouldRetry(1, new TypeError('red'))).toBe(false);
+  });
+});
+
+describe('createSignalInfiniteQuery (#87)', () => {
+  beforeEach(() => { queryClient.clear(); });
+
+  type Page = { items: string[]; next: string | null };
+  const pages: Record<string, Page> = {
+    '': { items: ['a', 'b'], next: 'c1' },
+    c1: { items: ['c', 'd'], next: 'c2' },
+    c2: { items: ['e'], next: null },
+  };
+
+  it('pide el primer tramo, suma los siguientes y sabe cuándo terminó', async () => {
+    const fn = vi.fn((cursor: string | undefined) => Promise.resolve(pages[cursor ?? ''] ?? { items: [], next: null }));
+    const q = createSignalInfiniteQuery<Page>({ source: () => ({ key: ['x'], fn }), nextCursor: (p) => p.next });
+    await vi.waitFor(() => { expect(q.data.value?.map((p) => p.items).flat()).toEqual(['a', 'b']); });
+    expect(q.hasMore.value).toBe(true);
+    await q.loadMore();
+    await q.loadMore();
+    expect(q.data.value?.map((p) => p.items).flat()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(q.hasMore.value).toBe(false);
+    expect(fn.mock.calls.map(([cursor]) => cursor)).toEqual([undefined, 'c1', 'c2']);
+    // Sin más tramos, no pide nada
+    await q.loadMore();
+    expect(fn).toHaveBeenCalledTimes(3);
+    q.dispose();
+  });
+
+  it('un cambio de clave vuelve al primer tramo', async () => {
+    const key = signal<QueryKey>(['t', 'A', 1]);
+    const fn = vi.fn((cursor: string | undefined) => Promise.resolve(pages[cursor ?? ''] ?? { items: [], next: null }));
+    const q = createSignalInfiniteQuery<Page>({ source: () => ({ key: key.value, fn }), nextCursor: (p) => p.next });
+    await vi.waitFor(() => { expect(q.data.value).toHaveLength(1); });
+    await q.loadMore();
+    expect(q.data.value).toHaveLength(2);
+    key.value = ['t', 'A', 2];
+    await vi.waitFor(() => { expect(q.data.value).toHaveLength(1); });
+    q.dispose();
   });
 });

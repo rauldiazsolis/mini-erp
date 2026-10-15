@@ -33,6 +33,14 @@ describe('usuarios desde la plataforma (#23)', () => {
 
   const as = (who: keyof typeof tokens) => ({ Authorization: `Bearer ${tokens[who]}` });
   const post = (who: keyof typeof tokens, path: string) => request(app).post(`/api/platform/users/${path}`).set(as(who)).send({});
+
+  it('la lista va por tramos con offset (#87): ninguno se repite ni se pierde', async () => {
+    const all = (await request(app).get('/api/platform/users').set(as('root'))).body as { id: string }[];
+    expect(all).toHaveLength(4);
+    const rest = (await request(app).get('/api/platform/users?offset=1').set(as('root'))).body as { id: string }[];
+    expect(rest.map((u) => u.id)).toEqual(all.slice(1).map((u) => u.id));
+    expect((await request(app).get('/api/platform/users?offset=-1').set(as('root'))).status).toBe(400);
+  });
   const actions = () => (systemDb.prepare('SELECT action FROM audit_log ORDER BY at, rowid').all() as { action: string }[]).map((r) => r.action);
 
   it('soporte desactiva a un usuario: no puede entrar, sus sesiones se cierran y reactivarlo lo deja entrar', async () => {

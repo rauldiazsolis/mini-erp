@@ -1,5 +1,6 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
+import { createRenderWindow } from './render-window.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
 import { createTenantQuery } from './query-keys.ts';
@@ -111,6 +112,8 @@ export function filterProducts(products: ProductItem[], filters: CatalogFilters)
 }
 
 export const filteredProductsSignal = computed<ProductItem[]>(() => filterProducts(productsSignal.value, catalogFiltersSignal.value));
+/** Lo que se dibuja, de a tramos (#87). */
+export const catalogWindow = createRenderWindow(filteredProductsSignal, catalogFiltersSignal);
 
 /** El botón "Actualizar". */
 export async function fetchCatalog(): Promise<void> {

@@ -23,10 +23,10 @@ export function PaymentDrawer() {
             <SaleBadges voided={p.voided} isVoid={p.voidsPaymentId !== undefined} />
           </div>
           {p.voidsPaymentId !== undefined && (
-            <p>Anula {inPage(p.voidsPaymentId) ? <button type="button" class={link} onClick={() => { openPayment(p.voidsPaymentId ?? ''); }}>la cobranza original</button> : 'una cobranza de otra página o de otro rango'}.</p>
+            <p>Anula {inPage(p.voidsPaymentId) ? <button type="button" class={link} onClick={() => { openPayment(p.voidsPaymentId ?? ''); }}>la cobranza original</button> : 'una cobranza todavía no cargada o de otro rango'}.</p>
           )}
           {p.voidedBy !== undefined && (
-            <p>Anulada por {inPage(p.voidedBy) ? <button type="button" class={link} onClick={() => { openPayment(p.voidedBy ?? ''); }}>su anulación</button> : 'una cobranza de otra página o de otro rango'}.</p>
+            <p>Anulada por {inPage(p.voidedBy) ? <button type="button" class={link} onClick={() => { openPayment(p.voidedBy ?? ''); }}>su anulación</button> : 'una cobranza todavía no cargada o de otro rango'}.</p>
           )}
           <ul class="space-y-1">
             {p.payments.map((x, i) => (

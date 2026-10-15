@@ -135,14 +135,14 @@ function ActionFields(props: { kind: ActionKind }) {
       return (
         <>
           <Input label="Fecha del pago" type="date" value={d.day} onInput={(e) => { setDraft({ day: e.currentTarget.value }); }} />
-          <Input label="Importe" type="number" min="1" step="1" value={d.amount} onInput={(e) => { setDraft({ amount: e.currentTarget.value }); }} />
+          <Input label="Importe" type="number" inputMode="numeric" min="1" step="1" value={d.amount} onInput={(e) => { setDraft({ amount: e.currentTarget.value }); }} />
           <Input label="Info (opcional)" value={d.info} placeholder="Número de operación, banco…" onInput={(e) => { setDraft({ info: e.currentTarget.value }); }} />
         </>
       );
     case 'grant':
       return (
         <>
-          <Input label="Importe" type="number" min="1" step="1" value={d.amount} onInput={(e) => { setDraft({ amount: e.currentTarget.value }); }} />
+          <Input label="Importe" type="number" inputMode="numeric" min="1" step="1" value={d.amount} onInput={(e) => { setDraft({ amount: e.currentTarget.value }); }} />
           <Input label="Vence" type="date" value={d.expiresOn} onInput={(e) => { setDraft({ expiresOn: e.currentTarget.value }); }} />
           <Input label="Motivo (opcional)" value={d.reason} onInput={(e) => { setDraft({ reason: e.currentTarget.value }); }} />
         </>
@@ -154,7 +154,7 @@ function ActionFields(props: { kind: ActionKind }) {
         <>
           <Input
             label="Importe"
-            type="number"
+            type="number" inputMode="numeric"
             min="1"
             max={String(paidBalance)}
             step="1"

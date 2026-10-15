@@ -3,7 +3,7 @@ import { ApiError, apiFetch, setOnPaymentRequired } from '../api/client.ts';
 import { isImpersonatingSignal } from './auth-state.ts';
 import { inSection, routeFilters, routeTab, setFilters } from './route-state.ts';
 import type { CreditsFilters, TabId } from '../routing/admin-routes.ts';
-import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { createTenantInfiniteQuery, createTenantParamQuery, createTenantQuery } from './query-keys.ts';
 import { invalidateAfter } from './invalidation.ts';
 import { showToast } from './toast-state.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
@@ -48,13 +48,9 @@ export const chargesRangeSignal = computed<{ from: string; to: string }>(() => {
   return { from: shiftDay(today, -29), to: today };
 });
 
-/** Cambiar el rango vuelve a la primera página. */
+/** Cambiar el rango cambia la clave: la lista vuelve al primer tramo. */
 export function setChargesRange(range: { from: string; to: string }): void {
-  setFilters('credits', { from: range.from, to: range.to, page: 1 });
-}
-
-export function setChargesPage(page: number): void {
-  setFilters('credits', { page });
+  setFilters('credits', { from: range.from, to: range.to });
 }
 
 const onCredits = (): boolean => inSection('credits');
@@ -70,15 +66,20 @@ const creditsQuery = createTenantParamQuery<CreditsResponse, readonly ['summary'
   fn: ({ tenantId, token }) => apiFetch<CreditsResponse>(`tenants/${tenantId}/credits`, { token }),
 });
 
-const chargesQuery = createTenantParamQuery<ChargesPage, readonly ['charges', string, string, number]>({
+/**
+ * El consumo por tramos (#87). El cursor es la página siguiente: los cargos nacen de a pocos por día y
+ * el barrido los agrega al final del día, así que no hace falta un cursor por fila como en Ventas.
+ */
+const chargesQuery = createTenantInfiniteQuery<ChargesPage, readonly ['charges', string, string]>({
   domain: 'credits',
-  params: () => ['charges', chargesRangeSignal.value.from, chargesRangeSignal.value.to, creditsFiltersSignal.value.page],
+  params: () => ['charges', chargesRangeSignal.value.from, chargesRangeSignal.value.to],
   enabled: () => onCredits() && creditsTabSignal.value === 'charges',
   onError: warnWith('No se pudo cargar el consumo'),
-  fn: ({ tenantId, token, params: [, from, to, page] }) => {
-    const query = new URLSearchParams({ from, to, page: String(page), pageSize: '50' });
+  fn: ({ tenantId, token, params: [, from, to], cursor }) => {
+    const query = new URLSearchParams({ from, to, page: cursor ?? '1', pageSize: '50' });
     return apiFetch<ChargesPage>(`tenants/${tenantId}/credits/charges?${query.toString()}`, { token });
   },
+  nextCursor: (page) => (page.page * page.pageSize < page.count ? String(page.page + 1) : null),
 });
 
 const movementsQuery = createTenantParamQuery<CreditMovementItem[], readonly ['movements']>({
@@ -98,7 +99,18 @@ const giftsQuery = createTenantParamQuery<GiftItem[], readonly ['gifts']>({
 });
 
 export const creditsSignal = computed<CreditsResponse | null>(() => creditsQuery.data.value ?? null);
-export const chargesSignal = computed<ChargesPage | null>(() => chargesQuery.data.value ?? null);
+/** Los tramos cargados como una lista; el total y la cantidad son del rango entero. */
+export const chargesSignal = computed<ChargesPage | null>(() => {
+  const pages = chargesQuery.data.value;
+  const first = pages?.[0];
+  return pages === undefined || first === undefined ? null : { ...first, items: pages.flatMap((p) => p.items) };
+});
+export const chargesHasMoreSignal = chargesQuery.hasMore;
+export const chargesLoadingMoreSignal = chargesQuery.loadingMore;
+
+export async function loadMoreCharges(): Promise<void> {
+  await chargesQuery.loadMore();
+}
 export const movementsSignal = computed<CreditMovementItem[]>(() => movementsQuery.data.value ?? []);
 export const giftsSignal = computed<GiftItem[]>(() => giftsQuery.data.value ?? []);
 export const creditsLoadingSignal = creditsQuery.isLoading;

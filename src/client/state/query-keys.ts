@@ -1,6 +1,6 @@
 import { effect } from '@preact/signals';
 import type { QueryKey } from '@tanstack/query-core';
-import { createSignalQuery, queryClient, type SignalQuery } from '../api/query-client.ts';
+import { createSignalInfiniteQuery, createSignalQuery, queryClient, type SignalInfiniteQuery, type SignalQuery } from '../api/query-client.ts';
 import { effectiveTenantIdSignal, tokenSignal } from './auth-state.ts';
 import { suspendedNoticeSignal } from './suspension-state.ts';
 
@@ -58,6 +58,29 @@ export function createTenantParamQuery<T, P extends readonly unknown[]>(
     refetchInterval: o.refetchInterval,
     onError: o.onError,
     keepPrevious: sameTenant,
+  });
+}
+
+/** Una lista por tramos del comercio activo (#87): `fn` recibe el cursor (sin él, el primer tramo). */
+export function createTenantInfiniteQuery<T, P extends readonly unknown[]>(
+  o: Omit<CommonOptions, 'refetchInterval'> & {
+    params: () => P | null;
+    fn: (ctx: { tenantId: string; token: string; params: P; cursor: string | undefined }) => Promise<T>;
+    nextCursor: (page: T, pages: T[]) => string | null;
+  },
+): SignalInfiniteQuery<T> {
+  return createSignalInfiniteQuery<T>({
+    source: () => {
+      const tenantId = effectiveTenantIdSignal.value;
+      const token = tokenSignal.value;
+      const params = o.params();
+      if (tenantId === null || !token || params === null) return null;
+      return { key: tenantKey(tenantId, o.domain, ...params), fn: (cursor) => o.fn({ tenantId, token, params, cursor }) };
+    },
+    enabled: () => (OPEN_WHEN_SUSPENDED.includes(o.domain) || !suspendedNoticeSignal.value) && (o.enabled?.() ?? true),
+    onError: o.onError,
+    keepPrevious: sameTenant,
+    nextCursor: o.nextCursor,
   });
 }
 

@@ -96,7 +96,7 @@ export function CustomerModal() {
               <div>
                 <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Límite de Crédito ($ ARS)</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   step="1000"
                   min="0"
                   value={data.creditLimit}
@@ -108,7 +108,7 @@ export function CustomerModal() {
               <div>
                 <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Margen de Tolerancia ($ ARS)</label>
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   step="500"
                   min="0"
                   value={data.margin}
@@ -125,7 +125,7 @@ export function CustomerModal() {
                 Saldo Inicial en Cuenta Corriente ($ ARS)
               </label>
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 step="100"
                 value={data.initialBalance || ''}
                 placeholder="0.00 (Positivo: Deudor, Negativo: Saldo a Favor)"

@@ -81,7 +81,7 @@ export function BulkPricesCard() {
               {action === 'percentage' ? 'Porcentaje de aumento (%) *' : 'Monto a sumar ($ ARS) *'}
             </label>
             <input
-              type="number"
+              type="number" inputMode="decimal"
               step={action === 'percentage' ? '1' : '50'}
               value={val}
               onInput={(e) => (bulkPriceValueSignal.value = parseFloat((e.target as HTMLInputElement).value) || 0)}

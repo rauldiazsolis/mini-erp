@@ -117,7 +117,7 @@ export function StockAdjustModal() {
             {form.type === 'set' ? 'Cantidad física resultante *' : 'Variación de unidades (Delta: ej. 10 o -3) *'}
           </label>
           <input
-            type="number"
+            type="number" inputMode="decimal"
             step="1"
             value={form.quantity}
             onInput={(e) => { updateField('quantity', parseFloat((e.target as HTMLInputElement).value) || 0); }}

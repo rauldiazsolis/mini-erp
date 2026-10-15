@@ -3,7 +3,7 @@ import { formatDay, formatMoney, formatQty } from '../src/client/format.ts';
 import { countLabel, customerLabel, methodLabel, parseRegisterKey, registerKey, registerLabel } from '../src/client/state/sales-labels.ts';
 import {
   buildQuery, endpointFor, openSalesWith, openTicket, presetRange, rangeSignal, rangePresetSignal, registerSignal,
-  salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, pageSignal, paymentsFiltersSignal, setSalesFilters,
+  salesFiltersSignal, salesListSignal, salesTabSignal, ticketSignal, loadMoreSales, paymentsFiltersSignal, setSalesFilters,
   setTab, closeTicket, type SalesQueryInput,
   openPayment, closePayment, paymentsListSignal, paymentDetailSignal,
   openDaySummary, daySummarySignal,
@@ -26,7 +26,6 @@ const input = (patch: Partial<SalesQueryInput> = {}): SalesQueryInput => ({
   sales: { status: 'all' },
   payments: { status: 'all' },
   movements: {},
-  page: 1,
   ...patch,
 });
 
@@ -103,22 +102,22 @@ describe('estado de Ventas & Caja (#20)', () => {
   });
 
   it('el endpoint de cada solapa con sus filtros', () => {
-    expect(endpointFor(input())).toBe('sales?from=2026-10-01&to=2026-10-02&page=1&pageSize=50');
-    expect(endpointFor(input({ register: { branch: 'CENTRAL', pointOfSale: 'Caja 1' }, sales: { status: 'voided', method: 'cash' }, page: 2 })))
-      .toBe('sales?from=2026-10-01&to=2026-10-02&branch=CENTRAL&pointOfSale=Caja+1&method=cash&status=voided&page=2&pageSize=50');
+    expect(endpointFor(input())).toBe('sales?from=2026-10-01&to=2026-10-02&pageSize=50');
+    expect(endpointFor(input({ register: { branch: 'CENTRAL', pointOfSale: 'Caja 1' }, sales: { status: 'voided', method: 'cash' } })))
+      .toBe('sales?from=2026-10-01&to=2026-10-02&branch=CENTRAL&pointOfSale=Caja+1&method=cash&status=voided&pageSize=50');
     expect(endpointFor(input({ tab: 'payments', payments: { status: 'all', customerId: 'c1' } })))
-      .toBe('customer-payments?from=2026-10-01&to=2026-10-02&customerId=c1&page=1&pageSize=50');
+      .toBe('customer-payments?from=2026-10-01&to=2026-10-02&customerId=c1&pageSize=50');
     expect(endpointFor(input({ tab: 'movements', movements: { direction: 'out' } })))
-      .toBe('cash-movements?from=2026-10-01&to=2026-10-02&direction=out&page=1&pageSize=50');
+      .toBe('cash-movements?from=2026-10-01&to=2026-10-02&direction=out&pageSize=50');
     expect(endpointFor(input({ tab: 'summary' }))).toBe('cash-summary?from=2026-10-01&to=2026-10-02');
   });
 
   it('carga la solapa y abre el ticket', async () => {
-    const list = { items: [], count: 0, page: 1, pageSize: 50, netTotal: 0 };
+    const list = { items: [], nextCursor: null, count: 0, page: 1, pageSize: 50, netTotal: 0 };
     fakeFetch([['/sales/s1', { id: 's1' }], ['/sales?', list]]);
     atTenant('t1', 'ventas?desde=2026-10-01&hasta=2026-10-02');
     await vi.waitFor(() => { expect(salesListSignal.value).toEqual(list); });
-    expect(requested).toContain('/api/tenants/t1/sales?from=2026-10-01&to=2026-10-02&page=1&pageSize=50');
+    expect(requested).toContain('/api/tenants/t1/sales?from=2026-10-01&to=2026-10-02&pageSize=50');
     openTicket('s1');
     await vi.waitFor(() => { expect(ticketSignal.value).toEqual({ id: 's1' }); });
     expect(requested).toContain('/api/tenants/t1/sales/s1');
@@ -127,14 +126,27 @@ describe('estado de Ventas & Caja (#20)', () => {
   });
 
   it('el drill-down pone los filtros y navega a la sección', () => {
-    atTenant('t1', 'ventas?pagina=3');
+    atTenant('t1', 'ventas?estado=anuladas');
     openSalesWith({ range: { from: '2026-09-26', to: '2026-10-02' }, branch: 'CENTRAL', status: 'valid', productId: 'p1' });
     expect(activeSectionSignal.value).toBe('sales');
     expect(salesTabSignal.value).toBe('sales');
     expect(rangeSignal.value).toEqual({ from: '2026-09-26', to: '2026-10-02' });
     expect(registerSignal.value).toEqual({ branch: 'CENTRAL' });
     expect(salesFiltersSignal.value).toEqual({ status: 'valid', productId: 'p1' });
-    expect(pageSignal.value).toBe(1);
+  });
+
+  it('scroll infinito (#87): suma el tramo siguiente con su cursor', async () => {
+    const item = (id: string) => ({ id, day: '2026-10-01', createdAt: '2026-10-01T10:00:00.000Z', branch: null, pointOfSale: null, methods: [], total: 1, kind: 'sale', voided: false });
+    fakeFetch([
+      ['after=c1', { items: [item('s3')], nextCursor: null, count: 3, page: 1, pageSize: 50, netTotal: 3 }],
+      ['/sales?', { items: [item('s1'), item('s2')], nextCursor: 'c1', count: 3, page: 1, pageSize: 50, netTotal: 3 }],
+    ]);
+    atTenant('t1', 'ventas?desde=2026-10-01&hasta=2026-10-02');
+    await vi.waitFor(() => { expect(salesListSignal.value?.items).toHaveLength(2); });
+    await loadMoreSales();
+    expect(salesListSignal.value?.items.map((i) => i.id)).toEqual(['s1', 's2', 's3']);
+    expect(salesListSignal.value).toMatchObject({ count: 3, nextCursor: null });
+    expect(requested).toContain('/api/tenants/t1/sales?from=2026-10-01&to=2026-10-02&pageSize=50&after=c1');
   });
 });
 
@@ -146,7 +158,7 @@ describe('cobranzas en el cliente (#20)', () => {
         { ...base, id: 'cp2', payments: [{ method: 'cash', amount: -700 }], total: -700, voided: false, voidsPaymentId: 'cp1' },
         { ...base, id: 'cp1', payments: [{ method: 'cash', amount: 700 }], total: 700, voided: true, voidedBy: 'cp2' },
       ],
-      count: 2, page: 1, pageSize: 50, netTotal: 0,
+      nextCursor: null, count: 2, page: 1, pageSize: 50, netTotal: 0,
     }]]);
     atTenant('t1', 'ventas/cobranzas');
     await vi.waitFor(() => { expect(paymentsListSignal.value?.items).toHaveLength(2); });
@@ -206,24 +218,23 @@ describe('drill-down del dashboard (#20)', () => {
 });
 
 describe('Ventas con URL y caché (#59)', () => {
-  it('rango, caja, filtros y página salen de la URL', () => {
-    atTenant('t1', 'ventas/cobranzas?desde=2026-10-01&hasta=2026-10-03&caja=&pagina=2&estado=anuladas');
+  it('rango, caja y filtros salen de la URL', () => {
+    atTenant('t1', 'ventas/cobranzas?desde=2026-10-01&hasta=2026-10-03&caja=&estado=anuladas');
     expect(salesTabSignal.value).toBe('payments');
     expect(rangePresetSignal.value).toBe('custom');
     expect(rangeSignal.value).toEqual({ from: '2026-10-01', to: '2026-10-03' });
     expect(registerSignal.value).toEqual({ pointOfSale: '' });
     expect(paymentsFiltersSignal.value).toEqual({ status: 'voided' });
-    expect(pageSignal.value).toBe(2);
   });
 
-  it('un filtro vuelve a la primera página y reemplaza la entrada', () => {
-    atTenant('t1', 'ventas?pagina=3');
+  it('un filtro reemplaza la entrada', () => {
+    atTenant('t1', 'ventas?rango=hoy');
     setSalesFilters({ status: 'valid' });
     expect(locationSignal.value.search).toBe('?estado=vigentes');
   });
 
   it('cambiar de solapa conserva rango y caja y suelta los filtros de la solapa', () => {
-    atTenant('t1', 'ventas?rango=semana&sucursal=CENTRAL&estado=anuladas&pagina=2');
+    atTenant('t1', 'ventas?rango=semana&sucursal=CENTRAL&estado=anuladas');
     setTab('movements');
     expect(path()).toBe('/admin/t1/ventas/movimientos?rango=semana&sucursal=CENTRAL');
   });

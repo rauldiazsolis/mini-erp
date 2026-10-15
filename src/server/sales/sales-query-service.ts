@@ -12,7 +12,8 @@ import { readCashMovement, readCustomerPayment, readSale } from './stored-docume
 
 export type RegisterFilter = { branch?: string | undefined; pointOfSale?: string | undefined };
 export type DayRange = { from: string; to: string };
-export type Paging = { page: number; pageSize: number };
+/** `after` (#87): el cursor de la última fila del tramo anterior; con él, `page` no cuenta. */
+export type Paging = { page: number; pageSize: number; after?: string | undefined };
 export type SalesFilter = DayRange & RegisterFilter & {
   method?: string | undefined;
   customerId?: string | undefined;
@@ -105,11 +106,47 @@ function compareRows(a: CashSummaryRow, b: CashSummaryRow): number {
   );
 }
 
-/** `LIMIT`/`OFFSET` de una página; sin página, todas las filas (para los resúmenes). */
-function paged(paging: Paging | undefined, params: Params): { limit: string; params: Params } {
-  return paging === undefined
-    ? { limit: '', params }
-    : { limit: ' LIMIT ? OFFSET ?', params: [...params, paging.pageSize, (paging.page - 1) * paging.pageSize] };
+type CursorRow = { day: string | null; created_at: string; id: string };
+type Page = { where: string; limit: string; params: Params };
+
+/** El cursor de una fila: su lugar en el orden de las listas (día, `created_at` e id, de mayor a menor). */
+function encodeCursor(row: CursorRow): string {
+  return Buffer.from(JSON.stringify([row.day, row.created_at, row.id])).toString('base64url');
+}
+
+function decodeCursor(cursor: string): [string, string, string] {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === 'string')) {
+      return [String(value[0]), String(value[1]), String(value[2])];
+    }
+  } catch {
+    // cae al error de abajo
+  }
+  throw new DomainError(400, 'El cursor de la lista no es válido');
+}
+
+/**
+ * Un tramo de la lista: con cursor, las filas que siguen a esa (no se corre si entra una venta nueva,
+ * #87); sin él, la página. Pide una fila de más para saber si hay otro tramo. Sin `paging`, todas.
+ */
+function paged(alias: string, paging: Paging | undefined, where: Where): Page {
+  const sql = where.clauses.join(' AND ');
+  if (paging === undefined) return { where: sql, limit: '', params: where.params };
+  if (paging.after !== undefined) {
+    return {
+      where: `${sql} AND (${alias}.day, ${alias}.created_at, ${alias}.id) < (?, ?, ?)`,
+      limit: ' LIMIT ?',
+      params: [...where.params, ...decodeCursor(paging.after), paging.pageSize + 1],
+    };
+  }
+  return { where: sql, limit: ' LIMIT ? OFFSET ?', params: [...where.params, paging.pageSize + 1, (paging.page - 1) * paging.pageSize] };
+}
+
+/** Separa la fila de más que pidió `paged` y arma el cursor del tramo siguiente. */
+function cut<T extends CursorRow>(rows: T[], pageSize: number): { rows: T[]; nextCursor: string | null } {
+  const last = rows[pageSize - 1];
+  return rows.length > pageSize && last !== undefined ? { rows: rows.slice(0, pageSize), nextCursor: encodeCursor(last) } : { rows, nextCursor: null };
 }
 
 const KNOWN_METHODS = PAYMENT_METHODS.map((method) => `'${method}'`).join(', ');
@@ -189,8 +226,10 @@ export class SalesQueryService {
     const totals = this.db
       .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(s.total), 0) AS net FROM sales s WHERE ${sql}`)
       .get(...where.params) as { count: number; net: number };
+    const { rows, nextCursor } = cut(this.saleRows(filter, paging), paging.pageSize);
     return {
-      items: this.saleRows(filter, paging).map((row) => this.toSaleItem(row)),
+      items: rows.map((row) => this.toSaleItem(row)),
+      nextCursor,
       count: totals.count,
       page: paging.page,
       pageSize: paging.pageSize,
@@ -229,12 +268,11 @@ export class SalesQueryService {
 
   /** Las filas del filtro; sin `paging`, todas (para los resúmenes). */
   protected saleRows(filter: SalesFilter, paging?: Paging): SaleRow[] {
-    const where = this.salesWhere(filter);
-    const page = paged(paging, where.params);
+    const page = paged('s', paging, this.salesWhere(filter));
     return this.db
       .prepare(
         `SELECT ${SALE_COLUMNS} FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
-         WHERE ${where.clauses.join(' AND ')}
+         WHERE ${page.where}
          ORDER BY s.day DESC, s.created_at DESC, s.id DESC${page.limit}`,
       )
       .all(...page.params) as unknown as SaleRow[];
@@ -271,8 +309,10 @@ export class SalesQueryService {
          FROM customer_payments cp WHERE ${where.clauses.join(' AND ')}`,
       )
       .get(...where.params) as { count: number; net: number };
+    const { rows, nextCursor } = cut(this.paymentRows(filter, paging), paging.pageSize);
     return {
-      items: this.paymentRows(filter, paging).map((row) => this.toPaymentItem(row)),
+      items: rows.map((row) => this.toPaymentItem(row)),
+      nextCursor,
       count: totals.count,
       page: paging.page,
       pageSize: paging.pageSize,
@@ -286,8 +326,10 @@ export class SalesQueryService {
     const totals = this.db
       .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(${signedAmount('m')}), 0) AS net FROM cash_movements m WHERE ${where.clauses.join(' AND ')}`)
       .get(...where.params) as { count: number; net: number };
+    const { rows, nextCursor } = cut(this.movementRows(filter, paging), paging.pageSize);
     return {
-      items: this.movementRows(filter, paging).map((row) => this.toMovementItem(row)),
+      items: rows.map((row) => this.toMovementItem(row)),
+      nextCursor,
       count: totals.count,
       page: paging.page,
       pageSize: paging.pageSize,
@@ -383,12 +425,11 @@ export class SalesQueryService {
   }
 
   protected paymentRows(filter: PaymentsFilter, paging?: Paging): PaymentRow[] {
-    const where = this.paymentsWhere(filter);
-    const page = paged(paging, where.params);
+    const page = paged('cp', paging, this.paymentsWhere(filter));
     return this.db
       .prepare(
         `SELECT ${PAYMENT_COLUMNS} FROM customer_payments cp LEFT JOIN customers c ON c.id = cp.customer_id
-         WHERE ${where.clauses.join(' AND ')}
+         WHERE ${page.where}
          ORDER BY cp.day DESC, cp.created_at DESC, cp.id DESC${page.limit}`,
       )
       .all(...page.params) as unknown as PaymentRow[];
@@ -414,12 +455,11 @@ export class SalesQueryService {
   }
 
   protected movementRows(filter: MovementsFilter, paging?: Paging): MovementRow[] {
-    const where = this.movementsWhere(filter);
-    const page = paged(paging, where.params);
+    const page = paged('m', paging, this.movementsWhere(filter));
     return this.db
       .prepare(
         `SELECT m.id, m.payload, m.branch, m.point_of_sale, m.created_at, m.day FROM cash_movements m
-         WHERE ${where.clauses.join(' AND ')}
+         WHERE ${page.where}
          ORDER BY m.day DESC, m.created_at DESC, m.id DESC${page.limit}`,
       )
       .all(...page.params) as unknown as MovementRow[];

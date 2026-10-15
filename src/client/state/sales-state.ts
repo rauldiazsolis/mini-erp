@@ -1,7 +1,7 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
 import { goTo, inSection, routeFilters, routeTab, setFilters } from './route-state.ts';
-import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { createTenantInfiniteQuery, createTenantParamQuery, createTenantQuery } from './query-keys.ts';
 import { decodeFilters, type RangePreset, type SalesRouteFilters, type TabId } from '../routing/admin-routes.ts';
 import type { RegisterChoice } from './sales-labels.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
@@ -73,7 +73,6 @@ export const movementsFiltersSignal = computed<MovementsFilters>(() => {
   const { direction, source } = salesRouteFiltersSignal.value;
   return { ...(direction === undefined ? {} : { direction }), ...(source === undefined ? {} : { source }) };
 });
-export const pageSignal = computed<number>(() => salesRouteFiltersSignal.value.page);
 
 /** Query string sin los `undefined`; el vacío se conserva (filtra "sin punto de venta"). */
 export function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -91,14 +90,14 @@ export type SalesQueryInput = {
   sales: SalesFilters;
   payments: PaymentsFilters;
   movements: MovementsFilters;
-  page: number;
 };
 
 const statusParam = (status: DocStatus): DocStatus | undefined => (status === 'all' ? undefined : status);
 
 export function endpointFor(input: SalesQueryInput): string {
   const base = { from: input.range.from, to: input.range.to, branch: input.register.branch, pointOfSale: input.register.pointOfSale };
-  const paging = { page: input.page, pageSize: PAGE_SIZE };
+  // Por tramos con cursor (#87): el endpoint es el primero; los siguientes le suman `after`
+  const paging = { pageSize: PAGE_SIZE };
   switch (input.tab) {
     case 'sales': {
       const { method, customerId, productId, kind, status } = input.sales;
@@ -122,7 +121,6 @@ const salesInputSignal = computed<SalesQueryInput>(() => ({
   sales: salesFiltersSignal.value,
   payments: paymentsFiltersSignal.value,
   movements: movementsFiltersSignal.value,
-  page: pageSignal.value,
 }));
 
 /** Una consulta por solapa: solo se pide la activa, y la clave es su endpoint (con sus filtros). */
@@ -135,9 +133,29 @@ function tabQuery<T>(tab: SalesTab) {
   });
 }
 
-const salesListQuery = tabQuery<ListResult<SaleListItem>>('sales');
-const paymentsListQuery = tabQuery<ListResult<CustomerPaymentItem>>('payments');
-const movementsListQuery = tabQuery<ListResult<CashMovementItem>>('movements');
+/** Las listas sin límite, por tramos (#87): el cursor del tramo anterior va en `after`. */
+function tabListQuery<T>(tab: SalesTab) {
+  return createTenantInfiniteQuery<ListResult<T>, readonly [SalesTab, string]>({
+    domain: 'sales',
+    params: () => [tab, endpointFor({ ...salesInputSignal.value, tab })],
+    enabled: () => inSection('sales') && salesTabSignal.value === tab,
+    fn: ({ tenantId, token, params: [, endpoint], cursor }) =>
+      apiFetch<ListResult<T>>(`tenants/${tenantId}/${endpoint}${cursor === undefined ? '' : `&${buildQuery({ after: cursor })}`}`, { token }),
+    nextCursor: (page) => page.nextCursor,
+  });
+}
+
+/** Los tramos cargados como una sola lista: los totales son del primero (valen para todo el filtro). */
+function joinPages<T>(pages: ListResult<T>[] | undefined): ListResult<T> | null {
+  const first = pages?.[0];
+  const last = pages?.[pages.length - 1];
+  if (pages === undefined || first === undefined || last === undefined) return null;
+  return { ...first, items: pages.flatMap((p) => p.items), nextCursor: last.nextCursor };
+}
+
+const salesListQuery = tabListQuery<SaleListItem>('sales');
+const paymentsListQuery = tabListQuery<CustomerPaymentItem>('payments');
+const movementsListQuery = tabListQuery<CashMovementItem>('movements');
 const cashSummaryQuery = tabQuery<CashSummaryResult>('summary');
 
 /** Las cajas del filtro (las que vendieron), no las de Configuración: son otro endpoint. */
@@ -172,9 +190,25 @@ const ALL_QUERIES = [...TAB_QUERIES, registersQuery, ticketQuery, daySummaryQuer
 
 // Datos
 export const registersSignal = computed<RegisterItem[]>(() => registersQuery.data.value ?? []);
-export const salesListSignal = computed<ListResult<SaleListItem> | null>(() => salesListQuery.data.value ?? null);
-export const paymentsListSignal = computed<ListResult<CustomerPaymentItem> | null>(() => paymentsListQuery.data.value ?? null);
-export const movementsListSignal = computed<ListResult<CashMovementItem> | null>(() => movementsListQuery.data.value ?? null);
+export const salesListSignal = computed<ListResult<SaleListItem> | null>(() => joinPages(salesListQuery.data.value));
+export const paymentsListSignal = computed<ListResult<CustomerPaymentItem> | null>(() => joinPages(paymentsListQuery.data.value));
+export const movementsListSignal = computed<ListResult<CashMovementItem> | null>(() => joinPages(movementsListQuery.data.value));
+/** Si se está pidiendo el tramo siguiente de la solapa activa. */
+export const salesLoadingMoreSignal = computed<boolean>(() =>
+  [salesListQuery, paymentsListQuery, movementsListQuery].some((q) => q.loadingMore.value),
+);
+
+export async function loadMoreSales(): Promise<void> {
+  await salesListQuery.loadMore();
+}
+
+export async function loadMorePayments(): Promise<void> {
+  await paymentsListQuery.loadMore();
+}
+
+export async function loadMoreMovements(): Promise<void> {
+  await movementsListQuery.loadMore();
+}
 export const cashSummarySignal = computed<CashSummaryResult | null>(() => cashSummaryQuery.data.value ?? null);
 export const salesLoadingSignal = computed<boolean>(() => TAB_QUERIES.some((q) => q.isLoading.value));
 export const salesErrorSignal = computed<string | null>(() => ALL_QUERIES.map((q) => q.error.value?.message).find((m) => m !== undefined) ?? null);
@@ -192,7 +226,7 @@ export function closeTicket(): void {
   ticketIdSignal.value = null;
 }
 
-/** El recibo se abre con los datos de la lista; una cobranza fuera de la página no se abre. */
+/** El recibo se abre con los datos de la lista; una cobranza todavía no cargada no se abre. */
 export function openPayment(id: string): void {
   const found = paymentsListSignal.value?.items.find((p) => p.id === id);
   if (found !== undefined) paymentDetailSignal.value = found;
@@ -227,9 +261,9 @@ export function setTab(tab: SalesTab): void {
   goTo({ section: 'sales', tab, filters: sharedSalesFilters(salesRouteFiltersSignal.peek()) });
 }
 
-// Cambiar un filtro vuelve a la primera página
+// Cambiar un filtro cambia la clave: la lista vuelve al primer tramo (#87)
 function patchSales(patch: Partial<SalesRouteFilters>): void {
-  setFilters('sales', { ...patch, page: 1 });
+  setFilters('sales', patch);
 }
 
 export function applyPreset(preset: Exclude<RangePreset, 'custom'>): void {
@@ -254,10 +288,6 @@ export function setPaymentsFilters(patch: Partial<PaymentsFilters>): void {
 
 export function setMovementsFilters(patch: Partial<MovementsFilters>): void {
   patchSales(patch);
-}
-
-export function setPage(page: number): void {
-  setFilters('sales', { page });
 }
 
 /** Drill-down del dashboard (#20): la lista de ventas con esos filtros en la URL, y nada más. */

@@ -7,7 +7,7 @@ export function CustomerStatsBar() {
   const debtorPercentage = stats.totalCustomers > 0 ? Math.round((stats.totalDebtors / stats.totalCustomers) * 100) : 0;
 
   return (
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
       {/* Total Clientes */}
       <StatCard
         title="Total Clientes"

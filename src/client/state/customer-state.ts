@@ -1,8 +1,9 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
+import { createRenderWindow } from './render-window.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
-import { createTenantParamQuery, createTenantQuery } from './query-keys.ts';
+import { createTenantInfiniteQuery, createTenantQuery } from './query-keys.ts';
 import { inSection, routeFilters, setFilters } from './route-state.ts';
 import { invalidateAfter } from './invalidation.ts';
 import type { CustomerFilters } from '../routing/admin-routes.ts';
@@ -129,7 +130,9 @@ export const accountDrawerOpenSignal = signal<boolean>(false);
 export const accountTargetCustomerSignal = signal<CustomerItem | null>(null);
 
 // El extracto se pide mientras el drawer está abierto, por cliente
-const movementsQuery = createTenantParamQuery<AccountMovementItem[], readonly [string]>({
+/** De a 100 movimientos (#87), por posición, como el kardex. */
+const STATEMENT_STEP = 100;
+const movementsQuery = createTenantInfiniteQuery<AccountMovementItem[], readonly [string]>({
   domain: 'customer-movements',
   params: () => {
     const target = accountTargetCustomerSignal.value;
@@ -138,10 +141,20 @@ const movementsQuery = createTenantParamQuery<AccountMovementItem[], readonly [s
   onError: (err) => {
     showToast({ type: 'error', title: 'Error de cuenta corriente', message: err.message });
   },
-  fn: ({ tenantId, token, params: [customerId] }) =>
-    apiFetch<AccountMovementItem[]>(`tenants/${tenantId}/customers/${customerId}/movements?limit=100`, { token }),
+  fn: ({ tenantId, token, params: [customerId], cursor }) =>
+    apiFetch<AccountMovementItem[]>(
+      `tenants/${tenantId}/customers/${customerId}/movements?limit=${String(STATEMENT_STEP)}${cursor === undefined ? '' : `&offset=${cursor}`}`,
+      { token },
+    ),
+  nextCursor: (page, pages) => (page.length < STATEMENT_STEP ? null : String(pages.reduce((n, p) => n + p.length, 0))),
 });
-export const accountMovementsSignal = computed<AccountMovementItem[]>(() => movementsQuery.data.value ?? []);
+export const accountMovementsSignal = computed<AccountMovementItem[]>(() => movementsQuery.data.value?.flat() ?? []);
+export const accountHasMoreSignal = movementsQuery.hasMore;
+export const accountLoadingMoreSignal = movementsQuery.loadingMore;
+
+export async function loadMoreAccountMovements(): Promise<void> {
+  await movementsQuery.loadMore();
+}
 export const accountLoadingSignal = movementsQuery.isLoading;
 
 // Clientes filtrados
@@ -162,6 +175,8 @@ export function filterCustomers(customers: CustomerItem[], filters: CustomerFilt
 }
 
 export const filteredCustomersSignal = computed<CustomerItem[]>(() => filterCustomers(customersSignal.value, customerFiltersSignal.value));
+/** Lo que se dibuja, de a tramos (#87). */
+export const customerWindow = createRenderWindow(filteredCustomersSignal, customerFiltersSignal);
 
 // Métricas de Clientes y Deuda
 export const customerStatsSignal = computed(() => {
