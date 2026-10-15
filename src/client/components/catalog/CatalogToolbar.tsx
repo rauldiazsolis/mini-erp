@@ -54,7 +54,7 @@ export function CatalogToolbar() {
             <button
               type="button"
               onClick={() => { setCatalogFilters({ q: '' }); }}
-              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs"
+              class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:text-slate-900 dark:active:text-white text-xs"
             >
               ✕
             </button>

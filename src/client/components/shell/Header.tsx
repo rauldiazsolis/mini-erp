@@ -54,7 +54,7 @@ export function Header() {
         <button
           type="button"
           onClick={toggleMobileMenu}
-          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -97,7 +97,7 @@ export function Header() {
                       key={t.tenantId}
                       type="button"
                       onClick={() => { handleSelectTenant(t.tenantId); }}
-                      class={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer ${
+                      class={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 cursor-pointer ${
                         isCurrent
                           ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-300 font-semibold'
                           : 'text-slate-700 dark:text-slate-300'
@@ -182,7 +182,7 @@ export function Header() {
             type="button"
             onClick={signOut}
             title="Cerrar sesión"
-            class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            class="p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors cursor-pointer"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -207,7 +207,7 @@ function DemoHeader() {
         <button
           type="button"
           onClick={toggleMobileMenu}
-          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          class="lg:hidden p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors"
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />

@@ -158,7 +158,7 @@ export function CustomerGrid() {
                       type="button"
                       onClick={() => { openPaymentModal(c); }}
                       title="Registrar pago / cobranza"
-                      class="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <span class="text-sm">💵</span>
                     </button>
@@ -170,7 +170,7 @@ export function CustomerGrid() {
                       type="button"
                       onClick={() => { openBalanceAdjustModal(c); }}
                       title="Ajuste manual de saldo"
-                      class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <span class="text-sm">⚖️</span>
                     </button>
@@ -181,7 +181,7 @@ export function CustomerGrid() {
                       type="button"
                       onClick={() => { openAccountStatement(c); }}
                       title="Ver extracto de movimientos"
-                      class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <span class="text-sm">📜</span>
                     </button>
@@ -192,7 +192,7 @@ export function CustomerGrid() {
                       type="button"
                       onClick={() => { openEditCustomerModal(c); }}
                       title="Editar datos de cliente"
-                      class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path

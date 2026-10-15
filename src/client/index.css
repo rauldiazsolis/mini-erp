@@ -7,6 +7,18 @@
   color-scheme: light dark;
 }
 
+/* Tailwind v4 ya no pone la mano en los botones (#86): va acá, una vez, y no control por control */
+@layer base {
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), select, summary, label:has(input),
+  input[type="checkbox"], input[type="radio"], ::file-selector-button {
+    cursor: pointer;
+  }
+
+  button:disabled, select:disabled, input:disabled {
+    cursor: not-allowed;
+  }
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;

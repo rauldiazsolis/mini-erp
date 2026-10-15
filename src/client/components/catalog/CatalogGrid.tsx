@@ -278,7 +278,7 @@ export function CatalogGrid() {
                       type="button"
                       onClick={() => { openEditProductModal(p); }}
                       title="Editar detalles completos"
-                      class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path
@@ -294,7 +294,7 @@ export function CatalogGrid() {
                       type="button"
                       onClick={() => { openBlockModal(p); }}
                       title={isBlocked ? 'Desbloquear para venta' : 'Bloquear producto'}
-                      class={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      class={`p-1.5 rounded-lg transition-colors cursor-pointer active:bg-slate-200 dark:active:bg-slate-700 ${
                         isBlocked
                           ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
                           : 'text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -323,7 +323,7 @@ export function CatalogGrid() {
                       type="button"
                       onClick={() => { void deleteProduct(p); }}
                       title="Eliminar producto"
-                      class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      class="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path
