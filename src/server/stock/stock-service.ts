@@ -274,7 +274,8 @@ export class StockService {
       params.push(filter.to.trim());
     }
 
-    sql += ' ORDER BY sm.created_at DESC';
+    // Con id de desempate: el kardex se pide por tramos (#87) y el orden tiene que ser estable
+    sql += ' ORDER BY sm.created_at DESC, sm.id DESC';
 
     if (filter?.limit !== undefined && filter.limit > 0) {
       sql += ' LIMIT ?';

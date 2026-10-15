@@ -66,7 +66,7 @@ export function createTenantInfiniteQuery<T, P extends readonly unknown[]>(
   o: Omit<CommonOptions, 'refetchInterval'> & {
     params: () => P | null;
     fn: (ctx: { tenantId: string; token: string; params: P; cursor: string | undefined }) => Promise<T>;
-    nextCursor: (page: T) => string | null;
+    nextCursor: (page: T, pages: T[]) => string | null;
   },
 ): SignalInfiniteQuery<T> {
   return createSignalInfiniteQuery<T>({

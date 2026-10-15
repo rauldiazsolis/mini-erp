@@ -1,6 +1,7 @@
 import { canDo } from '../../state/permissions-state.ts';
 import {
   filteredCustomersSignal,
+  customerWindow,
   customerLoadingSignal,
   openEditCustomerModal,
   openPaymentModal,
@@ -18,11 +19,17 @@ import {
   TableEmptyState,
 } from '../ui/Table.tsx';
 import { formatMoney } from '../../format.ts';
+import { CardList, CardRow, DesktopOnly } from '../ui/CardList.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
+
+const CARD_ACTION =
+  'p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors';
 
 export function CustomerGrid() {
   // Una caja desde el POS (M10) solo consulta
   const canEdit = canDo('tenant.use');
   const customers = filteredCustomersSignal.value;
+  const shown = customerWindow.visible.value;
   const isLoading = customerLoadingSignal.value;
 
   if (isLoading && customers.length === 0) {
@@ -50,167 +57,216 @@ export function CustomerGrid() {
 
   return (
     <TableContainer>
-      <Table>
-        <Thead>
-          <tr>
-            <Th class="min-w-[180px]">Cliente / Razón Social</Th>
-            <Th class="w-32">Documento</Th>
-            <Th class="w-32">Teléfono</Th>
-            <Th class="w-32 text-right">Límite Crédito</Th>
-            <Th class="w-36 text-right">Saldo Cuenta Cte.</Th>
-            <Th class="w-32 text-right">Crédito Disp.</Th>
-            <Th class="w-28 text-center">Estado</Th>
-            <Th class="w-36 text-right">Acciones</Th>
-          </tr>
-        </Thead>
-        <Tbody>
-          {customers.map((c) => {
-            const isBlocked = Boolean(c.blockedReason);
-            const isDebtor = c.balance > 0;
-            const hasCredit = c.balance < 0;
-
-            return (
-              <Tr
-                key={c.id}
-                class={`group ${
-                  isBlocked ? 'bg-rose-50/40 dark:bg-rose-950/10' : isDebtor ? 'bg-amber-50/30 dark:bg-amber-950/5' : ''
-                }`}
-              >
-                {/* Nombre */}
-                <Td>
-                  <div class="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors">
-                    {c.name}
-                  </div>
-                  {c.unrestricted && (
-                    <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">Crédito Ilimitado</span>
-                  )}
-                </Td>
-
-                {/* Documento */}
-                <Td class="font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                  {c.document ?? <span class="text-slate-400 dark:text-slate-600">--</span>}
-                </Td>
-
-                {/* Teléfono */}
-                <Td class="text-slate-600 dark:text-slate-300">
-                  {c.phone ?? <span class="text-slate-400 dark:text-slate-600">--</span>}
-                </Td>
-
-                {/* Límite de Crédito */}
-                <Td class="text-right font-mono text-slate-700 dark:text-slate-300">
-                  {c.unrestricted ? 'Sin límite' : formatMoney(c.creditLimit)}
-                </Td>
-
-                {/* Saldo en Cuenta Corriente */}
-                <Td class="text-right font-mono font-bold">
-                  <span
-                    class={`inline-block px-2.5 py-0.5 rounded-lg text-xs ${
-                      isDebtor
-                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                        : hasCredit
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {formatMoney(c.balance)}
-                  </span>
-                </Td>
-
-                {/* Crédito Disponible */}
-                <Td class="text-right font-mono">
-                  {c.unrestricted ? (
-                    <span class="text-indigo-600 dark:text-indigo-400 font-sans text-[11px]">Total</span>
-                  ) : c.availableCredit !== null ? (
-                    <span class={c.availableCredit <= 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-300'}>
-                      {formatMoney(c.availableCredit)}
-                    </span>
-                  ) : (
-                    <span class="text-slate-400">--</span>
-                  )}
-                </Td>
-
-                {/* Estado */}
-                <Td class="text-center">
-                  {isBlocked ? (
-                    <span
-                      class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                      title={c.blockedReason ?? 'Bloqueado'}
-                    >
-                      Bloqueado
-                    </span>
-                  ) : isDebtor ? (
-                    <span class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-                      Deudor
-                    </span>
-                  ) : (
-                    <span class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-                      Al día
-                    </span>
-                  )}
-                </Td>
-
-                {/* Acciones */}
-                <Td class="text-right">
-                  <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                    {/* Cobranza */}
-                    {canEdit && (
-<button
-                      type="button"
-                      onClick={() => { openPaymentModal(c); }}
-                      title="Registrar pago / cobranza"
-                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                    >
+      {/* En el teléfono: tocar la tarjeta abre el extracto; cobrar, ajustar y editar quedan a mano (#89) */}
+      <CardList label="Clientes">
+        {shown.map((c) => {
+          const isDebtor = c.balance > 0;
+          return (
+            <CardRow
+              key={c.id}
+              class={c.blockedReason ? 'bg-rose-50/40 dark:bg-rose-950/10' : undefined}
+              onOpen={() => { openAccountStatement(c); }}
+              title={
+                <>
+                  {c.name}
+                  {c.blockedReason && <span class="ml-1.5 text-[10px] font-medium text-rose-600 dark:text-rose-400">Bloqueado</span>}
+                </>
+              }
+              aside={
+                <span class={isDebtor ? 'text-rose-600 dark:text-rose-400' : c.balance < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}>
+                  {formatMoney(c.balance)}
+                </span>
+              }
+              meta={[
+                c.document,
+                c.phone,
+                c.unrestricted ? 'Crédito ilimitado' : c.availableCredit === null ? undefined : `Disponible ${formatMoney(c.availableCredit)}`,
+              ]
+                .filter((x) => x !== undefined && x !== null && x !== '')
+                .join(' · ')}
+              actions={
+                canEdit ? (
+                  <>
+                    <button type="button" class={CARD_ACTION} aria-label="Registrar cobranza" title="Registrar cobranza" onClick={() => { openPaymentModal(c); }}>
                       <span class="text-sm">💵</span>
                     </button>
-
-)}
-                    {/* Ajuste de Saldo */}
-                    {canEdit && (
-<button
-                      type="button"
-                      onClick={() => { openBalanceAdjustModal(c); }}
-                      title="Ajuste manual de saldo"
-                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                    >
+                    <button type="button" class={CARD_ACTION} aria-label="Ajustar saldo" title="Ajustar saldo" onClick={() => { openBalanceAdjustModal(c); }}>
                       <span class="text-sm">⚖️</span>
                     </button>
-
-)}
-                    {/* Extracto de Movimientos */}
-                    <button
-                      type="button"
-                      onClick={() => { openAccountStatement(c); }}
-                      title="Ver extracto de movimientos"
-                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <span class="text-sm">📜</span>
+                    <button type="button" class={CARD_ACTION} aria-label="Editar cliente" title="Editar cliente" onClick={() => { openEditCustomerModal(c); }}>
+                      <span class="text-sm">✏️</span>
                     </button>
+                  </>
+                ) : undefined
+              }
+            />
+          );
+        })}
+      </CardList>
+      <DesktopOnly>
+        <Table>
+          <Thead>
+            <tr>
+              <Th class="min-w-[180px]">Cliente / Razón Social</Th>
+              <Th class="w-32">Documento</Th>
+              <Th class="w-32">Teléfono</Th>
+              <Th class="w-32 text-right">Límite Crédito</Th>
+              <Th class="w-36 text-right">Saldo Cuenta Cte.</Th>
+              <Th class="w-32 text-right">Crédito Disp.</Th>
+              <Th class="w-28 text-center">Estado</Th>
+              <Th class="w-36 text-right">Acciones</Th>
+            </tr>
+          </Thead>
+          <Tbody>
+            {shown.map((c) => {
+              const isBlocked = Boolean(c.blockedReason);
+              const isDebtor = c.balance > 0;
+              const hasCredit = c.balance < 0;
 
-                    {/* Editar Datos */}
-                    {canEdit && (
-<button
-                      type="button"
-                      onClick={() => { openEditCustomerModal(c); }}
-                      title="Editar datos de cliente"
-                      class="p-2.5 sm:p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+              return (
+                <Tr
+                  key={c.id}
+                  class={`group ${
+                    isBlocked ? 'bg-rose-50/40 dark:bg-rose-950/10' : isDebtor ? 'bg-amber-50/30 dark:bg-amber-950/5' : ''
+                  }`}
+                >
+                  {/* Nombre */}
+                  <Td>
+                    <div class="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors">
+                      {c.name}
+                    </div>
+                    {c.unrestricted && (
+                      <span class="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">Crédito Ilimitado</span>
+                    )}
+                  </Td>
+
+                  {/* Documento */}
+                  <Td class="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                    {c.document ?? <span class="text-slate-400 dark:text-slate-600">--</span>}
+                  </Td>
+
+                  {/* Teléfono */}
+                  <Td class="text-slate-600 dark:text-slate-300">
+                    {c.phone ?? <span class="text-slate-400 dark:text-slate-600">--</span>}
+                  </Td>
+
+                  {/* Límite de Crédito */}
+                  <Td class="text-right font-mono text-slate-700 dark:text-slate-300">
+                    {c.unrestricted ? 'Sin límite' : formatMoney(c.creditLimit)}
+                  </Td>
+
+                  {/* Saldo en Cuenta Corriente */}
+                  <Td class="text-right font-mono font-bold">
+                    <span
+                      class={`inline-block px-2.5 py-0.5 rounded-lg text-xs ${
+                        isDebtor
+                          ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                          : hasCredit
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
                     >
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                        />
-                      </svg>
-                    </button>
+                      {formatMoney(c.balance)}
+                    </span>
+                  </Td>
 
-)}                  </div>
-                </Td>
-              </Tr>
-            );
-          })}
-        </Tbody>
-      </Table>
+                  {/* Crédito Disponible */}
+                  <Td class="text-right font-mono">
+                    {c.unrestricted ? (
+                      <span class="text-indigo-600 dark:text-indigo-400 font-sans text-[11px]">Total</span>
+                    ) : c.availableCredit !== null ? (
+                      <span class={c.availableCredit <= 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-300'}>
+                        {formatMoney(c.availableCredit)}
+                      </span>
+                    ) : (
+                      <span class="text-slate-400">--</span>
+                    )}
+                  </Td>
+
+                  {/* Estado */}
+                  <Td class="text-center">
+                    {isBlocked ? (
+                      <span
+                        class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                        title={c.blockedReason ?? 'Bloqueado'}
+                      >
+                        Bloqueado
+                      </span>
+                    ) : isDebtor ? (
+                      <span class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                        Deudor
+                      </span>
+                    ) : (
+                      <span class="inline-block px-2 py-0.5 rounded-full font-medium text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                        Al día
+                      </span>
+                    )}
+                  </Td>
+
+                  {/* Acciones */}
+                  <Td class="text-right">
+                    <div class="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                      {/* Cobranza */}
+                      {canEdit && (
+  <button
+                        type="button"
+                        onClick={() => { openPaymentModal(c); }}
+                        title="Registrar pago / cobranza"
+                        class="p-2.5 sm:p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <span class="text-sm">💵</span>
+                      </button>
+
+  )}
+                      {/* Ajuste de Saldo */}
+                      {canEdit && (
+  <button
+                        type="button"
+                        onClick={() => { openBalanceAdjustModal(c); }}
+                        title="Ajuste manual de saldo"
+                        class="p-2.5 sm:p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <span class="text-sm">⚖️</span>
+                      </button>
+
+  )}
+                      {/* Extracto de Movimientos */}
+                      <button
+                        type="button"
+                        onClick={() => { openAccountStatement(c); }}
+                        title="Ver extracto de movimientos"
+                        class="p-2.5 sm:p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <span class="text-sm">📜</span>
+                      </button>
+
+                      {/* Editar Datos */}
+                      {canEdit && (
+  <button
+                        type="button"
+                        onClick={() => { openEditCustomerModal(c); }}
+                        title="Editar datos de cliente"
+                        class="p-2.5 sm:p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                      </button>
+
+  )}                  </div>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tbody>
+        </Table>
+      </DesktopOnly>
+      <InfiniteSentinel shown={shown.length} total={customers.length} hasMore={customerWindow.hasMore.value} onMore={customerWindow.showMore} />
     </TableContainer>
   );
 }

@@ -13,6 +13,7 @@ import { DomainError, sendError } from '../errors.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
 const searchSchema = z.object({ q: z.string().trim().max(100).optional() });
+const usersQuerySchema = searchSchema.extend({ offset: z.coerce.number().int().min(0).optional() });
 const auditQuerySchema = z.object({ tenantId: z.string().trim().max(100).optional(), tenantSlug: z.string().trim().max(100).optional() });
 const staffInviteSchema = z.object({ email: z.string().trim().pipe(z.email('Email inválido')) });
 
@@ -56,8 +57,12 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   });
 
   router.get('/users', staff, (req: AuthenticatedAdminRequest, res: Response) => {
-    const parsed = searchSchema.safeParse(req.query);
-    res.status(200).json(deps.queries.listUsers(parsed.success ? parsed.data.q : undefined));
+    const parsed = usersQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
+      return;
+    }
+    res.status(200).json(deps.queries.listUsers(parsed.data.q, parsed.data.offset));
   });
 
   router.get('/audit', staff, (req: AuthenticatedAdminRequest, res: Response) => {

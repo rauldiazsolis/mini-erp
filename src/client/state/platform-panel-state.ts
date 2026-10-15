@@ -1,6 +1,6 @@
 import { computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
-import { createSignalQuery, type QuerySource } from '../api/query-client.ts';
+import { createSignalInfiniteQuery, createSignalQuery, type QuerySource } from '../api/query-client.ts';
 import { currentUserSignal, tokenSignal } from './auth-state.ts';
 import { routeSignal } from './route-state.ts';
 import { platformKey } from './query-keys.ts';
@@ -114,14 +114,24 @@ export function reactivateTenant(tenantId: string): Promise<boolean> {
 
 // --- Usuarios ---
 
-const usersQuery = createSignalQuery<PlatformUserItem[]>({
-  source: (): QuerySource<PlatformUserItem[]> | null => {
+/** El tramo que manda el servidor (`USERS_LIMIT`): uno más corto es el final de la lista. */
+const USERS_STEP = 100;
+
+/** Por tramos (#87): el cursor es la posición, como en el kardex; las cuentas nuevas son pocas. */
+const usersQuery = createSignalInfiniteQuery<PlatformUserItem[]>({
+  source: () => {
     const t = tokenSignal.value;
     const q = searchOf('users') ?? '';
     if (t === null) return null;
-    const query = q === '' ? '' : `?q=${encodeURIComponent(q)}`;
-    return { key: platformKey('users', q), fn: () => apiFetch<PlatformUserItem[]>(`/api/platform/users${query}`, { token: t }) };
+    return {
+      key: platformKey('users', q),
+      fn: (cursor) => {
+        const query = new URLSearchParams({ ...(q === '' ? {} : { q }), ...(cursor === undefined ? {} : { offset: cursor }) }).toString();
+        return apiFetch<PlatformUserItem[]>(`/api/platform/users${query === '' ? '' : `?${query}`}`, { token: t });
+      },
+    };
   },
+  nextCursor: (page, pages) => (page.length < USERS_STEP ? null : String(pages.reduce((n, p) => n + p.length, 0))),
   enabled: () => searchOf('users') !== null,
   keepPrevious: (prev, next) => prev[1] === next[1],
   onError: (err) => {
@@ -129,7 +139,13 @@ const usersQuery = createSignalQuery<PlatformUserItem[]>({
   },
 });
 
-export const platformUsersSignal = computed<PlatformUserItem[]>(() => usersQuery.data.value ?? []);
+export const platformUsersSignal = computed<PlatformUserItem[]>(() => usersQuery.data.value?.flat() ?? []);
+export const platformUsersHasMoreSignal = usersQuery.hasMore;
+export const platformUsersLoadingMoreSignal = usersQuery.loadingMore;
+
+export async function loadMorePlatformUsers(): Promise<void> {
+  await usersQuery.loadMore();
+}
 export const platformUsersLoadingSignal = usersQuery.isLoading;
 
 export function setUserStatus(userId: string, status: 'active' | 'disabled'): Promise<boolean> {

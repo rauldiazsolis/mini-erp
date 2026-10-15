@@ -113,8 +113,8 @@ export type InfiniteQuerySource<P> = { key: QueryKey; fn: (cursor: string | unde
 export type SignalInfiniteQueryOptions<P> = Omit<SignalQueryOptions<P>, 'source' | 'refetchInterval'> & {
   /** La clave y el pedido de un tramo (sin cursor, el primero); `null` sin sesión o sin comercio. Reactiva. */
   source: () => InfiniteQuerySource<P> | null;
-  /** El cursor del tramo siguiente; `null` es el final de la lista. */
-  nextCursor: (page: P) => string | null;
+  /** El cursor del tramo siguiente (con todos los cargados, para un cursor por posición); `null` es el final. */
+  nextCursor: (page: P, pages: P[]) => string | null;
 };
 
 export type SignalInfiniteQuery<P> = Omit<SignalQuery<P[]>, 'setData'> & {
@@ -167,7 +167,7 @@ export function createSignalInfiniteQuery<P>(options: SignalInfiniteQueryOptions
       queryFn: source === null ? () => Promise.reject(new Error('Consulta deshabilitada')) : ({ pageParam }) => source.fn(pageParam),
       enabled,
       initialPageParam: undefined,
-      getNextPageParam: (last) => options.nextCursor(last) ?? undefined,
+      getNextPageParam: (last, pages) => options.nextCursor(last, pages) ?? undefined,
       placeholderData: (previous, previousQuery) =>
         source !== null &&
         previousQuery !== undefined &&

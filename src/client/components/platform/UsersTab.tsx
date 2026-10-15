@@ -1,8 +1,13 @@
+import { CardList, CardRow, DesktopOnly } from '../ui/CardList.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
 import { signal } from '@preact/signals';
 import {
   createPlatformResetLink,
   platformUsersLoadingSignal,
   platformUsersSignal,
+  platformUsersHasMoreSignal,
+  platformUsersLoadingMoreSignal,
+  loadMorePlatformUsers,
   setUserStatus,
 } from '../../state/platform-panel-state.ts';
 import { currentUserSignal } from '../../state/auth-state.ts';
@@ -121,52 +126,90 @@ export function UsersTab() {
         {users.length === 0 ? (
           <TableEmptyState message={platformUsersLoadingSignal.value ? 'Cargando…' : 'Sin usuarios'} />
         ) : (
-          <div class="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Nombre</Th>
-                  <Th>Correo</Th>
-                  <Th>WhatsApp</Th>
-                  <Th>Comercios</Th>
-                  <Th>Estado</Th>
-                  <Th />
-                </Tr>
-              </Thead>
-              <Tbody>
-                {users.map((u) => (
-                  <Tr key={u.id}>
-                    <Td>
-                      <span class="font-semibold">{u.name}</span>{' '}
-                      {u.globalRole === 'root' && <Badge tone="neutral">Root</Badge>}
+          <>
+            <CardList label="Usuarios">
+              {users.map((u) => (
+                <CardRow
+                  key={u.id}
+                  title={
+                    <>
+                      {u.name} {u.globalRole === 'root' && <Badge tone="neutral">Root</Badge>}
                       {u.globalRole === 'support' && <Badge tone="neutral">Soporte</Badge>}
-                    </Td>
-                    <Td>{u.email}</Td>
-                    <Td>{u.whatsapp ?? '—'}</Td>
-                    <Td>
-                      {u.tenants.length === 0
-                        ? '—'
-                        : u.tenants.map((t) => (
-                            <div key={t.id}>
-                              <Link href={platformTenantUrl(t.slug)} class="text-indigo-600 dark:text-indigo-400 hover:underline">
-                                {t.name}
-                              </Link>{' '}
-                              <span class="text-slate-500">· {ROLE_LABEL[t.role]}</span>
-                            </div>
-                          ))}
-                    </Td>
-                    <Td>
-                      <AccountStatusBadge status={u.status} />
-                    </Td>
-                    <Td class="text-right">
-                      <UserActions user={u} />
-                    </Td>
+                    </>
+                  }
+                  aside={<AccountStatusBadge status={u.status} />}
+                  meta={
+                    <>
+                      <div>{[u.email, u.whatsapp].filter((x) => x !== null).join(' · ')}</div>
+                      {u.tenants.map((t) => (
+                        <div key={t.id}>
+                          <Link href={platformTenantUrl(t.slug)} class="text-indigo-600 dark:text-indigo-400 hover:underline">
+                            {t.name}
+                          </Link>{' '}
+                          · {ROLE_LABEL[t.role]}
+                        </div>
+                      ))}
+                      <div class="mt-2">
+                        <UserActions user={u} />
+                      </div>
+                    </>
+                  }
+                />
+              ))}
+            </CardList>
+            <DesktopOnly>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Nombre</Th>
+                    <Th>Correo</Th>
+                    <Th>WhatsApp</Th>
+                    <Th>Comercios</Th>
+                    <Th>Estado</Th>
+                    <Th />
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
+                </Thead>
+                <Tbody>
+                  {users.map((u) => (
+                    <Tr key={u.id}>
+                      <Td>
+                        <span class="font-semibold">{u.name}</span>{' '}
+                        {u.globalRole === 'root' && <Badge tone="neutral">Root</Badge>}
+                        {u.globalRole === 'support' && <Badge tone="neutral">Soporte</Badge>}
+                      </Td>
+                      <Td>{u.email}</Td>
+                      <Td>{u.whatsapp ?? '—'}</Td>
+                      <Td>
+                        {u.tenants.length === 0
+                          ? '—'
+                          : u.tenants.map((t) => (
+                              <div key={t.id}>
+                                <Link href={platformTenantUrl(t.slug)} class="text-indigo-600 dark:text-indigo-400 hover:underline">
+                                  {t.name}
+                                </Link>{' '}
+                                <span class="text-slate-500">· {ROLE_LABEL[t.role]}</span>
+                              </div>
+                            ))}
+                      </Td>
+                      <Td>
+                        <AccountStatusBadge status={u.status} />
+                      </Td>
+                      <Td class="text-right">
+                        <UserActions user={u} />
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </DesktopOnly>
+          </>
         )}
+        <InfiniteSentinel
+          shown={users.length}
+          hasMore={platformUsersHasMoreSignal.value}
+          loading={platformUsersLoadingMoreSignal.value}
+          onMore={loadMorePlatformUsers}
+        />
       </TableContainer>
       <DisableModal />
     </div>

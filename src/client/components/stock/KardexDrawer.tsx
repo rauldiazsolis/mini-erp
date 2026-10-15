@@ -2,12 +2,16 @@ import {
   kardexDrawerOpenSignal,
   kardexTargetProductSignal,
   kardexMovementsSignal,
+  kardexHasMoreSignal,
+  kardexLoadingMoreSignal,
+  loadMoreKardex,
   kardexLoadingSignal,
   kardexReasonFilterSignal,
   closeKardex,
 } from '../../state/stock-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { Drawer } from '../ui/Drawer.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
 import { formatQty, formatDateTime } from '../../format.ts';
 
 export function KardexDrawer() {
@@ -142,6 +146,9 @@ export function KardexDrawer() {
             })
           )}
         </div>
+        {!isLoading && (
+          <InfiniteSentinel shown={movements.length} hasMore={kardexHasMoreSignal.value} loading={kardexLoadingMoreSignal.value} onMore={loadMoreKardex} />
+        )}
 
         {/* Footer */}
         <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">

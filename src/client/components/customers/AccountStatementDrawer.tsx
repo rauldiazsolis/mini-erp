@@ -3,11 +3,15 @@ import {
   accountDrawerOpenSignal,
   accountTargetCustomerSignal,
   accountMovementsSignal,
+  accountHasMoreSignal,
+  accountLoadingMoreSignal,
+  loadMoreAccountMovements,
   accountLoadingSignal,
   closeAccountStatement,
   openPaymentModal,
 } from '../../state/customer-state.ts';
 import { Button } from '../ui/Button.tsx';
+import { InfiniteSentinel } from '../ui/InfiniteSentinel.tsx';
 import { Drawer } from '../ui/Drawer.tsx';
 import { movementLabel, movementTone } from '../../state/movement-style.ts';
 import { formatMoney, formatDateTime } from '../../format.ts';
@@ -119,6 +123,9 @@ export function AccountStatementDrawer() {
             })
           )}
         </div>
+        {!isLoading && (
+          <InfiniteSentinel shown={movements.length} hasMore={accountHasMoreSignal.value} loading={accountLoadingMoreSignal.value} onMore={loadMoreAccountMovements} />
+        )}
 
         {/* Footer */}
         <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">

@@ -32,7 +32,8 @@ const TENANT_SELECT = `
   FROM tenants t LEFT JOIN users h ON h.id = t.holder_user_id
   WHERE t.id NOT IN ${DEMO_TENANT_IDS_SQL}`;
 
-const USERS_LIMIT = 200;
+/** Un tramo de la lista de usuarios del panel. */
+export const USERS_LIMIT = 100;
 
 function tenantStatus(value: string): TenantStatus {
   return value === 'suspended' || value === 'maintenance' ? value : 'active';
@@ -89,15 +90,16 @@ export class PlatformQueryService {
     return row.id;
   }
 
-  listUsers(q?: string): PlatformUserItem[] {
+  /** De a `USERS_LIMIT`, desde `offset` (#87): el panel los suma al scrollear. */
+  listUsers(q?: string, offset = 0): PlatformUserItem[] {
     const like = likeOf(q);
     const users = this.db
       .prepare(
         `SELECT id, name, email, whatsapp, global_role, status, created_at FROM users
          WHERE ? = '' OR lower(name) LIKE ? OR lower(email) LIKE ?
-         ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+         ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
       )
-      .all(like, like, like, USERS_LIMIT) as {
+      .all(like, like, like, USERS_LIMIT, offset) as {
       id: string;
       name: string;
       email: string;

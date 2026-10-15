@@ -1,8 +1,9 @@
 import { signal, computed } from '@preact/signals';
 import { apiFetch } from '../api/client.ts';
+import { createRenderWindow } from './render-window.ts';
 import { tokenSignal, effectiveTenantIdSignal } from './auth-state.ts';
 import { showToast } from './toast-state.ts';
-import { createTenantParamQuery } from './query-keys.ts';
+import { createTenantInfiniteQuery } from './query-keys.ts';
 import { branchesQuery, categoriesQuery, stockMatrixQuery } from './shared-queries.ts';
 import { routeFilters, setFilters } from './route-state.ts';
 import { invalidateAfter } from './invalidation.ts';
@@ -94,7 +95,12 @@ export const kardexTargetProductSignal = signal<StockMatrixItem | null>(null);
 export const kardexReasonFilterSignal = signal<string>('all');
 
 // Los movimientos se piden mientras el drawer está abierto, por producto
-const kardexQuery = createTenantParamQuery<KardexItem[], readonly [string]>({
+/**
+ * De a 100 movimientos (#87), por posición: un producto suma movimientos de a pocos, así que no hace
+ * falta un cursor por fila como en Ventas.
+ */
+const KARDEX_STEP = 100;
+const kardexQuery = createTenantInfiniteQuery<KardexItem[], readonly [string]>({
   domain: 'kardex',
   params: () => {
     const target = kardexTargetProductSignal.value;
@@ -103,10 +109,20 @@ const kardexQuery = createTenantParamQuery<KardexItem[], readonly [string]>({
   onError: (err) => {
     showToast({ type: 'error', title: 'Error de Kardex', message: err.message });
   },
-  fn: ({ tenantId, token, params: [productId] }) =>
-    apiFetch<KardexItem[]>(`tenants/${tenantId}/stock/kardex?productId=${encodeURIComponent(productId)}&limit=100`, { token }),
+  fn: ({ tenantId, token, params: [productId], cursor }) =>
+    apiFetch<KardexItem[]>(
+      `tenants/${tenantId}/stock/kardex?productId=${encodeURIComponent(productId)}&limit=${String(KARDEX_STEP)}${cursor === undefined ? '' : `&offset=${cursor}`}`,
+      { token },
+    ),
+  nextCursor: (page, pages) => (page.length < KARDEX_STEP ? null : String(pages.reduce((n, p) => n + p.length, 0))),
 });
-export const kardexMovementsSignal = computed<KardexItem[]>(() => kardexQuery.data.value ?? []);
+export const kardexMovementsSignal = computed<KardexItem[]>(() => kardexQuery.data.value?.flat() ?? []);
+export const kardexHasMoreSignal = kardexQuery.hasMore;
+export const kardexLoadingMoreSignal = kardexQuery.loadingMore;
+
+export async function loadMoreKardex(): Promise<void> {
+  await kardexQuery.loadMore();
+}
 export const kardexLoadingSignal = kardexQuery.isLoading;
 
 // Stock filtrado
@@ -131,6 +147,8 @@ export function filterStock(items: StockMatrixItem[], filters: StockFilters): St
 }
 
 export const filteredStockSignal = computed<StockMatrixItem[]>(() => filterStock(stockItemsSignal.value, stockFiltersSignal.value));
+/** Lo que se dibuja, de a tramos (#87). */
+export const stockWindow = createRenderWindow(filteredStockSignal, stockFiltersSignal);
 
 /** El botón "Actualizar". */
 export async function fetchStockData(): Promise<void> {
