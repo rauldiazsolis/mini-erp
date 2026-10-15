@@ -5,6 +5,7 @@ import { homeTenantSlugSignal, isRootOrSupportSignal } from '../../state/auth-st
 import { adminUrl, platformUrl, type TenantSection } from '../../routing/admin-routes.ts';
 import { Link } from '../ui/Link.tsx';
 import { versionLabel } from '../../state/app-version.ts';
+import { ThemeToggle } from '../ui/ThemeToggle.tsx';
 import { isViewAllowed } from '../../state/permissions-state.ts';
 import { Logo } from '../ui/Logo.tsx';
 import { visiblePlatformNavItems } from '../platform/platform-sections.tsx';
@@ -267,8 +268,13 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {/* Footer Info */}
-      <div class="px-3 text-[11px] text-slate-500 dark:text-slate-400">{versionLabel()}</div>
+      {/* Footer Info: en el teléfono, el tema vive acá y no en la cabecera (#88) */}
+      <div class="space-y-3">
+        <div class="sm:hidden px-1">
+          <ThemeToggle compact />
+        </div>
+        <div class="px-3 text-[11px] text-slate-500 dark:text-slate-400">{versionLabel()}</div>
+      </div>
     </div>
   );
 

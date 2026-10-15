@@ -69,15 +69,23 @@ export function Header() {
             class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-300/80 dark:border-slate-700/80 transition-all text-left cursor-pointer group"
           >
             <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse"></div>
-            <div>
-              <div class="text-xs font-bold text-slate-800 dark:text-white tracking-tight leading-none group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-slate-800 dark:text-white tracking-tight leading-none truncate max-w-[9rem] sm:max-w-none group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                 {activeTenant?.name ?? 'Seleccionar Comercio'}
               </div>
               <div class="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 leading-none">
-                {activeTenant ? `${ROLE_LABEL[activeTenant.role]} · ${activeTenant.tenantId}` : 'Sin selección'}
+                {/* En el teléfono, solo el rol: la dirección del comercio no entra (#88) */}
+                {activeTenant ? (
+                  <>
+                    {ROLE_LABEL[activeTenant.role]}
+                    <span class="hidden sm:inline"> · {activeTenant.tenantId}</span>
+                  </>
+                ) : (
+                  'Sin selección'
+                )}
               </div>
             </div>
-            <svg class="w-4 h-4 text-slate-400 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-4 h-4 shrink-0 text-slate-400 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
@@ -141,7 +149,7 @@ export function Header() {
       </div>
 
       {/* Derecha: Selector de Tema, Usuario y Logout */}
-      <div class="flex items-center gap-3 sm:gap-4">
+      <div class="flex items-center gap-2 sm:gap-4">
         {/* Transparencia (#23): el usuario ve cuando soporte está adentro de su cuenta */}
         {supportInsideSignal.value && (
           <span role="status" class="hidden sm:inline text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
@@ -149,13 +157,18 @@ export function Header() {
           </span>
         )}
         {canAskHelpSignal.value && (
-          <Button size="sm" variant="outline" onClick={() => { helpModalOpenSignal.value = true; }}>
-            Pedir ayuda
+          <Button size="sm" variant="outline" aria-label="Pedir ayuda" title="Pedir ayuda" onClick={() => { helpModalOpenSignal.value = true; }}>
+            <svg class="w-4 h-4 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="hidden sm:inline">Pedir ayuda</span>
           </Button>
         )}
 
-        {/* Toggle de Tema Compacto */}
-        <ThemeToggle compact />
+        {/* Toggle de Tema Compacto: en el teléfono está al pie del menú (#88) */}
+        <div class="hidden sm:block">
+          <ThemeToggle compact />
+        </div>
 
         {/* Info Usuario */}
         <div class="hidden sm:block text-right">
@@ -218,7 +231,9 @@ function DemoHeader() {
           <div class="text-xs font-bold text-slate-800 dark:text-white tracking-tight">{activeTenantSignal.value?.name ?? 'mini contax'}</div>
         </div>
       </div>
-      <ThemeToggle compact />
+      <div class="hidden sm:block">
+        <ThemeToggle compact />
+      </div>
     </header>
   );
 }
