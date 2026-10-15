@@ -32,3 +32,16 @@ describe('Formularios y tarjetas en el teléfono (#91)', () => {
     }
   });
 });
+
+describe('Diálogos a pantalla completa en el teléfono (#72)', () => {
+  it('Modal: sin margen ni bordes redondeados, alto completo y el contenido con scroll propio', () => {
+    const modal = read('components/ui/Modal.tsx');
+    expect(modal).toContain('h-dvh sm:h-auto');
+    expect(modal).toContain('rounded-none sm:rounded-3xl');
+    expect(modal).toMatch(/flex-1 min-h-0 overflow-y-auto/);
+  });
+
+  it('Drawer: alto de la pantalla visible (dvh), por la barra del navegador', () => {
+    expect(read('components/ui/Drawer.tsx')).toContain('h-dvh');
+  });
+});

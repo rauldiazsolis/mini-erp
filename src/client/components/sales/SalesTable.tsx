@@ -27,48 +27,54 @@ const STATUSES: Array<{ id: DocStatus; label: string }> = [
 
 const orUndefined = (value: string): string | undefined => (value === '' ? undefined : value);
 
+/** Los filtros de la solapa; `SalesView` los pone con el rango y la caja (plegables en el teléfono, #90). */
+export function SalesFiltersBar() {
+  const filters = salesFiltersSignal.value;
+  return (
+    <FilterToolbar>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Select label="Medio de pago" value={filters.method ?? ''} onChange={(e) => { setSalesFilters({ method: orUndefined(e.currentTarget.value) }); }}>
+          <option value="">Todos</option>
+          {METHODS.map((m) => (
+            <option key={m} value={m}>{methodLabel(m)}</option>
+          ))}
+        </Select>
+        <CustomerPicker id="ventas-clientes" value={filters.customerId} onChange={(customerId) => { setSalesFilters({ customerId }); }} />
+        <Select
+          label="Tipo"
+          value={filters.kind ?? ''}
+          onChange={(e) => { setSalesFilters({ kind: KINDS.find((k) => k.id === e.currentTarget.value)?.id }); }}
+        >
+          <option value="">Todos</option>
+          {KINDS.map((k) => (
+            <option key={k.id} value={k.id}>{k.label}</option>
+          ))}
+        </Select>
+        <Select
+          label="Estado"
+          value={filters.status}
+          onChange={(e) => { setSalesFilters({ status: STATUSES.find((s) => s.id === e.currentTarget.value)?.id ?? 'all' }); }}
+        >
+          {STATUSES.map((s) => (
+            <option key={s.id} value={s.id}>{s.label}</option>
+          ))}
+        </Select>
+      </div>
+      {filters.productId !== undefined && (
+        <button type="button" class="text-xs text-indigo-600 dark:text-indigo-400 cursor-pointer" onClick={() => { setSalesFilters({ productId: undefined }); }}>
+          Solo tickets con el producto del ranking · quitar ✕
+        </button>
+      )}
+    </FilterToolbar>
+  );
+}
+
 export function SalesTable() {
   const list = salesListSignal.value;
-  const filters = salesFiltersSignal.value;
   const items = list?.items ?? [];
 
   return (
     <div class="space-y-4">
-      <FilterToolbar>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <Select label="Medio de pago" value={filters.method ?? ''} onChange={(e) => { setSalesFilters({ method: orUndefined(e.currentTarget.value) }); }}>
-            <option value="">Todos</option>
-            {METHODS.map((m) => (
-              <option key={m} value={m}>{methodLabel(m)}</option>
-            ))}
-          </Select>
-          <CustomerPicker id="ventas-clientes" value={filters.customerId} onChange={(customerId) => { setSalesFilters({ customerId }); }} />
-          <Select
-            label="Tipo"
-            value={filters.kind ?? ''}
-            onChange={(e) => { setSalesFilters({ kind: KINDS.find((k) => k.id === e.currentTarget.value)?.id }); }}
-          >
-            <option value="">Todos</option>
-            {KINDS.map((k) => (
-              <option key={k.id} value={k.id}>{k.label}</option>
-            ))}
-          </Select>
-          <Select
-            label="Estado"
-            value={filters.status}
-            onChange={(e) => { setSalesFilters({ status: STATUSES.find((s) => s.id === e.currentTarget.value)?.id ?? 'all' }); }}
-          >
-            {STATUSES.map((s) => (
-              <option key={s.id} value={s.id}>{s.label}</option>
-            ))}
-          </Select>
-        </div>
-        {filters.productId !== undefined && (
-          <button type="button" class="text-xs text-indigo-600 dark:text-indigo-400 cursor-pointer" onClick={() => { setSalesFilters({ productId: undefined }); }}>
-            Solo tickets con el producto del ranking · quitar ✕
-          </button>
-        )}
-      </FilterToolbar>
 
       <TableContainer>
         <div class="px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">

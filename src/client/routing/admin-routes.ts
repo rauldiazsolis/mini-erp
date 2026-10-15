@@ -438,3 +438,12 @@ export function enterUrl(userId: string, tenantSlug?: string): string {
 export function helpRequestUrl(id: string): string {
   return buildUrl({ kind: 'ayuda', requestId: id });
 }
+
+/**
+ * Cuántos filtros quedan plegados en "Filtros (n)" en el teléfono (#90): los distintos del valor por
+ * omisión, sin la búsqueda ni el rango rápido, que siguen a la vista. Desde y hasta cuentan como uno.
+ */
+export function foldedFilterCount<S extends TenantSection>(section: S, filters: FiltersOf[S]): number {
+  const keys = Object.keys(encodeFilters(section, filters)).filter((k) => k !== 'q' && k !== 'rango' && k !== 'hasta');
+  return keys.length;
+}

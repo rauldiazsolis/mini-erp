@@ -13,9 +13,22 @@ const PRESETS: Array<{ id: Exclude<RangePreset, 'custom'>; label: string }> = [
   { id: 'month', label: '30 días' },
 ];
 
+/** Hoy, ayer, 7 y 30 días: en el teléfono quedan a la vista, al lado de "Filtros" (#90). */
+export function RangePresets() {
+  const preset = rangePresetSignal.value;
+  return (
+    <div class="flex flex-wrap gap-1.5">
+      {PRESETS.map((p) => (
+        <Button key={p.id} size="sm" variant={preset === p.id ? 'primary' : 'secondary'} onClick={() => { applyPreset(p.id); }}>
+          {p.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 /** Rango de días y caja: compartidos por las cuatro solapas. */
 export function SalesRangeBar() {
-  const preset = rangePresetSignal.value;
   const range = rangeSignal.value;
   const current = registerKey(registerSignal.value);
   const options = registersSignal.value.map((r) => ({
@@ -31,13 +44,7 @@ export function SalesRangeBar() {
   return (
     <FilterToolbar>
       <div class="flex flex-col lg:flex-row lg:items-end gap-3">
-        <div class="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
-            <Button key={p.id} size="sm" variant={preset === p.id ? 'primary' : 'secondary'} onClick={() => { applyPreset(p.id); }}>
-              {p.label}
-            </Button>
-          ))}
-        </div>
+        <RangePresets />
         <div class="grid grid-cols-2 gap-3 lg:w-80">
           <Input type="date" label="Desde" value={range.from} onChange={(e) => { setCustomRange({ from: e.currentTarget.value, to: range.to }); }} />
           <Input type="date" label="Hasta" value={range.to} onChange={(e) => { setCustomRange({ from: range.from, to: e.currentTarget.value }); }} />

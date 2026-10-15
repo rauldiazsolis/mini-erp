@@ -1,3 +1,5 @@
+import { FoldedFilters } from '../ui/FoldedFilters.tsx';
+import { foldedFilterCount } from '../../routing/admin-routes.ts';
 import { canDo } from '../../state/permissions-state.ts';
 import {
   catalogSearchSignal,
@@ -10,6 +12,7 @@ import {
   fetchCatalog,
   openNewProductModal,
   setCatalogFilters,
+  catalogFiltersSignal,
 } from '../../state/catalog-state.ts';
 import { Button } from '../ui/Button.tsx';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
@@ -98,64 +101,67 @@ export function CatalogToolbar() {
 
       {/* Barra de Filtros secundarios: Categoría, Estado y Conteo */}
       <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-600 dark:text-slate-400">
-        <div class="flex flex-wrap items-center gap-2.5">
-          {/* Selector de Categorías */}
-          <div class="flex items-center gap-1.5">
-            <span class="text-slate-500 dark:text-slate-400 font-medium">Categoría:</span>
-            <select
-              value={selectedCategory}
-              onChange={(e) => { setCatalogFilters({ category: (e.target as HTMLSelectElement).value }); }}
-              class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-            >
-              <option value="all">Todas ({totalCount})</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* En el teléfono, plegados en "Filtros (n)" (#90) */}
+        <FoldedFilters id="catalog" active={foldedFilterCount('catalog', catalogFiltersSignal.value)}>
+          <div class="flex flex-wrap items-center text-xs text-slate-600 dark:text-slate-400 gap-2.5">
+            {/* Selector de Categorías */}
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-500 dark:text-slate-400 font-medium">Categoría:</span>
+              <select
+                value={selectedCategory}
+                onChange={(e) => { setCatalogFilters({ category: (e.target as HTMLSelectElement).value }); }}
+                class="px-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="all">Todas ({totalCount})</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Selector de Estado */}
-          <div class="flex items-center gap-1.5">
-            <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
-            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => { setCatalogFilters({ blocked: 'all' }); }}
-                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'all'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => { setCatalogFilters({ blocked: 'active' }); }}
-                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'active'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Activos
-              </button>
-              <button
-                type="button"
-                onClick={() => { setCatalogFilters({ blocked: 'blocked' }); }}
-                class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
-                  selectedBlocked === 'blocked'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Bloqueados
-              </button>
+            {/* Selector de Estado */}
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-500 dark:text-slate-400 font-medium">Estado:</span>
+              <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setCatalogFilters({ blocked: 'all' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    selectedBlocked === 'all'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCatalogFilters({ blocked: 'active' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    selectedBlocked === 'active'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Activos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCatalogFilters({ blocked: 'blocked' }); }}
+                  class={`px-2.5 py-1.5 sm:px-2 sm:py-0.5 rounded-md font-medium text-[11px] transition-colors cursor-pointer ${
+                    selectedBlocked === 'blocked'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Bloqueados
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </FoldedFilters>
 
         {/* Contador */}
         <div class="text-slate-500 dark:text-slate-400 font-mono text-[11px]">

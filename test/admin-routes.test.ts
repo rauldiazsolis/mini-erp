@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  foldedFilterCount,
   TENANT_SECTIONS, SECTION_TABS, PLATFORM_SECTIONS, adminUrl, buildUrl, decodeFilters, encodeFilters, parseLocation, platformUrl,
   platformTenantUrl,
   enterUrl,
@@ -113,5 +114,16 @@ describe('Rutas del admin (#59)', () => {
     expect(enterUrl('u-1', 'kiosco')).toBe('/plataforma/entrar?usuario=u-1&comercio=kiosco');
     expect(enterUrl('u-1')).toBe('/plataforma/entrar?usuario=u-1');
     expect(helpRequestUrl('help_abc')).toBe('/ayuda/help_abc');
+  });
+});
+
+describe('Filtros plegables en el teléfono (#90)', () => {
+  it('cuenta los filtros puestos, sin la búsqueda ni el rango rápido (quedan a la vista)', () => {
+    expect(foldedFilterCount('catalog', decodeFilters('catalog', { q: 'coca' }))).toBe(0);
+    expect(foldedFilterCount('catalog', decodeFilters('catalog', { categoria: 'Bebidas', estado: 'bloqueados' }))).toBe(2);
+    expect(foldedFilterCount('sales', decodeFilters('sales', { rango: 'semana' }))).toBe(0);
+    // Desde y hasta son un solo filtro
+    expect(foldedFilterCount('sales', decodeFilters('sales', { desde: '2026-10-01', hasta: '2026-10-02', caja: 'Caja 1', estado: 'anuladas' }))).toBe(3);
+    expect(foldedFilterCount('stock', decodeFilters('stock', { nivel: 'sin-stock', sucursal: 'b1' }))).toBe(2);
   });
 });

@@ -1,11 +1,14 @@
 import type { ComponentChildren } from 'preact';
+import { isPhoneSignal } from '../../state/viewport-state.ts';
 
 /**
  * Listas en el teléfono (#89): por debajo de `md`, cada fila es una tarjeta de dos renglones con lo
  * importante a la vista (el monto a la derecha), en vez de una tabla que esconde columnas al costado.
- * La tabla de siempre va en `DesktopOnly`.
+ * La tabla de siempre va en `DesktopOnly`. Se dibuja una sola de las dos (`isPhoneSignal`); las
+ * clases de Tailwind quedan de resguardo.
  */
 export function CardList(props: { children: ComponentChildren; label?: string | undefined }) {
+  if (!isPhoneSignal.value) return null;
   return (
     <ul class="md:hidden divide-y divide-slate-200 dark:divide-slate-800" aria-label={props.label}>
       {props.children}
@@ -14,6 +17,7 @@ export function CardList(props: { children: ComponentChildren; label?: string | 
 }
 
 export function DesktopOnly(props: { children: ComponentChildren }) {
+  if (isPhoneSignal.value) return null;
   return <div class="hidden md:block">{props.children}</div>;
 }
 

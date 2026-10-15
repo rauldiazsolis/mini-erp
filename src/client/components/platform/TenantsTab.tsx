@@ -1,5 +1,6 @@
 import { platformTenantsLoadingSignal, platformTenantsSignal } from '../../state/platform-panel-state.ts';
-import { routeSignal, setPlatformFilters } from '../../state/route-state.ts';
+import { navigate, routeSignal, setPlatformFilters } from '../../state/route-state.ts';
+import { CardList, CardRow, DesktopOnly } from '../ui/CardList.tsx';
 import { platformTenantUrl } from '../../routing/admin-routes.ts';
 import { formatDate } from '../../format.ts';
 import { FilterToolbar } from '../ui/FilterToolbar.tsx';
@@ -27,41 +28,62 @@ export function TenantsTab() {
         {items.length === 0 ? (
           <TableEmptyState message={platformTenantsLoadingSignal.value ? 'Cargando…' : 'Sin comercios'} />
         ) : (
-          <div class="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Comercio</Th>
-                  <Th>Titular</Th>
-                  <Th>Estado</Th>
-                  <Th>Cobro</Th>
-                  <Th class="text-right">Usuarios</Th>
-                  <Th>Alta</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {items.map((t) => (
-                  <Tr key={t.id}>
-                    <Td>
-                      <Link href={platformTenantUrl(t.slug)} class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-                        {t.name}
-                      </Link>
-                      <div class="text-[11px] text-slate-500">{t.slug}</div>
-                    </Td>
-                    <Td>{t.holder?.name ?? '—'}</Td>
-                    <Td>
+          <>
+            {/* En el teléfono, una tarjeta por comercio; tocarla abre su detalle (#89) */}
+            <CardList label="Comercios">
+              {items.map((t) => (
+                <CardRow
+                  key={t.id}
+                  onOpen={() => { navigate(platformTenantUrl(t.slug)); }}
+                  title={<span class="text-indigo-600 dark:text-indigo-400">{t.name}</span>}
+                  aside={<BillingBadge state={t.billingState} />}
+                  meta={
+                    <span class="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                       <TenantStatusBadge status={t.status} />
-                    </Td>
-                    <Td>
-                      <BillingBadge state={t.billingState} />
-                    </Td>
-                    <Td class="text-right">{t.members}</Td>
-                    <Td>{formatDate(t.createdAt)}</Td>
+                      <span>
+                        {t.holder?.name ?? 'Sin titular'} · {t.members} {t.members === 1 ? 'usuario' : 'usuarios'} · alta {formatDate(t.createdAt)}
+                      </span>
+                    </span>
+                  }
+                />
+              ))}
+            </CardList>
+            <DesktopOnly>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Comercio</Th>
+                    <Th>Titular</Th>
+                    <Th>Estado</Th>
+                    <Th>Cobro</Th>
+                    <Th class="text-right">Usuarios</Th>
+                    <Th>Alta</Th>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
+                </Thead>
+                <Tbody>
+                  {items.map((t) => (
+                    <Tr key={t.id}>
+                      <Td>
+                        <Link href={platformTenantUrl(t.slug)} class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {t.name}
+                        </Link>
+                        <div class="text-[11px] text-slate-500">{t.slug}</div>
+                      </Td>
+                      <Td>{t.holder?.name ?? '—'}</Td>
+                      <Td>
+                        <TenantStatusBadge status={t.status} />
+                      </Td>
+                      <Td>
+                        <BillingBadge state={t.billingState} />
+                      </Td>
+                      <Td class="text-right">{t.members}</Td>
+                      <Td>{formatDate(t.createdAt)}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </DesktopOnly>
+          </>
         )}
       </TableContainer>
     </div>

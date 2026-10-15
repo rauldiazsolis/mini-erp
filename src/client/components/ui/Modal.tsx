@@ -29,13 +29,15 @@ export function Modal(props: ModalProps) {
     <DialogShell
       label={props.title}
       onClose={props.onClose}
-      overlayClass="w-full h-full bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      // En el teléfono, a pantalla completa (#72): sin margen ni bordes, cabecera y pie fijos y el
+      // contenido con su scroll; desde `sm`, la tarjeta centrada de siempre
+      overlayClass="w-full h-full bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-0 sm:p-4 overflow-hidden sm:overflow-y-auto"
     >
       <div
-        class={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 ${maxWidthClass} w-full shadow-2xl transition-all relative text-slate-900 dark:text-slate-100 my-auto`}
+        class={`bg-white dark:bg-slate-900 sm:border border-slate-200 dark:border-slate-800 rounded-none sm:rounded-3xl p-4 sm:p-6 ${maxWidthClass} w-full h-dvh sm:h-auto flex flex-col sm:block shadow-2xl transition-all relative text-slate-900 dark:text-slate-100 sm:my-auto`}
       >
         {/* Cabecera del Modal */}
-        <div class="flex items-start justify-between gap-3 mb-6">
+        <div class="shrink-0 flex items-start justify-between gap-3 mb-4 sm:mb-6">
           <div class="flex items-center gap-3">
             {props.icon && (
               <div class="p-2.5 rounded-2xl bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700/80 shrink-0">
@@ -57,7 +59,7 @@ export function Modal(props: ModalProps) {
             type="button"
             onClick={props.onClose}
             aria-label="Cerrar modal"
-            class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors cursor-pointer"
+            class="p-2.5 sm:p-1.5 -mr-1 sm:mr-0 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors cursor-pointer"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -66,11 +68,11 @@ export function Modal(props: ModalProps) {
         </div>
 
         {/* Contenido */}
-        {props.children}
+        <div class="flex-1 min-h-0 overflow-y-auto sm:overflow-visible">{props.children}</div>
 
         {/* Footer si existe */}
         {props.footer && (
-          <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+          <div class="shrink-0 mt-4 sm:mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
             {props.footer}
           </div>
         )}

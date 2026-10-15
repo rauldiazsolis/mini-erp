@@ -21,24 +21,30 @@ const STATUSES: Array<{ id: DocStatus; label: string }> = [
   { id: 'voided', label: 'Anuladas' },
 ];
 
+/** Los filtros de la solapa; `SalesView` los pone con el rango y la caja (plegables en el teléfono, #90). */
+export function PaymentsFiltersBar() {
+  const filters = paymentsFiltersSignal.value;
+  return (
+    <FilterToolbar>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Select label="Medio de pago" value={filters.method ?? ''} onChange={(e) => { const v = e.currentTarget.value; setPaymentsFilters({ method: v === '' ? undefined : v }); }}>
+          <option value="">Todos</option>
+          {METHODS.map((m) => (<option key={m} value={m}>{methodLabel(m)}</option>))}
+        </Select>
+        <CustomerPicker id="cobranzas-clientes" value={filters.customerId} onChange={(customerId) => { setPaymentsFilters({ customerId }); }} />
+        <Select label="Estado" value={filters.status} onChange={(e) => { setPaymentsFilters({ status: STATUSES.find((s) => s.id === e.currentTarget.value)?.id ?? 'all' }); }}>
+          {STATUSES.map((s) => (<option key={s.id} value={s.id}>{s.label}</option>))}
+        </Select>
+      </div>
+    </FilterToolbar>
+  );
+}
+
 export function PaymentsTable() {
   const list = paymentsListSignal.value;
-  const filters = paymentsFiltersSignal.value;
   const items = list?.items ?? [];
   return (
     <div class="space-y-4">
-      <FilterToolbar>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Select label="Medio de pago" value={filters.method ?? ''} onChange={(e) => { const v = e.currentTarget.value; setPaymentsFilters({ method: v === '' ? undefined : v }); }}>
-            <option value="">Todos</option>
-            {METHODS.map((m) => (<option key={m} value={m}>{methodLabel(m)}</option>))}
-          </Select>
-          <CustomerPicker id="cobranzas-clientes" value={filters.customerId} onChange={(customerId) => { setPaymentsFilters({ customerId }); }} />
-          <Select label="Estado" value={filters.status} onChange={(e) => { setPaymentsFilters({ status: STATUSES.find((s) => s.id === e.currentTarget.value)?.id ?? 'all' }); }}>
-            {STATUSES.map((s) => (<option key={s.id} value={s.id}>{s.label}</option>))}
-          </Select>
-        </div>
-      </FilterToolbar>
       <TableContainer>
         <div class="px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
           {list === null ? 'Cargando…' : `${countLabel(list.count, 'cobranza', 'cobranzas')} · Total neto ${formatMoney(list.netTotal)}`}

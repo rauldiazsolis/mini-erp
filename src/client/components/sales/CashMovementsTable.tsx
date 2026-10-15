@@ -21,26 +21,32 @@ function concept(m: CashMovementItem): string {
     : `${m.concept} (esperado ${formatMoney(m.count.expected)}, contado ${formatMoney(m.count.counted)})`;
 }
 
+/** Los filtros de la solapa; `SalesView` los pone con el rango y la caja (plegables en el teléfono, #90). */
+export function MovementsFiltersBar() {
+  const filters = movementsFiltersSignal.value;
+  return (
+    <FilterToolbar>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Select label="Tipo" value={filters.direction ?? ''} onChange={(e) => { const v = e.currentTarget.value; setMovementsFilters({ direction: v === 'in' || v === 'out' ? v : undefined }); }}>
+          <option value="">Ingresos y egresos</option>
+          <option value="in">Ingresos</option>
+          <option value="out">Egresos</option>
+        </Select>
+        <Select label="Origen" value={filters.source ?? ''} onChange={(e) => { const v = e.currentTarget.value; setMovementsFilters({ source: v === 'manual' || v === 'count-adjustment' ? v : undefined }); }}>
+          <option value="">Todos</option>
+          <option value="manual">Manuales</option>
+          <option value="count-adjustment">Ajustes por arqueo</option>
+        </Select>
+      </div>
+    </FilterToolbar>
+  );
+}
+
 export function CashMovementsTable() {
   const list = movementsListSignal.value;
-  const filters = movementsFiltersSignal.value;
   const items = list?.items ?? [];
   return (
     <div class="space-y-4">
-      <FilterToolbar>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Select label="Tipo" value={filters.direction ?? ''} onChange={(e) => { const v = e.currentTarget.value; setMovementsFilters({ direction: v === 'in' || v === 'out' ? v : undefined }); }}>
-            <option value="">Ingresos y egresos</option>
-            <option value="in">Ingresos</option>
-            <option value="out">Egresos</option>
-          </Select>
-          <Select label="Origen" value={filters.source ?? ''} onChange={(e) => { const v = e.currentTarget.value; setMovementsFilters({ source: v === 'manual' || v === 'count-adjustment' ? v : undefined }); }}>
-            <option value="">Todos</option>
-            <option value="manual">Manuales</option>
-            <option value="count-adjustment">Ajustes por arqueo</option>
-          </Select>
-        </div>
-      </FilterToolbar>
       <TableContainer>
         <div class="px-4 py-3 text-sm font-semibold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
           {list === null ? 'Cargando…' : `${countLabel(list.count, 'movimiento', 'movimientos')} · Neto ${formatMoney(list.netTotal)}`}
