@@ -80,6 +80,9 @@ Claude Code y con Antigravity IDE); donde un agente hace algo distinto, se dice.
   "Closes #N" (GitHub no reconoce "Cierra"); después del merge se verifica que se haya cerrado, se
   tilda el epic y un epic con todo tildado se cierra. "Estado" y "Pendiente", al final de este
   archivo, se actualizan en el mismo PR.
+- **README al día**: todo PR revisa el `README.md` de la raíz y lo actualiza en el mismo PR si cambia
+  algo de lo que cuenta (qué hace el producto, el estado, los comandos, las versiones, los requisitos
+  o la documentación). Es parte de lo que se revisa antes de abrir el PR, como "Pendiente".
 - **Dependencias**: con opciones equivalentes, la que tenga menos dependencias propias
   (`npm view <paquete> dependencies`).
 - **Commits**: mensajes convencionales en español (`feat:`, `fix:`, `docs:`, `build:`, `ci:`,
