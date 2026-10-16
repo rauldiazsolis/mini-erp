@@ -1,105 +1,38 @@
-# Plan Maestro de Desarrollo: mini-erp
+# Historia del mini-erp
 
-Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cálculo (Excel/Sheets), gestión de catálogo, clientes, stock y cuentas corrientes.
+Qué trajo cada fase y cada etapa, en orden. Es un archivo: cuenta **cómo** se llegó a lo que hay y
+puede tener datos que ya no son ciertos (versiones del contrato, el registro abierto, `api_keys`
+sueltas). Para trabajar, manda [`AGENTS.md`](../AGENTS.md); el detalle de cada etapa desde M2 está en
+su spec (`docs/superpowers/specs/`) y su plan, en el historial de git.
 
----
+Hasta el 2026-10-16 se llamaba `PLAN.md` y estaba en la raíz. Empezó como el plan maestro de cuando
+el mini-erp vivía en `mini-erp/` dentro de offline-pos, en la rama `mini-erp`, con el primer usuario
+registrado como `root` y el contrato 4.2.0; nada de eso sigue así (ver "Arquitectura" en
+`AGENTS.md`).
 
-## 1. Principios y Restricciones de Arquitectura
+## Mapa
 
-- **Aislamiento de código**: Todo el desarrollo de este proyecto vive exclusivamente dentro del directorio `mini-erp/`. No se modificará ningún archivo del resto del repositorio.
-- **Branch**: Todo el trabajo se realiza sobre la rama `mini-erp`.
-- **TypeScript Ultra-Estricto**:
-  - `noImplicitAny: true` y `any` completamente prohibido.
-  - `unknown` solo permitido en las fronteras de entrada e inmediatamente validado con schemas de **Zod**.
-  - Funciones de dominio tipadas explícitamente.
-- **Autenticación Autónoma**:
-  - Sin credenciales de servicios externos (ni Firebase, ni proveedores OAuth de terceros para arrancar).
-  - El primer usuario registrado se convierte automáticamente en `root`.
-  - Soporte de roles: `root`, `support`, `owner` de tenant, `member` de tenant.
-  - Capacidad de impersonación para `root` y `support`.
-- **Base de Datos**:
-  - **DB-per-tenant** con SQLite.
-  - `data/system.sqlite`: Usuarios, tenants, membresías, roles globales, API keys de terminales.
-  - `data/tenants/<tenantId>.sqlite`: Catálogo de productos, stock por sucursales, clientes, movimientos de cuenta corriente, ventas, lotes de sincronización e idempotencia.
-  - Soporte de estado `maintenance` en `GET /info` durante migraciones.
-- **Contrato POS**:
-  - Cumplimiento 100% de la especificación **Connector API 4.2.0** (desde la Etapa 6 del epic #94 del POS; 4.1.0 desde la Etapa 5, antes 4.0.0) (`connector-api.openapi.yaml`).
-  - Terminales autenticadas con `Authorization: Bearer <tenant_api_key>` que resuelven el `tenantId`, `branch` y `pointOfSale`.
-  - El backend nunca rechaza de forma síncrona el contenido de un lote de push (ack de recepción con lote encolado y procesamiento posterior).
-
----
-
-## 2. Mapa de Fases
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ FASE 1: Core del Backend, Multitenancy & Connector API v4.0.0          │
-│   • Base del servidor Express + TypeScript estricto.                   │
-│   • Motor DB-per-tenant SQLite + System DB.                            │
-│   • Auth autónoma (registro, login, roles, impersonación, API Keys).   │
-│   • Connector API v4.0.0 completo (Info, Push, Pull, Account Holds).   │
-│   • Verificación TDD y conexión exitosa con el POS.                    │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 2: API de Gestión del ERP (Admin Business Core)                   │
-│   • Endpoints para catálogo y precios.                                 │
-│   • Stock multi-sucursal y ajustes con auditoría (Kardex).             │
-│   • Clientes, cuentas corrientes y ajustes de saldo transparentes.     │
-│   • Operaciones masivas: actualización de precios y cálculo intereses. │
-│   • Importación / Exportación CSV y JSON con datos semilla.            │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 3: Frontend Admin & Dashboard [COMPLETADA]                        │
-│   • App shell, navegación, selector de tenant, impersonación.          │
-│   • Dashboard principal con métricas clave y drill-down.               │
-│   • Wizard de onboarding para nuevos tenants.                          │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 4: Grillas Tipo Excel/Sheets y Gestión Integral [COMPLETADA]      │
-│   • Grilla interactiva de Catálogo y Precios inline.                   │
-│   • Grilla matricial de Stock por Sucursal y Kardex auditado.          │
-│   • Gestión de Clientes, Cuentas Corrientes y Cobranzas.               │
-│   • Operaciones Masivas (precios, intereses, import/export).           │
-│   • Configuración, sucursales y API Keys para terminales POS.          │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 5: Refactoring de Backend con IoC (Hardwired) [PRÓXIMA]           │
-│   • Instalación y fijación estricta de hardwired@1.6.2.                │
-│   • Definiciones del contenedor con storage SQLite unbound por tenant. │
-│   • Inyección de servicios scopeados por request en Express.           │
-│   • Blindaje hermético multitenant y 144 tests en verde.               │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 6: Pruebas End-to-End y Sincronización en Vivo [COMPLETADA]       │
-│   • Conexión real del POS (src/) con Mini-ERP (localhost:4100).        │
-│   • Ciclo de vida completo: pull, ventas offline, holds y push.        │
-│   • Auditoría bidireccional de stock, cuentas corrientes y dashboard.  │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 8: Estrictez de TypeScript y Zod [COMPLETADA]                     │
-│   • TypeScript 6 con las mismas opciones estrictas que offline-pos.    │
-│   • Los siete eventos del push validados con Zod.                      │
-│   • Lint de hooks y prohibición de preact/hooks.                       │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│ FASE 9: Demo y alta con el POS publicado 0.1.0 [COMPLETADA]            │
-│   • Landing en / con "Probar la demo"; admin en /admin, alta en /alta. │
-│   • POST /demo-sessions: demos aisladas con vencimiento y barrido.     │
-│   • El alta vuelve al POS con #connect; CORS y red privada.            │
-│   • POS híbrido: copia local del publicado en dev; e2e con Playwright. │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph F["Fases (en offline-pos y después en este repo)"]
+    direction LR
+    F1["1 · Núcleo multitenant<br/>y Connector API"] --> F2["2 · API de gestión"] --> F3["3 · Admin y dashboard"] --> F4["4 · Grillas"]
+    F4 --> F5["5 · IoC con Hardwired"] --> F6["6 · Sync en vivo<br/>con el POS"] --> F7["7 · Temas"] --> F8["8 · TypeScript<br/>estricto y Zod"]
+    F8 --> F9["9 · Demo y alta con<br/>el POS publicado"] --> F10["10 · Deploy público<br/>mini.contax.ar"]
+  end
+  subgraph H1["MVP de mini contax · hito 1: un comercio conocido que paga"]
+    direction LR
+    M1["M1 · Marca"] --> M2["M2 · Roles e<br/>invitaciones"] --> M3["M3 · Contrato 4.4"] --> M4["M4 · Ventas y caja"] --> M5["M5 · Créditos<br/>y cobro"] --> M6["M6 · Importación"]
+  end
+  subgraph H2["Hito 2: un comercio desconocido, sin ayuda"]
+    direction LR
+    M7["M7 · Plataforma e<br/>impersonación"] --> M8["M8 · Demos v2"] --> M10["M10 · Portal"] --> M9["M9 · Embudo"] --> M11["M11 · Relevamiento<br/>(pendiente)"]
+  end
+  F10 --> M1
+  M6 --> M7
 ```
 
----
-
-## 3. Detalle de Etapas: FASE 1
+## Detalle de Etapas: FASE 1
 
 ### Etapa 1.1: Scaffolding y Entorno
 - Configuración de `package.json` propio en `mini-erp/` con scripts (`dev`, `build`, `test`, `typecheck`).
@@ -143,7 +76,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 4. Detalle de Etapas: FASE 2 (Admin Business Core)
+## Detalle de Etapas: FASE 2 (Admin Business Core)
 
 ### Etapa 2.1: Catálogo, Precios y Sucursales
 - CRUD completo de sucursales (`/branches`) con validación de código único.
@@ -180,7 +113,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 5. Detalle de Etapas: FASE 3 (Frontend Admin & Dashboard) [COMPLETADA]
+## Detalle de Etapas: FASE 3 (Frontend Admin & Dashboard) [COMPLETADA]
 
 ### Etapa 3.1: Scaffolding Frontend & Reactividad Base
 - Preact + Preact Signals puro (`@preact/signals`) integrado en Vite con Tailwind CSS v4.
@@ -200,7 +133,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 6. Detalle de Etapas: FASE 4 (Grillas Interactivas de Gestión) [COMPLETADA]
+## Detalle de Etapas: FASE 4 (Grillas Interactivas de Gestión) [COMPLETADA]
 
 ### Etapa 4.1: Catálogo & Precios (Grilla Sheets)
 - Búsqueda en vivo, filtro por categoría, badges de estado (activo/bloqueado), edición inline ágil de precios/costos.
@@ -226,7 +159,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 7. Detalle de Etapas: FASE 5 (Refactoring Backend IoC con Hardwired) [COMPLETADA]
+## Detalle de Etapas: FASE 5 (Refactoring Backend IoC con Hardwired) [COMPLETADA]
 
 ### Objetivos:
 - Blindar el aislamiento multitenant y erradicar cualquier posibilidad de fuga de datos (*tenant isolation leakage*) entre tenants mediante Inversión de Control funcional y tipado estricto con Hardwired 1.6.2.
@@ -267,7 +200,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 8. Detalle de Etapas: FASE 6 (Pruebas End-to-End y Sincronización en Vivo) [COMPLETADA]
+## Detalle de Etapas: FASE 6 (Pruebas End-to-End y Sincronización en Vivo) [COMPLETADA]
 
 ### Objetivos:
 - Conexión real del frontend POS (`src/`) apuntando al Mini-ERP (`http://localhost:4100/connector`).
@@ -298,7 +231,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 9. Detalle de Etapas: FASE 7 (Sistema de Temas UI: Modo Claro, Oscuro y Heredado) [COMPLETADA]
+## Detalle de Etapas: FASE 7 (Sistema de Temas UI: Modo Claro, Oscuro y Heredado) [COMPLETADA]
 
 ### Objetivos:
 - Soporte para tres modos de visualización:
@@ -338,7 +271,7 @@ Backend Multitenant + Mini-ERP para `offline-pos` con editores tipo hoja de cál
 
 ---
 
-## 10. Detalle de Etapas: FASE 8 (Estrictez de TypeScript y Zod) [COMPLETADA]
+## Detalle de Etapas: FASE 8 (Estrictez de TypeScript y Zod) [COMPLETADA]
 
 Etapa 3 del epic rauldiazsolis/offline-pos#161 (issue #1). El plan quedó en
 el historial de git (`docs/superpowers/plans/2026-09-29-estrictez-typescript-zod.md`).
@@ -352,7 +285,7 @@ el historial de git (`docs/superpowers/plans/2026-09-29-estrictez-typescript-zod
 - `eslint-plugin-react-hooks` y `no-restricted-imports` de `preact/hooks`, `preact/compat` y `react`.
 - **217 tests pasando en verde** en 27 suites; `tsc --noEmit` en 0 errores; build de Vite OK.
 
-## 11. Detalle de Etapas: FASE 9 (Demo y alta con el POS publicado 0.1.0) [COMPLETADA]
+## Detalle de Etapas: FASE 9 (Demo y alta con el POS publicado 0.1.0) [COMPLETADA]
 
 Issue #9, primer paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
 `docs/superpowers/specs/2026-09-30-demo-y-alta-pos-publicado-design.md`; el plan quedó en el historial
@@ -379,7 +312,7 @@ de git (`docs/superpowers/plans/2026-09-30-demo-y-alta-pos-publicado.md`).
   la demo. El navegador integrado de la app de Claude no sirve para esto: bloquea sin preguntar que
   una página pública llame a la red local (`net::ERR_BLOCKED_BY_CLIENT`).
 
-## 12. Detalle de Etapas: FASE 10 (Deploy público) [COMPLETADA]
+## Detalle de Etapas: FASE 10 (Deploy público) [COMPLETADA]
 
 Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166). Spec en
 `docs/superpowers/specs/2026-09-30-deploy-publico-design.md`; el plan quedó en el historial de git
@@ -402,7 +335,7 @@ Issue #3, segundo paso del cierre del MVP del POS (rauldiazsolis/offline-pos#166
 - Origen del POS configurable (`POS_URL` en GitHub → `VITE_POS_URL` al compilar): mudar el POS a
   `pos.contax.ar` es cambiar la variable y correr el deploy, sin tocar código ni la terminal.
 
-## 13. MVP de mini contax: M1 (Marca y limpieza) [COMPLETADA]
+## MVP de mini contax: M1 (Marca y limpieza) [COMPLETADA]
 
 Issue #18 del epic #17. Spec del MVP en `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`;
 el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m1-marca-y-limpieza.md`).
@@ -416,7 +349,7 @@ el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m1-mar
   fórmula del POS y líneas manuales agrupadas; el historial simulado de las demos sigue el contrato.
 - Cambiar un filtro del dashboard pide una sola vez el resumen (#7).
 
-## 14. MVP de mini contax: M2 (Roles de comercio e invitaciones) [COMPLETADA]
+## MVP de mini contax: M2 (Roles de comercio e invitaciones) [COMPLETADA]
 
 Issue #19 del epic #17. Spec en `docs/superpowers/specs/2026-10-01-m2-roles-invitaciones-design.md`;
 el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m2-roles-invitaciones.md`).
@@ -433,3 +366,30 @@ el plan quedó en el historial de git (`docs/superpowers/plans/2026-10-01-m2-rol
   `POST /api/tenants` y `/seed-preset`.
 - Esquema de sistema 4 sin migraciones: producción se reinicia al publicar la 0.3.0
   (`deploy/README.md`, "Reiniciar producción").
+
+## Después de M2
+
+Cada etapa tiene su spec en `docs/superpowers/specs/` y su detalle vigente en `AGENTS.md`.
+
+| Etapa | Qué trajo | PR | Versión |
+|---|---|---|---|
+| Arreglos | Mínimo de contraseña de `create-root` y aviso al cambiar de comercio | #46 | 0.3.1 |
+| Migraciones (#47) | Migraciones de esquema por tipo de base, copia previa y arranque en modo mantenimiento | #48 | 0.4.0 |
+| Publicación (#49) | `pnpm release:tag` para crear el tag de una versión | #50 | — |
+| M3 (#2) | Contrato 4.4.0: anulación de cobranzas, `notices` en el pull y discrepancias | #52 | 0.5.0 |
+| M4 (#20) | Ventas & Caja: consultas, resumen por caja y día argentino, drill-down del dashboard | #53 | 0.6.0 |
+| M5 (#21) | Créditos y cobro: cajas con equipo ligado, cargos por caja y día, pagados, regalados, deuda y gracia | #57 | 0.7.0 |
+| M6 (#22) | Importación CSV con mapeo de columnas y carga inicial en el alta (WhatsApp y rubro) | #61 | 0.8.0 |
+| Canal del POS (#58, #38) | El POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0 (`company`) | #62 | 0.9.0 |
+| Contrato 4.6.0 (#63) | `Retry-After` expuesto por CORS y `ErrorBody` (el portal llegó con M10) | #64 | 0.10.0 |
+| Formato (#51) | Fechas, horas y montos según el navegador | #66 | 0.10.1 |
+| Router (#59, #55) | Una URL por pantalla, TanStack Query y "Uso y pagos" con bonos | #69 | 0.11.0 |
+| Modales (#56) | Modales y drawers en la top layer con `<dialog>` | #73 | 0.11.1 |
+| Zod 4 (#6) | Zod 4 con mensajes en castellano y `@types/node` 24 | #76 | 0.11.2 |
+| M7a (#23) | Panel de plataforma, suspensión de comercios, cuentas desactivadas y soporte por invitación | #78 | 0.12.0 |
+| M7b (#23, #16) | Impersonación por pestaña, root y soporte sin membresía y pedidos de ayuda | #79 | 0.13.0 |
+| M8 (#24) | Demos v2: un comercio por rubro, una caja por visitante, reinicios y el portal de la demo | #80 | 0.14.0 |
+| Plataforma (#81) | Las secciones en el menú lateral en lugar de solapas | #83 | 0.14.1 |
+| M10 (#26) | Portal: "mi caja" de solo consulta desde el POS con `/MINI` | #84 | 0.15.0 |
+| M9 (#25) | Embudo de punta a punta: visitantes, contactos, secciones Embudo y Visitantes | #85 | 0.16.0 |
+| El admin en el teléfono (#86 a #91, #72) | Cursor y toque, cabecera, listas por tramos con scroll infinito, tarjetas, filtros plegables y diálogos a pantalla completa | #92 | 0.16.1 y 0.17.0 |
