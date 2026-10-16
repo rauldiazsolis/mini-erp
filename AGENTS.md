@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Reglas para trabajar en este repo. Cada decisión nueva de arquitectura o de convención se anota acá
-en el mismo trabajo que la toma. La historia de las fases está en [`PLAN.md`](./PLAN.md).
+en el mismo trabajo que la toma. La historia de las fases y etapas está en
+[`docs/historia.md`](./docs/historia.md).
 
 ## Qué es esto
 
@@ -43,26 +44,27 @@ rauldiazsolis/offline-pos#161); la historia de esa carpeta se conservó al mudar
 
 ## Cómo trabajamos
 
-Las mismas convenciones que offline-pos. Valen para cualquier agente (en este repo se trabaja con
+**Las mismas convenciones que offline-pos** ("Cómo trabajamos" de su `AGENTS.md`): un cambio acá se
+copia allá en el mismo trabajo, y viceversa. Valen para cualquier agente (en este repo se trabaja con
 Claude Code y con Antigravity IDE); donde un agente hace algo distinto, se dice.
 
 - **Idioma**: todo en español (respuestas, specs, planes, commits, comentarios e issues), aunque el
   pedido o las instrucciones de una herramienta vengan en inglés.
 - **Plan antes de codear**: un trabajo de varios pasos arranca con un brainstorming (opciones,
   impacto en la arquitectura, casos de borde, etapas verificables con su criterio de aceptación) y un
-  plan que el usuario revisa y aprueba. Nada de código antes de esa aprobación. El plan se ejecuta
-  **tarea por tarea**, en la misma conversación: al terminar cada tarea se verifica y se frena para
-  que el usuario la revise antes de seguir (en Claude Code, con `superpowers:executing-plans`; nunca
-  un subagente por tarea). Specs y planes en `docs/superpowers/`. **El plan se borra en el PR que
-  cierra la etapa** (queda en el historial de git); la spec queda, porque explica las decisiones.
+  plan que el usuario revisa y aprueba. Nada de código antes de esa aprobación. El plan se ejecuta en
+  la misma conversación (en Claude Code, con `superpowers:executing-plans`; nunca un subagente por
+  tarea), con el ritmo de "Desde el escritorio o desde el celular". Specs y planes en
+  `docs/superpowers/`. **El plan se borra en el PR que cierra la etapa** (queda en el historial de
+  git); la spec queda, porque explica las decisiones.
 - **Informe final con prueba manual**: al terminar, un informe con instrucciones paso a paso de qué
-  hacer en la UI (o con `curl`) y qué se debería ver. La prueba la hace el usuario.
+  hacer en la UI (o con `curl`) y qué se debería ver.
 - **Revisión sin cambios**: en una revisión no se toca código salvo pedido explícito en el momento; las
   observaciones se anotan como issues. Contestar una pregunta de alcance no es la luz verde para
-  implementar: esa es aparte y explícita.
-- **Ramas y PR**: cada etapa en su rama (`claude/<tema>`, `antigravity/<tema>`, etc.), con commits
-  chicos verificados localmente. El PR se abre al terminar la etapa, después de la revisión, y se
-  mergea con **merge commit**, nunca squash.
+  implementar: esa es aparte y explícita ("dale, implementá").
+- **Ramas y PR**: cada etapa en su rama, con commits chicos verificados localmente (ver
+  "Verificación"). El PR se abre al terminar la etapa, después de la revisión, y se mergea con
+  **merge commit**, nunca squash.
 - **Quién commitea depende del agente**:
   - **Antigravity IDE: el agente nunca ejecuta `git commit` ni `git push`** (tampoco abre ni mergea
     PR). Al terminar cada tarea verificada, se detiene y sugiere el commit: el comando con el
@@ -75,11 +77,30 @@ Claude Code y con Antigravity IDE); donde un agente hace algo distinto, se dice.
   `feature:transversal`, y las que hagan falta) y `backlog` (se prioriza después de lo ya diseñado).
   El cuerpo alcanza para arrancar una sesión nueva sin más contexto.
 - **El agente mantiene los issues** (el usuario no los edita a mano): en el cuerpo del PR va
-  "Closes #N" (GitHub no reconoce "Cierra"); después del merge se verifica que se haya cerrado.
+  "Closes #N" (GitHub no reconoce "Cierra"); después del merge se verifica que se haya cerrado, se
+  tilda el epic y un epic con todo tildado se cierra. "Estado" y "Pendiente", al final de este
+  archivo, se actualizan en el mismo PR.
 - **Dependencias**: con opciones equivalentes, la que tenga menos dependencias propias
   (`npm view <paquete> dependencies`).
 - **Commits**: mensajes convencionales en español (`feat:`, `fix:`, `docs:`, `build:`, `ci:`,
   `test:`, `refactor:`).
+
+### Desde el escritorio o desde el celular
+
+El usuario trabaja de dos maneras, y el proceso cambia un poco. Lo de arriba vale siempre; esto es
+lo que cambia.
+
+| | Escritorio | Celular |
+|---|---|---|
+| Dónde corre el agente | Claude Code o Antigravity IDE en la compu del usuario, con Windows y PowerShell | Claude Code en la nube, desde la app de Claude: un contenedor Linux que se descarta al terminar la sesión |
+| Rama | Una por etapa: `claude/<tema>`, `antigravity/<tema>` | La que fija la sesión (`ccr-…` o `claude/…-<sufijo>`); no se renombra |
+| Ritmo del plan | Tarea por tarea: al terminar cada una se verifica y se frena para que el usuario la revise | Por bloques más grandes (varias tareas seguidas), con un informe corto entre bloques, legible en el teléfono |
+| Commit y push | Commit por tarea (Antigravity solo lo sugiere); push cuando conviene | Commit **y push** al cerrar cada tarea: el contenedor puede reciclarse y lo no subido se pierde |
+| Prueba manual | El usuario prueba en su navegador con `pnpm dev` | El agente corre el e2e y le manda **capturas** de Playwright de lo que cambió (Chromium ya está en el contenedor; no se corre `playwright install`). La prueba del usuario queda para cuando esté en el escritorio o, si es urgente, después del deploy |
+| Informe final | Completo, con la prueba manual paso a paso | Igual de completo, pero con lo que el usuario tiene que hacer o decidir arriba de todo; la prueba manual, marcada como pendiente para el escritorio |
+
+En los dos casos: el plan se aprueba antes de codear, el PR se abre recién al terminar la etapa y el
+CI no se espera ni se lee.
 
 ## Verificación
 
@@ -215,7 +236,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **IoC con Hardwired 1.6.2** (versión exacta): servicios por request con
   `req.tenantScope.use(serviceDef)`; nunca `new Service()` para un servicio de tenant. La base del
   tenant es `unbound` (`tenantDbDef`): resolverla desde el contenedor raíz falla a propósito, para
-  que no haya fugas entre tenants. Detalle en `src/server/di/container.ts` y la Fase 5 de `PLAN.md`.
+  que no haya fugas entre tenants. Detalle en `src/server/di/container.ts` y la Fase 5 de `docs/historia.md`.
 - **Connector API** bajo `/connector`:
   - Push validado con Zod al aplicarse, en `src/server/connector/push-events.ts`: los siete tipos
     de evento validan lo que el mini-erp lee y dejan pasar el resto (`z.looseObject`); los enums
@@ -497,6 +518,22 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `index.html` y `ThemeToggle.tsx` en `Header.tsx`, `AuthView.tsx`, `MerchantOnboardingView.tsx`
     y la solapa Apariencia de configuración (`AppearanceSection.tsx`).
   - Componentes propios estilo shadcn, sin librerías de UI externas innecesarias.
+  - **El admin en el teléfono** (#86 a #91, PR #92; `e2e/mobile-layout.spec.ts`):
+    - Por debajo de `md` (768 px, `PHONE_QUERY`) es teléfono: `isPhoneSignal`
+      (`state/viewport-state.ts`) decide qué se dibuja, **una sola** de las dos vistas, nunca las dos
+      con una escondida por CSS.
+    - Listas: en el teléfono, `CardList` con `CardRow` (dos renglones, el monto a la derecha); en
+      escritorio, la tabla dentro de `DesktopOnly` (`components/ui/CardList.tsx`).
+    - Filtros: `FoldedFilters` los pliega en un botón "Filtros (n)" que abre un panel; en escritorio se
+      ven como siempre. Por debajo de `sm`, los modales ocupan la pantalla entera.
+    - **Sin paginación**: las listas limitadas (productos, clientes, stock) se bajan enteras y se
+      dibujan de a tramos de 100 (`createRenderWindow`, `state/render-window.ts`); las que crecen sin
+      límite (ventas, cobranzas y caja, cargos de uso y pagos, cuenta corriente, kardex, usuarios de
+      la plataforma) se piden por tramos con un cursor (`after`; `createTenantInfiniteQuery` en
+      `state/query-keys.ts`, sobre `createSignalInfiniteQuery` de `api/query-client.ts`). En las dos, el final de la
+      lista es un `InfiniteSentinel`, que pide el tramo siguiente al acercarse y también es un
+      botón "Cargar más". Ninguna lista corta en silencio.
+    - Todo lo accionable tiene el cursor de mano y respuesta al toque (`test/pointer-cursor.test.ts`).
   - **Modales y drawers en la top layer** (#56, spec `docs/superpowers/specs/2026-10-04-modales-top-layer-design.md`):
     todo overlay va por `Modal` o `Drawer`, que se abren con `<dialog>` y `showModal()`
     (`ui/DialogShell.tsx`, de clase, sin hooks). Ningún contenedor los recorta (un `Card` con
@@ -556,26 +593,27 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 
 ## Estado
 
-Fases 1 a 10 hechas (núcleo multitenant, API de gestión, admin, grillas, IoC, sync en vivo con el POS,
-temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado, deploy público): detalle en
-`PLAN.md`.
+**Publicado** en https://mini.contax.ar, en la versión de `package.json` (hoy `0.17.0`), contra el
+POS de `https://pos.contax.ar/v4/`. Fases 1 a 10 (núcleo multitenant, API de gestión, admin, grillas,
+IoC, sync en vivo con el POS, temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado,
+deploy público) y, del **MVP de mini contax** (epic #17, spec
+`docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`), M1 a M10: detalle de cada una en
+`docs/historia.md`. Después de M9 llegó el admin usable en el teléfono (PR #92).
 
-Sigue el **MVP de mini contax** (epic #17, definido el 2026-10-01): la spec
-`docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md` tiene las decisiones de producto
-(roles y accesos anónimos, demos, funnel, carga inicial, créditos y cobro, ventas y caja, marca) y
-las etapas en orden. Hito 1 (un comercio conocido que paga): M1 marca (#18, hecha), M2 roles e invitaciones
-(#19, hecha), M3 contrato 4.4.0 (#2, hecha), M4 ventas y caja (#20, hecha), M5 créditos (#21,
-hecha) y M6 importación (#22, hecha).
-Antes de M7, en este orden (#17): el POS en el canal `/v4/`, `POS_URL` por omisión y contrato 4.5.0
-(#58 con #38, hecha), la parte chica del contrato 4.6.0 (#63, hecha; el portal llegó con M10, #26), formato según el navegador (#51,
-hecha), router y TanStack Query (#59, hecha, con #55: "Uso y pagos" y bonos), modales y drawers en la
-top layer (#56, hecha) y Zod 4 con @types/node 24 (#6, hecha).
-Hito 2 (un comercio desconocido, sin ayuda): M7 a M11 (#23 a #27). M7 fue en dos PR: M7a (panel de
-plataforma, suspensión, cuentas desactivadas y soporte por invitación, hecha) y M7b (impersonación de
-usuario por pestaña, root y soporte sin membresía implícita, #16, y pedidos de ayuda, hecha). M8
-(#24, hecha): demos v2 con un comercio por rubro, una caja por visitante, reinicios y el portal
-adelantado de M10 con el acceso anónimo de la demo. M10 (#26, hecha): el portal de las cajas reales,
-"mi caja" de solo consulta desde `/MINI`. M9 (#25, hecha): el embudo de punta a punta, con el id de
-visitante, los contactos y las secciones Embudo y Visitantes. Sigue M11 (#27). La parte del POS está en el epic rauldiazsolis/offline-pos#182. Cada etapa empieza con su propio brainstorming de detalle.
+**Siguiente**: M11 (#27), relevamiento por escaneo y base global de productos, el último del hito 2
+(un comercio desconocido, sin ayuda); empieza con su brainstorming. La parte del POS del MVP (epic
+rauldiazsolis/offline-pos#182) está completa.
 
-En backlog, entre otros: lo que quedó afuera del MVP (#28 a #36).
+### Pendiente
+
+La lista completa, siempre al día, está en
+[los issues abiertos](https://github.com/rauldiazsolis/mini-erp/issues).
+
+- **MVP**: #27 (M11) y el epic #17.
+- **`backlog`, transversal**: #65 (12 o 24 horas en el admin), #70 (confirmar antes de descartar un
+  formulario), #74 (idioma de la validación), #75 (formularios con los esquemas Zod compartidos), #77
+  (`busy_timeout` de SQLite), #82 (e2e: demo-onboarding se cruza con demo-v2).
+- **`backlog`, producto** (lo que quedó afuera del MVP): #28 (mail transaccional), #29 (verificar el
+  WhatsApp), #30 (regalos por escala), #31 (Mercado Pago), #32 (deuda: dejar de procesar lotes), #33
+  (importar .xlsx), #34 (Open Food Facts), #35 (renombrar a mini-contax), #36 (permisos por usuario),
+  #60 (historial de ejemplo), #67 (fechas del gráfico del dashboard).
