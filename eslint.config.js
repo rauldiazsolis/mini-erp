@@ -57,5 +57,14 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // Migración a PostgreSQL, fase 2: las firmas del acceso a datos ya son async aunque el cuerpo siga
+    // síncrono sobre node:sqlite. Se vuelve a evaluar en la fase 5, con todo sobre Kysely. Los await
+    // olvidados los atrapan no-floating-promises y no-misused-promises, que siguen prendidas.
+    files: ['src/server/**/*.ts', 'scripts/**/*.ts', 'test/**/*.ts', 'test/**/*.tsx', 'e2e/**/*.ts'],
+    rules: {
+      '@typescript-eslint/require-await': 'off',
+    },
+  },
   eslintConfigPrettier,
 ]);
