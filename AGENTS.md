@@ -156,6 +156,38 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   equivocado", `error: (iss) => (iss.input === undefined ? … : …)`). Idioma configurable: #74;
   formularios del admin con los esquemas compartidos: #75.
 
+## Persistencia: de SQLite a PostgreSQL con Kysely (propuesta, sin aprobar)
+
+Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`.
+Mientras dure la migración, lo de SQLite que sigue más abajo describe el código que todavía no se
+migró; al cerrar la última fase se reemplaza por esta sección. Las reglas valen para todo código
+nuevo sobre PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir.
+
+- **Un esquema por comercio**: una sola base, con `system` para lo global y `tenant_<id>` por
+  comercio. El nombre sale solo de `tenantSchemaName(id)`, que valida el id.
+- **Los servicios reciben su Kysely ya acotado**: uno de comercio recibe `Kysely<TenantDatabase>`
+  del scope de Hardwired (`tenantDbDef`, `unbound`); nunca el pool, un nombre de esquema ni un
+  `tenant_id` para filtrar. `withSchema` se llama en un solo archivo (test).
+- **SQL crudo sin nombres de tabla**: dentro de `sql` una tabla va con `sql.table()` o `sql.ref()`,
+  porque `withSchema` no alcanza a un nombre escrito a mano (test).
+- **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
+  `no-misused-promises`). Un handler de Express es `async` y deja que el error suba.
+- **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
+  pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
+- **Columnas explícitas**: sin `.selectAll()`, `SELECT *` ni `returningAll()` en `src/server` (test).
+- **Migraciones Expand & Contract**:
+  - Una columna nueva es nullable o tiene un `DEFAULT` constante; nunca `NOT NULL` sin default.
+  - Renombrar o borrar va en dos versiones: primero se deja de usar, después se quita.
+  - Un índice sobre una tabla con datos se crea con `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, en
+    una migración `transactional: false`: el runner la corre fuera de una transacción y tiene que
+    poder repetirse.
+  - `up` no abre transacciones ni depende de datos de fuera de su esquema. La línea de base no se
+    toca.
+- **Un solo pool**, `max: 10` (la instancia tiene 512 MB), creado en un solo lugar; scripts y tests
+  lo cierran al terminar.
+- **Los tests corren contra PostgreSQL** (`DATABASE_URL`), con la base de su worker; ninguno crea un
+  pool propio.
+
 ## Arquitectura
 
 - **DB por tenant** con `DatabaseSync` de `node:sqlite`:
