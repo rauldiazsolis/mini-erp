@@ -47,16 +47,16 @@ const RUTAS: Record<string, Need> = {
 type Layer = {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: { platformRoles?: readonly string[] } }[] };
   name: string;
-  regexp: RegExp;
+  match: (path: string) => boolean;
   handle: { stack?: Layer[] };
 };
 
 /** Rutas de los routers montados en /api/platform, con los roles que exigen. */
 function rutasDePlataforma(app: Express): Record<string, Need | 'ninguno'> {
-  const raiz = (app as unknown as { _router: { stack: Layer[] } })._router.stack;
+  const raiz = (app as unknown as { router: { stack: Layer[] } }).router.stack;
   const found: Record<string, Need | 'ninguno'> = {};
   for (const layer of raiz) {
-    if (layer.name !== 'router' || !layer.regexp.test('/api/platform/x')) continue;
+    if (layer.name !== 'router' || !layer.match('/api/platform/x')) continue;
     for (const inner of layer.handle.stack ?? []) {
       if (inner.route === undefined) continue;
       const roles = inner.route.stack.find((s) => s.handle.platformRoles !== undefined)?.handle.platformRoles;

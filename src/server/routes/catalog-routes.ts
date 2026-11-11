@@ -4,6 +4,7 @@ import { CatalogService } from '../catalog/catalog-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { catalogServiceDef } from '../di/container.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const createBranchSchema = z.object({
   id: z.string().optional(),
@@ -88,7 +89,7 @@ export function createCatalogRoutes(): Router {
   });
 
   router.get('/branches/:branchId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const branchId = req.params['branchId'];
+    const branchId = routeParam(req, 'branchId');
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
       return;
@@ -109,7 +110,7 @@ export function createCatalogRoutes(): Router {
   });
 
   router.put('/branches/:branchId', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const branchId = req.params['branchId'];
+    const branchId = routeParam(req, 'branchId');
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
       return;
@@ -181,7 +182,7 @@ export function createCatalogRoutes(): Router {
   });
 
   router.get('/products/:productId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const productId = req.params['productId'];
+    const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
       return;
@@ -202,7 +203,7 @@ export function createCatalogRoutes(): Router {
   });
 
   router.put('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const productId = req.params['productId'];
+    const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
       return;
@@ -229,7 +230,7 @@ export function createCatalogRoutes(): Router {
   });
 
   router.delete('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const productId = req.params['productId'];
+    const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
       return;

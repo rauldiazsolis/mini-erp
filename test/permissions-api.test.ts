@@ -11,16 +11,16 @@ import { RUTAS } from './helpers/tenant-routes.ts';
 type Layer = {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: { capability?: Capability } }[] };
   name: string;
-  regexp: RegExp;
+  match: (path: string) => boolean;
   handle: { stack?: Layer[] };
 };
 
 /** Rutas declaradas en los routers montados en /api/tenants/:tenantId, con la capacidad que exigen. */
 function rutasDelComercio(app: Express): Record<string, Capability | undefined> {
-  const raiz = (app as unknown as { _router: { stack: Layer[] } })._router.stack;
+  const raiz = (app as unknown as { router: { stack: Layer[] } }).router.stack;
   const found: Record<string, Capability | undefined> = {};
   for (const layer of raiz) {
-    if (layer.name !== 'router' || !layer.regexp.test('/api/tenants/t1/products')) continue;
+    if (layer.name !== 'router' || !layer.match('/api/tenants/t1/products')) continue;
     for (const inner of layer.handle.stack ?? []) {
       if (inner.route === undefined) continue;
       for (const method of Object.keys(inner.route.methods)) {

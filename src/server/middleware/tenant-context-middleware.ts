@@ -7,6 +7,7 @@ import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 import { createTenantScope } from '../di/container.ts';
 import { isSuspended } from '../platform/suspensions.ts';
 import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
+import { routeParam } from '../http/route-param.ts';
 
 /**
  * Resuelve el comercio del pedido y el rol con el que se opera (#19): la membresía activa (root y
@@ -20,7 +21,7 @@ export function createTenantContextMiddleware(
   rootContainer?: Container,
 ) {
   return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
-    const tenantId = req.params['tenantId'] ?? req.params['id'] ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
+    const tenantId = routeParam(req, 'tenantId') ?? routeParam(req, 'id') ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
 
     // El acceso anónimo (#24, M10): la demo es admin de su comercio demo; una caja real, member de su
     // comercio, con su suspensión. De ningún otro comercio.

@@ -9,6 +9,7 @@ import type { FunnelQueryService } from '../funnel/funnel-query-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import { auditActor } from '../audit/audit-actor.ts';
 import { sendError } from '../errors.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'Fecha inválida');
 const rangeSchema = z.object({
@@ -61,7 +62,7 @@ export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; querie
   });
 
   router.get('/visitors/:visitorId', staff, (req: AuthenticatedAdminRequest, res: Response) => {
-    const detail = deps.queries.visitor(req.params['visitorId'] ?? '');
+    const detail = deps.queries.visitor(routeParam(req, 'visitorId') ?? '');
     if (detail === undefined) {
       res.status(404).json({ error: 'No existe ese visitante' });
       return;
@@ -74,7 +75,7 @@ export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; querie
   });
 
   router.post('/contacts/:contactId/handled', staff, (req: AuthenticatedAdminRequest, res: Response) => {
-    const contactId = req.params['contactId'] ?? '';
+    const contactId = routeParam(req, 'contactId') ?? '';
     try {
       const actor = auditActor(req);
       deps.funnel.markHandled(contactId, actor.actorUserId);

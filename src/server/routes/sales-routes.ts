@@ -6,6 +6,7 @@ import { salesQueryServiceDef } from '../di/container.ts';
 import type { SalesQueryService } from '../sales/sales-query-service.ts';
 import { DomainError, sendError } from '../errors.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'La fecha tiene que ser AAAA-MM-DD');
 const optionalText = z.string().optional();
@@ -84,7 +85,7 @@ export function createSalesRoutes(): Router {
   router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize, after: q.after })));
   router.get('/sales/:saleId', view, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const sale = getService(req).getSale(req.params['saleId'] ?? '');
+      const sale = getService(req).getSale(routeParam(req, 'saleId') ?? '');
       // Una venta de otra caja se ve igual que una que no existe
       const a = req.anonymous;
       if (a?.kind === 'register' && (sale.branch !== a.branch || sale.pointOfSale !== a.pointOfSale)) throw new DomainError(404, 'Venta no encontrada');

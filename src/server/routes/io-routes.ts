@@ -9,6 +9,7 @@ import { isImportFieldName, type ImportMapping } from '../../shared/import-field
 import { hasExampleCatalog } from '../../shared/business-type.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { FunnelService } from '../funnel/funnel-service.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const importBodySchema = z.object({
   csv: z.string({ error: (iss) => (iss.input === undefined ? 'Falta el contenido del archivo' : undefined) }),
@@ -51,7 +52,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
 
   // GET /export/:entity - Exportar datos en CSV o JSON
   router.get('/export/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const entity = req.params['entity'];
+    const entity = routeParam(req, 'entity');
     const format = req.query['format'] === 'csv' ? 'csv' : 'json';
     const tenantId = req.activeTenantId ?? 'tenant';
 
@@ -89,7 +90,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
 
   // POST /import/:entity - CSV con mapeo de columnas (#22): vista previa (dryRun) o confirmación
   router.post('/import/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const entity = req.params['entity'];
+    const entity = routeParam(req, 'entity');
     if (entity !== 'customers' && entity !== 'products') {
       res.status(400).json({ error: "Entidad de importación inválida. Debe ser 'products' o 'customers'" });
       return;

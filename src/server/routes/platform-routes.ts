@@ -9,6 +9,7 @@ import { DomainError, sendError } from '../errors.ts';
 import { parsePaymentSheet } from '../billing/payment-sheet.ts';
 import type { SheetResultRow } from '../../shared/credits-types.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'Fecha inválida');
 const amount = z
@@ -52,7 +53,7 @@ export function createPlatformRoutes(deps: Deps): Router {
         const { result, details, targetUserId } = run(parsed.data, req);
         deps.audit.record({
           actorUserId: req.user?.id ?? '',
-          tenantId: req.params['tenantId'] ?? null,
+          tenantId: routeParam(req, 'tenantId') ?? null,
           action,
           ...(targetUserId === undefined ? {} : { targetUserId }),
           details,
@@ -64,7 +65,7 @@ export function createPlatformRoutes(deps: Deps): Router {
     };
   }
 
-  const tenantOf = (req: Request): string => req.params['tenantId'] ?? '';
+  const tenantOf = (req: Request): string => routeParam(req, 'tenantId') ?? '';
   const actorOf = (req: AuthenticatedAdminRequest): string => req.user?.id ?? '';
 
   router.post(
@@ -89,7 +90,7 @@ export function createPlatformRoutes(deps: Deps): Router {
     '/tenants/:tenantId/gift-credits/:creditId',
     staff,
     handle(voidSchema, 'billing.credit_voided', 200, (body, req) => {
-      const creditId = req.params['creditId'] ?? '';
+      const creditId = routeParam(req, 'creditId') ?? '';
       deps.billing.voidCredit({ tenantId: tenantOf(req), creditId, reason: body.reason, actorUserId: actorOf(req) });
       return { result: { success: true }, details: { creditId, reason: body.reason } };
     }),

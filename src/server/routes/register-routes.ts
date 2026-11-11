@@ -6,6 +6,7 @@ import type { RegisterService } from '../registers/register-service.ts';
 import type { AuditAction, AuditLog } from '../audit/audit-log.ts';
 import { sendError } from '../errors.ts';
 import { auditActor } from '../audit/audit-actor.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const createSchema = z.object({
   name: z.string().trim().min(2, 'Nombre de la caja requerido'),
@@ -34,7 +35,7 @@ export function createRegisterRoutes(registers: RegisterService, audit: AuditLog
     run: (tenantId: string, registerId: string) => Record<string, unknown> | undefined,
   ): void => {
     try {
-      const registerId = req.params['registerId'] ?? '';
+      const registerId = routeParam(req, 'registerId') ?? '';
       const result = run(req.activeTenantId ?? '', registerId);
       record(req, action, registerId);
       res.status(200).json(result ?? { success: true });

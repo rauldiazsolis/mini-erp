@@ -9,6 +9,7 @@ import type { AuditLog } from '../audit/audit-log.ts';
 import { TENANT_ROLES, type TenantRole } from '../../shared/permissions.ts';
 import { DomainError, sendError } from '../errors.ts';
 import { requireOwnSession, sendImpersonating } from '../middleware/own-session-middleware.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const inviteSchema = z.object({
   email: z.string().trim().pipe(z.email('Email inválido')),
@@ -77,7 +78,7 @@ export function createUserRoutes(deps: {
 
   router.delete('/invitations/:invitationId', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.invitations.revoke({ ...actorOf(req), invitationId: req.params['invitationId'] ?? '' });
+      deps.invitations.revoke({ ...actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -91,13 +92,13 @@ export function createUserRoutes(deps: {
       return;
     }
     // Quien impersona no toca owners (#23): ni su rol ni su estado, ni nombra uno nuevo
-    const current = deps.members.getMembership(req.activeTenantId ?? '', req.params['userId'] ?? '');
+    const current = deps.members.getMembership(req.activeTenantId ?? '', routeParam(req, 'userId') ?? '');
     if (req.impersonator !== undefined && (current?.role === 'owner' || parsed.data.role === 'owner')) {
       sendImpersonating(res);
       return;
     }
     try {
-      res.status(200).json(deps.members.updateMember({ ...actorOf(req), targetUserId: req.params['userId'] ?? '', ...parsed.data }));
+      res.status(200).json(deps.members.updateMember({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '', ...parsed.data }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -105,7 +106,7 @@ export function createUserRoutes(deps: {
 
   router.post('/users/:userId/password-reset', requirePermission('owners.manage'), requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(201).json(deps.resets.create({ ...actorOf(req), targetUserId: req.params['userId'] ?? '' }));
+      res.status(201).json(deps.resets.create({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

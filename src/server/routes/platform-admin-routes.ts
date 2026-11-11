@@ -10,6 +10,7 @@ import type { PlatformQueryService } from '../platform/platform-query-service.ts
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { HelpRequestService } from '../help/help-request-service.ts';
 import { DomainError, sendError } from '../errors.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
 const searchSchema = z.object({ q: z.string().trim().max(100).optional() });
@@ -42,7 +43,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   // Va antes de /tenants/:tenantId: el detalle que se abre desde la URL del panel
   router.get('/tenants/by-slug/:slug', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(deps.queries.tenantIdBySlug(req.params['slug'] ?? '')));
+      res.status(200).json(deps.queries.tenantDetail(deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -50,7 +51,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   router.get('/tenants/:tenantId', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(req.params['tenantId'] ?? ''));
+      res.status(200).json(deps.queries.tenantDetail(routeParam(req, 'tenantId') ?? ''));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -87,7 +88,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
       return;
     }
     try {
-      deps.suspensions.suspend({ tenantId: req.params['tenantId'] ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
+      deps.suspensions.suspend({ tenantId: routeParam(req, 'tenantId') ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -96,7 +97,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   router.post('/tenants/:tenantId/reactivate', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.suspensions.reactivate({ tenantId: req.params['tenantId'] ?? '', actorUserId: actorOf(req) });
+      deps.suspensions.reactivate({ tenantId: routeParam(req, 'tenantId') ?? '', actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -108,7 +109,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     router.post(`/users/:userId/${path}`, staff, (req: AuthenticatedAdminRequest, res: Response) => {
       try {
         if (req.user === undefined) throw new DomainError(401, 'No autorizado');
-        deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: req.params['userId'] ?? '', status });
+        deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: routeParam(req, 'userId') ?? '', status });
         res.status(200).json({ success: true });
       } catch (err: unknown) {
         sendError(res, err, 500);
@@ -118,7 +119,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   router.post('/users/:userId/password-reset', staff, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(201).json(deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: req.params['userId'] ?? '' }));
+      res.status(201).json(deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -149,7 +150,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   router.delete('/staff/invitations/:invitationId', rootOnly, (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: req.params['invitationId'] ?? '' });
+      deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

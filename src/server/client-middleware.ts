@@ -28,7 +28,7 @@ export async function setupClient(app: Express): Promise<void> {
   } else {
     if (existsSync(distDir)) {
       app.use(express.static(distDir));
-      app.get('*', (_req, res) => {
+      app.get('/{*splat}', (_req, res) => {
         res.sendFile(resolve(distDir, 'index.html'));
       });
     }

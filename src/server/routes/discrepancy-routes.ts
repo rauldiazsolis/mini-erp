@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/permission-middleware.ts';
 import { discrepancyServiceDef } from '../di/container.ts';
 import type { DiscrepancyService } from '../discrepancy/discrepancy-service.ts';
 import { sendError } from '../errors.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const dismissSchema = z.object({
   note: z.string().trim().min(1, 'El motivo es obligatorio').max(500, 'El motivo puede tener hasta 500 caracteres'),
@@ -38,7 +39,7 @@ export function createDiscrepancyRoutes(): Router {
         res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Motivo inválido' });
         return;
       }
-      const id = req.params['discrepancyId'];
+      const id = routeParam(req, 'discrepancyId');
       if (id === undefined || req.user === undefined) {
         res.status(400).json({ error: 'Pedido inválido' });
         return;
