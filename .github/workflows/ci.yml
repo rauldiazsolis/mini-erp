@@ -11,6 +11,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Los tests corren contra PostgreSQL (el mismo major que producción): crean y borran bases
+    # minierp_test_* con este rol (TEST_DATABASE_URL, ver test/helpers/pg-admin.ts)
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minierp
+          POSTGRES_PASSWORD: minierp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U minierp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://minierp:minierp@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
 

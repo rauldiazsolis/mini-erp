@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **propuesta, sin aprobar**. Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -33,34 +33,45 @@ migrar por bloques (primero sistema, después comercio).
 
 ## Decisiones
 
-| Tema | Decisión propuesta | Por qué / alternativa |
+Aprobadas el 2026-11-11, con el plan.
+
+| Tema | Decisión | Por qué / alternativa |
 |---|---|---|
-| Driver | `pg` con el `PostgresDialect` que trae Kysely | Es el dialecto propio de Kysely. `postgres` (0 dependencias) pide un adaptador de terceros (`kysely-postgres-js`): no son equivalentes |
+| Driver | `pg` con el `PostgresDialect` que trae Kysely | Es el dialecto propio de Kysely. `postgres` (0 dependencias) pide un adaptador de terceros |
 | Esquemas | Una base. Esquema **`system`** para lo global y **`tenant_<id>`** por comercio | `system` explícito: nada depende de `public` ni del `search_path` |
-| Aislamiento | `tenantDbDef` pasa a `unbound<Kysely<TenantDatabase>>`, ya acotado con `withSchema`; lo arma **un solo** lugar (`forTenant`) | Igual que hoy: resolverlo desde el contenedor raíz falla. `SET search_path` se descarta: con un pool, se filtra entre requests |
-| Tipos | `SystemDatabase` y `TenantDatabase` escritos a mano en `src/server/db/schema/`, con un test que los compara contra `information_schema` | Sin generador ni dependencia extra |
-| Fechas | Siguen como `text` ISO; la base se crea con **collation `C`** | Comportamiento idéntico al de hoy (43 comparaciones de texto, orden por bytes como SQLite). `timestamptz` queda para un issue aparte |
-| Dinero y cantidades | `double precision` (lo que hoy es `REAL`) | Mismo comportamiento. Pasar a `numeric` cambia redondeos y el driver lo devuelve como string: issue aparte |
-| JSON | `jsonb` para payloads, lotes, `barcodes`, `details` | Reemplaza `json_extract` por operadores con índice posible |
+| Aislamiento | `tenantDbDef` pasa a `unbound<Kysely<TenantDatabase>>`, ya acotado con `withSchema`; lo arma **un solo** lugar (`Database.forTenant`, en `db/pg/database.ts`) | Igual que hoy: resolverlo desde el contenedor raíz falla. `SET search_path` se descarta: con un pool, se filtra entre requests |
+| Tipos | Un manifiesto de columnas por esquema (`db/pg/system-schema.ts`, `tenant-schema.ts`), del que salen los tipos de Kysely; `test/pg-schema.test.ts` lo compara con la base real | Una sola fuente, sin generador ni dependencia extra |
+| Instantes | `timestamptz`. Se leen como texto ISO en UTC (`2026-11-11T12:00:00.000Z`), que es lo que ya viaja en la API | Los servicios y los tipos de la API siguen con `string` |
+| Días | `date`, leído como `YYYY-MM-DD`: `day`, `tenants.grace_until`, `sales.ticket_date`, `customer_payments.receipt_date` | Un día argentino no tiene hora ni zona |
+| Dinero | `numeric(14,2)` (precios, saldos, montos, cargos) | Se lee como `number`, compatible con el JSON del contrato |
+| Cantidades | `numeric(14,4)` (stock y movimientos: pesables y fracciones); `tax_rate`, `numeric(7,4)` | Idem |
+| Enteros grandes | `bigint` leído como `number` (`count(*)`, `seq`, números de ticket y de recibo) | El contrato no pone tope al número de ticket |
+| JSON | `jsonb` para payloads, lotes, `barcodes`, `details`, `data`, `pending`; se escribe con `jsonValue()` | `pg` convierte un array de JS en un array de PostgreSQL, no en JSON |
+| Búsquedas | Extensión `unaccent` (en `public`) y `lower(unaccent(…))` con `LIKE`: helpers `searchable()` y `searchPattern()` | Sin distinguir mayúsculas ni tildes; los `%` y `_` del usuario se escapan |
+| Orden de textos | Las bases se crean con `LC_COLLATE 'C'` y `LC_CTYPE 'C.UTF-8'` | El orden de un listado no depende de la máquina y es el de SQLite (por bytes) |
 | Booleanos | `boolean` | — |
-| `rowid` | Columna `seq bigint generated always as identity` donde hoy se ordena por `rowid` | — |
-| FK | Se declaran y **ahora se aplican**; `deleteTenant` es `DROP SCHEMA … CASCADE` más el borrado en `system` | Los tests van a encontrar huérfanos que hoy pasan |
-| Migraciones | Runner propio (el actual, adaptado): tabla `schema_migrations` en `system` y en cada `tenant_<id>`, `pg_advisory_lock` para que migre uno solo | El `Migrator` de Kysely corre todo en una transacción: no sirve para `CREATE INDEX CONCURRENTLY` |
-| Línea de base | Una nueva, en PostgreSQL (sistema v1, comercio v1). Las migraciones de SQLite y sus tests se borran | No hay clientes en producción |
+| `rowid` | Columna `seq bigint generated always as identity` donde se ordenaba por `rowid` o por orden de inserción | — |
+| FK | Se declaran y **ahora se aplican**. `stock_movements.product_id` queda sin FK: el kardex guarda el movimiento de un producto desconocido (el push nunca rechaza) | Los tests van a encontrar huérfanos que hoy pasan |
+| Migraciones | Runner propio (`db/pg/migrations/migrate.ts`): tabla `schema_migrations` en `system` y en cada `tenant_<id>`; un candado (`pg_try_advisory_lock`, con reintento) deja migrar a uno solo | El `Migrator` de Kysely corre todo en una transacción: no sirve para `CREATE INDEX CONCURRENTLY`. El candado bloqueante se traba con `CONCURRENTLY` |
+| Línea de base | La v1 de cada esquema, en PostgreSQL. **Se congela al publicar** (fase 6): hasta entonces las fases 3 y 4 pueden corregirla. Las migraciones de SQLite y sus tests se borran en la fase 5 | No hay clientes en producción |
+| `legacy_demo_sessions` | No se migra: la tabla y `sweepLegacy` se borran en la fase 3 | Era la limpieza de las demos de antes de M8 |
+| Datos de producción | PostgreSQL arranca vacío (se vuelve a correr `create-root`); el último backup de SQLite queda en el volumen. Sin script de importación | Decisión del usuario |
 | Arranque | Sigue en dos fases (mantenimiento → migra → app). El worker se elimina | Con E/S asíncrona, migrar no bloquea el event loop |
+| Alta de un comercio | `createTenantSchema` corre por fuera de la transacción del alta; si el alta falla, se compensa con `dropTenantSchema` | Una migración no transaccional no puede correr dentro de la transacción de otro |
 | Copia previa a migrar | `pg_dump` en `deploy.sh`, antes de activar la versión | Reemplaza `pre-migracion/` y `restoreRun` |
-| Express | Subir a **Express 5** | Propaga los rechazos de un handler `async`; en Express 4 un error sin capturar cuelga el pedido |
-| `await` olvidados | Lint con tipos: `no-floating-promises` y `no-misused-promises` en `src/server`, `scripts` y `test` | `tsc` no detecta una promesa sin `await` |
-| Tests | PostgreSQL real. Una base por worker de Vitest, clonada de una plantilla ya migrada; antes de cada test, `TRUNCATE` de `system` y `DROP` de los `tenant_*` | `pglite` y `pg-mem` se descartan: no son el motor de producción |
+| Express | **Express 5** (fase 2) | Propaga los rechazos de un handler `async` |
+| `await` olvidados | `no-floating-promises` y `no-misused-promises`, que ya están prendidas (`strictTypeChecked`) | `tsc` no detecta una promesa sin `await` |
+| Tests | PostgreSQL real (`TEST_DATABASE_URL`, nunca `DATABASE_URL`). `globalSetup` arma una base plantilla ya migrada; cada archivo clona la de su worker (`setupTestDb()`), que se vacía antes de cada test | `pglite` y `pg-mem` se descartan: no son el motor de producción |
 | e2e | `e2e/serve.ts` recrea la base `minierp_e2e`; los specs que leían el `.sqlite` consultan con `pg` | — |
-| CI | `services: postgres:16` en `ci.yml` y `DATABASE_URL` | Ubuntu 24.04 trae la 16: mismo major que producción |
+| CI | `services: postgres:16` en `ci.yml` | Ubuntu 24.04 trae la 16: mismo major que producción |
 | Producción | PostgreSQL 16 de apt en la misma instancia, con los datos en el volumen adicional; socket Unix con `peer` | `DATABASE_URL` sin contraseña: `/etc/mini-erp/env` sigue sin secretos |
 | Memoria (512 MB) | `shared_buffers=64MB`, `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=20`; pool `max: 10` | — |
 | Backup | `pg_dump -Fc` diario, sin los esquemas de demo, 7 días | Reemplaza `VACUUM INTO` |
+| Subagentes | Habilitados **solo para esta migración** (lectura extensa, un servicio con sus tests); la regla general de `AGENTS.md` no cambia | Decisión del usuario |
 
 ## Reglas para `AGENTS.md`
 
-Texto propuesto para la sección "Persistencia". Las marcadas con (lint) o (test) las hace cumplir
+El texto vigente está en la sección "Persistencia" de `AGENTS.md`; esto es el resumen. Las marcadas con (lint) o (test) las hace cumplir
 una herramienta, no la revisión.
 
 1. **Un esquema por comercio.** `system` tiene lo global; `tenant_<id>`, lo de cada comercio. El
@@ -96,7 +107,7 @@ mini-prompt para seguir en una sesión nueva. No se pasa a la siguiente sin conf
 
 | Fase | Qué | Queda verde |
 |---|---|---|
-| 1. Cimientos | `kysely` y `pg`; pool; tipos; línea de base en PG; runner de migraciones (transaccional y no); `tenantSchemaName` y `forTenant`; infraestructura de tests y servicio de PG en el CI; lint de promesas; tests guardianes (aislamiento entre dos comercios, tipos contra el esquema). **No toca servicios**: SQLite sigue andando | Suite completa, más los tests nuevos |
+| 1. Cimientos (hecha) | `kysely` y `pg`; pool; tipos; línea de base en PG; runner de migraciones (transaccional y no); `tenantSchemaName` y `forTenant`; infraestructura de tests y servicio de PG en el CI; tests guardianes (aislamiento entre dos comercios, tipos contra el esquema). **No toca servicios**: SQLite sigue andando | Suite completa, más los tests nuevos |
 | 2. Asincronía sobre SQLite | Express 5; servicios, rutas, middleware, barridos, arranque y tests pasan a `async/await`, todavía con SQLite debajo. Cambio mecánico, por dominio | Suite completa y e2e |
 | 3. Sistema a PostgreSQL | Las 27 tablas de sistema y sus ~20 servicios, `TenantManager` (su parte de sistema), `AppDependencies` y sus tests. Los comercios siguen en SQLite | Suite completa y e2e |
 | 4. Comercio a PostgreSQL | Esquema por comercio, `tenantDbDef`, catálogo, stock, clientes, ventas, dashboard, connector (lote con savepoint por evento), discrepancias, importación, semillas, reinicio de demos, reconciliación | Suite completa y e2e |
@@ -112,15 +123,24 @@ verde al cerrar la fase.
 SQLite). Las fases 3 a 6 se juntan y entran a `main` juntas, con el cambio de producción: en el
 medio, el sistema está en PostgreSQL y los comercios en SQLite, y eso no se publica.
 
-## Preguntas abiertas
+## Estado
 
-1. **Datos de `mini.contax.ar`**: hoy hay cuentas, comercios y el registro de demos y del embudo.
-   Propuesta: producción arranca vacía en PostgreSQL (se vuelve a correr `create-root`) y el último
-   backup de SQLite queda guardado en el volumen. La alternativa es un script de importación de una
-   sola vez, que sería una fase más.
-2. **Dinero en `double precision` y fechas en `text`**: propuesta conservadora, para que la
-   migración no cambie comportamiento. Pasar a `numeric` y `timestamptz` ahora es más barato que
-   después (no hay datos), pero agranda las fases 3 y 4.
-3. **Express 5** o un envoltorio `asyncHandler` sobre Express 4.
-4. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
-   transacción. Propuesta: no cambiarlo en esta migración; issue aparte.
+- **Fase 1, hecha** (2026-11-11): `src/server/db/pg/` (pool, manifiesto y tipos, líneas de base,
+  runner), `test/helpers/` (`pg-admin`, `pg-global-setup`, `test-db`), los tests `test/pg-*.test.ts`
+  y PostgreSQL en el CI. Ningún servicio lo usa todavía.
+
+## Para decidir en las fases que siguen
+
+1. **Fechas imposibles e instantes ilegibles** (fase 4): hoy `2026-02-31` pasa la validación del
+   push y un `createdAt` es texto libre; PostgreSQL los rechaza y el evento quedaría como `issue`.
+   Hay que validar la fecha en `push-events.ts` o decidir qué se guarda.
+2. **Redondeo de `numeric(14,2)`** (fases 3 y 4): un total o un precio con más de 2 decimales se
+   redondea en la columna y puede diferir del `payload`.
+3. **FK que cambian comportamiento** (fase 4): el push de stock de un producto desconocido viola
+   `stock.product_id`; borrar un producto o un cliente ahora arrastra su stock o su cuenta corriente.
+4. **`\u0000` en un lote** (fase 4): `jsonb` no lo admite y `push_lots.events` se guarda fuera de
+   los savepoints; hay que limpiarlo o un evento así tumba el push entero.
+5. **Slugs largos** (fase 4): el id de un comercio sale del nombre sin tope y el esquema admite 56
+   caracteres; el alta tiene que cortar el slug.
+6. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
+   transacción. No se cambia en esta migración; issue aparte.

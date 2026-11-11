@@ -115,6 +115,11 @@ no está terminada sin `typecheck` con 0 errores y todos los tests en verde:
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
+Los tests necesitan **PostgreSQL 16** andando (ver "Persistencia"): crean y borran bases
+`minierp_test_*` en el servidor de `TEST_DATABASE_URL` (por omisión
+`postgres://minierp:minierp@localhost:5432/postgres`, un rol que pueda crear bases); nunca tocan la
+de desarrollo. El CI levanta el suyo.
+
 Y `pnpm build` si se toca el cliente o la config de Vite. Todo en verde antes de cada commit. En
 Windows, pnpm se corre desde PowerShell.
 
@@ -156,37 +161,65 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   equivocado", `error: (iss) => (iss.input === undefined ? … : …)`). Idioma configurable: #74;
   formularios del admin con los esquemas compartidos: #75.
 
-## Persistencia: de SQLite a PostgreSQL con Kysely (propuesta, sin aprobar)
+## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
-Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`.
-Mientras dure la migración, lo de SQLite que sigue más abajo describe el código que todavía no se
-migró; al cerrar la última fase se reemplaza por esta sección. Las reglas valen para todo código
-nuevo sobre PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir.
+Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
+(aprobada el 2026-11-11; fase 1 hecha). Mientras dure la migración, lo de SQLite que sigue más abajo
+describe el código que todavía no se migró; al cerrar la última fase se reemplaza por esta sección.
+Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
+PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
 
 - **Un esquema por comercio**: una sola base, con `system` para lo global y `tenant_<id>` por
-  comercio. El nombre sale solo de `tenantSchemaName(id)`, que valida el id.
-- **Los servicios reciben su Kysely ya acotado**: uno de comercio recibe `Kysely<TenantDatabase>`
-  del scope de Hardwired (`tenantDbDef`, `unbound`); nunca el pool, un nombre de esquema ni un
-  `tenant_id` para filtrar. `withSchema` se llama en un solo archivo (test).
+  comercio. El nombre sale solo de `tenantSchemaName(id)`, que valida el id (minúsculas, dígitos y
+  guiones, hasta 56 caracteres).
+- **Los servicios reciben su Kysely ya acotado**: uno de sistema recibe `Database.system`
+  (`Kysely<SystemDatabase>`) y uno de comercio, `Database.forTenant(id)` (`Kysely<TenantDatabase>`)
+  del scope de Hardwired; nunca `Database.root`, un nombre de esquema ni un `tenant_id` para filtrar.
+  `withSchema` y el pool están en un solo archivo, `db/pg/database.ts` (test).
 - **SQL crudo sin nombres de tabla**: dentro de `sql` una tabla va con `sql.table()` o `sql.ref()`,
-  porque `withSchema` no alcanza a un nombre escrito a mano (test).
+  porque `withSchema` no alcanza a un nombre escrito a mano (`test/pg-isolation.test.ts`). El
+  `search_path` solo lo toca el runner de migraciones (test).
 - **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
   `no-misused-promises`). Un handler de Express es `async` y deja que el error suba.
 - **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
   pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
-- **Columnas explícitas**: sin `.selectAll()`, `SELECT *` ni `returningAll()` en `src/server` (test).
-- **Migraciones Expand & Contract**:
+- **Columnas explícitas**: sin `.selectAll()` ni `returningAll()` en `src/server` (test), ni
+  `SELECT *` en SQL crudo.
+- **El esquema está en un manifiesto** (`db/pg/system-schema.ts`, `tenant-schema.ts`): de ahí salen
+  los tipos de Kysely y `test/pg-schema.test.ts` lo compara con la base real. Una migración que
+  agrega una columna la agrega también ahí, con su sufijo: `?` nullable, `=` con default, `!`
+  generada.
+- **Tipos y cómo se leen** (los parsers están en el pool, `database.ts`):
+  - Instantes en `timestamptz`, leídos como texto ISO en UTC, igual que `toISOString()`.
+  - Días (el día argentino, una fecha de ticket, un vencimiento por día) en `date`, leídos como
+    `YYYY-MM-DD`.
+  - Dinero en `numeric(14,2)` y cantidades en `numeric(14,4)`; `numeric` y `bigint` se leen como
+    `number`, que es lo que viaja en el JSON del contrato.
+  - JSON en `jsonb`: se lee ya parseado (`unknown`, se valida con Zod) y se escribe con
+    `jsonValue()`, nunca pasando un array o un objeto directo.
+  - Una tabla que se lista en orden de inserción tiene `seq` (identidad) para desempatar.
+- **Búsquedas de texto** sin distinguir mayúsculas ni tildes: `searchable(columna)` contra
+  `searchPattern(texto)` (`db/pg/sql-helpers.ts`, con la extensión `unaccent`), nunca `LIKE` o
+  `ILIKE` a mano.
+- **Migraciones** (`db/pg/migrations/`): `system.ts` y `tenant.ts` listan las de cada esquema; una
+  nueva es un archivo `<tipo>/v<N>-<nombre>.ts` con `{ version, name, up(db) }`, agregado al final.
+  `schema_migrations` de cada esquema es el puntero. `up` corre con el `search_path` en su esquema:
+  escribe las tablas sin calificar, no abre transacciones y no depende de datos de fuera de su
+  esquema. La v1 es la línea de base: se congela al publicar y no se toca más.
+- **Expand & Contract**, para migrar sin cortar el servicio:
   - Una columna nueva es nullable o tiene un `DEFAULT` constante; nunca `NOT NULL` sin default.
   - Renombrar o borrar va en dos versiones: primero se deja de usar, después se quita.
   - Un índice sobre una tabla con datos se crea con `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, en
     una migración `transactional: false`: el runner la corre fuera de una transacción y tiene que
     poder repetirse.
-  - `up` no abre transacciones ni depende de datos de fuera de su esquema. La línea de base no se
-    toca.
-- **Un solo pool**, `max: 10` (la instancia tiene 512 MB), creado en un solo lugar; scripts y tests
-  lo cierran al terminar.
-- **Los tests corren contra PostgreSQL** (`DATABASE_URL`), con la base de su worker; ninguno crea un
-  pool propio.
+- **Un solo pool**, `max: 10` (`POOL_MAX`; la instancia tiene 512 MB); scripts y tests lo cierran al
+  terminar (`Database.destroy()`).
+- **Los tests corren contra PostgreSQL**: un test que usa la base llama a `setupTestDb()`
+  (`test/helpers/test-db.ts`) arriba del archivo y recibe la base de su worker, vacía antes de cada
+  test; ninguno crea un pool propio ni usa `DATABASE_URL`.
+- **Subagentes**: en esta migración, y solo en ella, el agente delega en subagentes la lectura
+  extensa y la migración de un servicio con sus tests; el hilo principal coordina y verifica. La
+  regla general ("nunca un subagente por tarea") no cambia.
 
 ## Arquitectura
 

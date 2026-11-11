@@ -79,7 +79,7 @@ el contrato **4.6.0** con las capacidades `customer-payment-void`, `demo-session
 
 ## Levantarlo
 
-Requiere Node 24 y pnpm 10.
+Requiere Node 24 y pnpm 10. Los tests necesitan además PostgreSQL 16 andando (la persistencia está migrando de SQLite a PostgreSQL; ver "Verificación" en `AGENTS.md`).
 
 ```bash
 pnpm install
