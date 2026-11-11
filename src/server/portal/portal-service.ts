@@ -58,7 +58,7 @@ export class PortalService {
     return { url: `${p.origin}/portal#t=${token}`, expiresAt };
   }
 
-  redeem(token: string): PortalRedeemResponse {
+  async redeem(token: string): Promise<PortalRedeemResponse> {
     const now = this.now().toISOString();
     const link = this.db
       .prepare('SELECT token_hash, tenant_id, register_id, api_key_id FROM portal_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?')
@@ -83,7 +83,7 @@ export class PortalService {
         )
         .run(hashLinkToken(session), demo === undefined ? 'register' : 'demo', link.tenant_id, link.register_id, link.api_key_id, demo?.id ?? null, now, now);
       if (demo === undefined) {
-        this.audit.record({
+        await this.audit.record({
           actorUserId: REGISTER_ACTOR,
           actorRegisterId: link.register_id,
           tenantId: link.tenant_id,

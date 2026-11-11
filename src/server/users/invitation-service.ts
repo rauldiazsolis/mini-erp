@@ -55,18 +55,18 @@ export class InvitationService {
     this.now = deps.now;
   }
 
-  create(params: {
+  async create(params: {
     tenantId: string;
     actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     email: string;
     role: TenantRole;
-  }): { id: string; token: string; expiresAt: string } {
+  }): Promise<{ id: string; token: string; expiresAt: string }> {
     if (!assignableRoles(params.actor.role).includes(params.role)) {
       throw new DomainError(403, 'No podés invitar con ese rol');
     }
     const email = params.email.trim().toLowerCase();
-    const existing = this.auth.findUserByEmail(email);
-    if (existing !== undefined && this.members.getMembership(params.tenantId, existing.id) !== undefined) {
+    const existing = await this.auth.findUserByEmail(email);
+    if (existing !== undefined && (await this.members.getMembership(params.tenantId, existing.id)) !== undefined) {
       throw new DomainError(409, 'Ese correo ya es parte del comercio');
     }
 
@@ -83,7 +83,7 @@ export class InvitationService {
         'INSERT INTO invitations (id, tenant_id, email, role, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(id, params.tenantId, email, params.role, hash, params.actor.userId, now.toISOString(), expiresAt);
-    this.audit.record({
+    await this.audit.record({
       actorUserId: params.actor.userId,
       impersonatorUserId: params.actor.impersonatorUserId,
       tenantId: params.tenantId,
@@ -93,11 +93,11 @@ export class InvitationService {
     return { id, token: raw, expiresAt };
   }
 
-  revoke(params: {
+  async revoke(params: {
     tenantId: string;
     actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     invitationId: string;
-  }): void {
+  }): Promise<void> {
     const row = this.db
       .prepare('SELECT email, role FROM invitations WHERE id = ? AND tenant_id = ? AND accepted_at IS NULL AND revoked_at IS NULL')
       .get(params.invitationId, params.tenantId) as { email: string; role: string } | undefined;
@@ -106,7 +106,7 @@ export class InvitationService {
       throw new DomainError(403, 'No podés revocar esta invitación');
     }
     this.db.prepare('UPDATE invitations SET revoked_at = ? WHERE id = ?').run(this.now().toISOString(), params.invitationId);
-    this.audit.record({
+    await this.audit.record({
       actorUserId: params.actor.userId,
       impersonatorUserId: params.actor.impersonatorUserId,
       tenantId: params.tenantId,
@@ -138,47 +138,47 @@ export class InvitationService {
     );
   }
 
-  lookup(token: string): InvitationInfo {
+  async lookup(token: string): Promise<InvitationInfo> {
     const inv = this.findValid(token);
     return {
       tenantName: inv.tenantName,
       role: inv.role,
       email: inv.email,
       invitedByName: inv.invitedByName,
-      accountExists: this.auth.findUserByEmail(inv.email) !== undefined,
+      accountExists: (await this.auth.findUserByEmail(inv.email)) !== undefined,
       expiresAt: inv.expiresAt,
     };
   }
 
-  accept(params: { token: string; password: string; name?: string | undefined }): {
+  async accept(params: { token: string; password: string; name?: string | undefined }): Promise<{
     token: string;
     user: UserSession;
     tenantId: string;
-  } {
+  }> {
     const inv = this.findValid(params.token);
-    const existing = this.auth.findUserByEmail(inv.email);
+    const existing = await this.auth.findUserByEmail(inv.email);
     let user: UserSession;
     let sessionToken: string;
     if (existing !== undefined) {
-      if (!this.auth.verifyUserPassword(existing.id, params.password)) throw new DomainError(401, 'Contraseña incorrecta');
-      if (this.members.getMembership(inv.tenantId, existing.id) !== undefined) {
+      if (!(await this.auth.verifyUserPassword(existing.id, params.password))) throw new DomainError(401, 'Contraseña incorrecta');
+      if ((await this.members.getMembership(inv.tenantId, existing.id)) !== undefined) {
         throw new DomainError(409, 'Ya sos parte de este comercio');
       }
-      sessionToken = this.auth.createSession(existing.id);
-      const session = this.auth.validateSession(sessionToken);
+      sessionToken = await this.auth.createSession(existing.id);
+      const session = await this.auth.validateSession(sessionToken);
       if (session === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
       user = session;
     } else {
       const name = params.name?.trim() ?? '';
       if (name.length < 2) throw new DomainError(400, 'El nombre debe tener al menos 2 caracteres');
-      const created = this.auth.createUser({ email: inv.email, password: params.password, name });
+      const created = await this.auth.createUser({ email: inv.email, password: params.password, name });
       user = created.user;
       sessionToken = created.token;
     }
 
-    this.members.addMembership(inv.tenantId, user.id, inv.role);
+    await this.members.addMembership(inv.tenantId, user.id, inv.role);
     this.db.prepare('UPDATE invitations SET accepted_at = ?, accepted_by = ? WHERE id = ?').run(this.now().toISOString(), user.id, inv.id);
-    this.audit.record({ actorUserId: user.id, tenantId: inv.tenantId, action: 'invitation.accepted', details: { role: inv.role } });
+    await this.audit.record({ actorUserId: user.id, tenantId: inv.tenantId, action: 'invitation.accepted', details: { role: inv.role } });
     return { token: sessionToken, user, tenantId: inv.tenantId };
   }
 

@@ -29,32 +29,32 @@ export class PasswordResetService {
     this.now = deps.now;
   }
 
-  create(params: { tenantId: string; actor: { userId: string; role: TenantRole }; targetUserId: string }): {
+  async create(params: { tenantId: string; actor: { userId: string; role: TenantRole }; targetUserId: string }): Promise<{
     token: string;
     expiresAt: string;
-  } {
+  }> {
     if (params.targetUserId === params.actor.userId) {
       throw new DomainError(403, 'Para tu propia contraseña usá "Mi cuenta"');
     }
-    if (this.members.getMembership(params.tenantId, params.targetUserId) === undefined) {
+    if ((await this.members.getMembership(params.tenantId, params.targetUserId)) === undefined) {
       throw new DomainError(404, 'El usuario no es miembro de este comercio');
     }
-    if (!this.members.isFullyOwnedBy(params.targetUserId, params.actor.userId)) {
+    if (!(await this.members.isFullyOwnedBy(params.targetUserId, params.actor.userId))) {
       throw new DomainError(403, 'Este usuario también está en otro comercio: pedíselo a soporte');
     }
 
-    return this.issue(params.targetUserId, params.actor.userId, params.tenantId);
+    return await this.issue(params.targetUserId, params.actor.userId, params.tenantId);
   }
 
   /** Desde la plataforma (#23): root y soporte, para cualquier cuenta de comercio; sin comercio. */
-  createFromPlatform(params: { actorUserId: string; targetUserId: string }): { token: string; expiresAt: string } {
+  async createFromPlatform(params: { actorUserId: string; targetUserId: string }): Promise<{ token: string; expiresAt: string }> {
     const target = this.db.prepare('SELECT global_role FROM users WHERE id = ?').get(params.targetUserId) as { global_role: string } | undefined;
     if (target === undefined) throw new DomainError(404, 'Usuario no encontrado');
     if (target.global_role !== 'user') throw new DomainError(403, 'El equipo de soporte restablece su contraseña con root');
-    return this.issue(params.targetUserId, params.actorUserId, null);
+    return await this.issue(params.targetUserId, params.actorUserId, null);
   }
 
-  private issue(targetUserId: string, actorUserId: string, tenantId: string | null): { token: string; expiresAt: string } {
+  private async issue(targetUserId: string, actorUserId: string, tenantId: string | null): Promise<{ token: string; expiresAt: string }> {
     const now = this.now();
     // Un link nuevo invalida los pendientes
     this.db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(targetUserId);
@@ -65,7 +65,7 @@ export class PasswordResetService {
         'INSERT INTO password_resets (id, user_id, token_hash, created_by, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .run(`pwr_${randomUUID()}`, targetUserId, hash, actorUserId, tenantId, now.toISOString(), expiresAt);
-    this.audit.record({ actorUserId, tenantId, action: 'password.reset_link_created', targetUserId });
+    await this.audit.record({ actorUserId, tenantId, action: 'password.reset_link_created', targetUserId });
     return { token: raw, expiresAt };
   }
 
@@ -75,14 +75,14 @@ export class PasswordResetService {
   }
 
   /** Fija la contraseña nueva, cierra todas las sesiones del usuario y abre una nueva. */
-  complete(params: { token: string; password: string }): { token: string; user: UserSession } {
+  async complete(params: { token: string; password: string }): Promise<{ token: string; user: UserSession }> {
     const row = this.findValid(params.token);
-    this.auth.setPassword(row.user_id, params.password);
-    this.auth.revokeSessions(row.user_id);
+    await this.auth.setPassword(row.user_id, params.password);
+    await this.auth.revokeSessions(row.user_id);
     this.db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(this.now().toISOString(), row.id);
-    this.audit.record({ actorUserId: row.user_id, tenantId: row.tenant_id, action: 'password.reset', targetUserId: row.user_id });
-    const token = this.auth.createSession(row.user_id);
-    const user = this.auth.validateSession(token);
+    await this.audit.record({ actorUserId: row.user_id, tenantId: row.tenant_id, action: 'password.reset', targetUserId: row.user_id });
+    const token = await this.auth.createSession(row.user_id);
+    const user = await this.auth.validateSession(token);
     if (user === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
     return { token, user };
   }

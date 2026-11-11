@@ -14,21 +14,21 @@ describe('invitaciones de soporte (#23)', () => {
   let now: Date;
   let tokens: { root: string; support: string };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager, now: () => now });
     app = bundle.app;
     authService = bundle.authService;
-    authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    await authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    const owner = await authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = {
-      root: authService.login({ email: 'root@x.com', password: 'password123' }).token,
-      support: authService.login({ email: 'soporte@x.com', password: 'password123' }).token,
+      root: (await authService.login({ email: 'root@x.com', password: 'password123' })).token,
+      support: (await authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
     };
   });
 
@@ -58,7 +58,7 @@ describe('invitaciones de soporte (#23)', () => {
   });
 
   it('una cuenta existente sin comercios se promueve con su contraseña; con comercios, 409', async () => {
-    const libre = authService.createUser({ email: 'libre@x.com', password: 'password123', name: 'Libre' });
+    const libre = await authService.createUser({ email: 'libre@x.com', password: 'password123', name: 'Libre' });
     const t1 = (await invite('libre@x.com')).token;
     expect((await request(app).post('/api/staff-invitations/lookup').send({ token: t1 })).body).toMatchObject({ accountExists: true });
     expect((await accept({ token: t1, password: 'mala' })).status).toBe(401);

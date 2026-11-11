@@ -43,7 +43,7 @@ export function createPlatformRoutes(deps: Deps): Router {
     status: number,
     run: (body: T, req: AuthenticatedAdminRequest) => { result: Record<string, unknown>; details: Record<string, unknown>; targetUserId?: string },
   ) {
-    return (req: AuthenticatedAdminRequest, res: Response): void => {
+    return async (req: AuthenticatedAdminRequest, res: Response): Promise<void> => {
       const parsed = schema.safeParse(req.body ?? {});
       if (!parsed.success) {
         res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -51,7 +51,7 @@ export function createPlatformRoutes(deps: Deps): Router {
       }
       try {
         const { result, details, targetUserId } = run(parsed.data, req);
-        deps.audit.record({
+        await deps.audit.record({
           actorUserId: req.user?.id ?? '',
           tenantId: routeParam(req, 'tenantId') ?? null,
           action,
@@ -124,7 +124,7 @@ export function createPlatformRoutes(deps: Deps): Router {
   );
 
   // La planilla de cobranzas: `?dryRun=1` muestra qué pasaría con cada fila sin registrar nada
-  router.post('/payments/import', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/payments/import', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = sheetSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -132,7 +132,7 @@ export function createPlatformRoutes(deps: Deps): Router {
     }
     const dryRun = req.query['dryRun'] === '1';
     const seen = new Set<string>();
-    const rows = parsePaymentSheet(parsed.data.csv).map((row): SheetResultRow => {
+    const toResult = async (row: ReturnType<typeof parsePaymentSheet>[number]): Promise<SheetResultRow> => {
       const base = { line: row.line, ...(row.info === '' ? {} : { info: row.info }) };
       if (row.error !== undefined || row.slug === undefined || row.day === undefined || row.amount === undefined || row.ref === undefined) {
         return { ...base, status: 'error', message: row.error ?? 'Fila inválida' };
@@ -154,7 +154,7 @@ export function createPlatformRoutes(deps: Deps): Router {
           actorUserId: actorOf(req),
           paymentRef: row.ref,
         });
-        deps.audit.record({
+        await deps.audit.record({
           actorUserId: actorOf(req),
           tenantId: tenant.id,
           action: 'billing.payment_registered',
@@ -165,7 +165,10 @@ export function createPlatformRoutes(deps: Deps): Router {
         if (err instanceof DomainError) return { ...found, status: 'error', message: err.message };
         throw err;
       }
-    });
+    };
+    // En orden, una fila después de la otra: el registro de pagos depende de las anteriores
+    const rows: SheetResultRow[] = [];
+    for (const row of parsePaymentSheet(parsed.data.csv)) rows.push(await toResult(row));
     res.status(200).json({ rows, applied: !dryRun });
   });
 

@@ -30,12 +30,12 @@ export class MembershipService {
   }
 
   /** El rol con el que el usuario opera el comercio: su membresía activa. Root y soporte no son miembros (#16). */
-  resolveRole(user: UserSession, tenantId: string): TenantRole | undefined {
-    const membership = this.getMembership(tenantId, user.id);
+  async resolveRole(user: UserSession, tenantId: string): Promise<TenantRole | undefined> {
+    const membership = await this.getMembership(tenantId, user.id);
     return membership?.status === 'active' ? membership.role : undefined;
   }
 
-  getMembership(tenantId: string, userId: string): { role: TenantRole; status: MemberStatus } | undefined {
+  async getMembership(tenantId: string, userId: string): Promise<{ role: TenantRole; status: MemberStatus } | undefined> {
     const row = this.db
       .prepare('SELECT role, status FROM memberships WHERE tenant_id = ? AND user_id = ?')
       .get(tenantId, userId) as { role: string; status: string } | undefined;
@@ -43,13 +43,13 @@ export class MembershipService {
     return { role: row.role, status: toStatus(row.status) };
   }
 
-  addMembership(tenantId: string, userId: string, role: TenantRole): void {
+  async addMembership(tenantId: string, userId: string, role: TenantRole): Promise<void> {
     this.db
       .prepare("INSERT INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)")
       .run(userId, tenantId, role, new Date().toISOString());
   }
 
-  listMembers(tenantId: string): MemberRow[] {
+  async listMembers(tenantId: string): Promise<MemberRow[]> {
     const rows = this.db
       .prepare(
         `SELECT u.id, u.name, u.email, m.role, m.status, m.created_at
@@ -65,7 +65,7 @@ export class MembershipService {
     );
   }
 
-  countActiveOwners(tenantId: string): number {
+  async countActiveOwners(tenantId: string): Promise<number> {
     const row = this.db
       .prepare("SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ? AND role = 'owner' AND status = 'active'")
       .get(tenantId) as { n: number };
@@ -73,7 +73,7 @@ export class MembershipService {
   }
 
   /** Todas las membresías activas del usuario están en comercios donde el actor es owner activo. */
-  isFullyOwnedBy(targetUserId: string, actorUserId: string): boolean {
+  async isFullyOwnedBy(targetUserId: string, actorUserId: string): Promise<boolean> {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM memberships t
@@ -92,16 +92,16 @@ export class MembershipService {
    * toca owners, el rol nuevo tiene que estar entre los que el actor puede asignar y el comercio
    * nunca se queda sin un owner activo.
    */
-  updateMember(params: {
+  async updateMember(params: {
     tenantId: string;
     actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     targetUserId: string;
     role?: TenantRole | undefined;
     status?: MemberStatus | undefined;
-  }): MemberRow {
+  }): Promise<MemberRow> {
     const { tenantId, actor, targetUserId } = params;
     if (targetUserId === actor.userId) throw new DomainError(403, 'No podés cambiar tu propia membresía');
-    const current = this.getMembership(tenantId, targetUserId);
+    const current = await this.getMembership(tenantId, targetUserId);
     if (current === undefined) throw new DomainError(404, 'El usuario no es miembro de este comercio');
 
     const touchesOwner = current.role === 'owner' || params.role === 'owner';
@@ -115,13 +115,13 @@ export class MembershipService {
       current.role === 'owner' &&
       current.status === 'active' &&
       ((params.role !== undefined && params.role !== 'owner') || params.status === 'disabled');
-    if (losesOwner && this.countActiveOwners(tenantId) <= 1) {
+    if (losesOwner && (await this.countActiveOwners(tenantId)) <= 1) {
       throw new DomainError(409, 'El comercio necesita al menos un owner activo');
     }
 
     if (params.role !== undefined && params.role !== current.role) {
       this.db.prepare('UPDATE memberships SET role = ? WHERE tenant_id = ? AND user_id = ?').run(params.role, tenantId, targetUserId);
-      this.audit?.record({
+      await this.audit?.record({
         actorUserId: actor.userId,
         impersonatorUserId: actor.impersonatorUserId,
         tenantId,
@@ -132,7 +132,7 @@ export class MembershipService {
     }
     if (params.status !== undefined && params.status !== current.status) {
       this.db.prepare('UPDATE memberships SET status = ? WHERE tenant_id = ? AND user_id = ?').run(params.status, tenantId, targetUserId);
-      this.audit?.record({
+      await this.audit?.record({
         actorUserId: actor.userId,
         impersonatorUserId: actor.impersonatorUserId,
         tenantId,
@@ -140,7 +140,7 @@ export class MembershipService {
         targetUserId,
       });
     }
-    const updated = this.listMembers(tenantId).find((m) => m.userId === targetUserId);
+    const updated = (await this.listMembers(tenantId)).find((m) => m.userId === targetUserId);
     if (updated === undefined) throw new DomainError(404, 'El usuario no es miembro de este comercio');
     return updated;
   }

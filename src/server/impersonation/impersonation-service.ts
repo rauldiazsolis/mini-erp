@@ -26,24 +26,24 @@ export class ImpersonationService {
     this.help = deps.help;
   }
 
-  start(p: { staff: UserSession; parentToken: string; userId: string; tenantSlug?: string | undefined }): ImpersonationStart {
+  async start(p: { staff: UserSession; parentToken: string; userId: string; tenantSlug?: string | undefined }): Promise<ImpersonationStart> {
     const { user, tenant } = this.target(p.userId, p.tenantSlug);
-    return this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: `/admin/${tenant.slug}/dashboard`, helpRequestId: null });
+    return await this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: `/admin/${tenant.slug}/dashboard`, helpRequestId: null });
   }
 
   /** Toma un pedido de ayuda vigente: entra como quien lo pidió, en esa pantalla, y registra la toma. */
-  take(p: { staff: UserSession; parentToken: string; helpRequestId: string }): ImpersonationStart {
+  async take(p: { staff: UserSession; parentToken: string; helpRequestId: string }): Promise<ImpersonationStart> {
     const request = this.help.findOpen(p.helpRequestId);
     if (request === undefined) throw new DomainError(410, 'Este pedido venció');
     const { user, tenant } = this.target(request.userId, request.tenantSlug);
-    const started = this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: request.path, helpRequestId: request.id });
+    const started = await this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: request.path, helpRequestId: request.id });
     this.help.recordTake(request.id, p.staff.id);
     return started;
   }
 
   /** "Salir": termina la impersonación del token. */
-  end(token: string): void {
-    if (!this.auth.endImpersonation(token, 'exit')) throw new DomainError(400, 'No estás viendo como otro usuario');
+  async end(token: string): Promise<void> {
+    if (!(await this.auth.endImpersonation(token, 'exit'))) throw new DomainError(400, 'No estás viendo como otro usuario');
   }
 
   /** La cuenta y el comercio de entrada: el pedido o, si no, la membresía activa más reciente. */
@@ -67,24 +67,24 @@ export class ImpersonationService {
     return { user: { id: row.id, email: row.email, name: row.name, globalRole: 'user' }, tenant };
   }
 
-  private open(p: {
+  private async open(p: {
     staff: UserSession;
     parentToken: string;
     user: UserSession;
     tenant: TargetTenant;
     path: string;
     helpRequestId: string | null;
-  }): ImpersonationStart {
+  }): Promise<ImpersonationStart> {
     const role = p.staff.globalRole;
     if (role !== 'root' && role !== 'support') throw new DomainError(403, 'Solo para la plataforma');
-    const token = this.auth.createImpersonationSession({
+    const token = await this.auth.createImpersonationSession({
       parentToken: p.parentToken,
       impersonatorId: p.staff.id,
       userId: p.user.id,
       tenantId: p.tenant.id,
       helpRequestId: p.helpRequestId,
     });
-    this.audit.record({
+    await this.audit.record({
       actorUserId: p.staff.id,
       tenantId: p.tenant.id,
       action: 'impersonation.started',

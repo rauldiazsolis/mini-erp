@@ -65,7 +65,7 @@ const accountHoldSchema = z.object({
 });
 
 export function createConnectorRoutes(
-  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
+  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => Promise<void>,
   demoSessions: DemoSessionService,
   demoLimit: RequestHandler,
   deps: ConnectorDeps,
@@ -73,7 +73,7 @@ export function createConnectorRoutes(
   const router = Router();
 
   // POST /demo-sessions (4.4.0, #9): el único endpoint sin key; sí valida la versión del contrato
-  router.post('/demo-sessions', checkContractVersion, demoLimit, (req: Request, res: Response) => {
+  router.post('/demo-sessions', checkContractVersion, demoLimit, async (req: Request, res: Response) => {
     if (!demoSessions.enabled()) {
       res.status(404).json({ error: 'Este backend no ofrece demos' });
       return;
@@ -93,7 +93,7 @@ export function createConnectorRoutes(
       res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;
     }
-    const session = demoSessions.create(template);
+    const session = await demoSessions.create(template);
     const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
     res.status(201).json({
       apiKey: session.apiKey,
@@ -111,9 +111,9 @@ export function createConnectorRoutes(
   router.use(requirePosAuth);
 
   // GET /info (nunca responde 409, informa versión y estado; 4.5.0: el comercio de la key)
-  router.get('/info', (req: AuthenticatedPosRequest, res: Response) => {
+  router.get('/info', async (req: AuthenticatedPosRequest, res: Response) => {
     const tenantId = req.posContext?.tenantId;
-    const companyName = tenantId === undefined ? undefined : (deps.tenants.getTenantName(tenantId) ?? undefined);
+    const companyName = tenantId === undefined ? undefined : ((await deps.tenants.getTenantName(tenantId)) ?? undefined);
     res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled(), portal: true, companyName }));
   });
 
@@ -132,7 +132,7 @@ export function createConnectorRoutes(
   });
 
   // POST /sync/push (con Idempotency-Key)
-  router.post('/sync/push', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/sync/push', async (req: AuthenticatedPosRequest, res: Response) => {
     const idempotencyKey = req.headers['idempotency-key'];
     if (typeof idempotencyKey !== 'string' || idempotencyKey.trim() === '') {
       res.status(400).json({ error: 'Falta cabecera Idempotency-Key' });
@@ -152,7 +152,7 @@ export function createConnectorRoutes(
     const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
     // La caja se liga al primer equipo; otro equipo con la misma key cobra aparte (#21)
-    const binding = deps.registers.seen(registerId, parseResult.data.deviceId);
+    const binding = await deps.registers.seen(registerId, parseResult.data.deviceId);
     const chargeDevice = binding === 'foreign' ? parseResult.data.deviceId : '';
 
     const result = connector.processPushLot({
@@ -193,7 +193,7 @@ export function createConnectorRoutes(
   });
 
   // POST /sync/pull
-  router.post('/sync/pull', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/sync/pull', async (req: AuthenticatedPosRequest, res: Response) => {
     const parseResult = pullBatchSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
@@ -207,7 +207,7 @@ export function createConnectorRoutes(
     const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
     if (parseResult.data.deviceId !== undefined) {
-      deps.registers.seen(registerId, parseResult.data.deviceId);
+      await deps.registers.seen(registerId, parseResult.data.deviceId);
     }
 
     const pullResult = connector.pullCatalog({
@@ -217,7 +217,7 @@ export function createConnectorRoutes(
       deviceId: parseResult.data.deviceId,
       notices: {
         billing: deps.billing.summary(req.posContext.tenantId),
-        register: parseResult.data.deviceId === undefined ? undefined : deps.registers.noticeState(registerId, parseResult.data.deviceId),
+        register: parseResult.data.deviceId === undefined ? undefined : await deps.registers.noticeState(registerId, parseResult.data.deviceId),
       },
     });
 

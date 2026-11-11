@@ -35,15 +35,15 @@ function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { system: Schem
 }
 
 /** Un directorio de datos con el código de hoy: sistema v4, comercios v2 y una demo. */
-function sembrar(ids: string[] = ['kiosco-real']): string {
+async function sembrar(ids: string[] = ['kiosco-real']): Promise<string> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
   const dataDir = join(root, 'data');
   const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
   const tenants = new TenantManager(systemDb, { baseDir: join(dataDir, 'tenants') });
   for (const id of ids) {
-    tenants.createTenant({ id, slug: id, name: id });
+    await tenants.createTenant({ id, slug: id, name: id });
   }
-  tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
+  await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
   systemDb.prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)').run('demo-abc', 'kiosco', at);
   const kiosco = tenants.getTenantDb(ids[0] ?? 'kiosco-real');
@@ -70,14 +70,14 @@ describe('runMigrations (#47)', () => {
     expect(runMigrations({ dataDir: join(root, 'vacio'), now: NOW })).toEqual({ migrated: [] });
   });
 
-  it('sin nada pendiente no copia nada', () => {
-    const dataDir = sembrar();
+  it('sin nada pendiente no copia nada', async () => {
+    const dataDir = await sembrar();
     expect(runMigrations({ dataDir, now: NOW })).toEqual({ migrated: [] });
     expect(existsSync(join(dataDir, PRE_MIGRATION_DIR))).toBe(false);
   });
 
-  it('migra sistema, comercios y demos, conserva los datos y avisa el progreso', () => {
-    const dataDir = sembrar();
+  it('migra sistema, comercios y demos, conserva los datos y avisa el progreso', async () => {
+    const dataDir = await sembrar();
     const progreso: MigrationProgress[] = [];
     const result = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba(), onProgress: (p) => progreso.push(p) });
 
@@ -95,8 +95,8 @@ describe('runMigrations (#47)', () => {
     kiosco.close();
   });
 
-  it('copia antes de migrar, en la versión vieja, solo lo pendiente', () => {
-    const dataDir = sembrar();
+  it('copia antes de migrar, en la versión vieja, solo lo pendiente', async () => {
+    const dataDir = await sembrar();
     const { runDir } = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() });
     expect(runDir).toBe(join(dataDir, PRE_MIGRATION_DIR, '2026-10-02T14-30-00'));
     expect(versionDe(join(runDir ?? '', 'system.sqlite'))).toBe(S);
@@ -104,8 +104,8 @@ describe('runMigrations (#47)', () => {
     expect(readdirSync(join(runDir ?? '', 'tenants')).sort()).toEqual(['demo-abc.sqlite', 'kiosco-real.sqlite']);
   });
 
-  it('deja las últimas keepRuns corridas', () => {
-    const dataDir = sembrar();
+  it('deja las últimas keepRuns corridas', async () => {
+    const dataDir = await sembrar();
     for (const vieja of ['2026-09-01T00-00-00', '2026-09-02T00-00-00', '2026-09-03T00-00-00']) {
       mkdirSync(join(dataDir, PRE_MIGRATION_DIR, vieja), { recursive: true });
     }
@@ -115,8 +115,8 @@ describe('runMigrations (#47)', () => {
     ]);
   });
 
-  it('una base más nueva que el código frena todo sin tocar nada', () => {
-    const dataDir = sembrar();
+  it('una base más nueva que el código frena todo sin tocar nada', async () => {
+    const dataDir = await sembrar();
     const kiosco = new DatabaseSync(join(dataDir, 'tenants', 'kiosco-real.sqlite'));
     kiosco.exec('PRAGMA user_version = 9');
     kiosco.close();
@@ -125,8 +125,8 @@ describe('runMigrations (#47)', () => {
     expect(existsSync(join(dataDir, PRE_MIGRATION_DIR))).toBe(false);
   });
 
-  it('si un comercio falla, restaura lo ya migrado y todo queda como estaba', () => {
-    const dataDir = sembrar(['a-ok', 'b-falla']);
+  it('si un comercio falla, restaura lo ya migrado y todo queda como estaba', async () => {
+    const dataDir = await sembrar(['a-ok', 'b-falla']);
     const falla = new DatabaseSync(join(dataDir, 'tenants', 'b-falla.sqlite'));
     falla.prepare('INSERT INTO tenant_settings (key, value) VALUES (?, ?)').run('romper', '1');
     falla.close();
@@ -146,8 +146,8 @@ describe('runMigrations (#47)', () => {
     system.close();
   });
 
-  it('el error dice qué base y qué migración fallaron', () => {
-    const dataDir = sembrar(['b-falla']);
+  it('el error dice qué base y qué migración fallaron', async () => {
+    const dataDir = await sembrar(['b-falla']);
     const schemas = schemasDePrueba(() => { throw new Error('pedido de romper'); });
     // Orden: sistema, b-falla, demo-abc. Falla b-falla y el sistema vuelve a v4
     expect(() => runMigrations({ dataDir, now: NOW, schemas })).toThrow(
@@ -156,8 +156,8 @@ describe('runMigrations (#47)', () => {
     expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
   });
 
-  it('restoreRun copia encima y borra -wal y -shm', () => {
-    const dataDir = sembrar();
+  it('restoreRun copia encima y borra -wal y -shm', async () => {
+    const dataDir = await sembrar();
     const { runDir } = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() });
     const file = join(dataDir, 'system.sqlite');
     writeFileSync(`${file}-wal`, 'basura');

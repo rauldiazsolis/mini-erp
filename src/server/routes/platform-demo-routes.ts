@@ -22,7 +22,7 @@ export function createPlatformDemoRoutes(deps: { resets: DemoResetService; audit
     res.status(200).json(deps.resets.status());
   });
 
-  router.post('/demos/reset', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/demos/reset', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const body: unknown = req.body;
     const parsed = resetSchema.safeParse(body);
     if (!parsed.success) {
@@ -33,9 +33,9 @@ export function createPlatformDemoRoutes(deps: { resets: DemoResetService; audit
     const templates = template === undefined ? [...DEMO_TEMPLATES] : [template];
     let revoked = 0;
     for (const t of templates) {
-      if (kind === 'full') revoked += deps.resets.resetFull(t).revoked;
-      else deps.resets.resetPartial(t);
-      deps.audit.record({ ...auditActor(req), tenantId: DEMO_COMMERCES[t].tenantId, action: 'demo.reset', details: { template: t, kind } });
+      if (kind === 'full') revoked += (await deps.resets.resetFull(t)).revoked;
+      else await deps.resets.resetPartial(t);
+      await deps.audit.record({ ...auditActor(req), tenantId: DEMO_COMMERCES[t].tenantId, action: 'demo.reset', details: { template: t, kind } });
     }
     const response: DemoResetResponse = { reset: templates, revoked };
     res.status(200).json(response);

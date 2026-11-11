@@ -20,21 +20,21 @@ describe('POST /import/:entity (#22)', () => {
   let admin: string;
   let member: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
     tenants = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager: tenants });
     app = created.app;
-    const o = created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
-    const a = created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });
-    const m = created.authService.createUser({ email: 'm@x.com', password: 'clave-segura', name: 'Member' });
+    const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
+    const a = await created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });
+    const m = await created.authService.createUser({ email: 'm@x.com', password: 'clave-segura', name: 'Member' });
     owner = o.token;
     admin = a.token;
     member = m.token;
-    tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
+    await tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
     const members = new MembershipService(systemDb);
-    members.addMembership('t1', a.user.id, 'admin');
-    members.addMembership('t1', m.user.id, 'member');
+    await members.addMembership('t1', a.user.id, 'admin');
+    await members.addMembership('t1', m.user.id, 'member');
   });
 
   const post = (token: string, entity: string, body: object) =>

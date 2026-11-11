@@ -38,14 +38,14 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-central';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador (primer usuario es root)
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@tienda.com',
       password: 'password123',
       name: 'Dueño Tienda',
@@ -53,7 +53,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para pruebas limpias
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-central',
       name: 'Kiosco Central',

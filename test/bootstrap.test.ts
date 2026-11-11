@@ -8,19 +8,19 @@ import { DEV_DEMOS, DEV_PASSWORD, DEV_POS_API_KEY, DEV_SUPPORT_WHATSAPP, DEV_TEN
 import { readBillingSettings, writeBillingSettings } from '../src/server/billing/settings.ts';
 import { hashApiKey } from '../src/server/auth/crypto.ts';
 
-function boot(env: NodeJS.ProcessEnv) {
+async function boot(env: NodeJS.ProcessEnv) {
   const systemDb = new DatabaseSync(':memory:');
   initSystemDb(systemDb);
   const tenantManager = new TenantManager(systemDb, { inMemory: true });
   const bundle = createApp({ systemDb, tenantManager });
-  const run = () => {
-    const result = bootstrap({ env, bundle });
+  const run = async () => {
+    const result = await bootstrap({ env, bundle });
     clearInterval(result.sweeper);
     clearInterval(result.billingSweeper);
     clearInterval(result.funnelSweeper);
     return result;
   };
-  return { result: run(), run, systemDb, tenantManager, bundle };
+  return { result: await run(), run, systemDb, tenantManager, bundle };
 }
 
 const n = (db: DatabaseSync, sql: string, ...params: string[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
@@ -42,8 +42,8 @@ const [kiosco, almacen, ferreteria] = DEV_TENANTS;
 if (kiosco === undefined || almacen === undefined || ferreteria === undefined) throw new Error('Faltan comercios de desarrollo');
 
 describe('bootstrap (#3)', () => {
-  it('en producción no siembra nada de desarrollo: solo los tres comercios demo (#24)', () => {
-    const { result, systemDb } = boot({ NODE_ENV: 'production' });
+  it('en producción no siembra nada de desarrollo: solo los tres comercios demo (#24)', async () => {
+    const { result, systemDb } = await boot({ NODE_ENV: 'production' });
     expect(result.devInfo).toBeUndefined();
     const c = counts(systemDb);
     expect([c.users, c.tenants, c.keys, c.demos]).toEqual([0, 3, 0, 0]);
@@ -51,8 +51,8 @@ describe('bootstrap (#3)', () => {
 });
 
 describe('seed de desarrollo (#21)', () => {
-  it('root y soporte no son miembros de ningún comercio', () => {
-    const { systemDb } = boot({});
+  it('root y soporte no son miembros de ningún comercio', async () => {
+    const { systemDb } = await boot({});
     const rows = systemDb
       .prepare('SELECT u.email, u.global_role AS role, (SELECT COUNT(*) FROM memberships m WHERE m.user_id = u.id) AS n FROM users u WHERE u.email IN (?, ?) ORDER BY u.email')
       .all(DEV_USERS.root.email, DEV_USERS.support.email);
@@ -62,15 +62,15 @@ describe('seed de desarrollo (#21)', () => {
     ]);
   });
 
-  it('todos entran con la contraseña de desarrollo', () => {
-    const { bundle } = boot({});
+  it('todos entran con la contraseña de desarrollo', async () => {
+    const { bundle } = await boot({});
     for (const u of Object.values(DEV_USERS)) {
-      expect(() => bundle.authService.login({ email: u.email, password: DEV_PASSWORD })).not.toThrow();
+      await expect(bundle.authService.login({ email: u.email, password: DEV_PASSWORD })).resolves.toBeDefined();
     }
   });
 
-  it('un comercio por rubro: dueño A con Kiosco y Almacén, dueño B con Ferretería, y el staff del Kiosco', () => {
-    const { systemDb } = boot({});
+  it('un comercio por rubro: dueño A con Kiosco y Almacén, dueño B con Ferretería, y el staff del Kiosco', async () => {
+    const { systemDb } = await boot({});
     const rows = systemDb
       .prepare(
         `SELECT m.tenant_id AS tenant, u.email, m.role, t.holder_user_id = u.id AS holder
@@ -87,8 +87,8 @@ describe('seed de desarrollo (#21)', () => {
     ]);
   });
 
-  it('cada comercio tiene su rubro, también si se sembró antes de M6 (#22)', () => {
-    const { systemDb, run } = boot({});
+  it('cada comercio tiene su rubro, también si se sembró antes de M6 (#22)', async () => {
+    const { systemDb, run } = await boot({});
     const rubros = () => systemDb.prepare('SELECT id, business_type FROM tenants WHERE business_type IS NOT NULL ORDER BY id').all();
     const expected = [
       { id: almacen.id, business_type: 'almacen' },
@@ -97,12 +97,12 @@ describe('seed de desarrollo (#21)', () => {
     ];
     expect(rubros().map((r) => ({ ...r }))).toEqual(expected);
     systemDb.prepare('UPDATE tenants SET business_type = NULL').run();
-    run();
+    await run();
     expect(rubros().map((r) => ({ ...r }))).toEqual(expected);
   });
 
-  it('cada caja tiene su key fija, y la key de siempre es la Caja 1 del Kiosco', () => {
-    const { systemDb } = boot({});
+  it('cada caja tiene su key fija, y la key de siempre es la Caja 1 del Kiosco', async () => {
+    const { systemDb } = await boot({});
     for (const t of DEV_TENANTS) {
       for (const r of t.registers) {
         const row = systemDb
@@ -114,8 +114,8 @@ describe('seed de desarrollo (#21)', () => {
     expect(kiosco.registers[0]?.rawKey).toBe(DEV_POS_API_KEY);
   });
 
-  it('las ventas sembradas son de su caja y cada caja tiene un cargo por día con ventas', () => {
-    const { systemDb, tenantManager } = boot({});
+  it('las ventas sembradas son de su caja y cada caja tiene un cargo por día con ventas', async () => {
+    const { systemDb, tenantManager } = await boot({});
     for (const t of DEV_TENANTS) {
       const db = tenantManager.getTenantDb(t.id);
       expect(n(db, 'SELECT COUNT(*) AS n FROM sales WHERE register_id IS NULL')).toBe(0);
@@ -132,8 +132,8 @@ describe('seed de desarrollo (#21)', () => {
     }
   });
 
-  it('cada comercio muestra un estado de créditos distinto: ok, saldo bajo y deuda en gracia', () => {
-    const { bundle } = boot({});
+  it('cada comercio muestra un estado de créditos distinto: ok, saldo bajo y deuda en gracia', async () => {
+    const { bundle } = await boot({});
     const k = bundle.billing.summary(kiosco.id);
     const a = bundle.billing.summary(almacen.id);
     const f = bundle.billing.summary(ferreteria.id);
@@ -144,8 +144,8 @@ describe('seed de desarrollo (#21)', () => {
     expect(f.debt).toBeGreaterThan(0);
   });
 
-  it('los regalados pasan por todos los estados: promo usada y bono vigente en el Kiosco, bono anulado en el Almacén, vencido en la Ferretería', () => {
-    const { bundle } = boot({});
+  it('los regalados pasan por todos los estados: promo usada y bono vigente en el Kiosco, bono anulado en el Almacén, vencido en la Ferretería', async () => {
+    const { bundle } = await boot({});
     const status = (tenantId: string) => bundle.billing.listGifts(tenantId).map((g) => `${g.origin}:${g.status}`).sort();
     expect(status(kiosco.id)).toEqual(['grant:used', 'signup:active']);
     expect(status(almacen.id)).toEqual(['grant:active', 'signup:voided']);
@@ -153,16 +153,16 @@ describe('seed de desarrollo (#21)', () => {
     expect(bundle.billing.listMovements(kiosco.id).some((m) => m.kind === 'payment')).toBe(true);
   });
 
-  it('carga un WhatsApp de soporte de prueba, sin pisar uno cargado a mano (#23)', () => {
-    const { systemDb, run } = boot({});
+  it('carga un WhatsApp de soporte de prueba, sin pisar uno cargado a mano (#23)', async () => {
+    const { systemDb, run } = await boot({});
     expect(readBillingSettings(systemDb).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
     writeBillingSettings(systemDb, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
-    run();
+    await run();
     expect(readBillingSettings(systemDb).supportWhatsapp).toBe('5491177778888');
   });
 
-  it('crea los tres comercios demo, sin dueño (#24)', () => {
-    const { systemDb } = boot({});
+  it('crea los tres comercios demo, sin dueño (#24)', async () => {
+    const { systemDb } = await boot({});
     expect(systemDb.prepare('SELECT tenant_id FROM demo_tenants ORDER BY tenant_id').all()).toEqual([
       { tenant_id: 'demo-almacen' },
       { tenant_id: 'demo-ferreteria' },
@@ -171,13 +171,13 @@ describe('seed de desarrollo (#21)', () => {
     expect(n(systemDb, "SELECT COUNT(*) AS n FROM memberships WHERE tenant_id LIKE 'demo-%'")).toBe(0);
   });
 
-  it('en producción también crea los comercios demo (#24)', () => {
-    const { systemDb } = boot({ NODE_ENV: 'production' });
+  it('en producción también crea los comercios demo (#24)', async () => {
+    const { systemDb } = await boot({ NODE_ENV: 'production' });
     expect(n(systemDb, 'SELECT COUNT(*) AS n FROM demo_tenants')).toBe(3);
   });
 
-  it('hay dos cajas de demo andando, con key fija, en los comercios demo (#24)', () => {
-    const { systemDb } = boot({});
+  it('hay dos cajas de demo andando, con key fija, en los comercios demo (#24)', async () => {
+    const { systemDb } = await boot({});
     for (const d of DEV_DEMOS) {
       const row = systemDb
         .prepare(
@@ -189,26 +189,26 @@ describe('seed de desarrollo (#21)', () => {
     }
   });
 
-  it('una caja de demo revocada se vuelve a crear al arrancar, con la misma key (#24)', () => {
-    const { systemDb, bundle, run } = boot({});
+  it('una caja de demo revocada se vuelve a crear al arrancar, con la misma key (#24)', async () => {
+    const { systemDb, bundle, run } = await boot({});
     const first = DEV_DEMOS[0];
     if (first === undefined) throw new Error('Faltan demos');
     bundle.demoSessions.revokeTenant(`demo-${first.template}`, 'reset');
-    run();
+    await run();
     const alive = `SELECT COUNT(*) AS n FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
       WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`;
     expect(n(systemDb, alive, hashApiKey(first.rawKey))).toBe(1);
   });
 
-  it('arrancar otra vez no duplica nada', () => {
-    const { systemDb, run } = boot({});
+  it('arrancar otra vez no duplica nada', async () => {
+    const { systemDb, run } = await boot({});
     const before = counts(systemDb);
-    run();
+    await run();
     expect(counts(systemDb)).toEqual(before);
   });
 
-  it('devuelve los usuarios y las keys para el log del arranque', () => {
-    const { result } = boot({});
+  it('devuelve los usuarios y las keys para el log del arranque', async () => {
+    const { result } = await boot({});
     expect(result.devInfo?.password).toBe(DEV_PASSWORD);
     expect(result.devInfo?.users.map((u) => u.email)).toContain(DEV_USERS.root.email);
     expect(result.devInfo?.keys.map((k) => k.rawKey)).toEqual(

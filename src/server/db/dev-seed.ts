@@ -40,31 +40,31 @@ type UserIds = Record<DevUserKey, string>;
  * distinto y un par de demos. Idempotente: lo que ya existe no se toca; una demo vencida se vuelve
  * a crear. Para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
  */
-export function ensureDevData(deps: Deps): DevInfo {
-  const ids = ensureUsers(deps);
+export async function ensureDevData(deps: Deps): Promise<DevInfo> {
+  const ids = await ensureUsers(deps);
   // Sin WhatsApp de soporte no hay "Pedir ayuda" (#23); no pisa uno cargado a mano
   if (readBillingSettings(deps.systemDb).supportWhatsapp === '') {
     writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
   }
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {
-    if (!deps.tenantManager.tenantExists(tenant.id)) seedTenant(deps, tenant, ids);
+    if (!(await deps.tenantManager.tenantExists(tenant.id))) await seedTenant(deps, tenant, ids);
     // Los sembrados antes de M6 no tienen rubro (#22)
     deps.systemDb.prepare('UPDATE tenants SET business_type = ? WHERE id = ? AND business_type IS NULL').run(tenant.preset, tenant.id);
   }
-  ensureDemos(deps);
+  await ensureDemos(deps);
   return devInfo();
 }
 
-function ensureUsers(deps: Deps): UserIds {
+async function ensureUsers(deps: Deps): Promise<UserIds> {
   const ids: Partial<UserIds> = {};
   for (const [key, u] of Object.entries(DEV_USERS) as [DevUserKey, { email: string; name: string }][]) {
     if (key === 'root') {
-      ids[key] = deps.authService.ensureRoot({ email: u.email, password: DEV_PASSWORD, name: u.name }).user.id;
+      ids[key] = (await deps.authService.ensureRoot({ email: u.email, password: DEV_PASSWORD, name: u.name })).user.id;
       continue;
     }
-    const existing = deps.authService.findUserByEmail(u.email);
-    const id = existing?.id ?? deps.authService.createUser({ email: u.email, password: DEV_PASSWORD, name: u.name }).user.id;
+    const existing = await deps.authService.findUserByEmail(u.email);
+    const id = existing?.id ?? (await deps.authService.createUser({ email: u.email, password: DEV_PASSWORD, name: u.name })).user.id;
     // Las cuentas nacen como user: el soporte se marca acá, como lo haría root a mano
     if (key === 'support') deps.systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(id);
     ids[key] = id;
@@ -76,9 +76,9 @@ function ensureUsers(deps: Deps): UserIds {
   return { root, support, ownerA, ownerB, adminK, memberK };
 }
 
-function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): void {
+async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void> {
   const now = new Date();
-  deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner], businessType: t.preset });
+  await deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner], businessType: t.preset });
   const db = deps.tenantManager.getTenantDb(t.id);
   // El catálogo del rubro y los clientes, como una demo
   seedDemoSession(db, t.preset);
@@ -164,7 +164,7 @@ function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): void {
  * Las cajas de demo con key fija (#24): si no hay una viva con esa key (un reinicio o la inactividad
  * la revocaron), se crea otra caja de visitante y se le pone la key. La revocada suelta el hash, que es único.
  */
-function ensureDemos(deps: Deps): void {
+async function ensureDemos(deps: Deps): Promise<void> {
   if (!deps.demoSessions.enabled()) return;
   for (const d of DEV_DEMOS) {
     const hash = hashApiKey(d.rawKey);
@@ -176,7 +176,7 @@ function ensureDemos(deps: Deps): void {
       .get(hash);
     if (alive !== undefined) continue;
     deps.systemDb.prepare("UPDATE tenant_api_keys SET key_hash = key_hash || ':revocada:' || id WHERE key_hash = ?").run(hash);
-    const session = deps.demoSessions.create(d.template);
+    const session = await deps.demoSessions.create(d.template);
     deps.systemDb
       .prepare('UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ? WHERE register_id = (SELECT register_id FROM demo_sessions WHERE id = ?)')
       .run(hash, d.rawKey.slice(0, 10), session.sessionId);

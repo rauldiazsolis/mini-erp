@@ -74,12 +74,12 @@ export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; querie
     res.status(200).json({ count: deps.funnel.pendingCount() });
   });
 
-  router.post('/contacts/:contactId/handled', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/contacts/:contactId/handled', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const contactId = routeParam(req, 'contactId') ?? '';
     try {
       const actor = auditActor(req);
       deps.funnel.markHandled(contactId, actor.actorUserId);
-      deps.audit.record({ ...actor, tenantId: null, action: 'funnel.contact-handled', details: { contactId } });
+      await deps.audit.record({ ...actor, tenantId: null, action: 'funnel.contact-handled', details: { contactId } });
       res.status(200).json({ ok: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

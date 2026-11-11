@@ -33,20 +33,20 @@ describe('API de Créditos del comercio (#21)', () => {
     const bundle = createApp({ systemDb, tenantManager, now: () => at });
     app = bundle.app;
     billing = bundle.billing;
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const admin = bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const admin = await bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     const members = new MembershipService(systemDb);
-    members.addMembership(tenantId, admin.user.id, 'admin');
-    members.addMembership(tenantId, member.user.id, 'member');
+    await members.addMembership(tenantId, admin.user.id, 'admin');
+    await members.addMembership(tenantId, member.user.id, 'member');
     billing.grantSignupBonus(tenantId, owner.user.id);
     tokens = {
       owner: owner.token,
       admin: admin.token,
       member: member.token,
-      root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token,
+      root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,
     };
     keys = [];
     for (const pos of ['Caja 1', 'Caja 2']) {

@@ -34,14 +34,14 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-dash-test';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
 
     // Registrar admin
-    const registerRes = bundle.authService.createUser({
+    const registerRes = await bundle.authService.createUser({
       email: 'admin@dashboard.test',
       password: 'password123',
       name: 'Admin Dashboard',
@@ -49,7 +49,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
     adminToken = registerRes.token;
 
     // Crear tenant con datos demo
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-dash-test',
       name: 'Kiosco Dashboard Test',

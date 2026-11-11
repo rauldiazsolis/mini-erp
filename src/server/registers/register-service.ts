@@ -32,13 +32,13 @@ export class RegisterService {
     this.keys = new ApiKeyService(db);
   }
 
-  create(p: { tenantId: string; name: string; branch: string; pointOfSale: string }): { id: string; rawKey: string; keyPrefix: string } {
-    const created = this.keys.createApiKey(p);
+  async create(p: { tenantId: string; name: string; branch: string; pointOfSale: string }): Promise<{ id: string; rawKey: string; keyPrefix: string }> {
+    const created = await this.keys.createApiKey(p);
     return { id: created.registerId, rawKey: created.rawKey, keyPrefix: created.keyPrefix };
   }
 
   /** Registra que un equipo usó la key: liga la caja si no tiene equipo. Un `deviceId` vacío no liga. */
-  seen(registerId: string, deviceId: string): 'bound' | 'foreign' {
+  async seen(registerId: string, deviceId: string): Promise<'bound' | 'foreign'> {
     if (deviceId === '') return 'bound';
     const at = this.now().toISOString();
     const row = this.db.prepare('SELECT device_id FROM registers WHERE id = ?').get(registerId) as
@@ -60,16 +60,16 @@ export class RegisterService {
     return 'foreign';
   }
 
-  rotateKey(tenantId: string, registerId: string): { rawKey: string; keyPrefix: string } {
-    const reg = this.get(tenantId, registerId);
+  async rotateKey(tenantId: string, registerId: string): Promise<{ rawKey: string; keyPrefix: string }> {
+    const reg = await this.get(tenantId, registerId);
     this.db.prepare('UPDATE tenant_api_keys SET active = 0 WHERE register_id = ?').run(registerId);
-    const key = this.keys.insertKey({ tenantId, registerId, name: reg.name, branch: reg.branch, pointOfSale: reg.point_of_sale });
+    const key = await this.keys.insertKey({ tenantId, registerId, name: reg.name, branch: reg.branch, pointOfSale: reg.point_of_sale });
     return { rawKey: key.rawKey, keyPrefix: key.keyPrefix };
   }
 
   /** Pasa la caja a un equipo que ya la usó; el anterior queda como uno más de los otros. */
-  transferTo(tenantId: string, registerId: string, deviceId: string): void {
-    const reg = this.get(tenantId, registerId);
+  async transferTo(tenantId: string, registerId: string, deviceId: string): Promise<void> {
+    const reg = await this.get(tenantId, registerId);
     const other = this.db.prepare('SELECT 1 FROM register_devices WHERE register_id = ? AND device_id = ?').get(registerId, deviceId);
     if (other === undefined) throw new DomainError(400, 'Ese equipo no usó esta caja');
     const at = this.now().toISOString();
@@ -93,19 +93,19 @@ export class RegisterService {
     }
   }
 
-  unbind(tenantId: string, registerId: string): void {
-    this.get(tenantId, registerId);
+  async unbind(tenantId: string, registerId: string): Promise<void> {
+    await this.get(tenantId, registerId);
     this.db.prepare('UPDATE registers SET device_id = NULL, bound_at = NULL, last_seen_at = NULL WHERE id = ?').run(registerId);
     this.db.prepare('DELETE FROM register_devices WHERE register_id = ?').run(registerId);
   }
 
-  deactivate(tenantId: string, registerId: string): void {
-    this.get(tenantId, registerId);
+  async deactivate(tenantId: string, registerId: string): Promise<void> {
+    await this.get(tenantId, registerId);
     this.db.prepare('UPDATE registers SET active = 0 WHERE id = ?').run(registerId);
     this.db.prepare('UPDATE tenant_api_keys SET active = 0 WHERE register_id = ?').run(registerId);
   }
 
-  list(tenantId: string): RegisterItem[] {
+  async list(tenantId: string): Promise<RegisterItem[]> {
     const rows = this.db
       .prepare('SELECT * FROM registers WHERE tenant_id = ? ORDER BY active DESC, created_at, id')
       .all(tenantId) as RegisterRow[];
@@ -136,7 +136,7 @@ export class RegisterService {
   }
 
   /** Para los avisos del pull: si el equipo es el ligado y si otro usó la key hace poco. */
-  noticeState(registerId: string, deviceId: string): RegisterNoticeState {
+  async noticeState(registerId: string, deviceId: string): Promise<RegisterNoticeState> {
     const reg = this.db.prepare('SELECT device_id, bound_at FROM registers WHERE id = ?').get(registerId) as
       | { device_id: string | null; bound_at: string | null }
       | undefined;
@@ -153,7 +153,7 @@ export class RegisterService {
     return { registerId, binding: 'bound', sharedRecently: shared !== undefined };
   }
 
-  private get(tenantId: string, registerId: string): RegisterRow {
+  private async get(tenantId: string, registerId: string): Promise<RegisterRow> {
     const row = this.db.prepare('SELECT * FROM registers WHERE id = ? AND tenant_id = ?').get(registerId, tenantId) as
       | RegisterRow
       | undefined;

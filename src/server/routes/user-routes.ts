@@ -45,20 +45,23 @@ export function createUserRoutes(deps: {
 }): Router {
   const router = Router({ mergeParams: true });
 
-  router.get('/users', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/users', requirePermission('users.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const { tenantId, actor } = actorOf(req);
-      const members = deps.members.listMembers(tenantId).map((m) => ({
-        ...m,
-        canReset: actor.role === 'owner' && m.userId !== actor.userId && deps.members.isFullyOwnedBy(m.userId, actor.userId),
-      }));
+      const members = [];
+      for (const m of await deps.members.listMembers(tenantId)) {
+        members.push({
+          ...m,
+          canReset: actor.role === 'owner' && m.userId !== actor.userId && (await deps.members.isFullyOwnedBy(m.userId, actor.userId)),
+        });
+      }
       res.status(200).json({ members, invitations: deps.invitations.listPending(tenantId) });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/invitations', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/invitations', requirePermission('users.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = inviteSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -70,51 +73,51 @@ export function createUserRoutes(deps: {
       return;
     }
     try {
-      res.status(201).json(deps.invitations.create({ ...actorOf(req), ...parsed.data }));
+      res.status(201).json(await deps.invitations.create({ ...actorOf(req), ...parsed.data }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.delete('/invitations/:invitationId', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/invitations/:invitationId', requirePermission('users.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.invitations.revoke({ ...actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
+      await deps.invitations.revoke({ ...actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.patch('/users/:userId', requirePermission('users.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.patch('/users/:userId', requirePermission('users.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     // Quien impersona no toca owners (#23): ni su rol ni su estado, ni nombra uno nuevo
-    const current = deps.members.getMembership(req.activeTenantId ?? '', routeParam(req, 'userId') ?? '');
+    const current = await deps.members.getMembership(req.activeTenantId ?? '', routeParam(req, 'userId') ?? '');
     if (req.impersonator !== undefined && (current?.role === 'owner' || parsed.data.role === 'owner')) {
       sendImpersonating(res);
       return;
     }
     try {
-      res.status(200).json(deps.members.updateMember({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '', ...parsed.data }));
+      res.status(200).json(await deps.members.updateMember({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '', ...parsed.data }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/users/:userId/password-reset', requirePermission('owners.manage'), requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/users/:userId/password-reset', requirePermission('owners.manage'), requireOwnSession, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(201).json(deps.resets.create({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
+      res.status(201).json(await deps.resets.create({ ...actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.get('/audit', requirePermission('owners.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/audit', requirePermission('owners.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.audit.listForTenant(actorOf(req).tenantId));
+      res.status(200).json(await deps.audit.listForTenant(actorOf(req).tenantId));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

@@ -47,13 +47,13 @@ export class AltaService {
     this.funnel = deps.funnel;
   }
 
-  create(params: {
+  async create(params: {
     user?: UserSession | undefined;
     account?: { name: string; email: string; password: string; whatsapp: string } | undefined;
     businessName: string;
     businessType: BusinessType;
     demoSessionId?: string | undefined;
-  }): AltaResult {
+  }): Promise<AltaResult> {
     let user = params.user;
     let token: string | undefined;
     let createdUserId: string | undefined;
@@ -61,10 +61,10 @@ export class AltaService {
 
     if (user === undefined) {
       if (params.account === undefined) throw new DomainError(400, 'Faltan los datos de la cuenta');
-      if (this.auth.findUserByEmail(params.account.email) !== undefined) {
+      if ((await this.auth.findUserByEmail(params.account.email)) !== undefined) {
         throw new DomainError(409, 'Ya tenés una cuenta con ese correo: iniciá sesión');
       }
-      const created = this.auth.createUser(params.account);
+      const created = await this.auth.createUser(params.account);
       user = created.user;
       token = created.token;
       createdUserId = created.user.id;
@@ -73,7 +73,7 @@ export class AltaService {
     try {
       const name = params.businessName.trim();
       const slug = slugify(name);
-      const tenant = this.tenants.createTenant({
+      const tenant = await this.tenants.createTenant({
         id: slug,
         slug,
         name,
@@ -90,10 +90,10 @@ export class AltaService {
           console.error('[embudo] no se pudo ligar el comercio a su demo:', err);
         }
       }
-      const key = this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
+      const key = await this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
       // El bono de alta (#21): créditos regalados del comercio, con vencimiento
       this.billing.grantSignupBonus(tenant.id, user.id);
-      this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { businessType: params.businessType } });
+      await this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { businessType: params.businessType } });
       return {
         ...(token === undefined ? {} : { token }),
         user,
@@ -101,8 +101,8 @@ export class AltaService {
         posKey: { key: key.rawKey, branch: BRANCH, pointOfSale: POINT_OF_SALE },
       };
     } catch (err: unknown) {
-      if (createdTenantId !== undefined) this.tenants.deleteTenant(createdTenantId);
-      if (createdUserId !== undefined) this.auth.deleteUser(createdUserId);
+      if (createdTenantId !== undefined) await this.tenants.deleteTenant(createdTenantId);
+      if (createdUserId !== undefined) await this.auth.deleteUser(createdUserId);
       throw err;
     }
   }

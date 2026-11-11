@@ -54,20 +54,22 @@ export class DemoSessionService {
   }
 
   /** Crea los comercios demo que falten. Devuelve los rubros creados. */
-  ensureDemoTenants(): DemoTemplate[] {
-    return DEMO_TEMPLATES.filter((t) => !this.hasDemoTenant(t)).map((t) => {
-      this.ensureDemoTenant(t);
-      return t;
-    });
+  async ensureDemoTenants(): Promise<DemoTemplate[]> {
+    const created: DemoTemplate[] = [];
+    for (const t of DEMO_TEMPLATES.filter((t) => !this.hasDemoTenant(t))) {
+      await this.ensureDemoTenant(t);
+      created.push(t);
+    }
+    return created;
   }
 
   /** El comercio demo del rubro; si falta, lo crea y lo siembra. */
-  ensureDemoTenant(template: DemoTemplate): string {
+  async ensureDemoTenant(template: DemoTemplate): Promise<string> {
     const { tenantId, name } = DEMO_COMMERCES[template];
     if (this.hasDemoTenant(template)) return tenantId;
     const now = this.deps.now();
-    if (!this.deps.tenantManager.tenantExists(tenantId)) {
-      this.deps.tenantManager.createTenant({ id: tenantId, slug: tenantId, name });
+    if (!(await this.deps.tenantManager.tenantExists(tenantId))) {
+      await this.deps.tenantManager.createTenant({ id: tenantId, slug: tenantId, name });
     }
     seedDemoCommerce(this.deps.tenantManager.getTenantDb(tenantId), template, now);
     this.deps.systemDb
@@ -76,11 +78,11 @@ export class DemoSessionService {
     return tenantId;
   }
 
-  create(template: DemoTemplate): DemoSession {
-    const tenantId = this.ensureDemoTenant(template);
+  async create(template: DemoTemplate): Promise<DemoSession> {
+    const tenantId = await this.ensureDemoTenant(template);
     const sessionId = randomUUID();
     const pointOfSale = this.freePointOfSale(tenantId, sessionId);
-    const { rawKey, registerId } = this.deps.apiKeyService.createApiKey({
+    const { rawKey, registerId } = await this.deps.apiKeyService.createApiKey({
       tenantId,
       name: pointOfSale,
       branch: DEMO_BRANCH_CODE,
@@ -146,9 +148,9 @@ export class DemoSessionService {
   }
 
   /** Borra los tenants por visitante de #9 que quedaron de antes de M8. */
-  sweepLegacy(): number {
+  async sweepLegacy(): Promise<number> {
     const rows = this.deps.systemDb.prepare('SELECT tenant_id FROM legacy_demo_sessions').all() as { tenant_id: string }[];
-    for (const row of rows) this.deps.tenantManager.deleteTenant(row.tenant_id);
+    for (const row of rows) await this.deps.tenantManager.deleteTenant(row.tenant_id);
     return rows.length;
   }
 

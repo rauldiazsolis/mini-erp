@@ -17,25 +17,25 @@ export class SuspensionService {
     this.now = deps.now;
   }
 
-  suspend(p: { tenantId: string; reason: string; actorUserId: string }): void {
+  async suspend(p: { tenantId: string; reason: string; actorUserId: string }): Promise<void> {
     this.requireRealTenant(p.tenantId);
     if (isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
-    this.inTransaction(() => {
+    await this.inTransaction(async () => {
       this.db
         .prepare('INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES (?, ?, ?, NULL, ?, ?)')
         .run(`sus_${randomUUID()}`, p.tenantId, this.now().toISOString(), p.reason, p.actorUserId);
       this.db.prepare("UPDATE tenants SET status = 'suspended' WHERE id = ?").run(p.tenantId);
-      this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.suspended', details: { reason: p.reason } });
+      await this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.suspended', details: { reason: p.reason } });
     });
   }
 
-  reactivate(p: { tenantId: string; actorUserId: string }): void {
+  async reactivate(p: { tenantId: string; actorUserId: string }): Promise<void> {
     this.requireRealTenant(p.tenantId);
     if (!isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio no está suspendido');
-    this.inTransaction(() => {
+    await this.inTransaction(async () => {
       this.db.prepare('UPDATE tenant_suspensions SET to_at = ? WHERE tenant_id = ? AND to_at IS NULL').run(this.now().toISOString(), p.tenantId);
       this.db.prepare("UPDATE tenants SET status = 'active' WHERE id = ?").run(p.tenantId);
-      this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.reactivated' });
+      await this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.reactivated' });
     });
   }
 
@@ -44,10 +44,10 @@ export class SuspensionService {
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
   }
 
-  private inTransaction(run: () => void): void {
+  private async inTransaction(run: () => Promise<void>): Promise<void> {
     this.db.exec('BEGIN');
     try {
-      run();
+      await run();
       this.db.exec('COMMIT');
     } catch (err: unknown) {
       this.db.exec('ROLLBACK');

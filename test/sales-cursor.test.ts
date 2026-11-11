@@ -24,9 +24,9 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
-    const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     db = tenantManager.getTenantDb(tenantId);
     await seedSalesFixture(app, token, tenantId, db);

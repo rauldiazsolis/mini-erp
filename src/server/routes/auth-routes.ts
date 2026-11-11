@@ -19,13 +19,13 @@ const changePasswordSchema = z.object({
 
 export function createAuthRoutes(
   authService: AuthService,
-  requireAdmin: (req: AuthenticatedAdminRequest, res: Response, next: () => void) => void,
+  requireAdmin: (req: AuthenticatedAdminRequest, res: Response, next: () => void) => Promise<void>,
   limit: RequestHandler,
   audit: AuditLog,
 ): Router {
   const router = Router();
 
-  router.post('/login', limit, (req, res) => {
+  router.post('/login', limit, async (req, res) => {
     const parseResult = loginSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -33,7 +33,7 @@ export function createAuthRoutes(
     }
 
     try {
-      const result = authService.login(parseResult.data);
+      const result = await authService.login(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
@@ -42,7 +42,7 @@ export function createAuthRoutes(
   });
 
   // Cambiar la propia contraseña (#19): cierra las sesiones de los otros equipos
-  router.post('/password', requireAdmin, requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/password', requireAdmin, requireOwnSession, async (req: AuthenticatedAdminRequest, res: Response) => {
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
@@ -54,21 +54,21 @@ export function createAuthRoutes(
     }
     try {
       const currentToken = (req.headers.authorization ?? '').slice(7).trim();
-      authService.changePassword({ userId: req.user.id, currentToken, ...parsed.data });
-      audit.record({ actorUserId: req.user.id, tenantId: null, action: 'password.changed', targetUserId: req.user.id });
+      await authService.changePassword({ userId: req.user.id, currentToken, ...parsed.data });
+      await audit.record({ actorUserId: req.user.id, tenantId: null, action: 'password.changed', targetUserId: req.user.id });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.get('/me', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/me', requireAdmin, async (req: AuthenticatedAdminRequest, res: Response) => {
     if (req.user === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
 
-    const tenants = authService.listUserTenants(req.user.id);
+    const tenants = await authService.listUserTenants(req.user.id);
     res.status(200).json({
       user: req.user,
       impersonator: req.impersonator ?? null,
@@ -77,8 +77,8 @@ export function createAuthRoutes(
   });
 
   // "Cerrar sesión" (#23): borra la sesión en el servidor; las impersonaciones hijas mueren con ella
-  router.post('/logout', requireAdmin, (req: AuthenticatedAdminRequest, res: Response) => {
-    if (req.sessionToken !== undefined) authService.deleteSession(req.sessionToken);
+  router.post('/logout', requireAdmin, async (req: AuthenticatedAdminRequest, res: Response) => {
+    if (req.sessionToken !== undefined) await authService.deleteSession(req.sessionToken);
     res.status(200).json({ success: true });
   });
 

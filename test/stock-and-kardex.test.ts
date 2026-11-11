@@ -49,7 +49,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'owner@stock.test',
       password: 'password123',
       name: 'Dueño Stock',
@@ -57,7 +57,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-stock-test',
       name: 'Kiosco Stock Test',

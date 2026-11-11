@@ -37,18 +37,18 @@ describe('permisos del comercio en la API (#19)', () => {
   let tokens: { owner: string; admin: string; member: string };
   const tenantId = 'kiosco-roles';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
     const members = new MembershipService(systemDb);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const admin = bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Roles', ownerUserId: owner.user.id });
-    members.addMembership(tenantId, admin.user.id, 'admin');
-    members.addMembership(tenantId, member.user.id, 'member');
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const admin = await bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Roles', ownerUserId: owner.user.id });
+    await members.addMembership(tenantId, admin.user.id, 'admin');
+    await members.addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, admin: admin.token, member: member.token };
   });
 

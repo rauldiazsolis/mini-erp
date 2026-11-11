@@ -113,9 +113,9 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
   });
 
   // Catálogo de ejemplo del rubro (#22): el alta crea el comercio vacío; se ofrece mientras no tenga productos
-  router.get('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/catalog/example', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      const businessType = await tenants.getBusinessType(req.activeTenantId ?? '');
       const available = hasExampleCatalog(businessType) && getImportExportService(req).countProducts() === 0;
       res.status(200).json({ businessType, available });
     } catch (err: unknown) {
@@ -123,9 +123,9 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
     }
   });
 
-  router.post('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/catalog/example', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      const businessType = await tenants.getBusinessType(req.activeTenantId ?? '');
       if (!hasExampleCatalog(businessType)) {
         res.status(409).json({ error: 'Tu rubro no tiene catálogo de ejemplo' });
         return;

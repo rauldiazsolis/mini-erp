@@ -15,7 +15,7 @@ const startSchema = z.union([
 export function createImpersonationRoutes(impersonations: ImpersonationService): Router {
   const router = Router();
 
-  router.post('/', requirePlatformRole('root', 'support'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/', requirePlatformRole('root', 'support'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = startSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -27,15 +27,15 @@ export function createImpersonationRoutes(impersonations: ImpersonationService):
       const base = { staff: req.user, parentToken: req.sessionToken };
       res
         .status(201)
-        .json('helpRequestId' in body ? impersonations.take({ ...base, helpRequestId: body.helpRequestId }) : impersonations.start({ ...base, ...body }));
+        .json('helpRequestId' in body ? await impersonations.take({ ...base, helpRequestId: body.helpRequestId }) : await impersonations.start({ ...base, ...body }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.delete('/current', (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/current', async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      impersonations.end(req.sessionToken ?? '');
+      await impersonations.end(req.sessionToken ?? '');
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

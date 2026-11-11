@@ -20,28 +20,28 @@ export class ApiKeyService {
   }
 
   /** Crea una caja y su key (#21): la usan el alta, las demos y `RegisterService.create`. */
-  createApiKey(params: { tenantId: string; name: string; branch: string; pointOfSale: string }): {
+  async createApiKey(params: { tenantId: string; name: string; branch: string; pointOfSale: string }): Promise<{
     id: string;
     registerId: string;
     rawKey: string;
     keyPrefix: string;
-  } {
+  }> {
     const registerId = `reg_${randomUUID()}`;
     this.systemDb
       .prepare(
         'INSERT INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
       )
       .run(registerId, params.tenantId, params.name.trim(), params.branch.trim(), params.pointOfSale.trim(), new Date().toISOString());
-    const key = this.insertKey({ ...params, registerId });
+    const key = await this.insertKey({ ...params, registerId });
     return { ...key, registerId };
   }
 
   /** Una key nueva para una caja existente: rotarla no cambia la caja. */
-  insertKey(params: { tenantId: string; registerId: string; name: string; branch: string; pointOfSale: string }): {
+  async insertKey(params: { tenantId: string; registerId: string; name: string; branch: string; pointOfSale: string }): Promise<{
     id: string;
     rawKey: string;
     keyPrefix: string;
-  } {
+  }> {
     const id = `key_${randomUUID()}`;
     const { rawKey, keyPrefix, keyHash } = generatePosApiKey();
     this.systemDb
@@ -64,7 +64,7 @@ export class ApiKeyService {
   }
 
   /** La key activa de una caja activa: el comercio, la caja y su sucursal y punto de venta. */
-  validateApiKey(rawKey: string): ValidatedPosKey | undefined {
+  async validateApiKey(rawKey: string): Promise<ValidatedPosKey | undefined> {
     const keyHash = hashApiKey(rawKey);
     const row = this.systemDb
       .prepare(

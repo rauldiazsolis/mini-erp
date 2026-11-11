@@ -72,7 +72,7 @@ export class AuditLog {
     this.now = now;
   }
 
-  record(params: {
+  async record(params: {
     actorUserId: string;
     impersonatorUserId?: string | undefined;
     /** La caja, si el actor es `REGISTER_ACTOR` (M10). */
@@ -81,7 +81,7 @@ export class AuditLog {
     action: AuditAction;
     targetUserId?: string | undefined;
     details?: Record<string, unknown> | undefined;
-  }): void {
+  }): Promise<void> {
     this.db
       .prepare(
         'INSERT INTO audit_log (id, at, actor_user_id, impersonator_user_id, actor_register_id, tenant_id, action, target_user_id, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -99,7 +99,7 @@ export class AuditLog {
       );
   }
 
-  listForTenant(tenantId: string, limit = 200): AuditEntry[] {
+  async listForTenant(tenantId: string, limit = 200): Promise<AuditEntry[]> {
     const rows = this.db
       .prepare(
         `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, actor.name AS actor_name, target.name AS target_name,
@@ -136,7 +136,7 @@ export class AuditLog {
   }
 
   /** Toda la auditoría, o la de un comercio, para el registro de plataforma (#23). */
-  listPlatform(p: { tenantId?: string | undefined; limit?: number | undefined } = {}): PlatformAuditItem[] {
+  async listPlatform(p: { tenantId?: string | undefined; limit?: number | undefined } = {}): Promise<PlatformAuditItem[]> {
     const tenantId = p.tenantId ?? null;
     const rows = this.db
       .prepare(

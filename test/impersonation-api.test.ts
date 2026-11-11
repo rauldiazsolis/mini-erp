@@ -16,26 +16,26 @@ describe('sesión de impersonación (#23, M7b)', () => {
   let tokens: { root: string; support: string; owner: string; otherSupport: string };
   let ids: { owner: string; support: string; root: string; lonely: string; disabled: string; otherSupport: string };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;
-    const root = auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' }).user;
-    const support = auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    const otherSupport = auth.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Beto' });
+    const root = (await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' })).user;
+    const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    const otherSupport = await auth.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Beto' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id IN (?, ?)").run(support.user.id, otherSupport.user.id);
-    const owner = auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
-    tenantManager.createTenant({ id: 'almacen', slug: 'almacen', name: 'Almacén Y', ownerUserId: owner.user.id });
-    const lonely = auth.createUser({ email: 'solo@x.com', password: 'password123', name: 'Sin comercio' });
-    const disabled = auth.createUser({ email: 'baja@x.com', password: 'password123', name: 'De baja' });
-    tenantManager.createTenant({ id: 'otro', slug: 'otro', name: 'Otro', ownerUserId: disabled.user.id });
+    const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: 'almacen', slug: 'almacen', name: 'Almacén Y', ownerUserId: owner.user.id });
+    const lonely = await auth.createUser({ email: 'solo@x.com', password: 'password123', name: 'Sin comercio' });
+    const disabled = await auth.createUser({ email: 'baja@x.com', password: 'password123', name: 'De baja' });
+    await tenantManager.createTenant({ id: 'otro', slug: 'otro', name: 'Otro', ownerUserId: disabled.user.id });
     systemDb.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(disabled.user.id);
     tokens = {
-      root: auth.login({ email: 'root@x.com', password: 'password123' }).token,
+      root: (await auth.login({ email: 'root@x.com', password: 'password123' })).token,
       support: support.token,
       otherSupport: otherSupport.token,
       owner: owner.token,

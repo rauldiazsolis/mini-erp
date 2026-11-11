@@ -14,19 +14,19 @@ const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
  * Arranque del servidor: comercios y barrido de demos (#24), barridos de cobro (#21) y del embudo (#25) y, solo fuera de producción,
  * los datos de desarrollo (#3: en la web serían un root y una key con valores que están en el repo).
  */
-export function bootstrap(params: {
+export async function bootstrap(params: {
   env: NodeJS.ProcessEnv;
   bundle: Bundle;
   sweepIntervalMs?: number | undefined;
-}): { devInfo?: DevInfo; sweeper: NodeJS.Timeout; billingSweeper: NodeJS.Timeout; funnelSweeper: NodeJS.Timeout } {
+}): Promise<{ devInfo?: DevInfo; sweeper: NodeJS.Timeout; billingSweeper: NodeJS.Timeout; funnelSweeper: NodeJS.Timeout }> {
   const { bundle } = params;
   const interval = params.sweepIntervalMs ?? SWEEP_INTERVAL_MS;
   // Los comercios demo (#24) son parte del producto: también en producción
   if (bundle.demoSessions.enabled()) {
-    const created = bundle.demoSessions.ensureDemoTenants();
+    const created = await bundle.demoSessions.ensureDemoTenants();
     if (created.length > 0) console.log(`[demos] comercios demo creados: ${created.join(', ')}`);
   }
-  const sweeper = startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets, audit: bundle.auditLog }, interval);
+  const sweeper = await startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets, audit: bundle.auditLog }, interval);
   const billingSweeper = startBillingSweeper(
     { systemDb: bundle.systemDb, tenantManager: bundle.tenantManager, billing: bundle.billing },
     interval,
@@ -36,7 +36,7 @@ export function bootstrap(params: {
   if (params.env['NODE_ENV'] === 'production') {
     return { sweeper, billingSweeper, funnelSweeper };
   }
-  const devInfo = ensureDevData({
+  const devInfo = await ensureDevData({
     systemDb: bundle.systemDb,
     authService: bundle.authService,
     tenantManager: bundle.tenantManager,

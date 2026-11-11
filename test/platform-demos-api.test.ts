@@ -27,7 +27,7 @@ describe('demos en la plataforma (#24)', () => {
   let tokens: { support: string; root: string; owner: string; ownerId: string };
   let clock: Date;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
@@ -38,13 +38,13 @@ describe('demos en la plataforma (#24)', () => {
       demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 },
     });
     app = bundle.app;
-    bundle.demoSessions.ensureDemoTenants();
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    await bundle.demoSessions.ensureDemoTenants();
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const rootToken = bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token;
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const rootToken = (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token;
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = { support: support.token, root: rootToken, owner: owner.token, ownerId: owner.user.id };
   });
 

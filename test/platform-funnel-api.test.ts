@@ -18,12 +18,12 @@ describe('el embudo en la plataforma (#25)', () => {
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const rootToken = bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token;
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const rootToken = (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token;
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = { support: support.token, root: rootToken, owner: owner.token, supportId: support.user.id };
     const res = await request(app).post('/api/funnel/contacts').send({ name: 'Beto', whatsapp: '1144440000', source: 'landing' });
     contactId = (res.body as { id: string }).id;

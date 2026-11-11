@@ -65,10 +65,10 @@ export class AuthService {
   }
 
   /** Crea una cuenta con su sesión. Solo la usan el alta y las invitaciones (#19): no hay registro suelto. */
-  createUser(params: { email: string; password: string; name: string; whatsapp?: string | undefined }): {
+  async createUser(params: { email: string; password: string; name: string; whatsapp?: string | undefined }): Promise<{
     token: string;
     user: UserSession;
-  } {
+  }> {
     const email = params.email.trim().toLowerCase();
     const existing = this.systemDb
       .prepare('SELECT id FROM users WHERE email = ?')
@@ -90,7 +90,7 @@ export class AuthService {
       )
       .run(userId, email, passwordHash, params.name.trim(), globalRole, now, params.whatsapp ?? null);
 
-    const token = this.createSession(userId);
+    const token = await this.createSession(userId);
 
     return {
       token,
@@ -104,7 +104,7 @@ export class AuthService {
   }
 
   /** Root inicial (#3): crea el usuario como root o promueve uno existente con la contraseña dada. */
-  ensureRoot(params: { email: string; password: string; name: string }): { user: UserSession; created: boolean } {
+  async ensureRoot(params: { email: string; password: string; name: string }): Promise<{ user: UserSession; created: boolean }> {
     const email = params.email.trim().toLowerCase();
     const name = params.name.trim();
     const passwordHash = hashPassword(params.password);
@@ -128,10 +128,10 @@ export class AuthService {
     return { user: { id, email, name, globalRole: 'root' }, created: true };
   }
 
-  login(params: { email: string; password: string }): {
+  async login(params: { email: string; password: string }): Promise<{
     token: string;
     user: UserSession;
-  } {
+  }> {
     const email = params.email.trim().toLowerCase();
     const userRow = this.systemDb
       .prepare('SELECT id, email, password_hash, name, global_role, status FROM users WHERE email = ?')
@@ -152,7 +152,7 @@ export class AuthService {
       throw new Error('Cuenta desactivada: escribile a soporte');
     }
 
-    const token = this.createSession(userRow.id);
+    const token = await this.createSession(userRow.id);
 
     return {
       token,
@@ -165,7 +165,7 @@ export class AuthService {
     };
   }
 
-  createSession(userId: string): string {
+  async createSession(userId: string): Promise<string> {
     const token = generateSessionToken();
     const now = this.now();
     const expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString(); // 30 días
@@ -180,15 +180,15 @@ export class AuthService {
   }
 
   /** El usuario de la sesión, propia o impersonada. Para saber si es una impersonación, `resolveSession`. */
-  validateSession(token: string): UserSession | undefined {
-    return this.resolveSession(token)?.user;
+  async validateSession(token: string): Promise<UserSession | undefined> {
+    return (await this.resolveSession(token))?.user;
   }
 
   /**
    * Resuelve el token (#23): una impersonación vence a las 2 h sin uso y muere si su sesión padre ya no
    * existe, venció o es de una cuenta desactivada. Las dos cosas la borran y se auditan.
    */
-  resolveSession(token: string): ResolvedSession | undefined {
+  async resolveSession(token: string): Promise<ResolvedSession | undefined> {
     const row = this.systemDb
       .prepare(
         `SELECT u.id, u.email, u.name, u.global_role, s.expires_at, s.impersonator_user_id, s.help_request_id,
@@ -218,12 +218,12 @@ export class AuthService {
       row.imp_status === 'active' &&
       (impRole === 'root' || impRole === 'support');
     if (!parentAlive) {
-      this.endImpersonation(token, 'parent-ended');
+      await this.endImpersonation(token, 'parent-ended');
       return undefined;
     }
     const idle = now.getTime() - Date.parse(row.last_used_at ?? '');
     if (!(idle <= IMPERSONATION_IDLE_MS)) {
-      this.endImpersonation(token, 'expired');
+      await this.endImpersonation(token, 'expired');
       return undefined;
     }
     if (idle >= TOUCH_EVERY_MS) {
@@ -238,13 +238,13 @@ export class AuthService {
   }
 
   /** Una sesión de impersonación (#23): un token propio, hijo de la sesión de quien impersona. */
-  createImpersonationSession(p: {
+  async createImpersonationSession(p: {
     parentToken: string;
     impersonatorId: string;
     userId: string;
     tenantId: string;
     helpRequestId: string | null;
-  }): string {
+  }): Promise<string> {
     const token = generateSessionToken();
     const now = this.now();
     this.systemDb
@@ -267,13 +267,13 @@ export class AuthService {
   }
 
   /** Termina una impersonación y la audita; `false` si el token no es una. */
-  endImpersonation(token: string, reason: 'exit' | 'expired' | 'parent-ended'): boolean {
+  async endImpersonation(token: string, reason: 'exit' | 'expired' | 'parent-ended'): Promise<boolean> {
     const row = this.systemDb
       .prepare('SELECT user_id, impersonator_user_id, tenant_id FROM sessions WHERE token = ? AND impersonator_user_id IS NOT NULL')
       .get(token) as { user_id: string; impersonator_user_id: string; tenant_id: string | null } | undefined;
     if (row === undefined) return false;
     this.systemDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-    this.audit?.record({
+    await this.audit?.record({
       actorUserId: row.impersonator_user_id,
       tenantId: row.tenant_id,
       action: 'impersonation.ended',
@@ -284,30 +284,30 @@ export class AuthService {
   }
 
   /** "Cerrar sesión" (#23): borra la sesión del token; sus impersonaciones mueren en el próximo pedido. */
-  deleteSession(token: string): void {
-    if (this.endImpersonation(token, 'exit')) return;
+  async deleteSession(token: string): Promise<void> {
+    if (await this.endImpersonation(token, 'exit')) return;
     this.systemDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
 
-  findUserByEmail(email: string): { id: string; email: string; name: string } | undefined {
+  async findUserByEmail(email: string): Promise<{ id: string; email: string; name: string } | undefined> {
     return this.systemDb
       .prepare('SELECT id, email, name FROM users WHERE email = ?')
       .get(email.trim().toLowerCase()) as { id: string; email: string; name: string } | undefined;
   }
 
-  verifyUserPassword(userId: string, password: string): boolean {
+  async verifyUserPassword(userId: string, password: string): Promise<boolean> {
     const row = this.systemDb.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as
       | { password_hash: string }
       | undefined;
     return row !== undefined && verifyPassword(password, row.password_hash);
   }
 
-  setPassword(userId: string, password: string): void {
+  async setPassword(userId: string, password: string): Promise<void> {
     this.systemDb.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), userId);
   }
 
   /** Cierra las sesiones del usuario, salvo la indicada (la del equipo que cambió la contraseña). */
-  revokeSessions(userId: string, exceptToken?: string): void {
+  async revokeSessions(userId: string, exceptToken?: string): Promise<void> {
     if (exceptToken === undefined) {
       this.systemDb.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
       return;
@@ -316,22 +316,22 @@ export class AuthService {
   }
 
   /** Deshace un usuario recién creado (alta fallida). */
-  deleteUser(userId: string): void {
+  async deleteUser(userId: string): Promise<void> {
     this.systemDb.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     this.systemDb.prepare('DELETE FROM memberships WHERE user_id = ?').run(userId);
     this.systemDb.prepare('DELETE FROM users WHERE id = ?').run(userId);
   }
 
-  changePassword(params: { userId: string; currentPassword: string; newPassword: string; currentToken: string }): void {
-    if (!this.verifyUserPassword(params.userId, params.currentPassword)) {
+  async changePassword(params: { userId: string; currentPassword: string; newPassword: string; currentToken: string }): Promise<void> {
+    if (!(await this.verifyUserPassword(params.userId, params.currentPassword))) {
       throw new DomainError(400, 'La contraseña actual no es correcta');
     }
-    this.setPassword(params.userId, params.newPassword);
-    this.revokeSessions(params.userId, params.currentToken);
+    await this.setPassword(params.userId, params.newPassword);
+    await this.revokeSessions(params.userId, params.currentToken);
   }
 
   /** "Tus comercios": las membresías activas. Root y soporte no son miembros implícitos (#16). */
-  listUserTenants(userId: string): TenantMembershipInfo[] {
+  async listUserTenants(userId: string): Promise<TenantMembershipInfo[]> {
     const rows = this.systemDb
       .prepare(
         `SELECT t.id, t.slug, t.name, t.status, m.role 

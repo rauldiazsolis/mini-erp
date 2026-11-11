@@ -17,7 +17,7 @@ describe('reinicios del comercio demo (#24)', () => {
   let clock: Date;
   let db: DatabaseSync;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     apiKeyService = new ApiKeyService(systemDb);
@@ -30,19 +30,19 @@ describe('reinicios del comercio demo (#24)', () => {
       now: () => clock,
     });
     resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock });
-    service.ensureDemoTenants();
+    await service.ensureDemoTenants();
     db = tenantManager.getTenantDb('demo-kiosco');
   });
 
-  it('el total deja el comercio como recién sembrado y revoca las cajas', () => {
-    const a = service.create('kiosco');
+  it('el total deja el comercio como recién sembrado y revoca las cajas', async () => {
+    const a = await service.create('kiosco');
     db.prepare("INSERT INTO products (id, sku, name, created_at, updated_at) VALUES ('p_x', 'X-1', 'Vandalismo', 'x', 'x')").run();
     db.prepare("UPDATE products SET price = 1 WHERE id = 'demo_KIO-001'").run();
     clock = new Date(clock.getTime() + DAY);
-    expect(resets.resetFull('kiosco')).toEqual({ revoked: 1 });
+    expect(await resets.resetFull('kiosco')).toEqual({ revoked: 1 });
     expect(db.prepare("SELECT COUNT(*) AS n FROM products WHERE id = 'p_x'").get()).toEqual({ n: 0 });
     expect(db.prepare("SELECT price FROM products WHERE id = 'demo_KIO-001'").get()).toEqual({ price: 950 });
-    expect(apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
+    expect(await apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
     expect(systemDb.prepare('SELECT revoke_reason AS r FROM demo_sessions').all()).toEqual([{ r: 'reset' }]);
     const last = db.prepare('SELECT MAX(created_at) AS at FROM sales').get() as { at: string };
     expect(last.at > new Date(clock.getTime() - DAY).toISOString()).toBe(true); // historial al día
@@ -51,22 +51,22 @@ describe('reinicios del comercio demo (#24)', () => {
     });
   });
 
-  it('el total vacía todas las tablas del comercio, también las que no siembra', () => {
+  it('el total vacía todas las tablas del comercio, también las que no siembra', async () => {
     db.prepare("INSERT INTO push_lots (id, device_id, status, events, created_at, updated_at) VALUES ('l1', 'd', 'ok', '[]', 'x', 'x')").run();
     db.prepare("INSERT INTO tenant_settings (key, value) VALUES ('k', 'v')").run();
-    resets.resetFull('kiosco');
+    await resets.resetFull('kiosco');
     expect(db.prepare('SELECT COUNT(*) AS n FROM push_lots').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM tenant_settings').get()).toEqual({ n: 0 });
   });
 
-  it('el total de un rubro no toca a los otros', () => {
-    const b = service.create('almacen');
-    resets.resetFull('kiosco');
-    expect(apiKeyService.validateApiKey(b.apiKey)).toBeDefined();
+  it('el total de un rubro no toca a los otros', async () => {
+    const b = await service.create('almacen');
+    await resets.resetFull('kiosco');
+    expect(await apiKeyService.validateApiKey(b.apiKey)).toBeDefined();
   });
 
-  it('el parcial restaura productos, stock y clientes y conserva ventas, saldos y cajas', () => {
-    const a = service.create('kiosco');
+  it('el parcial restaura productos, stock y clientes y conserva ventas, saldos y cajas', async () => {
+    const a = await service.create('kiosco');
     const salesBefore = (db.prepare('SELECT COUNT(*) AS n FROM sales').get() as { n: number }).n;
     const juanBalance = (db.prepare("SELECT balance FROM customers WHERE id = 'cust-juan'").get() as { balance: number }).balance;
     db.prepare("UPDATE products SET price = 1, name = 'ROTO', blocked_reason = 'x' WHERE id = 'demo_KIO-001'").run();
@@ -82,7 +82,7 @@ describe('reinicios del comercio demo (#24)', () => {
     ).run();
     clock = new Date(clock.getTime() + 60_000);
 
-    resets.resetPartial('kiosco');
+    await resets.resetPartial('kiosco');
 
     expect(db.prepare("SELECT name, price, blocked_reason FROM products WHERE id = 'demo_KIO-001'").get()).toEqual({
       name: 'Alfajor Triple Dulce de Leche',
@@ -103,7 +103,7 @@ describe('reinicios del comercio demo (#24)', () => {
     expect(db.prepare("SELECT balance FROM customers WHERE id = 'cust-juan'").get()).toEqual({ balance: juanBalance });
     expect(db.prepare('SELECT COUNT(*) AS n FROM sales').get()).toEqual({ n: salesBefore });
     expect(db.prepare("SELECT resolution FROM discrepancies WHERE id = 'd1'").get()).toEqual({ resolution: 'dismissed' });
-    expect(apiKeyService.validateApiKey(a.apiKey)).toBeDefined();
+    expect(await apiKeyService.validateApiKey(a.apiKey)).toBeDefined();
     expect(db.prepare("SELECT updated_at FROM products WHERE id = 'demo_KIO-004'").get()).toEqual({ updated_at: clock.toISOString() });
     expect(db.prepare("SELECT updated_at FROM customers WHERE id = 'cust-cf'").get()).toEqual({ updated_at: clock.toISOString() });
     expect(systemDb.prepare("SELECT last_partial_reset_at AS at FROM demo_tenants WHERE template = 'kiosco'").get()).toEqual({

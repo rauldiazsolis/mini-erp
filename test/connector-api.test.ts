@@ -21,8 +21,8 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
     app = bundle.app;
 
     // Dueño y comercio con la semilla de demo (sin pasar por el alta, #19)
-    const { token, user } = bundle.authService.createUser({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', ownerUserId: user.id, seedDemoData: true });
+    const { token, user } = await bundle.authService.createUser({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', ownerUserId: user.id, seedDemoData: true });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
     bundle.billing.grantSignupBonus(tenantId, user.id);
 

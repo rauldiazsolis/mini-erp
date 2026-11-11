@@ -8,7 +8,7 @@ const redeemSchema = z.object({ token: z.string().min(1, 'Falta el link') });
 /** Canje del link del portal (#24): sin sesión, con el límite de login. */
 export function createPortalRoutes(portal: PortalService, limit: RequestHandler): Router {
   const router = Router();
-  router.post('/redeem', limit, (req: Request, res: Response) => {
+  router.post('/redeem', limit, async (req: Request, res: Response) => {
     const body: unknown = req.body;
     const parsed = redeemSchema.safeParse(body);
     if (!parsed.success) {
@@ -16,7 +16,7 @@ export function createPortalRoutes(portal: PortalService, limit: RequestHandler)
       return;
     }
     try {
-      res.status(200).json(portal.redeem(parsed.data.token));
+      res.status(200).json(await portal.redeem(parsed.data.token));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

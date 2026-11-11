@@ -14,15 +14,15 @@ describe('rutas de cajas del POS (#21)', () => {
   let tokens: { owner: string; member: string };
   const tenantId = 'kiosco-cajas';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Cajas', ownerUserId: owner.user.id });
-    new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Cajas', ownerUserId: owner.user.id });
+    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, member: member.token };
   });
 

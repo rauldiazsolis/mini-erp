@@ -21,12 +21,12 @@ describe('API de discrepancias (#2)', () => {
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
     bundle.billing.grantSignupBonus(tenantId, owner.user.id);
-    new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
     ownerToken = owner.token;
     memberToken = member.token;
     const key = await request(app)

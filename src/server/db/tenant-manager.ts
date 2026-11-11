@@ -64,17 +64,17 @@ export class TenantManager {
     return db;
   }
 
-  tenantExists(id: string): boolean {
+  async tenantExists(id: string): Promise<boolean> {
     const row = this.systemDb
       .prepare('SELECT id FROM tenants WHERE id = ? OR slug = ?')
       .get(id, id);
     return row !== undefined;
   }
 
-  resolveAvailableSlug(baseSlug: string): string {
+  async resolveAvailableSlug(baseSlug: string): Promise<string> {
     let candidate = baseSlug;
     let counter = 2;
-    while (this.tenantExists(candidate)) {
+    while (await this.tenantExists(candidate)) {
       candidate = `${baseSlug}-${String(counter)}`;
       counter++;
     }
@@ -82,7 +82,7 @@ export class TenantManager {
   }
 
   /** El nombre del comercio, el que se ve en el admin (#58); `null` si no existe. */
-  getTenantName(tenantId: string): string | null {
+  async getTenantName(tenantId: string): Promise<string | null> {
     const row = this.systemDb.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as
       | { name: string }
       | undefined;
@@ -90,7 +90,7 @@ export class TenantManager {
   }
 
   /** El rubro del comercio (#22); `null` si no tiene (comercios de antes de M6, demos). */
-  getBusinessType(tenantId: string): BusinessType | null {
+  async getBusinessType(tenantId: string): Promise<BusinessType | null> {
     const row = this.systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get(tenantId) as
       | { business_type: string | null }
       | undefined;
@@ -98,15 +98,15 @@ export class TenantManager {
     return value !== null && isBusinessType(value) ? value : null;
   }
 
-  createTenant(params: CreateTenantParams): TenantRecord {
+  async createTenant(params: CreateTenantParams): Promise<TenantRecord> {
     const now = new Date().toISOString();
     const status: TenantRecord['status'] = 'active';
 
     // Desambiguar silenciosamente sólo si ya existe uno anterior
     let finalId = params.id;
     let finalSlug = params.slug;
-    if (this.tenantExists(finalId) || this.tenantExists(finalSlug)) {
-      finalId = this.resolveAvailableSlug(params.id);
+    if ((await this.tenantExists(finalId)) || (await this.tenantExists(finalSlug))) {
+      finalId = await this.resolveAvailableSlug(params.id);
       finalSlug = finalId;
     }
 
@@ -150,7 +150,7 @@ export class TenantManager {
    * Borra un tenant entero: cierra su base, borra sus filas de sistema y su archivo. Lo usa el
    * barrido de las demos por visitante de antes de M8 (#9, #24). No depende de `PRAGMA foreign_keys`.
    */
-  deleteTenant(id: string): void {
+  async deleteTenant(id: string): Promise<void> {
     const db = this.cache.get(id);
     if (db !== undefined) {
       try {
@@ -183,7 +183,7 @@ export class TenantManager {
     }
   }
 
-  getConsolidatedStock(tenantDb: DatabaseSync): ConsolidatedStockItem[] {
+  async getConsolidatedStock(tenantDb: DatabaseSync): Promise<ConsolidatedStockItem[]> {
     const rows = tenantDb
       .prepare(
         'SELECT product_id, SUM(quantity) as quantity, MAX(updated_at) as updated_at FROM stock GROUP BY product_id',

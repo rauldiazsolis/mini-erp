@@ -74,6 +74,6 @@ if (!parsed.success) {
 }
 
 const db = openSystemDb(join(dataDir(), 'system.sqlite'));
-const { user, created } = new AuthService(db).ensureRoot(parsed.data);
+const { user, created } = await new AuthService(db).ensureRoot(parsed.data);
 db.close();
 console.log(`${created ? 'Root creado' : 'Usuario promovido a root'}: ${user.email}`);

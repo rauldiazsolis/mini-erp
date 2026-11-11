@@ -44,7 +44,7 @@ export function createAdminAuthMiddleware(
   /** Con el portal, un token de sesión anónima (#24, M10) vale por su demo o su caja. */
   portal?: PortalService,
 ) {
-  return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
     const token = bearerToken(req);
     if (token === undefined) {
       res.status(401).json({ error: 'Falta cabecera Authorization: Bearer <token>' });
@@ -59,7 +59,7 @@ export function createAdminAuthMiddleware(
       return;
     }
 
-    const session = authService.resolveSession(token);
+    const session = await authService.resolveSession(token);
     if (session === undefined) {
       res.status(401).json({ error: 'Sesión expirada o token inválido' });
       return;
@@ -74,7 +74,7 @@ export function createAdminAuthMiddleware(
     const tenantHeader = req.headers['x-tenant-id'];
     if (typeof tenantHeader === 'string' && tenantHeader.trim() !== '') {
       const requestedTenantId = tenantHeader.trim();
-      const accessibleTenants = authService.listUserTenants(user.id);
+      const accessibleTenants = await authService.listUserTenants(user.id);
       const isAllowed = accessibleTenants.some((t) => t.tenantId === requestedTenantId);
 
       if (!isAllowed) {
@@ -97,7 +97,7 @@ export function createPosAuthMiddleware(
   /** Se llama con cada key válida: así una caja de demo en uso no se revoca (#24). */
   onAuthenticated?: (key: ValidatedPosKey) => void,
 ) {
-  return (req: AuthenticatedPosRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedPosRequest, res: Response, next: NextFunction): Promise<void> => {
     const authHeader = req.headers.authorization;
     if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({ error: 'Falta cabecera Authorization: Bearer <api_key>' });
@@ -105,7 +105,7 @@ export function createPosAuthMiddleware(
     }
 
     const rawKey = authHeader.slice(7).trim();
-    const validated = apiKeyService.validateApiKey(rawKey);
+    const validated = await apiKeyService.validateApiKey(rawKey);
     if (validated === undefined) {
       res.status(401).json({ error: 'API key de terminal POS inválida o inactiva' });
       return;

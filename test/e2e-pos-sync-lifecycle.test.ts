@@ -75,9 +75,9 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     app = bundle.app;
 
     // 1. Dueño y 2. comercio con la semilla de demo (sin pasar por el alta, #19)
-    const owner = bundle.authService.createUser({ email: 'owner@e2e.test', password: 'password123', name: 'Owner E2E' });
+    const owner = await bundle.authService.createUser({ email: 'owner@e2e.test', password: 'password123', name: 'Owner E2E' });
     adminToken = owner.token;
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco E2E', ownerUserId: owner.user.id, seedDemoData: true });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco E2E', ownerUserId: owner.user.id, seedDemoData: true });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
     bundle.billing.grantSignupBonus(tenantId, owner.user.id);
 

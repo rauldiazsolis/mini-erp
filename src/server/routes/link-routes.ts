@@ -17,9 +17,9 @@ const acceptSchema = tokenSchema.extend({
 
 /** Aceptar una invitación no se hace desde una impersonación (#23); sin token, como siempre. */
 function rejectImpersonation(auth: AuthService): RequestHandler {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const token = bearerToken(req);
-    const session = token === undefined ? undefined : auth.resolveSession(token);
+    const session = token === undefined ? undefined : await auth.resolveSession(token);
     if (session !== undefined && session.impersonator !== null) {
       sendImpersonating(res);
       return;
@@ -32,20 +32,20 @@ function rejectImpersonation(auth: AuthService): RequestHandler {
 export function createInvitationLinkRoutes(invitations: InvitationService, limit: RequestHandler, auth: AuthService): Router {
   const router = Router();
 
-  router.post('/lookup', limit, (req, res) => {
+  router.post('/lookup', limit, async (req, res) => {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Falta el token' });
       return;
     }
     try {
-      res.status(200).json(invitations.lookup(parsed.data.token));
+      res.status(200).json(await invitations.lookup(parsed.data.token));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/accept', limit, rejectImpersonation(auth), (req, res) => {
+  router.post('/accept', limit, rejectImpersonation(auth), async (req, res) => {
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -53,14 +53,14 @@ export function createInvitationLinkRoutes(invitations: InvitationService, limit
     }
     try {
       // Cuenta nueva: la contraseña cumple el mínimo; cuenta existente: se verifica tal cual
-      if (!invitations.lookup(parsed.data.token).accountExists) {
+      if (!(await invitations.lookup(parsed.data.token)).accountExists) {
         const pw = passwordSchema.safeParse(parsed.data.password);
         if (!pw.success) {
           res.status(400).json({ error: pw.error.issues[0]?.message ?? 'Contraseña inválida' });
           return;
         }
       }
-      res.status(200).json(invitations.accept(parsed.data));
+      res.status(200).json(await invitations.accept(parsed.data));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -88,14 +88,14 @@ export function createPasswordResetLinkRoutes(resets: PasswordResetService, limi
     }
   });
 
-  router.post('/complete', limit, (req, res) => {
+  router.post('/complete', limit, async (req, res) => {
     const parsed = completeSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      res.status(200).json(resets.complete(parsed.data));
+      res.status(200).json(await resets.complete(parsed.data));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -108,20 +108,20 @@ export function createPasswordResetLinkRoutes(resets: PasswordResetService, limi
 export function createStaffInvitationLinkRoutes(invitations: StaffInvitationService, limit: RequestHandler, auth: AuthService): Router {
   const router = Router();
 
-  router.post('/lookup', limit, (req, res) => {
+  router.post('/lookup', limit, async (req, res) => {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Falta el token' });
       return;
     }
     try {
-      res.status(200).json(invitations.lookup(parsed.data.token));
+      res.status(200).json(await invitations.lookup(parsed.data.token));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/accept', limit, rejectImpersonation(auth), (req, res) => {
+  router.post('/accept', limit, rejectImpersonation(auth), async (req, res) => {
     const parsed = acceptSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -129,14 +129,14 @@ export function createStaffInvitationLinkRoutes(invitations: StaffInvitationServ
     }
     try {
       // Cuenta nueva: la contraseña cumple el mínimo; cuenta existente: se verifica tal cual
-      if (!invitations.lookup(parsed.data.token).accountExists) {
+      if (!(await invitations.lookup(parsed.data.token)).accountExists) {
         const pw = passwordSchema.safeParse(parsed.data.password);
         if (!pw.success) {
           res.status(400).json({ error: pw.error.issues[0]?.message ?? 'Contraseña inválida' });
           return;
         }
       }
-      res.status(200).json(invitations.accept(parsed.data));
+      res.status(200).json(await invitations.accept(parsed.data));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

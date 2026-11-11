@@ -20,7 +20,7 @@ export function createTenantContextMiddleware(
   tenantManager: TenantManager,
   rootContainer?: Container,
 ) {
-  return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
     const tenantId = routeParam(req, 'tenantId') ?? routeParam(req, 'id') ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
 
     // El acceso anónimo (#24, M10): la demo es admin de su comercio demo; una caja real, member de su
@@ -53,7 +53,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    const role = membershipService.resolveRole(req.user, tenantId);
+    const role = await membershipService.resolveRole(req.user, tenantId);
     if (role === undefined) {
       res.status(403).json({ error: 'No tienes acceso a este tenant' });
       return;

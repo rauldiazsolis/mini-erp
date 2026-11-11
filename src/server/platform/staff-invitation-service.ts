@@ -26,7 +26,7 @@ export class StaffInvitationService {
     this.now = deps.now;
   }
 
-  create(params: { actorUserId: string; email: string }): { id: string; token: string; expiresAt: string } {
+  async create(params: { actorUserId: string; email: string }): Promise<{ id: string; token: string; expiresAt: string }> {
     const email = params.email.trim().toLowerCase();
     const existing = this.db.prepare('SELECT global_role FROM users WHERE email = ?').get(email) as { global_role: string } | undefined;
     if (existing !== undefined && existing.global_role !== 'user') throw new DomainError(409, 'Esa cuenta ya es del equipo');
@@ -42,17 +42,17 @@ export class StaffInvitationService {
     this.db
       .prepare('INSERT INTO staff_invitations (id, email, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(id, email, hash, params.actorUserId, now.toISOString(), expiresAt);
-    this.audit.record({ actorUserId: params.actorUserId, tenantId: null, action: 'staff.invited', details: { email } });
+    await this.audit.record({ actorUserId: params.actorUserId, tenantId: null, action: 'staff.invited', details: { email } });
     return { id, token: raw, expiresAt };
   }
 
-  revoke(params: { actorUserId: string; invitationId: string }): void {
+  async revoke(params: { actorUserId: string; invitationId: string }): Promise<void> {
     const row = this.db
       .prepare('SELECT email FROM staff_invitations WHERE id = ? AND accepted_at IS NULL AND revoked_at IS NULL')
       .get(params.invitationId) as { email: string } | undefined;
     if (row === undefined) throw new DomainError(404, 'La invitación no existe o ya no está pendiente');
     this.db.prepare('UPDATE staff_invitations SET revoked_at = ? WHERE id = ?').run(this.now().toISOString(), params.invitationId);
-    this.audit.record({ actorUserId: params.actorUserId, tenantId: null, action: 'staff.invitation_revoked', details: { email: row.email } });
+    await this.audit.record({ actorUserId: params.actorUserId, tenantId: null, action: 'staff.invitation_revoked', details: { email: row.email } });
   }
 
   listPending(): StaffInvitationItem[] {
@@ -67,22 +67,22 @@ export class StaffInvitationService {
     return rows.map((r) => ({ id: r.id, email: r.email, createdAt: r.created_at, expiresAt: r.expires_at, invitedByName: r.invited_by_name }));
   }
 
-  lookup(token: string): StaffInvitationInfo {
+  async lookup(token: string): Promise<StaffInvitationInfo> {
     const inv = this.findValid(token);
     return {
       email: inv.email,
       invitedByName: inv.invitedByName,
-      accountExists: this.auth.findUserByEmail(inv.email) !== undefined,
+      accountExists: (await this.auth.findUserByEmail(inv.email)) !== undefined,
       expiresAt: inv.expiresAt,
     };
   }
 
-  accept(params: { token: string; password: string; name?: string | undefined }): { token: string; user: UserSession } {
+  async accept(params: { token: string; password: string; name?: string | undefined }): Promise<{ token: string; user: UserSession }> {
     const inv = this.findValid(params.token);
-    const existing = this.auth.findUserByEmail(inv.email);
+    const existing = await this.auth.findUserByEmail(inv.email);
     let userId: string;
     if (existing !== undefined) {
-      if (!this.auth.verifyUserPassword(existing.id, params.password)) throw new DomainError(401, 'Contraseña incorrecta');
+      if (!(await this.auth.verifyUserPassword(existing.id, params.password))) throw new DomainError(401, 'Contraseña incorrecta');
       // Soporte no es miembro de comercios (#16): una cuenta de comercio no pasa al equipo
       if (this.db.prepare('SELECT 1 FROM memberships WHERE user_id = ?').get(existing.id) !== undefined) {
         throw new DomainError(409, 'Esa cuenta es de un comercio: usá otro mail');
@@ -91,14 +91,14 @@ export class StaffInvitationService {
     } else {
       const name = params.name?.trim() ?? '';
       if (name.length < 2) throw new DomainError(400, 'El nombre debe tener al menos 2 caracteres');
-      userId = this.auth.createUser({ email: inv.email, password: params.password, name }).user.id;
+      userId = (await this.auth.createUser({ email: inv.email, password: params.password, name })).user.id;
     }
 
     this.db.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(userId);
     this.db.prepare('UPDATE staff_invitations SET accepted_at = ?, accepted_by = ? WHERE id = ?').run(this.now().toISOString(), userId, inv.id);
-    this.audit.record({ actorUserId: userId, tenantId: null, action: 'staff.joined' });
-    const token = this.auth.createSession(userId);
-    const user = this.auth.validateSession(token);
+    await this.audit.record({ actorUserId: userId, tenantId: null, action: 'staff.joined' });
+    const token = await this.auth.createSession(userId);
+    const user = await this.auth.validateSession(token);
     if (user === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
     return { token, user };
   }

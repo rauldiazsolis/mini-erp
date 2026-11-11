@@ -18,12 +18,12 @@ describe('TenantManager', () => {
     manager.closeAll();
   });
 
-  it('crea un nuevo tenant con sucursal por defecto y datos seed iniciales', () => {
+  it('crea un nuevo tenant con sucursal por defecto y datos seed iniciales', async () => {
     systemDb
       .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run('user-1', 'owner@example.com', 'hash', 'Owner', 'user', new Date().toISOString());
 
-    const tenant = manager.createTenant({
+    const tenant = await manager.createTenant({
       id: 'tenant-kiosco',
       slug: 'kiosco-central',
       name: 'Kiosco Central',
@@ -53,12 +53,12 @@ describe('TenantManager', () => {
     expect(customers.count).toBeGreaterThan(0);
   });
 
-  it('el owner que crea el comercio es su titular; sin owner (una demo), no hay titular (#21)', () => {
+  it('el owner que crea el comercio es su titular; sin owner (una demo), no hay titular (#21)', async () => {
     systemDb
       .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run('user-9', 'titular@example.com', 'hash', 'Titular', 'user', new Date().toISOString());
-    manager.createTenant({ id: 'con-titular', slug: 'con-titular', name: 'Con titular', ownerUserId: 'user-9' });
-    manager.createTenant({ id: 'sin-titular', slug: 'sin-titular', name: 'Sin titular' });
+    await manager.createTenant({ id: 'con-titular', slug: 'con-titular', name: 'Con titular', ownerUserId: 'user-9' });
+    await manager.createTenant({ id: 'sin-titular', slug: 'sin-titular', name: 'Sin titular' });
     const rows = systemDb.prepare('SELECT id, holder_user_id FROM tenants ORDER BY id').all();
     expect(rows).toEqual([
       { id: 'con-titular', holder_user_id: 'user-9' },
@@ -66,12 +66,12 @@ describe('TenantManager', () => {
     ]);
   });
 
-  it('permite consultar stock consolidado por producto', () => {
+  it('permite consultar stock consolidado por producto', async () => {
     systemDb
       .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run('user-stock', 'stock@example.com', 'hash', 'Stock Owner', 'user', new Date().toISOString());
 
-    manager.createTenant({
+    await manager.createTenant({
       id: 'tenant-stock-test',
       slug: 'stock-test',
       name: 'Stock Test',
@@ -80,20 +80,20 @@ describe('TenantManager', () => {
     });
 
     const tenantDb = manager.getTenantDb('tenant-stock-test');
-    const stockItems = manager.getConsolidatedStock(tenantDb);
+    const stockItems = await manager.getConsolidatedStock(tenantDb);
 
     expect(stockItems.length).toBeGreaterThan(0);
     expect(typeof stockItems[0]?.productId).toBe('string');
     expect(typeof stockItems[0]?.quantity).toBe('number');
   });
 
-  it('desambigua silenciosamente el slug agregando -2, -3 sólo si ya existe uno anterior', () => {
+  it('desambigua silenciosamente el slug agregando -2, -3 sólo si ya existe uno anterior', async () => {
     systemDb
       .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run('user-dup', 'dup@example.com', 'hash', 'Dup Owner', 'user', new Date().toISOString());
 
     // Primer tenant con slug "mi-tienda"
-    const t1 = manager.createTenant({
+    const t1 = await manager.createTenant({
       id: 'mi-tienda',
       slug: 'mi-tienda',
       name: 'Mi Tienda',
@@ -104,7 +104,7 @@ describe('TenantManager', () => {
     expect(t1.id).toBe('mi-tienda');
 
     // Segundo tenant con mismo slug "mi-tienda" -> debe resolver a "mi-tienda-2"
-    const t2 = manager.createTenant({
+    const t2 = await manager.createTenant({
       id: 'mi-tienda',
       slug: 'mi-tienda',
       name: 'Mi Tienda',
@@ -115,7 +115,7 @@ describe('TenantManager', () => {
     expect(t2.id).toBe('mi-tienda-2');
 
     // Tercer tenant con mismo slug "mi-tienda" -> debe resolver a "mi-tienda-3"
-    const t3 = manager.createTenant({
+    const t3 = await manager.createTenant({
       id: 'mi-tienda',
       slug: 'mi-tienda',
       name: 'Mi Tienda',

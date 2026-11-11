@@ -35,8 +35,8 @@ describe('cargos generados por el push (#21)', () => {
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
-    const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     billing.grantSignupBonus(tenantId, owner.user.id);
     const crear = async (pointOfSale: string) => {
       const res = await request(app)

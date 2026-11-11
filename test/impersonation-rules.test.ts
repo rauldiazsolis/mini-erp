@@ -21,12 +21,12 @@ describe('lo que no puede quien impersona (#23, M7b)', () => {
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const auth = bundle.authService;
-    const support = auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
-    const coOwner = auth.createUser({ email: 'co@x.com', password: 'password123', name: 'Co' });
-    const admin = auth.createUser({ email: 'adm@x.com', password: 'password123', name: 'Adm' });
+    const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
+    const coOwner = await auth.createUser({ email: 'co@x.com', password: 'password123', name: 'Co' });
+    const admin = await auth.createUser({ email: 'adm@x.com', password: 'password123', name: 'Adm' });
     systemDb
       .prepare(
         "INSERT INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, 'kiosco', 'owner', 'active', '2026-10-01'), (?, 'kiosco', 'admin', 'active', '2026-10-01')",

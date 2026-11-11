@@ -20,8 +20,8 @@ describe('push transaccional (#2)', () => {
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
-    const { token, user } = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
+    const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
     bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)

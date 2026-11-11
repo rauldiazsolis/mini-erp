@@ -16,21 +16,21 @@ describe('API de plataforma de cobro (#21)', () => {
   let ownerId: string;
   const tenantId = 'kiosco';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     ownerId = owner.user.id;
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = {
-      root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token,
-      support: bundle.authService.login({ email: 'soporte@x.com', password: 'password123' }).token,
+      root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,
+      support: (await bundle.authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
       owner: owner.token,
     };
   });

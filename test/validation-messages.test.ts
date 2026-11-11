@@ -17,16 +17,16 @@ describe('textos de validación de /api (#6)', () => {
   let owner: string;
   let root: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     const bundle = createApp({ systemDb, tenantManager });
     app = bundle.app;
-    const o = bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
+    const o = await bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     owner = o.token;
-    tenantManager.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id });
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'clave-segura', name: 'Root' });
-    root = bundle.authService.login({ email: 'root@x.com', password: 'clave-segura' }).token;
+    await tenantManager.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'clave-segura', name: 'Root' });
+    root = (await bundle.authService.login({ email: 'root@x.com', password: 'clave-segura' })).token;
   });
 
   const errorOf = (res: { body: unknown }): string => (res.body as { error: string }).error;

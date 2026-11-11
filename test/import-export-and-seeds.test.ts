@@ -35,14 +35,14 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-io-test';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@io.test',
       password: 'password123',
       name: 'Admin IO',
@@ -50,7 +50,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para pruebas controladas
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-io-test',
       name: 'Kiosco IO Test',

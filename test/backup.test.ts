@@ -13,13 +13,13 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function seed(): { dataDir: string; backupDir: string } {
+async function seed(): Promise<{ dataDir: string; backupDir: string }> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-backup-'));
   const dataDir = join(root, 'data');
   const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
   const tenants = new TenantManager(systemDb, { baseDir: join(dataDir, 'tenants') });
-  tenants.createTenant({ id: 'kiosco-real', slug: 'kiosco-real', name: 'Kiosco real' });
-  tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
+  await tenants.createTenant({ id: 'kiosco-real', slug: 'kiosco-real', name: 'Kiosco real' });
+  await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
   systemDb
     .prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)')
@@ -30,8 +30,8 @@ function seed(): { dataDir: string; backupDir: string } {
 }
 
 describe('backupAll (#3)', () => {
-  it('copia system y los comercios reales, sin las demos', () => {
-    const { dataDir, backupDir } = seed();
+  it('copia system y los comercios reales, sin las demos', async () => {
+    const { dataDir, backupDir } = await seed();
     const result = backupAll({ dataDir, backupDir, now: new Date('2026-10-01T03:30:00Z'), keep: 7 });
     expect(result.dir).toBe(join(backupDir, '2026-10-01'));
     expect(result.tenants).toEqual(['kiosco-real']);
@@ -43,8 +43,8 @@ describe('backupAll (#3)', () => {
     copy.close();
   });
 
-  it('deja solo las últimas `keep` carpetas y reemplaza la del día', () => {
-    const { dataDir, backupDir } = seed();
+  it('deja solo las últimas `keep` carpetas y reemplaza la del día', async () => {
+    const { dataDir, backupDir } = await seed();
     for (const day of ['2026-09-20', '2026-09-21', '2026-09-22']) {
       mkdirSync(join(backupDir, day), { recursive: true });
     }

@@ -41,17 +41,17 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   });
 
   // Va antes de /tenants/:tenantId: el detalle que se abre desde la URL del panel
-  router.get('/tenants/by-slug/:slug', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants/by-slug/:slug', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
+      res.status(200).json(await deps.queries.tenantDetail(deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.get('/tenants/:tenantId', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants/:tenantId', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(routeParam(req, 'tenantId') ?? ''));
+      res.status(200).json(await deps.queries.tenantDetail(routeParam(req, 'tenantId') ?? ''));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -66,7 +66,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     res.status(200).json(deps.queries.listUsers(parsed.data.q, parsed.data.offset));
   });
 
-  router.get('/audit', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/audit', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = auditQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: 'Filtro inválido' });
@@ -75,29 +75,29 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     try {
       const { tenantId, tenantSlug } = parsed.data;
       const id = tenantSlug !== undefined && tenantSlug !== '' ? deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
-      res.status(200).json(deps.audit.listPlatform({ tenantId: id }));
+      res.status(200).json(await deps.audit.listPlatform({ tenantId: id }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/tenants/:tenantId/suspend', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/tenants/:tenantId/suspend', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = reasonSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      deps.suspensions.suspend({ tenantId: routeParam(req, 'tenantId') ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
+      await deps.suspensions.suspend({ tenantId: routeParam(req, 'tenantId') ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/tenants/:tenantId/reactivate', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/tenants/:tenantId/reactivate', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.suspensions.reactivate({ tenantId: routeParam(req, 'tenantId') ?? '', actorUserId: actorOf(req) });
+      await deps.suspensions.reactivate({ tenantId: routeParam(req, 'tenantId') ?? '', actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -106,10 +106,10 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   // Desactivar y reactivar cuentas: las reglas de quién a quién están en el servicio
   for (const [path, status] of [['disable', 'disabled'], ['enable', 'active']] as const) {
-    router.post(`/users/:userId/${path}`, staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    router.post(`/users/:userId/${path}`, staff, async (req: AuthenticatedAdminRequest, res: Response) => {
       try {
         if (req.user === undefined) throw new DomainError(401, 'No autorizado');
-        deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: routeParam(req, 'userId') ?? '', status });
+        await deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: routeParam(req, 'userId') ?? '', status });
         res.status(200).json({ success: true });
       } catch (err: unknown) {
         sendError(res, err, 500);
@@ -117,9 +117,9 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     });
   }
 
-  router.post('/users/:userId/password-reset', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/users/:userId/password-reset', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(201).json(deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
+      res.status(201).json(await deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -135,22 +135,22 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     res.status(200).json({ members: deps.queries.listStaff(), invitations: deps.staffInvitations.listPending() });
   });
 
-  router.post('/staff/invitations', rootOnly, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/staff/invitations', rootOnly, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = staffInviteSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      res.status(201).json(deps.staffInvitations.create({ actorUserId: actorOf(req), email: parsed.data.email }));
+      res.status(201).json(await deps.staffInvitations.create({ actorUserId: actorOf(req), email: parsed.data.email }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.delete('/staff/invitations/:invitationId', rootOnly, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/staff/invitations/:invitationId', rootOnly, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
+      await deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

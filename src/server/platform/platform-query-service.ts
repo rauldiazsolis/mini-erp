@@ -69,7 +69,7 @@ export class PlatformQueryService {
     return rows.map((r) => this.toItem(r));
   }
 
-  tenantDetail(tenantId: string): PlatformTenantDetail {
+  async tenantDetail(tenantId: string): Promise<PlatformTenantDetail> {
     const row = this.db.prepare(`${TENANT_SELECT} AND t.id = ?`).get(tenantId) as TenantRow | undefined;
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return {
@@ -77,9 +77,7 @@ export class PlatformQueryService {
       suspension: currentSuspension(this.db, tenantId),
       credits: this.billing.summary(tenantId),
       gifts: this.billing.listGifts(tenantId),
-      members: this.members
-        .listMembers(tenantId)
-        .map((m) => ({ userId: m.userId, name: m.name, email: m.email, role: m.role, status: m.status })),
+      members: (await this.members.listMembers(tenantId)).map((m) => ({ userId: m.userId, name: m.name, email: m.email, role: m.role, status: m.status })),
     };
   }
 

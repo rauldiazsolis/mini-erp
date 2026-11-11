@@ -56,14 +56,14 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-bulk-test';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@bulk.test',
       password: 'password123',
       name: 'Admin Bulk',
@@ -71,7 +71,7 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para controlar exactamente los datos
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-bulk-test',
       name: 'Kiosco Bulk Test',

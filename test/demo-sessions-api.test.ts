@@ -112,8 +112,8 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     const { app, apiKeyService } = makeApp();
     const a = (await startDemo(app)).body as DemoBody;
     const b = (await startDemo(app)).body as DemoBody;
-    expect(apiKeyService.validateApiKey(a.apiKey)?.tenantId).toBe('demo-kiosco');
-    expect(apiKeyService.validateApiKey(b.apiKey)?.tenantId).toBe('demo-kiosco');
+    expect((await apiKeyService.validateApiKey(a.apiKey))?.tenantId).toBe('demo-kiosco');
+    expect((await apiKeyService.validateApiKey(b.apiKey))?.tenantId).toBe('demo-kiosco');
     expect(a.pointOfSale).not.toBe(b.pointOfSale);
   });
 
@@ -201,7 +201,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     });
     expect(res.status).toBe(201);
     const body = res.body as { tenant: { id: string }; posKey: { key: string } };
-    expect(tenantManager.getBusinessType(body.tenant.id)).toBe('almacen');
+    expect(await tenantManager.getBusinessType(body.tenant.id)).toBe('almacen');
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${body.posKey.key}`);
     expect(info.status).toBe(200);

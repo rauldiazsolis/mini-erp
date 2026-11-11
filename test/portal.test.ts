@@ -112,7 +112,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
 
   it('el reinicio total corta la sesión anónima y la key', async () => {
     const { session, apiKey } = await anonymous();
-    bundle.demoResets.resetFull('kiosco');
+    await bundle.demoResets.resetFull('kiosco');
     expect((await request(app).get(SALES).set({ Authorization: `Bearer ${session}` })).status).toBe(401);
     expect(systemDb.prepare('SELECT COUNT(*) AS n FROM anonymous_sessions').get()).toEqual({ n: 0 });
     expect((await link(apiKey)).status).toBe(401);

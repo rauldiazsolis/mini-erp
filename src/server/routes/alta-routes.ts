@@ -33,10 +33,10 @@ const accountSchema = z.object({
 export function createAltaRoutes(authService: AuthService, altaService: AltaService, limit: RequestHandler): Router {
   const router = Router();
 
-  router.post('/', limit, (req, res) => {
+  router.post('/', limit, async (req, res) => {
     const header = req.headers.authorization;
     const sessionToken = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7).trim() : undefined;
-    const session = sessionToken === undefined ? undefined : authService.resolveSession(sessionToken);
+    const session = sessionToken === undefined ? undefined : await authService.resolveSession(sessionToken);
     if (sessionToken !== undefined && session === undefined) {
       res.status(401).json({ error: 'Sesión expirada o token inválido' });
       return;
@@ -64,7 +64,7 @@ export function createAltaRoutes(authService: AuthService, altaService: AltaServ
     }
 
     try {
-      res.status(201).json(altaService.create({ user, account, ...business.data }));
+      res.status(201).json(await altaService.create({ user, account, ...business.data }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

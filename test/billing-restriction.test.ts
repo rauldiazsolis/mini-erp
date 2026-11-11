@@ -25,13 +25,13 @@ describe('restricción del admin por deuda (#21)', () => {
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     ownerId = owner.user.id;
-    new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
-    tokens = { owner: owner.token, member: member.token, root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token };
+    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    tokens = { owner: owner.token, member: member.token, root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token };
     const key = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(as('owner')).send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     apiKey = (key.body as { rawKey: string }).rawKey;
     // Un cargo en deuda de hace 20 días: la gracia de 10 ya pasó

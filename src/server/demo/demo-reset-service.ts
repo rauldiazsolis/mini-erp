@@ -34,8 +34,8 @@ export class DemoResetService {
     this.deps = deps;
   }
 
-  resetFull(template: DemoTemplate): { revoked: number } {
-    const tenantId = this.deps.sessions.ensureDemoTenant(template);
+  async resetFull(template: DemoTemplate): Promise<{ revoked: number }> {
+    const tenantId = await this.deps.sessions.ensureDemoTenant(template);
     const now = this.deps.now();
     const db = this.deps.tenantManager.getTenantDb(tenantId);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
@@ -48,8 +48,8 @@ export class DemoResetService {
     return { revoked };
   }
 
-  resetPartial(template: DemoTemplate): void {
-    const tenantId = this.deps.sessions.ensureDemoTenant(template);
+  async resetPartial(template: DemoTemplate): Promise<void> {
+    const tenantId = await this.deps.sessions.ensureDemoTenant(template);
     const at = this.deps.now().toISOString();
     const db = this.deps.tenantManager.getTenantDb(tenantId);
     const products = demoSeedProducts(template);
@@ -112,9 +112,9 @@ export class DemoResetService {
   }
 
   /** El reinicio automático (#24): hace los que tocan y devuelve cuáles. */
-  runDue(): DemoTemplate[] {
+  async runDue(): Promise<DemoTemplate[]> {
     const due = this.dueTemplates();
-    for (const t of due) this.resetFull(t);
+    for (const t of due) await this.resetFull(t);
     return due;
   }
 

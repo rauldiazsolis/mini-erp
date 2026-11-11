@@ -39,7 +39,7 @@ describe('barrido de demos (#24)', () => {
   let resets: DemoResetService;
   let clock: Date;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     apiKeyService = new ApiKeyService(systemDb);
@@ -52,16 +52,16 @@ describe('barrido de demos (#24)', () => {
       now: () => clock,
     });
     resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock });
-    service.ensureDemoTenants();
+    await service.ensureDemoTenants();
   });
 
-  it('runDue reinicia los rubros que no se reiniciaron desde las 4:00 AR, una vez', () => {
-    const a = service.create('kiosco');
-    expect(resets.runDue()).toEqual([]);
+  it('runDue reinicia los rubros que no se reiniciaron desde las 4:00 AR, una vez', async () => {
+    const a = await service.create('kiosco');
+    expect(await resets.runDue()).toEqual([]);
     clock = new Date('2026-10-05T07:05:00.000Z'); // 4:05 AR
-    expect(resets.runDue()).toEqual(['kiosco', 'almacen', 'ferreteria']);
-    expect(apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
-    expect(resets.runDue()).toEqual([]);
+    expect(await resets.runDue()).toEqual(['kiosco', 'almacen', 'ferreteria']);
+    expect(await apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
+    expect(await resets.runDue()).toEqual([]);
   });
 
   it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', () => {
@@ -79,11 +79,11 @@ describe('barrido de demos (#24)', () => {
     expect(resets.restock()).toBe(0);
   });
 
-  it('el barrido al arrancar hace todo y loguea', () => {
+  it('el barrido al arrancar hace todo y loguea', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const runDue = vi.spyOn(resets, 'runDue');
     const restock = vi.spyOn(resets, 'restock');
-    const timer = startDemoSweeper({ sessions: service, resets }, 60_000);
+    const timer = await startDemoSweeper({ sessions: service, resets }, 60_000);
     clearInterval(timer);
     expect(runDue).toHaveBeenCalledTimes(1);
     expect(restock).toHaveBeenCalledTimes(1);

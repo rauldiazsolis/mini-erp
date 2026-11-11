@@ -11,27 +11,27 @@ describe('listados del panel de plataforma (#23)', () => {
   let tokens: { root: string; support: string };
   let otherOwnerId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(systemDb, { inMemory: true });
     let tick = 0;
     // Cada lectura del reloj avanza un segundo: el orden por fecha es el de creación
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date(Date.parse('2026-10-05T15:00:00.000Z') + 1000 * tick++) });
     app = bundle.app;
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner', whatsapp: '1155550000' });
-    const other = bundle.authService.createUser({ email: 'ferre@x.com', password: 'password123', name: 'Ferretero' });
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner', whatsapp: '1155550000' });
+    const other = await bundle.authService.createUser({ email: 'ferre@x.com', password: 'password123', name: 'Ferretero' });
     otherOwnerId = other.user.id;
-    tenantManager.createTenant({ id: 'kiosco-id', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
-    tenantManager.createTenant({ id: 'ferre-id', slug: 'ferre', name: 'Ferretería', ownerUserId: other.user.id });
+    await tenantManager.createTenant({ id: 'kiosco-id', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: 'ferre-id', slug: 'ferre', name: 'Ferretería', ownerUserId: other.user.id });
     bundle.billing.grantSignupBonus('kiosco-id', owner.user.id);
     bundle.billing.grantSignupBonus('ferre-id', other.user.id);
-    bundle.demoSessions.create('kiosco');
+    await bundle.demoSessions.create('kiosco');
     tokens = {
-      root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token,
-      support: bundle.authService.login({ email: 'soporte@x.com', password: 'password123' }).token,
+      root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,
+      support: (await bundle.authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
     };
   });
 

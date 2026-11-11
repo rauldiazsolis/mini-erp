@@ -20,7 +20,7 @@ export class UserStatusService {
     this.audit = deps.audit;
   }
 
-  setStatus(p: { actor: { id: string; globalRole: UserRole }; targetUserId: string; status: UserStatus }): void {
+  async setStatus(p: { actor: { id: string; globalRole: UserRole }; targetUserId: string; status: UserStatus }): Promise<void> {
     const target = this.db.prepare('SELECT global_role, status FROM users WHERE id = ?').get(p.targetUserId) as
       | { global_role: string; status: string }
       | undefined;
@@ -32,8 +32,8 @@ export class UserStatusService {
     }
     if (target.status === p.status) return;
     this.db.prepare('UPDATE users SET status = ? WHERE id = ?').run(p.status, p.targetUserId);
-    if (p.status === 'disabled') this.auth.revokeSessions(p.targetUserId);
-    this.audit.record({
+    if (p.status === 'disabled') await this.auth.revokeSessions(p.targetUserId);
+    await this.audit.record({
       actorUserId: p.actor.id,
       tenantId: null,
       action: p.status === 'disabled' ? 'user.disabled' : 'user.enabled',

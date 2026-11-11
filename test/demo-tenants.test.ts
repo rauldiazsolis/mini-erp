@@ -39,9 +39,9 @@ describe('Templates de demo (#9)', () => {
     expect(isDemoTemplate('panaderia')).toBe(false);
   });
 
-  it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', () => {
+  it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', async () => {
     const manager = new TenantManager(systemDb(), { inMemory: true });
-    manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
+    await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
     const db = manager.getTenantDb('demo-a');
     seedDemoSession(db, 'almacen');
     expect(count(db, 'SELECT COUNT(*) AS n FROM products WHERE sku = ?', 'ALM-001')).toBe(1);
@@ -52,22 +52,22 @@ describe('Templates de demo (#9)', () => {
 });
 
 describe('TenantManager y demos (#9)', () => {
-  it('crea un tenant sin dueño', () => {
+  it('crea un tenant sin dueño', async () => {
     const sys = systemDb();
     const manager = new TenantManager(sys, { inMemory: true });
-    manager.createTenant({ id: 'demo-b', slug: 'demo-b', name: 'Demo' });
-    expect(manager.tenantExists('demo-b')).toBe(true);
+    await manager.createTenant({ id: 'demo-b', slug: 'demo-b', name: 'Demo' });
+    expect(await manager.tenantExists('demo-b')).toBe(true);
     expect(count(sys, 'SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ?', 'demo-b')).toBe(0);
   });
 
-  it('deleteTenant borra el tenant, sus keys, membresías y su fila de demo', () => {
+  it('deleteTenant borra el tenant, sus keys, membresías y su fila de demo', async () => {
     const sys = systemDb();
     const manager = new TenantManager(sys, { inMemory: true });
     const auth = new AuthService(sys);
-    const { user } = auth.createUser({ email: 'a@b.com', password: 'secreta1', name: 'A' });
-    manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
+    const { user } = await auth.createUser({ email: 'a@b.com', password: 'secreta1', name: 'A' });
+    await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     const keys = new ApiKeyService(sys);
-    const { rawKey } = keys.createApiKey({
+    const { rawKey } = await keys.createApiKey({
       tenantId: 'tienda',
       name: 'Caja',
       branch: 'CENTRAL',
@@ -75,38 +75,38 @@ describe('TenantManager y demos (#9)', () => {
     });
     markAsLegacyDemo(sys, 'tienda');
 
-    manager.deleteTenant('tienda');
+    await manager.deleteTenant('tienda');
 
-    expect(manager.tenantExists('tienda')).toBe(false);
-    expect(keys.validateApiKey(rawKey)).toBeUndefined();
+    expect(await manager.tenantExists('tienda')).toBe(false);
+    expect(await keys.validateApiKey(rawKey)).toBeUndefined();
     expect(count(sys, 'SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ?', 'tienda')).toBe(0);
     expect(count(sys, 'SELECT COUNT(*) AS n FROM legacy_demo_sessions WHERE tenant_id = ?', 'tienda')).toBe(0);
   });
 
-  it('deleteTenant borra el archivo de la base', () => {
+  it('deleteTenant borra el archivo de la base', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mini-erp-demo-'));
     try {
       const manager = new TenantManager(systemDb(), { baseDir: dir });
-      manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
+      await manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
       const file = join(dir, 'demo-c.sqlite');
       expect(existsSync(file)).toBe(true);
-      manager.deleteTenant('demo-c');
+      await manager.deleteTenant('demo-c');
       expect(existsSync(file)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('las demos no aparecen en la lista de comercios, ni para root', () => {
+  it('las demos no aparecen en la lista de comercios, ni para root', async () => {
     const sys = systemDb();
     const manager = new TenantManager(sys, { inMemory: true });
     const auth = new AuthService(sys);
-    const { user } = auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
-    manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
-    manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
+    const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
+    await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
+    await manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
     sys.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-d', 'kiosco', 'x')").run();
 
-    const ids = auth.listUserTenants(user.id).map((t) => t.tenantId);
+    const ids = (await auth.listUserTenants(user.id)).map((t) => t.tenantId);
     expect(ids).toEqual(['tienda']);
   });
 });

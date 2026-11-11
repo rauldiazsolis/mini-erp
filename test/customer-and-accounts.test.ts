@@ -52,14 +52,14 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
   let adminToken: string;
   const tenantId = 'kiosco-customers-test';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(systemDb, { inMemory: true });
     const created = createApp({ systemDb, tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@customers.test',
       password: 'password123',
       name: 'Admin Clientes',
@@ -67,7 +67,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para pruebas limpias
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-customers-test',
       name: 'Kiosco Customers Test',

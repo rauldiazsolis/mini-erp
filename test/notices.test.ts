@@ -22,8 +22,8 @@ describe('notices en el pull (#2)', () => {
     // Reloj fijo: la deuda y su fecha límite no dependen del día en que corre el test
     const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
     app = bundle.app;
-    const { token, user } = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
+    const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
     // Con bono, para que los avisos de créditos no se mezclen con los de discrepancias (#21)
     bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)

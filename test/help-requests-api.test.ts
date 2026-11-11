@@ -22,13 +22,13 @@ describe('pedidos de ayuda (#23, M7b)', () => {
     const bundle = createApp({ systemDb, tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;
-    auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
+    const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
     ownerId = owner.user.id;
-    tokens = { owner: owner.token, support: support.token, root: auth.login({ email: 'root@x.com', password: 'password123' }).token };
+    tokens = { owner: owner.token, support: support.token, root: (await auth.login({ email: 'root@x.com', password: 'password123' })).token };
     await request(app).put('/api/platform/settings').set(bearer(tokens.root)).send({ supportWhatsapp: '5491155551234' });
   });
 
