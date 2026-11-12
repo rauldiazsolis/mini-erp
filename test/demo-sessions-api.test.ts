@@ -20,7 +20,7 @@ type DemoBody = {
 
 function makeApp(overrides: Partial<DemoConfig> = {}) {
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
-  const tenantManager = new TenantManager(db().system, { inMemory: true });
+  const tenantManager = new TenantManager(db(), { inMemory: true });
   const bundle = createApp({ database: db(),
     tenantManager,
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },

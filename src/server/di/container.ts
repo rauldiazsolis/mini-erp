@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import { createDatabase, databaseUrl, type Database } from '../db/pg/database.ts';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import { dataDir } from '../db/data-dir.ts';
 import { join } from 'node:path';
 import { TenantManager } from '../db/tenant-manager.ts';
@@ -51,16 +52,19 @@ export const databaseDef = fn.singleton<Database>(() => createDatabase({ connect
 export const systemKyselyDef = fn.singleton((c): Kysely<SystemDatabase> => c.use(databaseDef).system);
 
 /**
- * Definición no enlazada para la base de datos SQLite del tenant (scoped).
- * Si se intenta resolver en el contenedor raíz sin un scope por tenant, arroja un error explicativo
- * impidiendo cualquier fuga de aislamiento (tenant leakage).
+ * Los datos del comercio del pedido: su Kysely ya acotado a su esquema (`Database.forTenant`).
+ * No está enlazada: resolverla en el contenedor raíz, sin un scope por comercio, falla a propósito,
+ * para que no haya fugas entre comercios. Solo `createTenantScope` la enlaza.
  */
-export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
+export const tenantDbDef = unbound<Kysely<TenantDatabase>>('tenantDb');
+
+/** Transitorio: la base SQLite del comercio, para los servicios sin migrar: se va al cerrar la fase 4. */
+export const legacyTenantSqliteDef = unbound<DatabaseSync>('legacyTenantSqlite');
 
 // --- DEFINICIONES SINGLETON DE APLICACIÓN ---
 
 export const tenantManagerDef = fn.singleton(
-  (c) => new TenantManager(c.use(systemKyselyDef), { baseDir: join(dataDir(), 'tenants') }),
+  (c) => new TenantManager(c.use(databaseDef), { baseDir: join(dataDir(), 'tenants') }),
 );
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemKyselyDef)));
 
@@ -190,17 +194,17 @@ export const passwordResetServiceDef = fn.singleton(
 
 // --- DEFINICIONES SCOPED POR REQUEST / TENANT ---
 
-export const catalogServiceDef = fn.scoped((c) => new CatalogService(c.use(tenantDbDef)));
-export const stockServiceDef = fn.scoped((c) => new StockService(c.use(tenantDbDef)));
-export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(tenantDbDef)));
-export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(tenantDbDef)));
-export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(tenantDbDef)));
-export const importServiceDef = fn.scoped((c) => new ImportService(c.use(tenantDbDef)));
-export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(tenantDbDef), c.use(clockDef)));
+export const catalogServiceDef = fn.scoped((c) => new CatalogService(c.use(legacyTenantSqliteDef)));
+export const stockServiceDef = fn.scoped((c) => new StockService(c.use(legacyTenantSqliteDef)));
+export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(legacyTenantSqliteDef)));
+export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(legacyTenantSqliteDef)));
+export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(legacyTenantSqliteDef)));
+export const importServiceDef = fn.scoped((c) => new ImportService(c.use(legacyTenantSqliteDef)));
+export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(legacyTenantSqliteDef), c.use(clockDef)));
 export const dashboardServiceDef = dashboardSummaryServiceDef;
-export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(tenantDbDef)));
-export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(tenantDbDef)));
-export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(tenantDbDef)));
+export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(legacyTenantSqliteDef)));
+export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(legacyTenantSqliteDef)));
+export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(legacyTenantSqliteDef)));
 
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
 
@@ -235,10 +239,13 @@ export function createRootContainer(deps?: ContainerDependencies): Container {
 }
 
 /**
- * Genera un scope acotado al ciclo de vida de la request vinculando la base de datos del tenant activo.
+ * El scope de un pedido: enlaza los datos del comercio activo. Es el único lugar que lo hace.
  */
-export function createTenantScope(root: Container, tenantDb: DatabaseSync): IContainer {
+export function createTenantScope(root: Container, tenantId: string): IContainer {
+  const tenantDb = root.use(databaseDef).forTenant(tenantId);
+  const legacySqlite = root.use(tenantManagerDef).getTenantDb(tenantId);
   return root.scope((s) => {
     s.bind(tenantDbDef).toValue(tenantDb);
+    s.bind(legacyTenantSqliteDef).toValue(legacySqlite);
   });
 }

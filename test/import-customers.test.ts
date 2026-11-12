@@ -22,7 +22,7 @@ describe('importación de clientes (#22)', () => {
   const now = '2026-10-03T12:00:00.000Z';
 
   beforeEach(async () => {
-    const tm = new TenantManager(pgDb().system, { inMemory: true });
+    const tm = new TenantManager(pgDb(), { inMemory: true });
     await tm.createTenant({ id: 't1', slug: 't1', name: 'T1', seedDemoData: false });
     db = tm.getTenantDb('t1');
     service = new ImportService(db);

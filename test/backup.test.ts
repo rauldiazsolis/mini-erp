@@ -17,7 +17,7 @@ afterEach(() => {
 async function seed(): Promise<{ dataDir: string; backupDir: string }> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-backup-'));
   const dataDir = join(root, 'data');
-  const tenants = new TenantManager(db().system, { baseDir: join(dataDir, 'tenants') });
+  const tenants = new TenantManager(db(), { baseDir: join(dataDir, 'tenants') });
   await tenants.createTenant({ id: 'kiosco-real', slug: 'kiosco-real', name: 'Kiosco real' });
   await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();

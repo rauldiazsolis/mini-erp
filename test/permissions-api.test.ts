@@ -40,7 +40,7 @@ describe('permisos del comercio en la API (#19)', () => {
   const tenantId = 'kiosco-roles';
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const members = new MembershipService(db().system);

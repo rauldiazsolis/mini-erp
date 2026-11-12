@@ -39,7 +39,7 @@ describe('Templates de demo (#9)', () => {
   });
 
   it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', async () => {
-    const manager = new TenantManager(pgDb().system, { inMemory: true });
+    const manager = new TenantManager(pgDb(), { inMemory: true });
     await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
     const db = manager.getTenantDb('demo-a');
     await seedDemoSession(db, 'almacen');
@@ -52,7 +52,7 @@ describe('Templates de demo (#9)', () => {
 
 describe('TenantManager y demos (#9)', () => {
   it('crea un tenant sin dueño', async () => {
-    const manager = new TenantManager(pgDb().system, { inMemory: true });
+    const manager = new TenantManager(pgDb(), { inMemory: true });
     await manager.createTenant({ id: 'demo-b', slug: 'demo-b', name: 'Demo' });
     expect(await manager.tenantExists('demo-b')).toBe(true);
     expect(await countWhere('memberships')).toBe(0);
@@ -60,7 +60,7 @@ describe('TenantManager y demos (#9)', () => {
 
   it('deleteTenant borra el tenant con sus cajas, equipos, keys y membresías', async () => {
     const sys = pgDb().system;
-    const manager = new TenantManager(sys, { inMemory: true });
+    const manager = new TenantManager(pgDb(), { inMemory: true });
     await insertUser('ana');
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: 'ana' });
     const now = new Date().toISOString();
@@ -83,7 +83,7 @@ describe('TenantManager y demos (#9)', () => {
   it('deleteTenant borra el archivo de la base', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mini-erp-demo-'));
     try {
-      const manager = new TenantManager(pgDb().system, { baseDir: dir });
+      const manager = new TenantManager(pgDb(), { baseDir: dir });
       await manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
       const file = join(dir, 'demo-c.sqlite');
       expect(existsSync(file)).toBe(true);
@@ -95,7 +95,7 @@ describe('TenantManager y demos (#9)', () => {
   });
 
   it('las demos no aparecen en la lista de comercios, ni para root', async () => {
-    const manager = new TenantManager(pgDb().system, { inMemory: true });
+    const manager = new TenantManager(pgDb(), { inMemory: true });
     const auth = new AuthService(pgDb().system);
     const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });

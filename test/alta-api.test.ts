@@ -21,7 +21,7 @@ describe('alta atómica (#19)', () => {
   let billing: BillingService;
 
   beforeEach(() => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     billing = bundle.billing;

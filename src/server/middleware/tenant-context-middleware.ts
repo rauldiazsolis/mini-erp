@@ -39,7 +39,7 @@ export function createTenantContextMiddleware(
       req.activeTenantId = tenantId;
       req.activeTenantDb = tenantDb;
       req.tenantRole = req.anonymous.kind === 'demo' ? 'admin' : 'member';
-      if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantId);
       next();
       return;
     }
@@ -71,7 +71,7 @@ export function createTenantContextMiddleware(
     req.tenantRole = role;
 
     if (rootContainer !== undefined) {
-      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      req.tenantScope = createTenantScope(rootContainer, tenantId);
     }
 
     next();

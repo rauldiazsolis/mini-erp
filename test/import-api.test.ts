@@ -23,7 +23,7 @@ describe('POST /import/:entity (#22)', () => {
   let member: string;
 
   beforeEach(async () => {
-    tenants = new TenantManager(pgDb().system, { inMemory: true });
+    tenants = new TenantManager(pgDb(), { inMemory: true });
     const created = createApp({ database: pgDb(), tenantManager: tenants });
     app = created.app;
     const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });

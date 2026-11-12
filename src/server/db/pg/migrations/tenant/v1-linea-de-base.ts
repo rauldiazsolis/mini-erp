@@ -39,8 +39,10 @@ CREATE TABLE products (
   updated_at timestamptz NOT NULL
 );
 
+-- product_id sin FK, como el kardex: el push de stock de un producto que el comercio no tiene se
+-- guarda igual y, cuando el producto aparece, su stock ya está bien.
 CREATE TABLE stock (
-  product_id text NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+  product_id text NOT NULL,
   branch_id text NOT NULL REFERENCES branches (id) ON DELETE CASCADE,
   quantity numeric(14,4) NOT NULL DEFAULT 0,
   updated_at timestamptz NOT NULL,
@@ -79,9 +81,10 @@ CREATE TABLE customers (
   updated_at timestamptz NOT NULL
 );
 
+-- Sin ON DELETE CASCADE (acá y en account_movements): un cliente con cuenta corriente no se borra.
 CREATE TABLE account_holds (
   id text PRIMARY KEY,
-  customer_id text NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+  customer_id text NOT NULL REFERENCES customers (id),
   amount numeric(14,2) NOT NULL,
   status text NOT NULL,
   created_at timestamptz NOT NULL,
@@ -94,7 +97,7 @@ CREATE INDEX idx_account_holds_customer ON account_holds (customer_id, status);
 CREATE TABLE account_movements (
   seq bigint GENERATED ALWAYS AS IDENTITY,
   id text PRIMARY KEY,
-  customer_id text NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+  customer_id text NOT NULL REFERENCES customers (id),
   type text NOT NULL,
   amount numeric(14,2) NOT NULL,
   balance_after numeric(14,2) NOT NULL,

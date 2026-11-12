@@ -16,7 +16,7 @@ describe('discrepancias del push (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    tenantManager = new TenantManager(pgDb(), { inMemory: true });
     const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

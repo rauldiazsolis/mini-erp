@@ -14,7 +14,7 @@ describe('el embudo en la plataforma (#25)', () => {
   let contactId: string;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });

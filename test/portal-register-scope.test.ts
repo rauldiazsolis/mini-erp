@@ -35,7 +35,7 @@ describe('la caja fija en Ventas & Caja (M10, #26)', () => {
   };
 
   beforeEach(async () => {
-    app = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => new Date(`${DAY}T15:00:00.000Z`) }).app;
+    app = createApp({ database: db(), tenantManager: new TenantManager(db(), { inMemory: true }), now: () => new Date(`${DAY}T15:00:00.000Z`) }).app;
     const alta = await request(app).post('/api/alta').send({
       name: 'Ana',
       email: 'ana@kiosco.com',

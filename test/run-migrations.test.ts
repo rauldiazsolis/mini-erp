@@ -37,7 +37,7 @@ function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { tenant: Schem
 async function sembrar(ids: string[] = ['kiosco-real']): Promise<string> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
   const dataDir = join(root, 'data');
-  const tenants = new TenantManager(pgDb().system, { baseDir: join(dataDir, 'tenants') });
+  const tenants = new TenantManager(pgDb(), { baseDir: join(dataDir, 'tenants') });
   for (const id of ids) {
     await tenants.createTenant({ id, slug: id, name: id });
   }

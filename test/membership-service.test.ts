@@ -13,7 +13,7 @@ describe('MembershipService (#19)', () => {
 
   beforeEach(() => {
     auth = new AuthService(db().system);
-    tm = new TenantManager(db().system, { inMemory: true });
+    tm = new TenantManager(db(), { inMemory: true });
     members = new MembershipService(db().system);
   });
 

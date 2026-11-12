@@ -35,7 +35,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   const tenantId = 'kiosco-dash-test';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
 

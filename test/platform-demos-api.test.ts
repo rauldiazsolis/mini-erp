@@ -29,7 +29,7 @@ describe('demos en la plataforma (#24)', () => {
   let clock: Date;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb(), { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: pgDb(),
       tenantManager,

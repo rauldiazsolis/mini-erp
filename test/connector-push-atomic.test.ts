@@ -16,7 +16,7 @@ describe('push transaccional (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

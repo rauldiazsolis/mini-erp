@@ -54,8 +54,9 @@ export class AltaService {
 
   /**
    * Lo de sistema (cuenta, comercio y membresía, la liga a la demo, la caja con su key, el bono y la
-   * auditoría) va en una transacción de PostgreSQL. La base del comercio (todavía SQLite) se crea
-   * después del commit; si falla, se compensa borrando el comercio y la cuenta recién creada.
+   * auditoría) va en una transacción de PostgreSQL. El esquema del comercio se crea después del
+   * commit (`createTenantSchema` no puede correr dentro de la transacción de otro); si falla, se
+   * compensa borrando el comercio y la cuenta recién creada.
    */
   async create(params: {
     user?: UserSession | undefined;
@@ -100,8 +101,7 @@ export class AltaService {
     try {
       await this.tenants.initTenantStorage(created.tenant.id, { now: created.tenant.created_at });
     } catch (err: unknown) {
-      // El bono no cuelga del comercio (sin FK): se borra a mano; cajas, keys y membresías se van con él
-      await this.db.deleteFrom('gift_credits').where('tenant_id', '=', created.tenant.id).execute();
+      // Cajas, keys, membresías y el bono se van con el comercio (`ON DELETE CASCADE`)
       await this.tenants.deleteTenant(created.tenant.id);
       if (created.createdUser) await this.auth.deleteUser(created.user.id);
       throw err;

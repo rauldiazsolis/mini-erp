@@ -19,7 +19,7 @@ describe('API de discrepancias (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });

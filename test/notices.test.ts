@@ -16,7 +16,7 @@ describe('notices en el pull (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     // Reloj fijo: la deuda y su fecha límite no dependen del día en que corre el test
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
     app = bundle.app;

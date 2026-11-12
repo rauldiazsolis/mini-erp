@@ -17,7 +17,7 @@ describe('reglas de evolución del contrato 4.4.0 (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    tenantManager = new TenantManager(pgDb(), { inMemory: true });
     const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
@@ -100,7 +100,7 @@ describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
   let apiKey: string;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb(), { inMemory: true });
     const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

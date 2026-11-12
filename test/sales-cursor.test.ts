@@ -22,7 +22,7 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   const origin = { deviceId: 'dev-1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb(), { inMemory: true });
     const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

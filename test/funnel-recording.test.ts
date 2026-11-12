@@ -23,7 +23,7 @@ describe('puntos de registro del embudo (#25)', () => {
   let app: Express;
 
   beforeEach(() => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db(), { inMemory: true });
     app = createApp({ database: db(),
       tenantManager,
       now: () => new Date(at),

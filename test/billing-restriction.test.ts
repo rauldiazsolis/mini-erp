@@ -20,7 +20,7 @@ describe('restricción del admin por deuda (#21)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;

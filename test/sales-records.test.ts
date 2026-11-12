@@ -20,7 +20,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    tenantManager = new TenantManager(pgDb(), { inMemory: true });
     const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

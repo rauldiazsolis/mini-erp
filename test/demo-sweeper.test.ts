@@ -40,7 +40,7 @@ describe('barrido de demos (#24)', () => {
   let clock: Date;
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    tenantManager = new TenantManager(pgDb(), { inMemory: true });
     apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T06:00:00.000Z'); // 3:00 AR
     service = new DemoSessionService({

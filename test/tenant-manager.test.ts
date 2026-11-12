@@ -13,7 +13,7 @@ describe('TenantManager', () => {
 
   beforeEach(() => {
     // Lo de sistema en PostgreSQL; la base de cada comercio, en memoria
-    manager = new TenantManager(db().system, { inMemory: true });
+    manager = new TenantManager(db(), { inMemory: true });
   });
 
   afterEach(() => {

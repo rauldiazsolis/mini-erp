@@ -4,7 +4,7 @@ import { setupClient } from './client-middleware.ts';
 import { bootstrap, type DevInfo } from './bootstrap.ts';
 import { dataDir } from './db/data-dir.ts';
 import { createDatabase, databaseUrl } from './db/pg/database.ts';
-import { migrateSystem } from './db/pg/migrations/migrate.ts';
+import { migrateAll } from './db/pg/migrations/migrate.ts';
 import { runMigrationsInWorker } from './db/migrations/worker-runner.ts';
 import { readDemoConfig } from './demo/demo-config.ts';
 import { startServer } from './startup.ts';
@@ -24,8 +24,10 @@ const started = await startServer({
   dataDir: dataDir(),
   demos: readDemoConfig(process.env).enabled,
   migrateDatabase: async () => {
-    const result = await migrateSystem(database.root);
-    if (result.applied.length > 0) console.log(`[migraciones] PostgreSQL ${result.schemaName}: ${result.applied.join(', ')}`);
+    // `system` y el esquema de cada comercio
+    for (const result of await migrateAll(database.root)) {
+      if (result.applied.length > 0) console.log(`[migraciones] PostgreSQL ${result.schemaName}: ${result.applied.join(', ')}`);
+    }
   },
   runner: runMigrationsInWorker,
   createReadyHandler: async () => {

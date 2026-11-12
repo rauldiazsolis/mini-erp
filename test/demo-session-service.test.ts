@@ -12,7 +12,7 @@ const db = setupTestDb();
 const HOUR = 60 * 60 * 1000;
 
 function setup(overrides: Partial<DemoConfig> = {}) {
-  const tenantManager = new TenantManager(db().system, { inMemory: true });
+  const tenantManager = new TenantManager(db(), { inMemory: true });
   const apiKeyService = new ApiKeyService(db().system);
   const clock = { now: new Date('2026-10-05T15:00:00.000Z') };
   const service = new DemoSessionService({

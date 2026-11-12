@@ -14,7 +14,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   const tenantId = 'kiosco-demo';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
 
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;

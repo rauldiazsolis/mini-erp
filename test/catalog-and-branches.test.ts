@@ -39,7 +39,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
   const tenantId = 'kiosco-central';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db(), { inMemory: true });
     const created = createApp({ database: db(), tenantManager });
     app = created.app;
 

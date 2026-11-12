@@ -121,7 +121,7 @@ export function createPosAuthMiddleware(
     };
 
     if (rootContainer !== undefined) {
-      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      req.tenantScope = createTenantScope(rootContainer, validated.tenantId);
     }
 
     next();
