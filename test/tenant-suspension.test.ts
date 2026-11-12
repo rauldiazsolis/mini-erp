@@ -36,7 +36,7 @@ describe('suspender comercios (#23)', () => {
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     tokens = {
       root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,
       support: (await bundle.authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
@@ -97,14 +97,14 @@ describe('suspender comercios (#23)', () => {
     expect(charges()).toEqual([{ day: '2026-10-04' }]);
   });
 
-  it('suspendedDays mira el día argentino', () => {
+  it('suspendedDays mira el día argentino', async () => {
     systemDb
       .prepare(
         "INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES ('s', ?, '2026-10-03T02:00:00.000Z', '2026-10-04T04:00:00.000Z', 'x', 'u')",
       )
       .run(tenantId);
     // 02:00Z del 3 es el 2 argentino; 04:00Z del 4 es el 4 argentino
-    expect([...suspendedDays(systemDb, tenantId, ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05'])].sort()).toEqual([
+    expect([...(await suspendedDays(systemDb, tenantId, ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05']))].sort()).toEqual([
       '2026-10-02',
       '2026-10-03',
       '2026-10-04',

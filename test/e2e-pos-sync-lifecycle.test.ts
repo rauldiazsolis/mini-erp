@@ -79,7 +79,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
     adminToken = owner.token;
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco E2E', ownerUserId: owner.user.id, seedDemoData: true });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
 
     // 3. Generar API Key para la terminal POS
     const keyRes = await request(app)

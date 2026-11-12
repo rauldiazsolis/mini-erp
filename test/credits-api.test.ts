@@ -41,7 +41,7 @@ describe('API de Créditos del comercio (#21)', () => {
     const members = new MembershipService(systemDb);
     await members.addMembership(tenantId, admin.user.id, 'admin');
     await members.addMembership(tenantId, member.user.id, 'member');
-    billing.grantSignupBonus(tenantId, owner.user.id);
+    await billing.grantSignupBonus(tenantId, owner.user.id);
     tokens = {
       owner: owner.token,
       admin: admin.token,

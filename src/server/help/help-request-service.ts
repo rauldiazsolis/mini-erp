@@ -134,7 +134,7 @@ export class HelpRequestService {
       )
       .get(userId, new Date(now.getTime() - IMPERSONATION_IDLE_MS).toISOString());
     return {
-      supportWhatsapp: readBillingSettings(this.db).supportWhatsapp,
+      supportWhatsapp: (await readBillingSettings(this.db)).supportWhatsapp,
       openRequest: open === undefined ? null : { id: open.id, message: open.message, createdAt: open.created_at, expiresAt: open.expires_at },
       accesses: accesses.map((a) => ({ at: a.at, staffName: a.staff_name, byRequest: hasHelpRequest(a.details) })),
       activeNow: active !== undefined,

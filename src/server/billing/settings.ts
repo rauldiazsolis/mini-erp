@@ -37,7 +37,7 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
 const KEYS = Object.keys(DEFAULT_BILLING_SETTINGS);
 
 /** Lo guardado sobre los valores por defecto; un valor guardado que no valida se ignora. */
-export function readBillingSettings(db: DatabaseSync): BillingSettings {
+export async function readBillingSettings(db: DatabaseSync): Promise<BillingSettings> {
   const rows = db.prepare('SELECT key, value FROM billing_settings').all() as { key: string; value: string }[];
   const merged: Record<string, unknown> = { ...DEFAULT_BILLING_SETTINGS };
   for (const row of rows) {
@@ -50,7 +50,7 @@ export function readBillingSettings(db: DatabaseSync): BillingSettings {
   return billingSettingsSchema.parse(merged);
 }
 
-export function writeBillingSettings(db: DatabaseSync, patch: BillingSettingsPatch, userId: string, at: string): BillingSettings {
+export async function writeBillingSettings(db: DatabaseSync, patch: BillingSettingsPatch, userId: string, at: string): Promise<BillingSettings> {
   const upsert = db.prepare(
     `INSERT INTO billing_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
@@ -58,5 +58,5 @@ export function writeBillingSettings(db: DatabaseSync, patch: BillingSettingsPat
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) upsert.run(key, JSON.stringify(value), userId, at);
   }
-  return readBillingSettings(db);
+  return await readBillingSettings(db);
 }

@@ -25,7 +25,7 @@ describe('API de discrepancias (#2)', () => {
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
     ownerToken = owner.token;
     memberToken = member.token;

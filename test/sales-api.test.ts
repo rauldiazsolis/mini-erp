@@ -23,7 +23,7 @@ describe('API de Ventas & Caja (#20)', () => {
     token = owner.token;
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     await seedSalesFixture(app, token, tenantId, tenantManager.getTenantDb(tenantId));
   });
 

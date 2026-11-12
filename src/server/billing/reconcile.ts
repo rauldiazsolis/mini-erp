@@ -8,7 +8,7 @@ type Deps = { systemDb: DatabaseSync; tenantManager: TenantManager; billing: Bil
  * Crea los cargos que falten (#21): una caída entre el commit del lote y el cargo. Recorre las ventas
  * con caja (no anulaciones) de los comercios con titular. Devuelve cuántos creó.
  */
-export function reconcileCharges(deps: Deps): number {
+export async function reconcileCharges(deps: Deps): Promise<number> {
   const tenants = deps.systemDb.prepare('SELECT id FROM tenants WHERE holder_user_id IS NOT NULL').all() as { id: string }[];
   let created = 0;
   for (const { id } of tenants) {
@@ -21,24 +21,27 @@ export function reconcileCharges(deps: Deps): number {
       )
       .all() as { register_id: string; device: string; days: string }[];
     for (const g of groups) {
-      created += deps.billing.charge({ tenantId: id, registerId: g.register_id, chargeDevice: g.device, days: g.days.split(',') });
+      created += await deps.billing.charge({ tenantId: id, registerId: g.register_id, chargeDevice: g.device, days: g.days.split(',') });
     }
   }
   return created;
 }
 
 /** El barrido de cobro: al arrancar y cada `intervalMs`. Nunca tumba el proceso. */
-export function startBillingSweeper(deps: Deps, intervalMs: number): NodeJS.Timeout {
-  const sweep = (): void => {
+export async function startBillingSweeper(deps: Deps, intervalMs: number): Promise<NodeJS.Timeout> {
+  const sweep = async (): Promise<void> => {
     try {
-      const created = reconcileCharges(deps);
+      const created = await reconcileCharges(deps);
       if (created > 0) console.log(`[cobro] barrido: ${String(created)} cargos recuperados`);
     } catch (err: unknown) {
       console.error('[cobro] falló el barrido:', err);
     }
   };
-  sweep();
-  const timer = setInterval(sweep, intervalMs);
+  // El primero termina antes de seguir con el arranque, como cuando era síncrono
+  await sweep();
+  const timer = setInterval(() => {
+    void sweep();
+  }, intervalMs);
   timer.unref();
   return timer;
 }

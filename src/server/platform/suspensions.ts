@@ -22,7 +22,7 @@ export async function isSuspended(db: DatabaseSync, tenantId: string): Promise<b
 }
 
 /** Los días argentinos de `days` que tocan algún período de suspensión: no se cobran (#23). */
-export function suspendedDays(db: DatabaseSync, tenantId: string, days: readonly string[]): Set<string> {
+export async function suspendedDays(db: DatabaseSync, tenantId: string, days: readonly string[]): Promise<Set<string>> {
   const periods = db.prepare('SELECT from_at, to_at FROM tenant_suspensions WHERE tenant_id = ?').all(tenantId) as {
     from_at: string;
     to_at: string | null;

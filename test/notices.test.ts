@@ -25,7 +25,7 @@ describe('notices en el pull (#2)', () => {
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
     // Con bono, para que los avisos de créditos no se mezclen con los de discrepancias (#21)
-    bundle.billing.grantSignupBonus(tenantId, user.id);
+    await bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)
       .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)

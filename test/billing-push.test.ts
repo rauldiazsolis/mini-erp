@@ -37,7 +37,7 @@ describe('cargos generados por el push (#21)', () => {
     billing = bundle.billing;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
-    billing.grantSignupBonus(tenantId, owner.user.id);
+    await billing.grantSignupBonus(tenantId, owner.user.id);
     const crear = async (pointOfSale: string) => {
       const res = await request(app)
         .post(`/api/tenants/${tenantId}/pos-registers`)
@@ -102,8 +102,8 @@ describe('cargos generados por el push (#21)', () => {
     await push(key1, 'l2', 'dev-x', [venta('e2', 's2', '2026-10-05T13:00:00.000Z')]);
     systemDb.prepare('DELETE FROM gift_consumptions').run();
     systemDb.prepare('DELETE FROM charges').run();
-    expect(reconcileCharges({ systemDb, tenantManager, billing })).toBe(2);
-    expect(reconcileCharges({ systemDb, tenantManager, billing })).toBe(0);
+    expect(await reconcileCharges({ systemDb, tenantManager, billing })).toBe(2);
+    expect(await reconcileCharges({ systemDb, tenantManager, billing })).toBe(0);
     expect(systemDb.prepare('SELECT day, device_id FROM charges ORDER BY day').all()).toEqual([
       { day: '2026-10-04', device_id: '' },
       { day: '2026-10-05', device_id: 'dev-x' },

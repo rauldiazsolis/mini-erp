@@ -134,9 +134,9 @@ describe('seed de desarrollo (#21)', () => {
 
   it('cada comercio muestra un estado de créditos distinto: ok, saldo bajo y deuda en gracia', async () => {
     const { bundle } = await boot({});
-    const k = bundle.billing.summary(kiosco.id);
-    const a = bundle.billing.summary(almacen.id);
-    const f = bundle.billing.summary(ferreteria.id);
+    const k = await bundle.billing.summary(kiosco.id);
+    const a = await bundle.billing.summary(almacen.id);
+    const f = await bundle.billing.summary(ferreteria.id);
     expect([k.state, a.state, f.state]).toEqual(['ok', 'low', 'debt']);
     // El Kiosco consumió de lo pagado y de lo regalado; el Almacén comparte el saldo pagado del dueño A
     expect(k.giftBalance).toBeGreaterThan(0);
@@ -146,19 +146,19 @@ describe('seed de desarrollo (#21)', () => {
 
   it('los regalados pasan por todos los estados: promo usada y bono vigente en el Kiosco, bono anulado en el Almacén, vencido en la Ferretería', async () => {
     const { bundle } = await boot({});
-    const status = (tenantId: string) => bundle.billing.listGifts(tenantId).map((g) => `${g.origin}:${g.status}`).sort();
-    expect(status(kiosco.id)).toEqual(['grant:used', 'signup:active']);
-    expect(status(almacen.id)).toEqual(['grant:active', 'signup:voided']);
-    expect(status(ferreteria.id)).toEqual(['signup:expired']);
-    expect(bundle.billing.listMovements(kiosco.id).some((m) => m.kind === 'payment')).toBe(true);
+    const status = async (tenantId: string) => (await bundle.billing.listGifts(tenantId)).map((g) => `${g.origin}:${g.status}`).sort();
+    expect(await status(kiosco.id)).toEqual(['grant:used', 'signup:active']);
+    expect(await status(almacen.id)).toEqual(['grant:active', 'signup:voided']);
+    expect(await status(ferreteria.id)).toEqual(['signup:expired']);
+    expect((await bundle.billing.listMovements(kiosco.id)).some((m) => m.kind === 'payment')).toBe(true);
   });
 
   it('carga un WhatsApp de soporte de prueba, sin pisar uno cargado a mano (#23)', async () => {
     const { systemDb, run } = await boot({});
-    expect(readBillingSettings(systemDb).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
-    writeBillingSettings(systemDb, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
+    expect((await readBillingSettings(systemDb)).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
+    await writeBillingSettings(systemDb, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
     await run();
-    expect(readBillingSettings(systemDb).supportWhatsapp).toBe('5491177778888');
+    expect((await readBillingSettings(systemDb)).supportWhatsapp).toBe('5491177778888');
   });
 
   it('crea los tres comercios demo, sin dueño (#24)', async () => {

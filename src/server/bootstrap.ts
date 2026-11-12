@@ -27,7 +27,7 @@ export async function bootstrap(params: {
     if (created.length > 0) console.log(`[demos] comercios demo creados: ${created.join(', ')}`);
   }
   const sweeper = await startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets, audit: bundle.auditLog }, interval);
-  const billingSweeper = startBillingSweeper(
+  const billingSweeper = await startBillingSweeper(
     { systemDb: bundle.systemDb, tenantManager: bundle.tenantManager, billing: bundle.billing },
     interval,
   );

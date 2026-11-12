@@ -24,7 +24,7 @@ describe('reglas de evolución del contrato 4.4.0 (#2)', () => {
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, user.id);
+    await bundle.billing.grantSignupBonus(tenantId, user.id);
     const key = await request(app)
       .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)

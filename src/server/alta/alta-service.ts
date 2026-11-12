@@ -92,7 +92,7 @@ export class AltaService {
       }
       const key = await this.apiKeys.createApiKey({ tenantId: tenant.id, name: POINT_OF_SALE, branch: BRANCH, pointOfSale: POINT_OF_SALE });
       // El bono de alta (#21): créditos regalados del comercio, con vencimiento
-      this.billing.grantSignupBonus(tenant.id, user.id);
+      await this.billing.grantSignupBonus(tenant.id, user.id);
       await this.audit.record({ actorUserId: user.id, tenantId: tenant.id, action: 'tenant.created', details: { businessType: params.businessType } });
       return {
         ...(token === undefined ? {} : { token }),

@@ -37,30 +37,30 @@ export class BillingService {
     this.now = deps.now;
   }
 
-  isBillable(tenantId: string): boolean {
-    return this.holderOf(tenantId) !== null;
+  async isBillable(tenantId: string): Promise<boolean> {
+    return (await this.holderOf(tenantId)) !== null;
   }
 
   /** Crea los cargos que falten, en orden de día. Devuelve cuántos creó. */
-  charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): number {
-    const holder = this.holderOf(p.tenantId);
+  async charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): Promise<number> {
+    const holder = await this.holderOf(p.tenantId);
     if (holder === null) {
       const demo = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id IN ${DEMO_TENANT_IDS_SQL}`).get(p.tenantId);
       if (demo === undefined) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
       return 0;
     }
     // Los días con el comercio suspendido no se cobran (#23)
-    const skip = suspendedDays(this.db, p.tenantId, p.days);
+    const skip = await suspendedDays(this.db, p.tenantId, p.days);
     let created = 0;
     for (const day of [...new Set(p.days)].filter((d) => !skip.has(d)).sort()) {
-      if (this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;
+      if (await this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;
     }
     return created;
   }
 
-  summary(tenantId: string): BillingSummary {
-    const settings = readBillingSettings(this.db);
-    const holderId = this.holderOf(tenantId);
+  async summary(tenantId: string): Promise<BillingSummary> {
+    const settings = await readBillingSettings(this.db);
+    const holderId = await this.holderOf(tenantId);
     const today = argentinaToday(this.now());
     const holder =
       holderId === null
@@ -68,8 +68,8 @@ export class BillingService {
         : ((this.db.prepare('SELECT id AS userId, name, email FROM users WHERE id = ?').get(holderId) as
             | { userId: string; name: string; email: string }
             | undefined) ?? null);
-    const paidBalance = holderId === null ? 0 : this.paidBalance(holderId);
-    const gifts = this.giftBalances(tenantId);
+    const paidBalance = holderId === null ? 0 : await this.paidBalance(holderId);
+    const gifts = await this.giftBalances(tenantId);
     const giftBalance = gifts.reduce((sum, g) => sum + g.remaining, 0);
     const nextGiftExpiry = gifts[0]?.expiresAt ?? null;
     const debtRow = this.db
@@ -98,8 +98,8 @@ export class BillingService {
   }
 
   /** El bono de alta del comercio, con el importe y el vencimiento de la configuración. */
-  grantSignupBonus(tenantId: string, actorUserId: string | null): string {
-    const settings = readBillingSettings(this.db);
+  async grantSignupBonus(tenantId: string, actorUserId: string | null): Promise<string> {
+    const settings = await readBillingSettings(this.db);
     const at = this.now();
     const id = `gift_${randomUUID()}`;
     this.db
@@ -113,7 +113,7 @@ export class BillingService {
   // --- consultas de la pantalla Créditos ---
 
   /** Los cargos del comercio en el rango (días argentinos), del más nuevo al más viejo, con el total del filtro. */
-  listCharges(tenantId: string, q: { from?: string | undefined; to?: string | undefined; page: number; pageSize: number }): ChargesPage {
+  async listCharges(tenantId: string, q: { from?: string | undefined; to?: string | undefined; page: number; pageSize: number }): Promise<ChargesPage> {
     const where = ['c.tenant_id = ?'];
     const args: string[] = [tenantId];
     if (q.from !== undefined) {
@@ -171,7 +171,7 @@ export class BillingService {
   }
 
   /** Pagos, devoluciones, deuda cancelada y créditos otorgados o anulados del comercio, lo más nuevo primero. */
-  listMovements(tenantId: string): CreditMovementItem[] {
+  async listMovements(tenantId: string): Promise<CreditMovementItem[]> {
     return this.db
       .prepare(
         `SELECT id, kind, day, amount, info, by_name AS byName, created_at AS createdAt FROM (
@@ -192,7 +192,7 @@ export class BillingService {
   }
 
   /** Los créditos regalados del comercio con su remanente y estado. */
-  listGifts(tenantId: string): GiftItem[] {
+  async listGifts(tenantId: string): Promise<GiftItem[]> {
     const nowIso = this.now().toISOString();
     const rows = this.db
       .prepare(
@@ -226,23 +226,23 @@ export class BillingService {
     }));
   }
 
-  paymentInfo(): PaymentInfo {
-    const s = readBillingSettings(this.db);
+  async paymentInfo(): Promise<PaymentInfo> {
+    const s = await readBillingSettings(this.db);
     return { alias: s.paymentAlias, cbu: s.paymentCbu, holder: s.paymentHolder, supportWhatsapp: s.supportWhatsapp };
   }
 
   // --- plataforma ---
 
   /** Un pago al titular del comercio: cancela primero la deuda de sus comercios, del cargo más antiguo; el resto queda de saldo. */
-  registerPayment(p: {
+  async registerPayment(p: {
     tenantId: string;
     day: string;
     amount: number;
     info?: string | undefined;
     actorUserId: string;
     paymentRef?: string | undefined;
-  }): { movementId: string; settled: number } {
-    const holder = this.requireHolder(p.tenantId);
+  }): Promise<{ movementId: string; settled: number }> {
+    const holder = await this.requireHolder(p.tenantId);
     requirePositive(p.amount);
     if (p.paymentRef !== undefined && this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(p.paymentRef) !== undefined) {
       throw new DomainError(409, 'Ese pago ya estaba registrado');
@@ -291,8 +291,8 @@ export class BillingService {
   }
 
   /** Créditos regalados por root o soporte: vencen al terminar el día argentino `expiresOn`. */
-  grantCredits(p: { tenantId: string; amount: number; expiresOn: string; reason?: string | undefined; actorUserId: string }): string {
-    this.requireTenant(p.tenantId);
+  async grantCredits(p: { tenantId: string; amount: number; expiresOn: string; reason?: string | undefined; actorUserId: string }): Promise<string> {
+    await this.requireTenant(p.tenantId);
     requirePositive(p.amount);
     const id = `gift_${randomUUID()}`;
     const expiresAt = `${shiftDay(p.expiresOn, 1)}T03:00:00.000Z`;
@@ -303,23 +303,23 @@ export class BillingService {
   }
 
   /** Anula el remanente de un crédito regalado (lo consumido queda como está). */
-  voidCredit(p: { tenantId: string; creditId: string; reason: string; actorUserId: string }): void {
+  async voidCredit(p: { tenantId: string; creditId: string; reason: string; actorUserId: string }): Promise<void> {
     const res = this.db
       .prepare('UPDATE gift_credits SET voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ? AND tenant_id = ? AND voided_at IS NULL')
       .run(this.now().toISOString(), p.actorUserId, p.reason, p.creditId, p.tenantId);
     if (res.changes === 0) throw new DomainError(404, 'Crédito no encontrado');
   }
 
-  setGrace(p: { tenantId: string; until: string }): void {
-    this.requireTenant(p.tenantId);
+  async setGrace(p: { tenantId: string; until: string }): Promise<void> {
+    await this.requireTenant(p.tenantId);
     this.db.prepare('UPDATE tenants SET grace_until = ? WHERE id = ?').run(p.until, p.tenantId);
   }
 
   /** Devolución del saldo pagado del titular (solo root): nunca más que el saldo. */
-  refund(p: { tenantId: string; amount: number; info?: string | undefined; actorUserId: string }): string {
-    const holder = this.requireHolder(p.tenantId);
+  async refund(p: { tenantId: string; amount: number; info?: string | undefined; actorUserId: string }): Promise<string> {
+    const holder = await this.requireHolder(p.tenantId);
     requirePositive(p.amount);
-    if (p.amount > this.paidBalance(holder)) throw new DomainError(400, 'La devolución supera el saldo pagado');
+    if (p.amount > (await this.paidBalance(holder))) throw new DomainError(400, 'La devolución supera el saldo pagado');
     const id = `pm_${randomUUID()}`;
     const at = this.now();
     this.db
@@ -329,8 +329,8 @@ export class BillingService {
   }
 
   /** Cambia el titular: tiene que ser un owner activo. El saldo pagado es de la persona y no se mueve. */
-  setHolder(p: { tenantId: string; userId: string }): void {
-    this.requireTenant(p.tenantId);
+  async setHolder(p: { tenantId: string; userId: string }): Promise<void> {
+    await this.requireTenant(p.tenantId);
     const owner = this.db
       .prepare("SELECT 1 FROM memberships WHERE tenant_id = ? AND user_id = ? AND role = 'owner' AND status = 'active'")
       .get(p.tenantId, p.userId);
@@ -338,28 +338,28 @@ export class BillingService {
     this.db.prepare('UPDATE tenants SET holder_user_id = ? WHERE id = ?').run(p.userId, p.tenantId);
   }
 
-  settings(): BillingSettings {
-    return readBillingSettings(this.db);
+  async settings(): Promise<BillingSettings> {
+    return await readBillingSettings(this.db);
   }
 
-  updateSettings(patch: BillingSettingsPatch, actorUserId: string): BillingSettings {
-    return writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
+  async updateSettings(patch: BillingSettingsPatch, actorUserId: string): Promise<BillingSettings> {
+    return await writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
   }
 
   /** Un comercio por su identificador, para la planilla; `demo` si es una demo. */
-  findTenantBySlug(slug: string): { id: string; name: string; demo: boolean } | undefined {
+  async findTenantBySlug(slug: string): Promise<{ id: string; name: string; demo: boolean } | undefined> {
     const row = this.db
       .prepare(`SELECT id, name, id IN ${DEMO_TENANT_IDS_SQL} AS demo FROM tenants WHERE slug = ?`)
       .get(slug) as { id: string; name: string; demo: number } | undefined;
     return row === undefined ? undefined : { id: row.id, name: row.name, demo: row.demo === 1 };
   }
 
-  paymentRefExists(ref: string): boolean {
+  async paymentRefExists(ref: string): Promise<boolean> {
     return this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(ref) !== undefined;
   }
 
   /** Los pagos registrados, del más nuevo al más viejo. */
-  listPayments(limit = 200): PlatformPaymentItem[] {
+  async listPayments(limit = 200): Promise<PlatformPaymentItem[]> {
     const rows = this.db
       .prepare(
         `SELECT p.id, p.day, p.amount, p.info, p.tenant_id, t.name AS tenant_name, h.name AS holder_name,
@@ -400,32 +400,32 @@ export class BillingService {
 
   // --- internos ---
 
-  private requireTenant(tenantId: string): void {
+  private async requireTenant(tenantId: string): Promise<void> {
     const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
   }
 
-  private requireHolder(tenantId: string): string {
-    this.requireTenant(tenantId);
-    const holder = this.holderOf(tenantId);
+  private async requireHolder(tenantId: string): Promise<string> {
+    await this.requireTenant(tenantId);
+    const holder = await this.holderOf(tenantId);
     if (holder === null) throw new DomainError(400, 'El comercio no tiene titular');
     return holder;
   }
 
-  private holderOf(tenantId: string): string | null {
+  private async holderOf(tenantId: string): Promise<string | null> {
     const row = this.db.prepare('SELECT holder_user_id FROM tenants WHERE id = ?').get(tenantId) as
       | { holder_user_id: string | null }
       | undefined;
     return row?.holder_user_id ?? null;
   }
 
-  private paidBalance(userId: string): number {
+  private async paidBalance(userId: string): Promise<number> {
     return (this.db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM paid_movements WHERE user_id = ?').get(userId) as { balance: number })
       .balance;
   }
 
   /** Regalados vigentes con remanente, por vencimiento más próximo. */
-  private giftBalances(tenantId: string): DatedGift[] {
+  private async giftBalances(tenantId: string): Promise<DatedGift[]> {
     const rows = this.db
       .prepare(
         `SELECT g.id, g.expires_at, g.amount - COALESCE((SELECT SUM(c.amount) FROM gift_consumptions c WHERE c.credit_id = g.id), 0) AS remaining
@@ -437,7 +437,7 @@ export class BillingService {
     return rows.filter((r) => r.remaining > 0).map((r) => ({ creditId: r.id, remaining: r.remaining, expiresAt: r.expires_at }));
   }
 
-  private chargeOne(tenantId: string, holder: string, registerId: string, device: string, day: string): boolean {
+  private async chargeOne(tenantId: string, holder: string, registerId: string, device: string, day: string): Promise<boolean> {
     this.db.exec('BEGIN');
     try {
       const exists = this.db.prepare('SELECT 1 FROM charges WHERE register_id = ? AND device_id = ? AND day = ?').get(registerId, device, day);
@@ -445,12 +445,12 @@ export class BillingService {
         this.db.exec('COMMIT');
         return false;
       }
-      const settings = readBillingSettings(this.db);
+      const settings = await readBillingSettings(this.db);
       const allocation = allocateCharge({
         price: settings.pricePerRegisterDay,
         paidShare: settings.paidShare,
-        paidBalance: this.paidBalance(holder),
-        gifts: this.giftBalances(tenantId),
+        paidBalance: await this.paidBalance(holder),
+        gifts: await this.giftBalances(tenantId),
       });
       const id = `chg_${randomUUID()}`;
       const at = this.now().toISOString();

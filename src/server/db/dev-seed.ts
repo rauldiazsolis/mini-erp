@@ -43,8 +43,8 @@ type UserIds = Record<DevUserKey, string>;
 export async function ensureDevData(deps: Deps): Promise<DevInfo> {
   const ids = await ensureUsers(deps);
   // Sin WhatsApp de soporte no hay "Pedir ayuda" (#23); no pisa uno cargado a mano
-  if (readBillingSettings(deps.systemDb).supportWhatsapp === '') {
-    writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
+  if ((await readBillingSettings(deps.systemDb)).supportWhatsapp === '') {
+    await writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
   }
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {
@@ -99,7 +99,7 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
     });
   });
 
-  seedCredits(deps, t, ids, now);
+  await seedCredits(deps, t, ids, now);
 }
 
 function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevTenant['registers'][number], at: string): void {
@@ -118,20 +118,20 @@ function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevT
  * El estado de créditos del comercio, armado con las mismas operaciones que usa la plataforma.
  * Precio de 1000 por caja y día, mitad de lo pagado y mitad de lo regalado (configuración por defecto).
  */
-function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): void {
+async function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): Promise<void> {
   const { billing } = deps;
   const today = argentinaToday(now);
   const db = deps.tenantManager.getTenantDb(t.id);
-  const bonusId = billing.grantSignupBonus(t.id, ids[t.owner]);
+  const bonusId = await billing.grantSignupBonus(t.id, ids[t.owner]);
 
   /** Un cargo por caja y día con ventas, entre `from` y `to` (inclusive). */
-  const chargeSales = (from: string, to: string): void => {
+  const chargeSales = async (from: string, to: string): Promise<void> => {
     for (const r of t.registers) {
       const days = db
         .prepare('SELECT DISTINCT day FROM sales WHERE register_id = ? AND voids_sale_id IS NULL AND day BETWEEN ? AND ? ORDER BY day')
         .all(r.id, from, to)
         .map((row) => (row as { day: string }).day);
-      billing.charge({ tenantId: t.id, registerId: r.id, chargeDevice: '', days });
+      await billing.charge({ tenantId: t.id, registerId: r.id, chargeDevice: '', days });
     }
   };
   const all = { from: '0000-00-00', to: today };
@@ -139,22 +139,22 @@ function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): void {
   switch (t.credits) {
     case 'ok':
       // Pagó hace 25 días y tuvo una promo (vence antes que el bono, se usa primero): le sobra regalado
-      billing.registerPayment({ tenantId: t.id, day: shiftDay(today, -25), amount: 22000, info: 'Transferencia', actorUserId: ids.root });
-      billing.grantCredits({ tenantId: t.id, amount: 10000, expiresOn: shiftDay(today, 60), reason: 'Promo de lanzamiento', actorUserId: ids.root });
-      chargeSales(all.from, all.to);
+      await billing.registerPayment({ tenantId: t.id, day: shiftDay(today, -25), amount: 22000, info: 'Transferencia', actorUserId: ids.root });
+      await billing.grantCredits({ tenantId: t.id, amount: 10000, expiresOn: shiftDay(today, 60), reason: 'Promo de lanzamiento', actorUserId: ids.root });
+      await chargeSales(all.from, all.to);
       break;
     case 'low':
       // Usa lo que quedó del pago (compartido con el Kiosco), le anulan el bono y le queda un crédito chico
-      chargeSales(all.from, all.to);
-      billing.voidCredit({ tenantId: t.id, creditId: bonusId, reason: 'Bono duplicado', actorUserId: ids.root });
-      billing.grantCredits({ tenantId: t.id, amount: 4000, expiresOn: shiftDay(today, 15), reason: 'Crédito de cortesía', actorUserId: ids.root });
+      await chargeSales(all.from, all.to);
+      await billing.voidCredit({ tenantId: t.id, creditId: bonusId, reason: 'Bono duplicado', actorUserId: ids.root });
+      await billing.grantCredits({ tenantId: t.id, amount: 4000, expiresOn: shiftDay(today, 15), reason: 'Crédito de cortesía', actorUserId: ids.root });
       break;
     case 'debt': {
       // El bono venció hace 4 días y nunca pagó: lo de esos días es deuda, todavía en gracia
       const cut = shiftDay(today, -4);
-      chargeSales(all.from, shiftDay(cut, -1));
+      await chargeSales(all.from, shiftDay(cut, -1));
       deps.systemDb.prepare('UPDATE gift_credits SET expires_at = ? WHERE id = ?').run(`${cut}T03:00:00.000Z`, bonusId);
-      chargeSales(cut, today);
+      await chargeSales(cut, today);
       break;
     }
   }

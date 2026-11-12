@@ -35,7 +35,7 @@ describe('restricción del admin por deuda (#21)', () => {
     const key = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(as('owner')).send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     apiKey = (key.body as { rawKey: string }).rawKey;
     // Un cargo en deuda de hace 20 días: la gracia de 10 ya pasó
-    billing.charge({ tenantId, registerId: 'reg-vieja', chargeDevice: '', days: ['2026-10-05'] });
+    await billing.charge({ tenantId, registerId: 'reg-vieja', chargeDevice: '', days: ['2026-10-05'] });
   });
 
   const as = (who: keyof typeof tokens) => ({ Authorization: `Bearer ${tokens[who]}` });

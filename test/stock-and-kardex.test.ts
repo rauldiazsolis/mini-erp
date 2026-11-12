@@ -65,7 +65,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       seedDemoData: false,
     });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    created.billing.grantSignupBonus(tenantId, registerRes.user.id);
+    await created.billing.grantSignupBonus(tenantId, registerRes.user.id);
 
     // 3. Obtener sucursal central por defecto
     const branchesRes = await request(app)

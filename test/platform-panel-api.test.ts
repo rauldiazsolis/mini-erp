@@ -26,8 +26,8 @@ describe('listados del panel de plataforma (#23)', () => {
     otherOwnerId = other.user.id;
     await tenantManager.createTenant({ id: 'kiosco-id', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     await tenantManager.createTenant({ id: 'ferre-id', slug: 'ferre', name: 'Ferretería', ownerUserId: other.user.id });
-    bundle.billing.grantSignupBonus('kiosco-id', owner.user.id);
-    bundle.billing.grantSignupBonus('ferre-id', other.user.id);
+    await bundle.billing.grantSignupBonus('kiosco-id', owner.user.id);
+    await bundle.billing.grantSignupBonus('ferre-id', other.user.id);
     await bundle.demoSessions.create('kiosco');
     tokens = {
       root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,

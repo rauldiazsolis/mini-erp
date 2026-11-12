@@ -26,7 +26,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
     token = owner.token;
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
     const key = await request(app)
       .post(`/api/tenants/${tenantId}/pos-registers`)
       .set('Authorization', `Bearer ${token}`)

@@ -51,7 +51,7 @@ describe('API de plataforma de cobro (#21)', () => {
       expect((await request(app).post(`${base}/grace`).set(as(who)).send({ until: '2026-10-20' })).status).toBe(200);
       expect((await request(app).put(`${base}/holder`).set(as(who)).send({ userId: ownerId })).status).toBe(200);
     }
-    expect(billing.summary(tenantId).paidBalance).toBe(10000);
+    expect((await billing.summary(tenantId)).paidBalance).toBe(10000);
     expect(audit('billing.payment_registered')).toHaveLength(2);
     expect(audit('billing.payment_registered')[0]?.tenant_id).toBe(tenantId);
     expect(JSON.parse(audit('billing.payment_registered')[0]?.details ?? '{}')).toMatchObject({ amount: 5000, day: '2026-10-05' });
@@ -125,18 +125,18 @@ describe('API de plataforma de cobro (#21)', () => {
         [6, 'error', 'Fecha inválida'],
       ]);
       expect(body.rows[0]).toMatchObject({ tenantName: 'Kiosco', amount: 5000 });
-      expect(billing.listPayments()).toEqual([]);
+      expect(await billing.listPayments()).toEqual([]);
     });
 
     it('registra las filas buenas una sola vez: volver a subirla da "ya registrado"', async () => {
       const first = (await subir(sheet, false)).body as SheetResponse;
       expect(first.applied).toBe(true);
       expect(first.rows[0]?.status).toBe('ok');
-      expect(billing.summary(tenantId).paidBalance).toBe(5000);
+      expect((await billing.summary(tenantId)).paidBalance).toBe(5000);
       const again = (await subir(sheet, false)).body as SheetResponse;
       expect(again.rows[0]).toMatchObject({ status: 'duplicate', message: 'Ya registrado' });
-      expect(billing.listPayments()).toHaveLength(1);
-      expect(billing.listPayments()[0]?.fromSheet).toBe(true);
+      expect(await billing.listPayments()).toHaveLength(1);
+      expect((await billing.listPayments())[0]?.fromSheet).toBe(true);
       expect(audit('billing.payment_registered')).toHaveLength(1);
       expect(JSON.parse(audit('billing.payment_registered')[0]?.details ?? '{}')).toMatchObject({ fromSheet: true, line: 2 });
     });

@@ -66,17 +66,19 @@ export class PlatformQueryService {
     const rows = this.db
       .prepare(`${TENANT_SELECT} AND (? = '' OR lower(t.name) LIKE ? OR lower(t.slug) LIKE ?) ORDER BY t.created_at DESC, t.rowid DESC`)
       .all(like, like, like) as TenantRow[];
-    return rows.map((r) => this.toItem(r));
+    const items: PlatformTenantItem[] = [];
+    for (const r of rows) items.push(await this.toItem(r));
+    return items;
   }
 
   async tenantDetail(tenantId: string): Promise<PlatformTenantDetail> {
     const row = this.db.prepare(`${TENANT_SELECT} AND t.id = ?`).get(tenantId) as TenantRow | undefined;
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return {
-      tenant: this.toItem(row),
+      tenant: await this.toItem(row),
       suspension: await currentSuspension(this.db, tenantId),
-      credits: this.billing.summary(tenantId),
-      gifts: this.billing.listGifts(tenantId),
+      credits: await this.billing.summary(tenantId),
+      gifts: await this.billing.listGifts(tenantId),
       members: (await this.members.listMembers(tenantId)).map((m) => ({ userId: m.userId, name: m.name, email: m.email, role: m.role, status: m.status })),
     };
   }
@@ -148,7 +150,7 @@ export class PlatformQueryService {
     }));
   }
 
-  private toItem(r: TenantRow): PlatformTenantItem {
+  private async toItem(r: TenantRow): Promise<PlatformTenantItem> {
     return {
       id: r.id,
       slug: r.slug,
@@ -156,7 +158,7 @@ export class PlatformQueryService {
       status: tenantStatus(r.status),
       businessType: r.business_type,
       holder: r.holder_user_id === null || r.holder_name === null ? null : { id: r.holder_user_id, name: r.holder_name },
-      billingState: this.billing.summary(r.id).state,
+      billingState: (await this.billing.summary(r.id)).state,
       members: r.members,
       createdAt: r.created_at,
     };

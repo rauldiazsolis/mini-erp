@@ -167,7 +167,7 @@ export function createConnectorRoutes(
     // El cargo por caja y día, después del commit del lote: nunca tumba el push; el barrido lo recupera (#21)
     if (result.saleDays.length > 0) {
       try {
-        deps.billing.charge({ tenantId: req.posContext.tenantId, registerId, chargeDevice, days: result.saleDays });
+        await deps.billing.charge({ tenantId: req.posContext.tenantId, registerId, chargeDevice, days: result.saleDays });
       } catch (err: unknown) {
         console.error('[cobro] no se pudo generar el cargo:', err);
       }
@@ -216,7 +216,7 @@ export function createConnectorRoutes(
       branchId: branch,
       deviceId: parseResult.data.deviceId,
       notices: {
-        billing: deps.billing.summary(req.posContext.tenantId),
+        billing: await deps.billing.summary(req.posContext.tenantId),
         register: parseResult.data.deviceId === undefined ? undefined : await deps.registers.noticeState(registerId, parseResult.data.deviceId),
       },
     });
