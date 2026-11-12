@@ -54,15 +54,15 @@ function scoped<T extends { branch?: string | undefined; pointOfSale?: string | 
 }
 
 /** Valida la query con `schema` y responde lo que devuelve `run`; un error de negocio va con su estado. */
-function handle<T extends { branch?: string | undefined; pointOfSale?: string | undefined }>(schema: z.ZodType<T>, run: (service: SalesQueryService, query: T) => unknown) {
-  return (req: AuthenticatedAdminRequest, res: Response): void => {
+function handle<T extends { branch?: string | undefined; pointOfSale?: string | undefined }>(schema: z.ZodType<T>, run: (service: SalesQueryService, query: T) => Promise<unknown>) {
+  return async (req: AuthenticatedAdminRequest, res: Response): Promise<void> => {
     const parsed = schema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
     try {
-      res.status(200).json(run(getService(req), scoped(req, parsed.data)));
+      res.status(200).json(await run(getService(req), scoped(req, parsed.data)));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -74,18 +74,18 @@ export function createSalesRoutes(): Router {
   const router = Router({ mergeParams: true });
   const view = requirePermission('sales.view');
 
-  router.get('/registers', view, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/registers', view, async (req: AuthenticatedAdminRequest, res: Response) => {
     const a = req.anonymous;
     try {
-      res.status(200).json(a?.kind === 'register' ? [{ branch: a.branch, pointOfSale: a.pointOfSale }] : getService(req).registers());
+      res.status(200).json(a?.kind === 'register' ? [{ branch: a.branch, pointOfSale: a.pointOfSale }] : await getService(req).registers());
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
   router.get('/sales', view, handle(salesQuerySchema, (service, q) => service.listSales(q, { page: q.page, pageSize: q.pageSize, after: q.after })));
-  router.get('/sales/:saleId', view, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/sales/:saleId', view, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const sale = getService(req).getSale(routeParam(req, 'saleId') ?? '');
+      const sale = await getService(req).getSale(routeParam(req, 'saleId') ?? '');
       // Una venta de otra caja se ve igual que una que no existe
       const a = req.anonymous;
       if (a?.kind === 'register' && (sale.branch !== a.branch || sale.pointOfSale !== a.pointOfSale)) throw new DomainError(404, 'Venta no encontrada');

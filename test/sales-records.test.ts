@@ -115,7 +115,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
 });
 
 describe('semilla de actividad con forma de contrato (#20)', () => {
-  it('ventas numeradas, una anulación, una cobranza y movimientos del contrato; nada después de ahora', () => {
+  it('ventas numeradas, una anulación, una cobranza y movimientos del contrato; nada después de ahora', async () => {
     const db = new DatabaseSync(':memory:');
     initTenantDb(db);
     const now = new Date('2026-10-02T21:00:00.000Z'); // 18:00 argentinas
@@ -124,7 +124,7 @@ describe('semilla de actividad con forma de contrato (#20)', () => {
     db.prepare("INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES ('p1', 'b1', 100, ?)").run(now.toISOString());
     db.prepare("INSERT INTO customers (id, name, balance, created_at, updated_at) VALUES ('cust-juan', 'Juan', 0, ?, ?)").run(now.toISOString(), now.toISOString());
 
-    generateHistoricalDemoActivity(db, 'b1', now);
+    await generateHistoricalDemoActivity(db, 'b1', now);
 
     const ventas = db.prepare('SELECT payload, day, ticket_number, voids_sale_id, created_at FROM sales').all() as {
       payload: string; day: string | null; ticket_number: number | null; voids_sale_id: string | null; created_at: string;

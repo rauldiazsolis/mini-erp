@@ -134,7 +134,7 @@ export class TenantManager {
       .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', now);
 
     if (params.seedDemoData === true) {
-      seedDemoTenant(tenantDb, defaultBranchId);
+      await seedDemoTenant(tenantDb, defaultBranchId);
     }
 
     return {

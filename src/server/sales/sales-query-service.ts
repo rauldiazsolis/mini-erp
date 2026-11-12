@@ -207,7 +207,7 @@ export class SalesQueryService {
     this.db = db;
   }
 
-  registers(): RegisterItem[] {
+  async registers(): Promise<RegisterItem[]> {
     const rows = this.db
       .prepare(
         `SELECT branch, point_of_sale FROM sales
@@ -219,14 +219,14 @@ export class SalesQueryService {
     return rows.map((r) => ({ branch: r.branch, pointOfSale: r.point_of_sale }));
   }
 
-  listSales(filter: SalesFilter, paging: Paging): ListResult<SaleListItem> {
+  async listSales(filter: SalesFilter, paging: Paging): Promise<ListResult<SaleListItem>> {
     assertRange(filter);
     const where = this.salesWhere(filter);
     const sql = where.clauses.join(' AND ');
     const totals = this.db
       .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(s.total), 0) AS net FROM sales s WHERE ${sql}`)
       .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.saleRows(filter, paging), paging.pageSize);
+    const { rows, nextCursor } = cut(await this.saleRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toSaleItem(row)),
       nextCursor,
@@ -237,7 +237,7 @@ export class SalesQueryService {
     };
   }
 
-  getSale(id: string): SaleDetail {
+  async getSale(id: string): Promise<SaleDetail> {
     const row = this.db
       .prepare(`SELECT ${SALE_COLUMNS} FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?`)
       .get(id) as SaleRow | undefined;
@@ -245,7 +245,7 @@ export class SalesQueryService {
       throw new DomainError(404, 'Venta no encontrada');
     }
     const stored = readSale(row.payload);
-    const names = this.productNames(stored.lines.flatMap((l) => (l.kind === 'product' ? [l.productId] : [])));
+    const names = await this.productNames(stored.lines.flatMap((l) => (l.kind === 'product' ? [l.productId] : [])));
     const lines: SaleDetailLine[] = stored.lines.map((line) => ({
       kind: line.kind,
       ...(line.kind === 'product' ? { productId: line.productId } : {}),
@@ -267,7 +267,7 @@ export class SalesQueryService {
   }
 
   /** Las filas del filtro; sin `paging`, todas (para los resúmenes). */
-  protected saleRows(filter: SalesFilter, paging?: Paging): SaleRow[] {
+  protected async saleRows(filter: SalesFilter, paging?: Paging): Promise<SaleRow[]> {
     const page = paged('s', paging, this.salesWhere(filter));
     return this.db
       .prepare(
@@ -300,7 +300,7 @@ export class SalesQueryService {
     };
   }
 
-  listCustomerPayments(filter: PaymentsFilter, paging: Paging): ListResult<CustomerPaymentItem> {
+  async listCustomerPayments(filter: PaymentsFilter, paging: Paging): Promise<ListResult<CustomerPaymentItem>> {
     assertRange(filter);
     const where = this.paymentsWhere(filter);
     const totals = this.db
@@ -309,7 +309,7 @@ export class SalesQueryService {
          FROM customer_payments cp WHERE ${where.clauses.join(' AND ')}`,
       )
       .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.paymentRows(filter, paging), paging.pageSize);
+    const { rows, nextCursor } = cut(await this.paymentRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toPaymentItem(row)),
       nextCursor,
@@ -320,13 +320,13 @@ export class SalesQueryService {
     };
   }
 
-  listCashMovements(filter: MovementsFilter, paging: Paging): ListResult<CashMovementItem> {
+  async listCashMovements(filter: MovementsFilter, paging: Paging): Promise<ListResult<CashMovementItem>> {
     assertRange(filter);
     const where = this.movementsWhere(filter);
     const totals = this.db
       .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(${signedAmount('m')}), 0) AS net FROM cash_movements m WHERE ${where.clauses.join(' AND ')}`)
       .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.movementRows(filter, paging), paging.pageSize);
+    const { rows, nextCursor } = cut(await this.movementRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toMovementItem(row)),
       nextCursor,
@@ -338,9 +338,9 @@ export class SalesQueryService {
   }
 
   /** Una fila por día y caja, con los números del `/RESUMEN` de esa caja ese día, y los totales. */
-  cashSummary(filter: DayRange & RegisterFilter): CashSummaryResult {
+  async cashSummary(filter: DayRange & RegisterFilter): Promise<CashSummaryResult> {
     assertRange(filter);
-    const docs = this.documents(filter);
+    const docs = await this.documents(filter);
     type Group = { day: string; branch: string | null; pointOfSale: string | null } & Documents;
     const groups = new Map<string, Group>();
     const groupOf = (day: string | null, branch: string | null, pointOfSale: string | null): Group => {
@@ -363,8 +363,8 @@ export class SalesQueryService {
   }
 
   /** El `/RESUMEN` de un día (de una caja, si se filtra) y sus movimientos, lo más nuevo primero. */
-  daySummary(filter: { day: string } & RegisterFilter): DaySummaryResult {
-    const docs = this.documents({ from: filter.day, to: filter.day, branch: filter.branch, pointOfSale: filter.pointOfSale });
+  async daySummary(filter: { day: string } & RegisterFilter): Promise<DaySummaryResult> {
+    const docs = await this.documents({ from: filter.day, to: filter.day, branch: filter.branch, pointOfSale: filter.pointOfSale });
     const entries: DayEntry[] = [
       ...docs.sales.map((row): DayEntry => {
         const sale = this.toSaleItem(row);
@@ -382,8 +382,8 @@ export class SalesQueryService {
     return { day: filter.day, summary: this.summaryOf(docs), entries };
   }
 
-  private documents(filter: DayRange & RegisterFilter): Documents {
-    return { sales: this.saleRows(filter), payments: this.paymentRows(filter), movements: this.movementRows(filter) };
+  private async documents(filter: DayRange & RegisterFilter): Promise<Documents> {
+    return { sales: await this.saleRows(filter), payments: await this.paymentRows(filter), movements: await this.movementRows(filter) };
   }
 
   private summaryOf(docs: Documents): DaySummary {
@@ -424,7 +424,7 @@ export class SalesQueryService {
     };
   }
 
-  protected paymentRows(filter: PaymentsFilter, paging?: Paging): PaymentRow[] {
+  protected async paymentRows(filter: PaymentsFilter, paging?: Paging): Promise<PaymentRow[]> {
     const page = paged('cp', paging, this.paymentsWhere(filter));
     return this.db
       .prepare(
@@ -454,7 +454,7 @@ export class SalesQueryService {
     };
   }
 
-  protected movementRows(filter: MovementsFilter, paging?: Paging): MovementRow[] {
+  protected async movementRows(filter: MovementsFilter, paging?: Paging): Promise<MovementRow[]> {
     const page = paged('m', paging, this.movementsWhere(filter));
     return this.db
       .prepare(
@@ -527,7 +527,7 @@ export class SalesQueryService {
     return where;
   }
 
-  private productNames(ids: string[]): Map<string, string> {
+  private async productNames(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = this.db
       .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(', ')})`)

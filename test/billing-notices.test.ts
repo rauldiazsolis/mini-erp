@@ -32,18 +32,18 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
     expect(formatDayShort('2026-10-03')).toBe('03/10');
   });
 
-  it('ok: sin avisos de créditos', () => {
-    expect(noticesFor(db, { deviceId: 'dev-1', billing: base })).toEqual([]);
+  it('ok: sin avisos de créditos', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-1', billing: base })).toEqual([]);
   });
 
-  it('low: warning con los días', () => {
-    expect(noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'low', daysCovered: 4 } })).toEqual([
+  it('low: warning con los días', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'low', daysCovered: 4 } })).toEqual([
       { id: 'credits:low', severity: 'warning', message: 'Te quedan créditos para unos 4 días. Cargá saldo desde mini → Uso y pagos.' },
     ]);
   });
 
-  it('debt: critical con el importe y la fecha', () => {
-    expect(noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'debt', debt: 12345, deadline: '2026-10-13' } })).toEqual([
+  it('debt: critical con el importe y la fecha', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'debt', debt: 12345, deadline: '2026-10-13' } })).toEqual([
       {
         id: 'credits:debt',
         severity: 'critical',
@@ -52,8 +52,8 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
     ]);
   });
 
-  it('restricted: critical', () => {
-    expect(noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'restricted', debt: 1000, deadline: '2026-10-01' } })).toEqual([
+  it('restricted: critical', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-1', billing: { ...base, state: 'restricted', debt: 1000, deadline: '2026-10-01' } })).toEqual([
       {
         id: 'credits:restricted',
         severity: 'critical',
@@ -62,16 +62,16 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
     ]);
   });
 
-  it('no facturable (demo): sin avisos de créditos', () => {
-    expect(noticesFor(db, { deviceId: 'dev-1', billing: { ...base, billable: false, state: 'low' } })).toEqual([]);
+  it('no facturable (demo): sin avisos de créditos', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-1', billing: { ...base, billable: false, state: 'low' } })).toEqual([]);
   });
 
-  it('los avisos de créditos llegan también sin deviceId', () => {
-    expect(noticesFor(db, { deviceId: undefined, billing: { ...base, state: 'low', daysCovered: 2 } })).toHaveLength(1);
+  it('los avisos de créditos llegan también sin deviceId', async () => {
+    expect(await noticesFor(db, { deviceId: undefined, billing: { ...base, state: 'low', daysCovered: 2 } })).toHaveLength(1);
   });
 
-  it('equipo ajeno y key compartida', () => {
-    expect(noticesFor(db, { deviceId: 'dev-2', register: { registerId: 'r1', binding: 'foreign', sharedRecently: false } })).toEqual([
+  it('equipo ajeno y key compartida', async () => {
+    expect(await noticesFor(db, { deviceId: 'dev-2', register: { registerId: 'r1', binding: 'foreign', sharedRecently: false } })).toEqual([
       {
         id: 'register:foreign-device',
         severity: 'warning',
@@ -79,9 +79,9 @@ describe('avisos de créditos y de caja en el pull (#21)', () => {
         message: 'Esta caja está ligada a otro equipo: tus ventas se cobran aparte. Pedile al dueño que te pase la caja o te cree una.',
       },
     ]);
-    expect(noticesFor(db, { deviceId: 'dev-1', register: { registerId: 'r1', binding: 'bound', sharedRecently: true } })).toEqual([
+    expect(await noticesFor(db, { deviceId: 'dev-1', register: { registerId: 'r1', binding: 'bound', sharedRecently: true } })).toEqual([
       { id: 'register:shared-key', severity: 'warning', ref: { type: 'register', id: 'r1' }, message: 'Otro equipo está usando la key de esta caja.' },
     ]);
-    expect(noticesFor(db, { deviceId: 'dev-1', register: { registerId: 'r1', binding: 'bound', sharedRecently: false } })).toEqual([]);
+    expect(await noticesFor(db, { deviceId: 'dev-1', register: { registerId: 'r1', binding: 'bound', sharedRecently: false } })).toEqual([]);
   });
 });

@@ -8,11 +8,11 @@ export class DiscrepancyService {
     this.db = db;
   }
 
-  listOpen(): Discrepancy[] {
-    return listOpenDiscrepancies(this.db);
+  async listOpen(): Promise<Discrepancy[]> {
+    return await listOpenDiscrepancies(this.db);
   }
 
-  dismiss(id: string, userId: string, note: string): void {
-    dismissDiscrepancy(this.db, id, userId, note, new Date().toISOString());
+  async dismiss(id: string, userId: string, note: string): Promise<void> {
+    await dismissDiscrepancy(this.db, id, userId, note, new Date().toISOString());
   }
 }

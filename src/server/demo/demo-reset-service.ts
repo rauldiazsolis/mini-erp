@@ -41,7 +41,7 @@ export class DemoResetService {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
     await inTransaction(db, async () => {
       for (const t of tables) db.exec(`DELETE FROM "${t.name}"`);
-      seedDemoCommerce(db, template, now);
+      await seedDemoCommerce(db, template, now);
     });
     const revoked = this.deps.sessions.revokeTenant(tenantId, 'reset');
     this.deps.systemDb.prepare('UPDATE demo_tenants SET last_full_reset_at = ? WHERE tenant_id = ?').run(now.toISOString(), tenantId);

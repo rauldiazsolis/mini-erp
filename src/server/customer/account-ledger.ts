@@ -13,7 +13,7 @@ export type LedgerMovement = {
  * Mueve el saldo de un cliente y escribe el extracto (cuenta corriente). Devuelve `false` si el
  * cliente no existe, sin tocar nada: el que llama decide qué hacer (#2, discrepancias).
  */
-export function applyToBalance(db: DatabaseSync, customerId: string, movement: LedgerMovement, now: string): boolean {
+export async function applyToBalance(db: DatabaseSync, customerId: string, movement: LedgerMovement, now: string): Promise<boolean> {
   const row = db.prepare('SELECT balance FROM customers WHERE id = ?').get(customerId) as { balance: number | null } | undefined;
   if (row === undefined) {
     return false;

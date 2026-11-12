@@ -84,7 +84,7 @@ export class DashboardService {
     this.now = now;
   }
 
-  public getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): DashboardSummaryResponse {
+  public async getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): Promise<DashboardSummaryResponse> {
     const period: DashboardPeriod = options?.period ?? 'today';
     const branchId = options?.branchId;
 
@@ -92,8 +92,8 @@ export class DashboardService {
     const days = PERIOD_DAYS[period];
     const today = argentinaToday(this.now());
     const from = shiftDay(today, -(days - 1));
-    const sales = this.fetchSales(from, today, branchId);
-    const prevSales = this.fetchSales(shiftDay(from, -days), shiftDay(from, -1), branchId);
+    const sales = await this.fetchSales(from, today, branchId);
+    const prevSales = await this.fetchSales(shiftDay(from, -days), shiftDay(from, -1), branchId);
 
     // Como el POS: el total es el neto de todos los tickets; cantidad y promedio, de los vigentes
     const valid = sales.filter(isValid);
@@ -107,9 +107,9 @@ export class DashboardService {
         : 0;
 
     const timeline = period === 'today' ? this.hourlyTimeline(sales, today) : this.dailyTimeline(sales, from, days, period === 'week');
-    const topProducts = this.calculateTopProducts(sales);
-    const customerMetrics = this.calculateCustomerMetrics();
-    const stockAlerts = this.calculateStockAlerts(this.branchIdByCode(branchId));
+    const topProducts = await this.calculateTopProducts(sales);
+    const customerMetrics = await this.calculateCustomerMetrics();
+    const stockAlerts = await this.calculateStockAlerts(await this.branchIdByCode(branchId));
 
     return {
       period,
@@ -130,7 +130,7 @@ export class DashboardService {
     };
   }
 
-  private fetchSales(from: string, to: string, branchId?: string): SaleRow[] {
+  private async fetchSales(from: string, to: string, branchId?: string): Promise<SaleRow[]> {
     let sql = `
       SELECT s.id, s.payload, s.total, s.created_at, s.day, s.voids_sale_id,
         EXISTS (SELECT 1 FROM sales v WHERE v.voids_sale_id = s.id) AS voided
@@ -179,7 +179,7 @@ export class DashboardService {
    * Top 5 por unidades (#15): productos por `productId`, con el nombre del catálogo; líneas
    * `freeform` agrupadas por descripción normalizada. Importes con la fórmula del POS.
    */
-  private calculateTopProducts(sales: SaleRow[]): TopProductItem[] {
+  private async calculateTopProducts(sales: SaleRow[]): Promise<TopProductItem[]> {
     type Entry = {
       key: string;
       kind: 'product' | 'freeform';
@@ -212,7 +212,7 @@ export class DashboardService {
       .filter((e) => e.units > 0)
       .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
       .slice(0, 5);
-    const names = this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));
+    const names = await this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));
 
     return top.map((e) => ({
       key: e.key,
@@ -224,7 +224,7 @@ export class DashboardService {
     }));
   }
 
-  private productNames(ids: string[]): Map<string, string> {
+  private async productNames(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = this.db
       .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(', ')})`)
@@ -232,7 +232,7 @@ export class DashboardService {
     return new Map(rows.map((r) => [r.id, r.name]));
   }
 
-  private calculateCustomerMetrics(): { totalReceivables: number; debtorCount: number; totalCustomers: number } {
+  private async calculateCustomerMetrics(): Promise<{ totalReceivables: number; debtorCount: number; totalCustomers: number }> {
     const receivablesRow = this.db
       .prepare('SELECT COALESCE(SUM(balance), 0) as total, COUNT(*) as count FROM customers WHERE balance > 0')
       .get() as { total: number; count: number };
@@ -250,13 +250,13 @@ export class DashboardService {
    * El filtro de sucursal es su código, como `sales.branch` (lo que manda el POS); el stock va por
    * el id de la sucursal. Un código desconocido no encuentra stock: no cae en "todas".
    */
-  private branchIdByCode(code: string | undefined): string | undefined {
+  private async branchIdByCode(code: string | undefined): Promise<string | undefined> {
     if (code === undefined || code === '') return undefined;
     const row = this.db.prepare('SELECT id FROM branches WHERE code = ?').get(code) as { id: string } | undefined;
     return row?.id ?? `sin-sucursal:${code}`;
   }
 
-  private calculateStockAlerts(branchId?: string): { criticalCount: number; lowStockProducts: LowStockItem[] } {
+  private async calculateStockAlerts(branchId?: string): Promise<{ criticalCount: number; lowStockProducts: LowStockItem[] }> {
     let sql = `
       SELECT p.id, p.sku, p.name, COALESCE(SUM(s.quantity), 0) as stock
       FROM products p

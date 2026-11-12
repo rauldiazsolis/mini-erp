@@ -22,7 +22,7 @@ export class ConnectorService {
     this.tenantDb = tenantDb;
   }
 
-  processPushLot(params: {
+  async processPushLot(params: {
     lotId: string;
     deviceId: string;
     events: unknown[];
@@ -30,7 +30,7 @@ export class ConnectorService {
     /** La caja de la key y a qué equipo se cobran las ventas (#21). */
     registerId?: string | undefined;
     chargeDevice?: string | undefined;
-  }): PushLotResult {
+  }): Promise<PushLotResult> {
     const now = new Date().toISOString();
 
     // Idempotencia: si el lote ya fue procesado, no repetir efectos
@@ -70,7 +70,7 @@ export class ConnectorService {
         // El día de la venta se suma al lote solo si el evento se aplicó (su SAVEPOINT se liberó)
         const eventDays: string[] = [];
         try {
-          const issue = this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now, register, (day) => {
+          const issue = await this.applyEvent(parsed.event, params.deviceId, resolvedBranchId, now, register, (day) => {
             eventDays.push(day);
           });
           this.tenantDb.exec('RELEASE evento');
@@ -118,14 +118,14 @@ export class ConnectorService {
     return first?.id ?? 'branch-central';
   }
 
-  private applyEvent(
+  private async applyEvent(
     event: PushEvent,
     deviceId: string,
     defaultBranchId: string,
     now: string,
     register: { registerId: string | null; chargeDevice: string | null },
     onSaleDay: (day: string) => void,
-  ): LotIssue | undefined {
+  ): Promise<LotIssue | undefined> {
     const originBranch = event.origin?.branch ?? (defaultBranchId ? defaultBranchId : null);
     const originPos = event.origin?.pointOfSale ?? null;
     const where = { deviceId, branch: originBranch, pointOfSale: originPos, ...register };
@@ -135,7 +135,7 @@ export class ConnectorService {
     switch (event.type) {
       case 'sale': {
         const sale = event.sale;
-        const day = saveSale(this.tenantDb, sale, where, receivedAt);
+        const day = await saveSale(this.tenantDb, sale, where, receivedAt);
         // Una anulación no genera cargo; cualquier otro ticket, sí (#21)
         if (sale.voidsSaleId === undefined && day !== null) {
           onSaleDay(day);
@@ -145,7 +145,7 @@ export class ConnectorService {
         if (sale.customerId !== undefined) {
           for (const payment of sale.payments) {
             if (payment.method === 'account' && payment.reference === undefined) {
-              this.moveBalance(
+              await this.moveBalance(
                 sale.customerId,
                 { type: 'sale', delta: payment.amount, description: `Venta ${sale.id}`, saleId: sale.id },
                 { type: 'sale', id: sale.id },
@@ -226,7 +226,7 @@ export class ConnectorService {
           );
 
         // El cliente ya existe: sus movimientos pendientes se aplican (#2)
-        applyPendingFor(this.tenantDb, cust.id, now);
+        await applyPendingFor(this.tenantDb, cust.id, now);
 
         return undefined;
       }
@@ -243,7 +243,7 @@ export class ConnectorService {
             .prepare("UPDATE account_holds SET status = 'confirmed', confirmed_at = ? WHERE id = ?")
             .run(now, holdId);
 
-          this.moveBalance(
+          await this.moveBalance(
             hold.customer_id,
             { type: 'sale', delta: hold.amount, description: `Venta a cuenta corriente ${saleId}`, saleId },
             { type: 'sale', id: saleId },
@@ -263,23 +263,23 @@ export class ConnectorService {
       }
 
       case 'cash-movement': {
-        saveCashMovement(this.tenantDb, event.movement, where, receivedAt);
+        await saveCashMovement(this.tenantDb, event.movement, where, receivedAt);
         return undefined;
       }
 
       case 'customer-payment': {
         const payment = event.payment;
-        if (!saveCustomerPayment(this.tenantDb, payment, where, receivedAt)) {
+        if (!(await saveCustomerPayment(this.tenantDb, payment, where, receivedAt))) {
           return undefined;
         }
         const ref = { type: 'customer-payment' as const, id: payment.id };
         if (payment.voidsPaymentId === undefined) {
-          this.moveBalance(payment.customerId, { type: 'payment', delta: -payment.total, description: `Cobranza ${payment.id}` }, ref, where, now);
-          resolveVoidUnknown(this.tenantDb, payment.id, now);
+          await this.moveBalance(payment.customerId, { type: 'payment', delta: -payment.total, description: `Cobranza ${payment.id}` }, ref, where, now);
+          await resolveVoidUnknown(this.tenantDb, payment.id, now);
           return undefined;
         }
         // Anulación (4.3.0): nunca se rechaza; el saldo sube por -total y lo raro queda para revisar
-        this.moveBalance(
+        await this.moveBalance(
           payment.customerId,
           { type: 'payment-void', delta: -payment.total, description: `Anulación de cobranza ${payment.voidsPaymentId}` },
           ref,
@@ -306,7 +306,7 @@ export class ConnectorService {
                 ? 'void-duplicate'
                 : undefined;
         if (kind !== undefined) {
-          recordDiscrepancy(
+          await recordDiscrepancy(
             this.tenantDb,
             {
               kind,
@@ -328,17 +328,17 @@ export class ConnectorService {
   }
 
   /** Mueve el saldo; con un cliente desconocido, el movimiento queda pendiente como discrepancia (#2). */
-  private moveBalance(
+  private async moveBalance(
     customerId: string,
     movement: LedgerMovement,
     ref: { type: 'sale' | 'customer-payment'; id: string },
     origin: { deviceId: string; branch: string | null; pointOfSale: string | null },
     now: string,
-  ): void {
-    if (applyToBalance(this.tenantDb, customerId, movement, now)) {
+  ): Promise<void> {
+    if (await applyToBalance(this.tenantDb, customerId, movement, now)) {
       return;
     }
-    recordDiscrepancy(
+    await recordDiscrepancy(
       this.tenantDb,
       {
         kind: 'unknown-customer',
@@ -355,7 +355,7 @@ export class ConnectorService {
     );
   }
 
-  pullCatalog(params: {
+  async pullCatalog(params: {
     cursors: { products?: string | undefined; customers?: string | undefined };
     pendingLotIds: string[];
     branchId?: string;
@@ -478,7 +478,7 @@ export class ConnectorService {
       stock,
       lots,
       // Avisos de este equipo (4.4.0, #2): la lista vigente y completa, sin cursor
-      notices: noticesFor(this.tenantDb, { deviceId: params.deviceId, ...params.notices }),
+      notices: await noticesFor(this.tenantDb, { deviceId: params.deviceId, ...params.notices }),
     };
   }
 

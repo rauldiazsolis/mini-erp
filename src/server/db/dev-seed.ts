@@ -89,15 +89,15 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
   for (const s of t.staff) addMember.run(ids[s.user], t.id, s.role, now.toISOString());
 
   const branchId = (db.prepare('SELECT id FROM branches ORDER BY created_at LIMIT 1').get() as { id: string }).id;
-  t.registers.forEach((r, index) => {
+  for (const [index, r] of t.registers.entries()) {
     insertRegisterWithKey(deps.systemDb, t.id, r, now.toISOString());
     // Las ventas quedan de su caja, sin equipo ligado: el primer POS que se conecte con la key la liga
-    generateHistoricalDemoActivity(db, branchId, now, {
+    await generateHistoricalDemoActivity(db, branchId, now, {
       days: r.historyDays,
       idPrefix: index === 0 ? '' : `c${String(index + 1)}_`,
       origin: { deviceId: `pos_caja_${String(index + 1)}`, branch: DEV_BRANCH, pointOfSale: r.pointOfSale, registerId: r.id, chargeDevice: '' },
     });
-  });
+  }
 
   await seedCredits(deps, t, ids, now);
 }

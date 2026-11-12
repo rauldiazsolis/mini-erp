@@ -79,7 +79,7 @@ describe('importación de clientes (#22)', () => {
   it('con movimientos posteriores no toca el saldo y avisa en la fila', async () => {
     await service.run('customers', { csv: EXCEL, dryRun: false }, now);
     const juan = db.prepare("SELECT id FROM customers WHERE document = '20.123.456'").get() as { id: string };
-    applyToBalance(db, juan.id, { type: 'sale', delta: 500, description: 'Venta' }, now);
+    await applyToBalance(db, juan.id, { type: 'sale', delta: 500, description: 'Venta' }, now);
     const p = await service.run('customers', { csv: 'DNI;Saldo;Celular\n20123456;0;999\n', dryRun: false }, now);
     expect(p.rows[0]).toMatchObject({ action: 'update', messages: ['Tiene movimientos posteriores: el saldo no se cambia'] });
     expect(db.prepare('SELECT balance, phone FROM customers WHERE id = ?').get(juan.id)).toEqual({ balance: 12845.5, phone: '999' });
@@ -103,7 +103,7 @@ describe('importación de clientes (#22)', () => {
   });
 
   it('con la columna id aplica los movimientos pendientes del POS (discrepancias)', async () => {
-    recordDiscrepancy(
+    await recordDiscrepancy(
       db,
       {
         kind: 'unknown-customer',

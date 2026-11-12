@@ -62,7 +62,7 @@ export function createCustomerRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /customers - Listar clientes con filtros
-  router.get('/customers', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCustomerService(req);
       const search =
@@ -78,7 +78,7 @@ export function createCustomerRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const customers = service.listCustomers({
+      const customers = await service.listCustomers({
         search,
         debtorsOnly,
         blocked,
@@ -94,7 +94,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers - Crear nuevo cliente
-  router.post('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createCustomerSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de cliente inválidos' });
@@ -103,7 +103,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const customer = service.createCustomer(parseResult.data);
+      const customer = await service.createCustomer(parseResult.data);
       res.status(201).json(customer);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al crear cliente';
@@ -112,7 +112,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId - Detalle de cliente
-  router.get('/customers/:customerId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -121,7 +121,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const customer = service.getCustomer(customerId);
+      const customer = await service.getCustomer(customerId);
       if (!customer) {
         res.status(404).json({ error: 'Cliente no encontrado' });
         return;
@@ -134,7 +134,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // PUT /customers/:customerId - Actualizar cliente
-  router.put('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/customers/:customerId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -149,7 +149,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const updated = service.updateCustomer(customerId, parseResult.data);
+      const updated = await service.updateCustomer(customerId, parseResult.data);
       if (!updated) {
         res.status(404).json({ error: 'Cliente no encontrado' });
         return;
@@ -162,7 +162,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // DELETE /customers/:customerId - Bloquear o eliminar cliente
-  router.delete('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/customers/:customerId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -175,7 +175,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.deleteCustomer(customerId, { hard, blockedReason: reason });
+      const result = await service.deleteCustomer(customerId, { hard, blockedReason: reason });
       res.status(200).json(result);
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
@@ -185,7 +185,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers/:customerId/payments - Cobranza manual de cuenta corriente
-  router.post('/customers/:customerId/payments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers/:customerId/payments', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -200,7 +200,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.registerPayment(customerId, parseResult.data);
+      const result = await service.registerPayment(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
@@ -210,7 +210,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // POST /customers/:customerId/adjustments - Ajuste manual transparente de saldo
-  router.post('/customers/:customerId/adjustments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers/:customerId/adjustments', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -225,7 +225,7 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.adjustBalance(customerId, parseResult.data);
+      const result = await service.adjustBalance(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
@@ -235,7 +235,7 @@ export function createCustomerRoutes(): Router {
   });
 
   // GET /customers/:customerId/movements - Extracto de cuenta corriente
-  router.get('/customers/:customerId/movements', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers/:customerId/movements', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
@@ -250,7 +250,7 @@ export function createCustomerRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const movements = service.listMovements(customerId, {
+      const movements = await service.listMovements(customerId, {
         type,
         from,
         to,

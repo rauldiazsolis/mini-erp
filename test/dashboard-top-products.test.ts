@@ -48,7 +48,7 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
     insertProduct(db, 'p2', 'Gaseosa 500 ml', 1000);
   });
 
-  it('nombres del catálogo, importes con descuento, freeform agrupadas y productos borrados', () => {
+  it('nombres del catálogo, importes con descuento, freeform agrupadas y productos borrados', async () => {
     const createdAt = new Date().toISOString();
     insertSale(
       db,
@@ -99,7 +99,7 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
     );
     insertSale(db, 's4', '{no es json', 0);
 
-    const { topProducts } = new DashboardService(db).getSummary({ period: 'today' });
+    const { topProducts } = await new DashboardService(db).getSummary({ period: 'today' });
 
     expect(topProducts).toEqual([
       { key: 'freeform:varios', kind: 'freeform', name: 'Varios', unitsSold: 2, totalRevenue: 700 },
@@ -123,7 +123,7 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
     ]);
   });
 
-  it('el historial simulado de las demos usa líneas y medios de pago del contrato', () => {
+  it('el historial simulado de las demos usa líneas y medios de pago del contrato', async () => {
     insertProduct(db, 'p3', 'Yerba 1 kg', 3200);
     const now = new Date().toISOString();
     db.prepare("INSERT INTO branches (id, name, code, created_at) VALUES ('b1', 'Central', 'CENTRAL', ?)").run(now);
@@ -131,7 +131,7 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
     for (const [id, name] of [['cust-juan', 'Juan'], ['cust-cf', 'Consumidor Final']] as const) {
       db.prepare('INSERT INTO customers (id, name, balance, created_at, updated_at) VALUES (?, ?, 0, ?, ?)').run(id, name, now, now);
     }
-    generateHistoricalDemoActivity(db, 'b1');
+    await generateHistoricalDemoActivity(db, 'b1');
 
     const rows = db.prepare('SELECT payload FROM sales').all() as Array<{ payload: string }>;
     expect(rows.length).toBeGreaterThan(0);

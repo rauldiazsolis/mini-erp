@@ -38,7 +38,7 @@ export function demoSeedProducts(template: DemoTemplate): (SeedProduct & { id: s
  * demo y `DEMO_HISTORY_DAYS` días de historial hasta `now` de dos cajas de la casa (sin caja de mini:
  * no cobran). Es la "foto inicial" del reinicio total. No abre transacción.
  */
-export function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate, now: Date): void {
+export async function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate, now: Date): Promise<void> {
   const at = now.toISOString();
   db.prepare('INSERT OR IGNORE INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)').run(
     DEMO_BRANCH_ID,
@@ -56,11 +56,11 @@ export function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate, now: 
     stock.run(p.id, DEMO_BRANCH_ID, p.stock, at);
   }
   insertDemoCustomers(db, at);
-  ['Caja 1', 'Caja 2'].forEach((pointOfSale, index) => {
-    generateHistoricalDemoActivity(db, DEMO_BRANCH_ID, now, {
+  for (const [index, pointOfSale] of ['Caja 1', 'Caja 2'].entries()) {
+    await generateHistoricalDemoActivity(db, DEMO_BRANCH_ID, now, {
       days: DEMO_HISTORY_DAYS,
       idPrefix: index === 0 ? '' : `c${String(index + 1)}_`,
       origin: { deviceId: `pos_casa_${String(index + 1)}`, branch: DEMO_BRANCH_CODE, pointOfSale },
     });
-  });
+  }
 }

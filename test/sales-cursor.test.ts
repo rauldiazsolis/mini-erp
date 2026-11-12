@@ -55,7 +55,7 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
 
   it('una venta nueva mientras se scrollea no corre el tramo siguiente', async () => {
     const first = await list('sales', '&pageSize=2');
-    saveSale(db, { id: 's6', total: 10, ticket: { date: D2, number: 3 }, createdAt: `${D2}T20:00:00.000Z` }, origin, `${D2}T20:00:00.000Z`);
+    await saveSale(db, { id: 's6', total: 10, ticket: { date: D2, number: 3 }, createdAt: `${D2}T20:00:00.000Z` }, origin, `${D2}T20:00:00.000Z`);
     const second = await list('sales', `&pageSize=2&after=${encodeURIComponent(first.nextCursor ?? '')}`);
     expect(ids(second)).toEqual(['s2', 's3']);
   });
@@ -63,14 +63,14 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   it('cobranzas y movimientos van igual', async () => {
     const payments = await list('customer-payments', '&pageSize=1');
     expect(ids(payments)).toEqual(['cp2']);
-    saveCustomerPayment(db, { id: 'cp3', customerId: 'c1', total: 5, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
+    await saveCustomerPayment(db, { id: 'cp3', customerId: 'c1', total: 5, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
     const rest = await list('customer-payments', `&pageSize=5&after=${encodeURIComponent(payments.nextCursor ?? '')}`);
     expect(ids(rest)).toEqual(['cp1']);
     expect(rest.nextCursor).toBeNull();
 
     const movements = await list('cash-movements', '&pageSize=2');
     expect(ids(movements)).toEqual(['m3', 'm2']);
-    saveCashMovement(db, { id: 'm4', direction: 'in', amount: 1, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
+    await saveCashMovement(db, { id: 'm4', direction: 'in', amount: 1, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
     const next = await list('cash-movements', `&pageSize=2&after=${encodeURIComponent(movements.nextCursor ?? '')}`);
     expect(ids(next)).toEqual(['m1']);
   });

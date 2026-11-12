@@ -133,7 +133,7 @@ export class CustomerService {
 
   // --- CRUD CLIENTES ---
 
-  listCustomers(filter?: CustomerFilter): CustomerRecord[] {
+  async listCustomers(filter?: CustomerFilter): Promise<CustomerRecord[]> {
     let sql = 'SELECT * FROM customers WHERE 1=1';
     const params: (string | number)[] = [];
 
@@ -170,13 +170,13 @@ export class CustomerService {
     return rows.map((r) => this.mapCustomerRow(r));
   }
 
-  getCustomer(id: string): CustomerRecord | undefined {
+  async getCustomer(id: string): Promise<CustomerRecord | undefined> {
     const row = this.db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as unknown as RawCustomerRow | undefined;
     if (!row) return undefined;
     return this.mapCustomerRow(row);
   }
 
-  createCustomer(data: CreateCustomerInput): CustomerRecord {
+  async createCustomer(data: CreateCustomerInput): Promise<CustomerRecord> {
     const id = data.id ?? `cust_${randomUUID()}`;
     const now = new Date().toISOString();
     const creditLimit = data.creditLimit ?? 0;
@@ -215,17 +215,17 @@ export class CustomerService {
     }
 
     // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
-    applyPendingFor(this.db, id, now);
+    await applyPendingFor(this.db, id, now);
 
-    const created = this.getCustomer(id);
+    const created = await this.getCustomer(id);
     if (created === undefined) {
       throw new Error(`No se encontró el cliente recién creado (${id})`);
     }
     return created;
   }
 
-  updateCustomer(id: string, data: UpdateCustomerInput): CustomerRecord | undefined {
-    const current = this.getCustomer(id);
+  async updateCustomer(id: string, data: UpdateCustomerInput): Promise<CustomerRecord | undefined> {
+    const current = await this.getCustomer(id);
     if (!current) return undefined;
 
     const now = new Date().toISOString();
@@ -262,8 +262,8 @@ export class CustomerService {
     };
   }
 
-  deleteCustomer(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): CustomerRecord | { deleted: boolean } {
-    const current = this.getCustomer(id);
+  async deleteCustomer(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): Promise<CustomerRecord | { deleted: boolean }> {
+    const current = await this.getCustomer(id);
     if (!current) {
       const err = new Error(`Cliente '${id}' no encontrado`);
       (err as unknown as { statusCode: number }).statusCode = 404;
@@ -276,7 +276,7 @@ export class CustomerService {
     }
 
     const reason = options?.blockedReason ?? 'Archivado por administración';
-    const updated = this.updateCustomer(id, { blockedReason: reason });
+    const updated = await this.updateCustomer(id, { blockedReason: reason });
     if (!updated) {
       throw new Error(`No se pudo actualizar el cliente '${id}'`);
     }
@@ -285,8 +285,8 @@ export class CustomerService {
 
   // --- COBRANZAS Y PAGOS ---
 
-  registerPayment(customerId: string, input: RegisterPaymentInput): PaymentResult {
-    const customer = this.getCustomer(customerId);
+  async registerPayment(customerId: string, input: RegisterPaymentInput): Promise<PaymentResult> {
+    const customer = await this.getCustomer(customerId);
     if (!customer) {
       const err = new Error(`Cliente '${customerId}' no encontrado`);
       (err as unknown as { statusCode: number }).statusCode = 404;
@@ -313,7 +313,7 @@ export class CustomerService {
       .run(movId, customerId, 'payment', -input.amount, newBalance, description, now);
 
     // 2. Registro formal en customer_payments, con la forma del contrato (#20)
-    saveCustomerPayment(
+    await saveCustomerPayment(
       this.db,
       {
         id: paymentId,
@@ -349,8 +349,8 @@ export class CustomerService {
 
   // --- AJUSTES TRANSPARENTES DE SALDO ---
 
-  adjustBalance(customerId: string, input: AdjustBalanceInput): AdjustBalanceResult {
-    const customer = this.getCustomer(customerId);
+  async adjustBalance(customerId: string, input: AdjustBalanceInput): Promise<AdjustBalanceResult> {
+    const customer = await this.getCustomer(customerId);
     if (!customer) {
       const err = new Error(`Cliente '${customerId}' no encontrado`);
       (err as unknown as { statusCode: number }).statusCode = 404;
@@ -409,7 +409,7 @@ export class CustomerService {
 
   // --- EXTRACTO DE CUENTA CORRIENTE ---
 
-  listMovements(customerId: string, filter?: MovementFilter): AccountMovementRecord[] {
+  async listMovements(customerId: string, filter?: MovementFilter): Promise<AccountMovementRecord[]> {
     let sql = 'SELECT * FROM account_movements WHERE customer_id = ?';
     const params: (string | number)[] = [customerId];
 

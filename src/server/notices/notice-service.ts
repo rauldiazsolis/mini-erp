@@ -23,7 +23,7 @@ export type NoticeContext = {
  * La lista vigente y completa de avisos de un equipo (#2), calculada en el momento: un aviso
  * desaparece cuando su causa se resuelve. Créditos y caja (#21) y las discrepancias abiertas que generó.
  */
-export function noticesFor(db: DatabaseSync, ctx: NoticeContext): BackendNotice[] {
+export async function noticesFor(db: DatabaseSync, ctx: NoticeContext): Promise<BackendNotice[]> {
   const notices: BackendNotice[] = [];
   const credits = creditsNotice(ctx.billing);
   if (credits !== undefined) notices.push(credits);
@@ -34,7 +34,7 @@ export function noticesFor(db: DatabaseSync, ctx: NoticeContext): BackendNotice[
   }
   return [
     ...notices,
-    ...listOpenDiscrepancies(db, { deviceId: ctx.deviceId }).map((d): BackendNotice => ({
+    ...(await listOpenDiscrepancies(db, { deviceId: ctx.deviceId })).map((d): BackendNotice => ({
       id: `discrepancy:${d.id}`,
       severity: 'warning',
       message: d.message,

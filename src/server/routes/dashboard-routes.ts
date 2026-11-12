@@ -24,7 +24,7 @@ function getDashboardService(req: AuthenticatedAdminRequest): DashboardService {
 export function createDashboardRoutes(): Router {
   const router = Router({ mergeParams: true });
 
-  router.get('/dashboard/summary', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/dashboard/summary', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = summaryQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Parámetros inválidos' });
@@ -33,7 +33,7 @@ export function createDashboardRoutes(): Router {
 
     try {
       const service = getDashboardService(req);
-      const summary = service.getSummary({
+      const summary = await service.getSummary({
         period: parseResult.data.period,
         branchId: parseResult.data.branchId,
       });

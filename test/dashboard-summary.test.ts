@@ -59,7 +59,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
 
     // Sembrar actividad histórica dinámica en la base del tenant
     const tenantDb = tenantManager.getTenantDb(tenantId);
-    generateHistoricalDemoActivity(tenantDb, 'branch-central');
+    await generateHistoricalDemoActivity(tenantDb, 'branch-central');
   });
 
   afterEach(() => {

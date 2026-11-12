@@ -155,7 +155,7 @@ export function createConnectorRoutes(
     const binding = await deps.registers.seen(registerId, parseResult.data.deviceId);
     const chargeDevice = binding === 'foreign' ? parseResult.data.deviceId : '';
 
-    const result = connector.processPushLot({
+    const result = await connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
       events: parseResult.data.events,
@@ -210,7 +210,7 @@ export function createConnectorRoutes(
       await deps.registers.seen(registerId, parseResult.data.deviceId);
     }
 
-    const pullResult = connector.pullCatalog({
+    const pullResult = await connector.pullCatalog({
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
       branchId: branch,

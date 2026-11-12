@@ -22,12 +22,12 @@ export type DemoActivityOptions = { origin?: DocumentOrigin | undefined; days?: 
  * cuenta corriente), una anulación ayer, una cobranza, ingresos, egresos y un ajuste por arqueo. Es
  * del seed de desarrollo y de los tests (las demos no tienen historial). Nada queda después de `now`.
  */
-export function generateHistoricalDemoActivity(
+export async function generateHistoricalDemoActivity(
   db: DatabaseSync,
   branchId: string,
   now: Date = new Date(),
   options: DemoActivityOptions = {},
-): { salesCreated: number; cashMovementsCreated: number } {
+): Promise<{ salesCreated: number; cashMovementsCreated: number }> {
   const origin = options.origin ?? CAJA;
   const days = options.days ?? 7;
   const px = options.idPrefix ?? '';
@@ -57,9 +57,9 @@ export function generateHistoricalDemoActivity(
       updateStock.run(-line.qty, when, line.productId, branchId);
     });
   };
-  const cash = (id: string, when: string, movement: Record<string, unknown>): void => {
+  const cash = async (id: string, when: string, movement: Record<string, unknown>): Promise<void> => {
     if (when > nowIso) return;
-    saveCashMovement(db, { ...movement, id: `${px}${id}`, createdAt: when }, origin, when);
+    await saveCashMovement(db, { ...movement, id: `${px}${id}`, createdAt: when }, origin, when);
     cashMovementsCreated++;
   };
 
@@ -67,7 +67,7 @@ export function generateHistoricalDemoActivity(
     const day = shiftDay(today, -d);
     let ticket = 0;
 
-    cash(`csh_open_d${String(d)}`, at(day, 9, 0), { direction: 'in', amount: 15000, concept: 'Fondo inicial', source: 'manual' });
+    await cash(`csh_open_d${String(d)}`, at(day, 9, 0), { direction: 'in', amount: 15000, concept: 'Fondo inicial', source: 'manual' });
 
     const hours = [10, 12, 15, 17, 19];
     const salesCount = 3 + (d % 3);
@@ -88,7 +88,7 @@ export function generateHistoricalDemoActivity(
       const isAccountSale = s === 2 && d % 2 === 0;
       const method = isAccountSale ? 'account' : s % 2 === 0 ? 'cash' : 'debit';
       ticket += 1;
-      saveSale(
+      await saveSale(
         db,
         {
           id: saleId,
@@ -106,7 +106,7 @@ export function generateHistoricalDemoActivity(
       applyLines(saleId, lines, 'sale', saleAt);
       salesCreated++;
       if (isAccountSale) {
-        applyToBalance(db, 'cust-juan', { type: 'sale', delta: total, description: `Venta en cuenta corriente ${saleId}`, saleId }, saleAt);
+        await applyToBalance(db, 'cust-juan', { type: 'sale', delta: total, description: `Venta en cuenta corriente ${saleId}`, saleId }, saleAt);
       }
       if (s === 0) firstSale = { id: saleId, lines, method, total };
     }
@@ -117,7 +117,7 @@ export function generateHistoricalDemoActivity(
       const voidId = `${firstSale.id}_anulacion`;
       const voidLines = firstSale.lines.map((line) => ({ ...line, qty: -line.qty }));
       ticket += 1;
-      saveSale(
+      await saveSale(
         db,
         {
           id: voidId,
@@ -141,20 +141,20 @@ export function generateHistoricalDemoActivity(
     const paymentAt = at(day, 18, 0);
     if (d === 2 && paymentAt <= nowIso) {
       const paymentId = `${px}pay_demo_d2`;
-      saveCustomerPayment(
+      await saveCustomerPayment(
         db,
         { id: paymentId, customerId: 'cust-juan', payments: [{ method: 'cash', amount: 5000 }], total: 5000, createdAt: paymentAt, receipt: { date: day, number: 1 } },
         origin,
         paymentAt,
       );
-      applyToBalance(db, 'cust-juan', { type: 'payment', delta: -5000, description: `Cobranza ${paymentId}` }, paymentAt);
+      await applyToBalance(db, 'cust-juan', { type: 'payment', delta: -5000, description: `Cobranza ${paymentId}` }, paymentAt);
     }
 
     if (d % 2 === 1) {
-      cash(`csh_drop_d${String(d)}`, at(day, 16, 0), { direction: 'out', amount: 2500, concept: 'Artículos de limpieza', source: 'manual' });
+      await cash(`csh_drop_d${String(d)}`, at(day, 16, 0), { direction: 'out', amount: 2500, concept: 'Artículos de limpieza', source: 'manual' });
     }
     if (d === 1) {
-      cash('csh_count_d1', at(day, 21, 0), {
+      await cash('csh_count_d1', at(day, 21, 0), {
         direction: 'out', amount: 150, concept: 'Ajuste por arqueo', source: 'count-adjustment', count: { expected: 30000, counted: 29850 },
       });
     }

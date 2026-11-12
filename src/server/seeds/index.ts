@@ -63,11 +63,11 @@ export function applyPreset(
   return { preset, productsCreated, stockEntries };
 }
 
-export function seedDemoTenant(
+export async function seedDemoTenant(
   db: DatabaseSync,
   defaultBranchId: string,
   options?: { withHistory?: boolean },
-): void {
+): Promise<void> {
   const now = new Date().toISOString();
 
   // 1. Productos iniciales (Preset Kiosco)
@@ -95,7 +95,7 @@ export function seedDemoTenant(
 
   // 3. Generar historial de ventas y movimientos si está habilitado
   if (options?.withHistory ?? true) {
-    generateHistoricalDemoActivity(db, defaultBranchId);
+    await generateHistoricalDemoActivity(db, defaultBranchId);
   }
 }
 

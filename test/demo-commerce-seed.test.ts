@@ -13,9 +13,9 @@ function fresh(): DatabaseSync {
 }
 
 describe('semilla del comercio demo (#24)', () => {
-  it('crea la sucursal, el catálogo con ids deterministas y su stock', () => {
+  it('crea la sucursal, el catálogo con ids deterministas y su stock', async () => {
     const db = fresh();
-    seedDemoCommerce(db, 'kiosco', now);
+    await seedDemoCommerce(db, 'kiosco', now);
     expect(db.prepare('SELECT id, code FROM branches').all()).toEqual([{ id: DEMO_BRANCH_ID, code: 'CENTRAL' }]);
     const ids = (db.prepare('SELECT id FROM products ORDER BY id').all() as { id: string }[]).map((r) => r.id);
     expect(ids).toEqual(KIOSCO_PRODUCTS.map((p) => demoProductId(p.sku)).sort());
@@ -23,9 +23,9 @@ describe('semilla del comercio demo (#24)', () => {
     expect(stock.n).toBe(KIOSCO_PRODUCTS.length);
   });
 
-  it('crea los clientes demo y 30 días de historial de dos cajas, nada después de now', () => {
+  it('crea los clientes demo y 30 días de historial de dos cajas, nada después de now', async () => {
     const db = fresh();
-    seedDemoCommerce(db, 'kiosco', now);
+    await seedDemoCommerce(db, 'kiosco', now);
     expect((db.prepare('SELECT COUNT(*) AS n FROM customers').get() as { n: number }).n).toBe(DEMO_CUSTOMERS.length);
     const cajas = db.prepare('SELECT DISTINCT point_of_sale AS pos FROM sales ORDER BY pos').all();
     expect(cajas).toEqual([{ pos: 'Caja 1' }, { pos: 'Caja 2' }]);
@@ -36,11 +36,11 @@ describe('semilla del comercio demo (#24)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM sales WHERE register_id IS NOT NULL').get()).toEqual({ n: 0 });
   });
 
-  it('es determinista salvo las fechas: dos siembras dan los mismos ids', () => {
+  it('es determinista salvo las fechas: dos siembras dan los mismos ids', async () => {
     const a = fresh();
     const b = fresh();
-    seedDemoCommerce(a, 'almacen', now);
-    seedDemoCommerce(b, 'almacen', new Date('2026-10-06T15:00:00.000Z'));
+    await seedDemoCommerce(a, 'almacen', now);
+    await seedDemoCommerce(b, 'almacen', new Date('2026-10-06T15:00:00.000Z'));
     const ids = (db: DatabaseSync): unknown => db.prepare('SELECT id FROM products UNION ALL SELECT id FROM customers ORDER BY 1').all();
     expect(ids(a)).toEqual(ids(b));
   });

@@ -152,10 +152,10 @@ export async function importCustomers(db: DatabaseSync, rows: RowContext[], now:
         now,
       );
       if (data.balance !== undefined && data.balance !== 0) {
-        applyToBalance(db, newId, { type: 'opening', delta: data.balance, description: OPENING_IMPORTED }, now);
+        await applyToBalance(db, newId, { type: 'opening', delta: data.balance, description: OPENING_IMPORTED }, now);
       }
       // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
-      applyPendingFor(db, newId, now);
+      await applyPendingFor(db, newId, now);
       rememberName(data.name, newId);
       results.push({ line: row.line, key, action: 'create', messages: [] });
       continue;
@@ -189,7 +189,7 @@ export async function importCustomers(db: DatabaseSync, rows: RowContext[], now:
       if (diff !== 0) {
         const { n } = foreignMovements.get(existingId) as { n: number };
         if (n === 0) {
-          applyToBalance(db, existingId, { type: 'opening', delta: diff, description: OPENING_CORRECTION }, now);
+          await applyToBalance(db, existingId, { type: 'opening', delta: diff, description: OPENING_CORRECTION }, now);
           balanceChanged = true;
         } else {
           messages.push(BALANCE_KEPT);

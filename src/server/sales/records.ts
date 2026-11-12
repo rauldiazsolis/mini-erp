@@ -48,7 +48,7 @@ export type CashMovementRecord = { id: string; createdAt?: string | undefined; [
  * `receivedAt` es el `created_at` de la fila: el `createdAt` del evento o, sin él, el momento del push.
  * Devuelve el día de la venta (el que se cobra, #21). Reenviarla no le cambia la caja ni el equipo cobrado.
  */
-export function saveSale(db: DatabaseSync, sale: SaleRecord, origin: DocumentOrigin, receivedAt: string): string | null {
+export async function saveSale(db: DatabaseSync, sale: SaleRecord, origin: DocumentOrigin, receivedAt: string): Promise<string | null> {
   const day = pickDay(sale.ticket?.date, [sale.createdAt, receivedAt]);
   db.prepare(
     `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at, day, customer_id, ticket_date, ticket_number, register_id, charge_device)
@@ -81,12 +81,12 @@ export function saveSale(db: DatabaseSync, sale: SaleRecord, origin: DocumentOri
 }
 
 /** Una cobranza nunca se reescribe: devuelve `false` si ya estaba. */
-export function saveCustomerPayment(
+export async function saveCustomerPayment(
   db: DatabaseSync,
   payment: CustomerPaymentRecord,
   origin: DocumentOrigin,
   receivedAt: string,
-): boolean {
+): Promise<boolean> {
   const result = db
     .prepare(
       `INSERT INTO customer_payments (id, customer_id, payload, device_id, branch, point_of_sale, voids_payment_id, created_at, day, receipt_date, receipt_number)
@@ -109,12 +109,12 @@ export function saveCustomerPayment(
   return result.changes > 0;
 }
 
-export function saveCashMovement(
+export async function saveCashMovement(
   db: DatabaseSync,
   movement: CashMovementRecord,
   origin: DocumentOrigin,
   receivedAt: string,
-): void {
+): Promise<void> {
   db.prepare(
     `INSERT INTO cash_movements (id, payload, device_id, branch, point_of_sale, created_at, day)
      VALUES (?, ?, ?, ?, ?, ?, ?)
