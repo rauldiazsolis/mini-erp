@@ -6,7 +6,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type CurrentSuspension = { since: string; reason: string; byName: string };
 
 /** El período abierto de suspensión del comercio, si lo hay (#23), con quién lo suspendió. */
-export function currentSuspension(db: DatabaseSync, tenantId: string): CurrentSuspension | null {
+export async function currentSuspension(db: DatabaseSync, tenantId: string): Promise<CurrentSuspension | null> {
   const row = db
     .prepare(
       `SELECT s.from_at, s.reason, COALESCE(u.name, 'Usuario borrado') AS by_name
@@ -17,8 +17,8 @@ export function currentSuspension(db: DatabaseSync, tenantId: string): CurrentSu
   return row === undefined ? null : { since: row.from_at, reason: row.reason, byName: row.by_name };
 }
 
-export function isSuspended(db: DatabaseSync, tenantId: string): boolean {
-  return currentSuspension(db, tenantId) !== null;
+export async function isSuspended(db: DatabaseSync, tenantId: string): Promise<boolean> {
+  return (await currentSuspension(db, tenantId)) !== null;
 }
 
 /** Los días argentinos de `days` que tocan algún período de suspensión: no se cobran (#23). */

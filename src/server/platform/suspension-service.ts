@@ -19,7 +19,7 @@ export class SuspensionService {
 
   async suspend(p: { tenantId: string; reason: string; actorUserId: string }): Promise<void> {
     this.requireRealTenant(p.tenantId);
-    if (isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
+    if (await isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
     await this.inTransaction(async () => {
       this.db
         .prepare('INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES (?, ?, ?, NULL, ?, ?)')
@@ -31,7 +31,7 @@ export class SuspensionService {
 
   async reactivate(p: { tenantId: string; actorUserId: string }): Promise<void> {
     this.requireRealTenant(p.tenantId);
-    if (!isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio no está suspendido');
+    if (!(await isSuspended(this.db, p.tenantId))) throw new DomainError(409, 'El comercio no está suspendido');
     await this.inTransaction(async () => {
       this.db.prepare('UPDATE tenant_suspensions SET to_at = ? WHERE tenant_id = ? AND to_at IS NULL').run(this.now().toISOString(), p.tenantId);
       this.db.prepare("UPDATE tenants SET status = 'active' WHERE id = ?").run(p.tenantId);

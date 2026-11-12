@@ -55,7 +55,7 @@ export class StaffInvitationService {
     await this.audit.record({ actorUserId: params.actorUserId, tenantId: null, action: 'staff.invitation_revoked', details: { email: row.email } });
   }
 
-  listPending(): StaffInvitationItem[] {
+  async listPending(): Promise<StaffInvitationItem[]> {
     const rows = this.db
       .prepare(
         `SELECT i.id, i.email, i.created_at, i.expires_at, COALESCE(u.name, '') AS invited_by_name

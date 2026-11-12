@@ -35,15 +35,15 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   const rootOnly = requirePlatformRole('root');
   const actorOf = (req: AuthenticatedAdminRequest): string => req.user?.id ?? '';
 
-  router.get('/tenants', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = searchSchema.safeParse(req.query);
-    res.status(200).json(deps.queries.listTenants(parsed.success ? parsed.data.q : undefined));
+    res.status(200).json(await deps.queries.listTenants(parsed.success ? parsed.data.q : undefined));
   });
 
   // Va antes de /tenants/:tenantId: el detalle que se abre desde la URL del panel
   router.get('/tenants/by-slug/:slug', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(await deps.queries.tenantDetail(deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
+      res.status(200).json(await deps.queries.tenantDetail(await deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
@@ -57,13 +57,13 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     }
   });
 
-  router.get('/users', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/users', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = usersQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
-    res.status(200).json(deps.queries.listUsers(parsed.data.q, parsed.data.offset));
+    res.status(200).json(await deps.queries.listUsers(parsed.data.q, parsed.data.offset));
   });
 
   router.get('/audit', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
@@ -74,7 +74,7 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     }
     try {
       const { tenantId, tenantSlug } = parsed.data;
-      const id = tenantSlug !== undefined && tenantSlug !== '' ? deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
+      const id = tenantSlug !== undefined && tenantSlug !== '' ? await deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
       res.status(200).json(await deps.audit.listPlatform({ tenantId: id }));
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -126,13 +126,13 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   });
 
   // Pedidos de ayuda de las últimas 48 h (#23)
-  router.get('/help-requests', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(deps.help.listForPanel());
+  router.get('/help-requests', staff, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await deps.help.listForPanel());
   });
 
   // El equipo de soporte (#23): solo root lo ve, lo invita y revoca invitaciones
-  router.get('/staff', rootOnly, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json({ members: deps.queries.listStaff(), invitations: deps.staffInvitations.listPending() });
+  router.get('/staff', rootOnly, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json({ members: await deps.queries.listStaff(), invitations: await deps.staffInvitations.listPending() });
   });
 
   router.post('/staff/invitations', rootOnly, async (req: AuthenticatedAdminRequest, res: Response) => {

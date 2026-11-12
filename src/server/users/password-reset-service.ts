@@ -69,7 +69,7 @@ export class PasswordResetService {
     return { token: raw, expiresAt };
   }
 
-  lookup(token: string): { email: string; name: string; expiresAt: string } {
+  async lookup(token: string): Promise<{ email: string; name: string; expiresAt: string }> {
     const row = this.findValid(token);
     return { email: row.email, name: row.name, expiresAt: row.expires_at };
   }

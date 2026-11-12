@@ -115,7 +115,7 @@ export class InvitationService {
     });
   }
 
-  listPending(tenantId: string): PendingInvitation[] {
+  async listPending(tenantId: string): Promise<PendingInvitation[]> {
     const rows = this.db
       .prepare(
         `SELECT i.id, i.email, i.role, i.created_at, i.expires_at, u.name AS invited_by_name

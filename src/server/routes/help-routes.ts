@@ -16,14 +16,14 @@ const askSchema = z.object({
 export function createHelpRoutes(help: HelpRequestService): Router {
   const router = Router({ mergeParams: true });
 
-  router.post('/help-requests', requirePermission('tenant.use'), requireOwnSession, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/help-requests', requirePermission('tenant.use'), requireOwnSession, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = askSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      const created = help.create({
+      const created = await help.create({
         tenantId: req.activeTenantId ?? '',
         userId: req.user?.id ?? '',
         path: parsed.data.path,

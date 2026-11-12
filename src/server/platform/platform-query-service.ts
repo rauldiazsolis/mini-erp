@@ -61,7 +61,7 @@ export class PlatformQueryService {
     this.members = deps.members;
   }
 
-  listTenants(q?: string): PlatformTenantItem[] {
+  async listTenants(q?: string): Promise<PlatformTenantItem[]> {
     const like = likeOf(q);
     const rows = this.db
       .prepare(`${TENANT_SELECT} AND (? = '' OR lower(t.name) LIKE ? OR lower(t.slug) LIKE ?) ORDER BY t.created_at DESC, t.rowid DESC`)
@@ -74,7 +74,7 @@ export class PlatformQueryService {
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return {
       tenant: this.toItem(row),
-      suspension: currentSuspension(this.db, tenantId),
+      suspension: await currentSuspension(this.db, tenantId),
       credits: this.billing.summary(tenantId),
       gifts: this.billing.listGifts(tenantId),
       members: (await this.members.listMembers(tenantId)).map((m) => ({ userId: m.userId, name: m.name, email: m.email, role: m.role, status: m.status })),
@@ -82,14 +82,14 @@ export class PlatformQueryService {
   }
 
   /** El id del comercio con ese slug (sin demos), o 404. */
-  tenantIdBySlug(slug: string): string {
+  async tenantIdBySlug(slug: string): Promise<string> {
     const row = this.db.prepare(`${TENANT_SELECT} AND t.slug = ?`).get(slug) as TenantRow | undefined;
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return row.id;
   }
 
   /** De a `USERS_LIMIT`, desde `offset` (#87): el panel los suma al scrollear. */
-  listUsers(q?: string, offset = 0): PlatformUserItem[] {
+  async listUsers(q?: string, offset = 0): Promise<PlatformUserItem[]> {
     const like = likeOf(q);
     const users = this.db
       .prepare(
@@ -135,7 +135,7 @@ export class PlatformQueryService {
   }
 
   /** Root y el equipo de soporte, en orden de alta. */
-  listStaff(): StaffMemberItem[] {
+  async listStaff(): Promise<StaffMemberItem[]> {
     const rows = this.db
       .prepare("SELECT id, name, email, global_role, status FROM users WHERE global_role IN ('root', 'support') ORDER BY created_at, rowid")
       .all() as { id: string; name: string; email: string; global_role: string; status: string }[];

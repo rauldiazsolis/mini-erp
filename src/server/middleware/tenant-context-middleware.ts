@@ -30,7 +30,7 @@ export function createTenantContextMiddleware(
         res.status(403).json({ error: 'No tienes acceso a este tenant' });
         return;
       }
-      if (req.anonymous.kind === 'register' && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+      if (req.anonymous.kind === 'register' && (await isSuspended(systemDb, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
         res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
         return;
       }
@@ -59,7 +59,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    if (req.impersonator === undefined && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator === undefined && (await isSuspended(systemDb, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
       return;
     }

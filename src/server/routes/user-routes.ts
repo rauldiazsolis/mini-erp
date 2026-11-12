@@ -55,7 +55,7 @@ export function createUserRoutes(deps: {
           canReset: actor.role === 'owner' && m.userId !== actor.userId && (await deps.members.isFullyOwnedBy(m.userId, actor.userId)),
         });
       }
-      res.status(200).json({ members, invitations: deps.invitations.listPending(tenantId) });
+      res.status(200).json({ members, invitations: await deps.invitations.listPending(tenantId) });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

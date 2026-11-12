@@ -44,7 +44,7 @@ export class HelpRequestService {
   }
 
   /** Crea el pedido y cierra el abierto anterior del mismo usuario. */
-  create(p: { tenantId: string; userId: string; path: string; message: string }): { id: string; expiresAt: string } {
+  async create(p: { tenantId: string; userId: string; path: string; message: string }): Promise<{ id: string; expiresAt: string }> {
     const tenant = this.db.prepare('SELECT slug FROM tenants WHERE id = ?').get(p.tenantId) as { slug: string } | undefined;
     if (tenant === undefined) throw new DomainError(404, 'Comercio no encontrado');
     if (!isAdminPathOf(p.path, tenant.slug)) throw new DomainError(400, 'La pantalla del pedido no es de este comercio');
@@ -59,7 +59,7 @@ export class HelpRequestService {
   }
 
   /** El pedido si sigue vigente (ni cerrado ni vencido). */
-  findOpen(id: string): OpenHelpRequest | undefined {
+  async findOpen(id: string): Promise<OpenHelpRequest | undefined> {
     const row = this.db
       .prepare(
         `SELECT h.id, h.tenant_id, t.slug, h.user_id, h.path FROM help_requests h JOIN tenants t ON t.id = h.tenant_id
@@ -69,14 +69,14 @@ export class HelpRequestService {
     return row === undefined ? undefined : { id: row.id, tenantId: row.tenant_id, tenantSlug: row.slug, userId: row.user_id, path: row.path };
   }
 
-  recordTake(requestId: string, staffUserId: string): void {
+  async recordTake(requestId: string, staffUserId: string): Promise<void> {
     this.db
       .prepare('INSERT INTO help_request_takes (request_id, staff_user_id, at) VALUES (?, ?, ?)')
       .run(requestId, staffUserId, this.now().toISOString());
   }
 
   /** La solapa Pedidos: los de las últimas 48 h, con su estado y quién los tomó. */
-  listForPanel(): HelpRequestItem[] {
+  async listForPanel(): Promise<HelpRequestItem[]> {
     const now = this.now();
     const rows = this.db
       .prepare(
@@ -111,7 +111,7 @@ export class HelpRequestService {
   }
 
   /** Lo que ve el usuario (#23): su pedido abierto, los accesos de soporte de 7 días y si hay alguien adentro. */
-  supportAccess(userId: string): SupportAccess {
+  async supportAccess(userId: string): Promise<SupportAccess> {
     const now = this.now();
     const open = this.db
       .prepare(

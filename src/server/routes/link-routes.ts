@@ -75,14 +75,14 @@ const completeSchema = tokenSchema.extend({ password: passwordSchema });
 export function createPasswordResetLinkRoutes(resets: PasswordResetService, limit: RequestHandler): Router {
   const router = Router();
 
-  router.post('/lookup', limit, (req, res) => {
+  router.post('/lookup', limit, async (req, res) => {
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Falta el token' });
       return;
     }
     try {
-      res.status(200).json(resets.lookup(parsed.data.token));
+      res.status(200).json(await resets.lookup(parsed.data.token));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

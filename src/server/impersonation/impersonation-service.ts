@@ -33,11 +33,11 @@ export class ImpersonationService {
 
   /** Toma un pedido de ayuda vigente: entra como quien lo pidió, en esa pantalla, y registra la toma. */
   async take(p: { staff: UserSession; parentToken: string; helpRequestId: string }): Promise<ImpersonationStart> {
-    const request = this.help.findOpen(p.helpRequestId);
+    const request = await this.help.findOpen(p.helpRequestId);
     if (request === undefined) throw new DomainError(410, 'Este pedido venció');
     const { user, tenant } = this.target(request.userId, request.tenantSlug);
     const started = await this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: request.path, helpRequestId: request.id });
-    this.help.recordTake(request.id, p.staff.id);
+    await this.help.recordTake(request.id, p.staff.id);
     return started;
   }
 
