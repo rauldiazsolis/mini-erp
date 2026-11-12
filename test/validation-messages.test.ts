@@ -71,7 +71,7 @@ describe('textos de validación de /api (#6)', () => {
     it('un email con espacios alrededor se recorta y se acepta', async () => {
       const res = await request(app).post('/api/alta').send({ ...alta, email: '  marta@kiosco.com  ' });
       expect(res.status).toBe(201);
-      expect(systemDb.prepare('SELECT COUNT(*) AS n FROM users WHERE email = ?').get('marta@kiosco.com')).toEqual({ n: 1 });
+      expect(await db().system.selectFrom('users').select('id').where('email', '=', 'marta@kiosco.com').execute()).toHaveLength(1);
     });
   });
 

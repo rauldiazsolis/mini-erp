@@ -25,7 +25,7 @@ describe('rutas de cajas del POS (#21)', () => {
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Cajas', ownerUserId: owner.user.id });
-    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    await new MembershipService(db().system).addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, member: member.token };
   });
 

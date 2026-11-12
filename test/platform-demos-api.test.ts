@@ -43,7 +43,7 @@ describe('demos en la plataforma (#24)', () => {
     app = bundle.app;
     await bundle.demoSessions.ensureDemoTenants();
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await pgDb().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const rootToken = (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });

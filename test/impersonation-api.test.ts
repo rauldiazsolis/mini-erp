@@ -29,14 +29,14 @@ describe('sesión de impersonación (#23, M7b)', () => {
     const root = (await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' })).user;
     const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     const otherSupport = await auth.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Beto' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id IN (?, ?)").run(support.user.id, otherSupport.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', 'in', [support.user.id, otherSupport.user.id]).execute();
     const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
     await tenantManager.createTenant({ id: 'almacen', slug: 'almacen', name: 'Almacén Y', ownerUserId: owner.user.id });
     const lonely = await auth.createUser({ email: 'solo@x.com', password: 'password123', name: 'Sin comercio' });
     const disabled = await auth.createUser({ email: 'baja@x.com', password: 'password123', name: 'De baja' });
     await tenantManager.createTenant({ id: 'otro', slug: 'otro', name: 'Otro', ownerUserId: disabled.user.id });
-    systemDb.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(disabled.user.id);
+    await db().system.updateTable('users').set({ status: 'disabled' }).where('id', '=', disabled.user.id).execute();
     tokens = {
       root: (await auth.login({ email: 'root@x.com', password: 'password123' })).token,
       support: support.token,
@@ -100,18 +100,19 @@ describe('sesión de impersonación (#23, M7b)', () => {
   it('vence a las 2 h sin uso: cada uso la estira (a lo sumo una escritura por minuto)', async () => {
     const imp = await impersonate(app, tokens.support, ids.owner);
     const use = () => request(app).get('/api/auth/me').set(bearer(imp));
-    const lastUsed = () => (systemDb.prepare('SELECT last_used_at FROM sessions WHERE token = ?').get(imp) as { last_used_at: string }).last_used_at;
+    const lastUsed = async () =>
+      (await db().system.selectFrom('sessions').select('last_used_at').where('token', '=', imp).executeTakeFirstOrThrow()).last_used_at;
     now = new Date(now.getTime() + 30 * MIN);
     expect((await use()).status).toBe(200);
-    expect(lastUsed()).toBe('2026-10-05T15:30:00.000Z');
+    expect(await lastUsed()).toBe('2026-10-05T15:30:00.000Z');
     now = new Date(now.getTime() + 30 * 1000); // medio minuto: no escribe
     expect((await use()).status).toBe(200);
-    expect(lastUsed()).toBe('2026-10-05T15:30:00.000Z');
+    expect(await lastUsed()).toBe('2026-10-05T15:30:00.000Z');
     now = new Date('2026-10-05T17:29:00.000Z'); // 1 h 59 desde el último uso
     expect((await use()).status).toBe(200);
     now = new Date('2026-10-05T19:30:00.000Z'); // 2 h 01 sin uso
     expect((await use()).status).toBe(401);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM sessions WHERE token = ?').get(imp)).toEqual({ n: 0 });
+    expect(await db().system.selectFrom('sessions').select('token').where('token', '=', imp).execute()).toEqual([]);
     expect(audit().at(-1)).toMatchObject({ action: 'impersonation.ended', details: JSON.stringify({ reason: 'expired' }) });
   });
 

@@ -52,7 +52,7 @@ describe('alta atómica (#19)', () => {
     const products = tenantManager.getTenantDb('kiosco-marta').prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
     expect(products.n).toBe(0);
     expect(systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get('kiosco-marta')).toEqual({ business_type: 'kiosco' });
-    expect(systemDb.prepare('SELECT whatsapp FROM users WHERE email = ?').get('marta@kiosco.com')).toEqual({ whatsapp: '5491155551234' });
+    expect(await db().system.selectFrom('users').select('whatsapp').where('email', '=', 'marta@kiosco.com').executeTakeFirst()).toEqual({ whatsapp: '5491155551234' });
     const audit = systemDb.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'tenant.created'").get() as { n: number };
     expect(audit.n).toBe(1);
   });
@@ -78,7 +78,7 @@ describe('alta atómica (#19)', () => {
       expect(res.status).toBe(400);
       expect((res.body as { error: string }).error).toBe('Escribí un WhatsApp con código de área (8 a 15 números)');
     }
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM users').get()).toEqual({ n: 0 });
+    expect(await db().system.selectFrom('users').select('id').execute()).toEqual([]);
   });
 
   it('con sesión crea otro comercio para la misma cuenta, sin token nuevo', async () => {

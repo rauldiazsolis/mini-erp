@@ -33,7 +33,7 @@ describe('restricción del admin por deuda (#21)', () => {
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     ownerId = owner.user.id;
-    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    await new MembershipService(db().system).addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, member: member.token, root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token };
     const key = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(as('owner')).send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     apiKey = (key.body as { rawKey: string }).rawKey;

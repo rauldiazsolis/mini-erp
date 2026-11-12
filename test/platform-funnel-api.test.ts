@@ -22,7 +22,7 @@ describe('el embudo en la plataforma (#25)', () => {
     const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const rootToken = (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });

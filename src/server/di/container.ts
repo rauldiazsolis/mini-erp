@@ -127,12 +127,12 @@ export const portalServiceDef = fn.singleton(
       funnel: c.use(funnelServiceDef),
     }),
 );
-export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemDbDef), { now: c.use(clockDef), audit: c.use(auditLogDef) }));
-export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemDbDef), c.use(auditLogDef)));
+export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemKyselyDef), { now: c.use(clockDef), audit: c.use(auditLogDef) }));
+export const membershipServiceDef = fn.singleton((c) => new MembershipService(c.use(systemKyselyDef), c.use(auditLogDef)));
 export const invitationServiceDef = fn.singleton(
   (c) =>
     new InvitationService({
-      db: c.use(systemDbDef),
+      db: c.use(systemKyselyDef),
       auth: c.use(authServiceDef),
       members: c.use(membershipServiceDef),
       audit: c.use(auditLogDef),
@@ -176,7 +176,7 @@ export const altaServiceDef = fn.singleton(
 export const passwordResetServiceDef = fn.singleton(
   (c) =>
     new PasswordResetService({
-      db: c.use(systemDbDef),
+      db: c.use(systemKyselyDef),
       auth: c.use(authServiceDef),
       members: c.use(membershipServiceDef),
       audit: c.use(auditLogDef),

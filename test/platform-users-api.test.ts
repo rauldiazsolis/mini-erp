@@ -23,7 +23,7 @@ describe('usuarios desde la plataforma (#23)', () => {
     const root = await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
     const support2 = await bundle.authService.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Soporte 2' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id IN (?, ?)").run(support.user.id, support2.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', 'in', [support.user.id, support2.user.id]).execute();
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     ids = { root: root.user.id, support: support.user.id, support2: support2.user.id, owner: owner.user.id };

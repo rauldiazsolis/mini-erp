@@ -35,7 +35,7 @@ describe('POST /import/:entity (#22)', () => {
     admin = a.token;
     member = m.token;
     await tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
-    const members = new MembershipService(systemDb);
+    const members = new MembershipService(pgDb().system);
     await members.addMembership('t1', a.user.id, 'admin');
     await members.addMembership('t1', m.user.id, 'member');
   });

@@ -26,7 +26,7 @@ describe('invitaciones de soporte (#23)', () => {
     authService = bundle.authService;
     await authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const support = await authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     const owner = await authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = {
@@ -66,7 +66,7 @@ describe('invitaciones de soporte (#23)', () => {
     expect((await request(app).post('/api/staff-invitations/lookup').send({ token: t1 })).body).toMatchObject({ accountExists: true });
     expect((await accept({ token: t1, password: 'mala' })).status).toBe(401);
     expect((await accept({ token: t1, password: 'password123' })).status).toBe(200);
-    expect(systemDb.prepare('SELECT global_role FROM users WHERE id = ?').get(libre.user.id)).toEqual({ global_role: 'support' });
+    expect(await db().system.selectFrom('users').select('global_role').where('id', '=', libre.user.id).executeTakeFirst()).toEqual({ global_role: 'support' });
 
     const t2 = (await invite('owner@x.com')).token;
     const conComercio = await accept({ token: t2, password: 'password123' });

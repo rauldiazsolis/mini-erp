@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
@@ -9,16 +7,14 @@ import { setupTestDb } from './helpers/test-db.ts';
 const db = setupTestDb();
 
 describe('MembershipService (#19)', () => {
-  let systemDb: DatabaseSync;
   let auth: AuthService;
   let tm: TenantManager;
   let members: MembershipService;
 
   beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    auth = new AuthService(systemDb);
+    auth = new AuthService(db().system);
     tm = new TenantManager(db().system, { inMemory: true });
-    members = new MembershipService(systemDb);
+    members = new MembershipService(db().system);
   });
 
   it('resuelve el rol: membresía activa, nada si está desactivada ni para root sin membresía (#16)', async () => {
@@ -28,7 +24,7 @@ describe('MembershipService (#19)', () => {
     expect(await members.resolveRole(ana, 'kiosco-a')).toBe('owner');
     expect(await members.resolveRole(root, 'kiosco-a')).toBeUndefined();
     expect(await members.resolveRole(root, 'no-existe')).toBeUndefined();
-    systemDb.prepare("UPDATE memberships SET status = 'disabled'").run();
+    await db().system.updateTable('memberships').set({ status: 'disabled' }).execute();
     expect(await members.resolveRole(ana, 'kiosco-a')).toBeUndefined();
   });
 

@@ -27,7 +27,7 @@ describe('pedidos de ayuda (#23, M7b)', () => {
     const auth = bundle.authService;
     await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
     ownerId = owner.user.id;

@@ -104,7 +104,7 @@ describe('TenantManager y demos (#9)', () => {
   it('las demos no aparecen en la lista de comercios, ni para root', async () => {
     const sys = systemDb();
     const manager = new TenantManager(pgDb().system, { inMemory: true });
-    const auth = new AuthService(sys);
+    const auth = new AuthService(pgDb().system);
     const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     await manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });

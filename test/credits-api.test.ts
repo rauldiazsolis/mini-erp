@@ -41,7 +41,7 @@ describe('API de Créditos del comercio (#21)', () => {
     const admin = await bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
-    const members = new MembershipService(systemDb);
+    const members = new MembershipService(db().system);
     await members.addMembership(tenantId, admin.user.id, 'admin');
     await members.addMembership(tenantId, member.user.id, 'member');
     await billing.grantSignupBonus(tenantId, owner.user.id);

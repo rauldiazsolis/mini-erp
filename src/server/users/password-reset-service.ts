@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { AuthService, UserSession } from '../auth/auth-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { MembershipService } from './membership-service.ts';
@@ -15,13 +16,13 @@ type ResetRow = { id: string; user_id: string; tenant_id: string | null; expires
  * gente, solo si todas sus membresías activas son en comercios del owner; soporte, desde M7.
  */
 export class PasswordResetService {
-  private db: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private auth: AuthService;
   private members: MembershipService;
   private audit: AuditLog;
   private now: () => Date;
 
-  constructor(deps: { db: DatabaseSync; auth: AuthService; members: MembershipService; audit: AuditLog; now: () => Date }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; auth: AuthService; members: MembershipService; audit: AuditLog; now: () => Date }) {
     this.db = deps.db;
     this.auth = deps.auth;
     this.members = deps.members;
@@ -48,7 +49,7 @@ export class PasswordResetService {
 
   /** Desde la plataforma (#23): root y soporte, para cualquier cuenta de comercio; sin comercio. */
   async createFromPlatform(params: { actorUserId: string; targetUserId: string }): Promise<{ token: string; expiresAt: string }> {
-    const target = this.db.prepare('SELECT global_role FROM users WHERE id = ?').get(params.targetUserId) as { global_role: string } | undefined;
+    const target = await this.db.selectFrom('users').select('global_role').where('id', '=', params.targetUserId).executeTakeFirst();
     if (target === undefined) throw new DomainError(404, 'Usuario no encontrado');
     if (target.global_role !== 'user') throw new DomainError(403, 'El equipo de soporte restablece su contraseña con root');
     return await this.issue(params.targetUserId, params.actorUserId, null);
@@ -56,16 +57,25 @@ export class PasswordResetService {
 
   private async issue(targetUserId: string, actorUserId: string, tenantId: string | null): Promise<{ token: string; expiresAt: string }> {
     const now = this.now();
-    // Un link nuevo invalida los pendientes
-    this.db.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(targetUserId);
     const { raw, hash } = generateLinkToken();
     const expiresAt = new Date(now.getTime() + LINK_TTL_MS).toISOString();
-    this.db
-      .prepare(
-        'INSERT INTO password_resets (id, user_id, token_hash, created_by, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(`pwr_${randomUUID()}`, targetUserId, hash, actorUserId, tenantId, now.toISOString(), expiresAt);
-    await this.audit.record({ actorUserId, tenantId, action: 'password.reset_link_created', targetUserId });
+    await this.db.transaction().execute(async (trx) => {
+      // Un link nuevo invalida los pendientes
+      await trx.deleteFrom('password_resets').where('user_id', '=', targetUserId).where('used_at', 'is', null).execute();
+      await trx
+        .insertInto('password_resets')
+        .values({
+          id: `pwr_${randomUUID()}`,
+          user_id: targetUserId,
+          token_hash: hash,
+          created_by: actorUserId,
+          tenant_id: tenantId,
+          created_at: now.toISOString(),
+          expires_at: expiresAt,
+        })
+        .execute();
+      await this.audit.record({ actorUserId, tenantId, action: 'password.reset_link_created', targetUserId }, trx);
+    });
     return { token: raw, expiresAt };
   }
 
@@ -76,25 +86,36 @@ export class PasswordResetService {
 
   /** Fija la contraseña nueva, cierra todas las sesiones del usuario y abre una nueva. */
   async complete(params: { token: string; password: string }): Promise<{ token: string; user: UserSession }> {
-    const row = await this.findValid(params.token);
-    await this.auth.setPassword(row.user_id, params.password);
-    await this.auth.revokeSessions(row.user_id);
-    this.db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(this.now().toISOString(), row.id);
-    await this.audit.record({ actorUserId: row.user_id, tenantId: row.tenant_id, action: 'password.reset', targetUserId: row.user_id });
-    const token = await this.auth.createSession(row.user_id);
-    const user = await this.auth.validateSession(token);
-    if (user === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
-    return { token, user };
+    // Todo o nada: la contraseña, las sesiones cerradas, el link usado, la auditoría y la sesión nueva
+    return await this.db.transaction().execute(async (trx) => {
+      const row = await this.findValid(params.token, trx);
+      // Si otro pedido lo usó mientras tanto, este se deshace entero
+      const used = await trx
+        .updateTable('password_resets')
+        .set({ used_at: this.now().toISOString() })
+        .where('id', '=', row.id)
+        .where('used_at', 'is', null)
+        .executeTakeFirst();
+      if (Number(used.numUpdatedRows) === 0) throw new DomainError(410, LINK_GONE_MESSAGE);
+      await this.auth.setPassword(row.user_id, params.password, trx);
+      await this.auth.revokeSessions(row.user_id, undefined, trx);
+      await this.audit.record({ actorUserId: row.user_id, tenantId: row.tenant_id, action: 'password.reset', targetUserId: row.user_id }, trx);
+      const token = await this.auth.createSession(row.user_id, trx);
+      const user = await this.auth.validateSession(token, trx);
+      if (user === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
+      return { token, user };
+    });
   }
 
-  private async findValid(token: string): Promise<ResetRow> {
-    const row = this.db
-      .prepare(
-        `SELECT r.id, r.user_id, r.tenant_id, r.expires_at, u.email, u.name
-         FROM password_resets r JOIN users u ON u.id = r.user_id
-         WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > ?`,
-      )
-      .get(hashLinkToken(token), this.now().toISOString()) as ResetRow | undefined;
+  private async findValid(token: string, db: Kysely<SystemDatabase> = this.db): Promise<ResetRow> {
+    const row = await db
+      .selectFrom('password_resets as r')
+      .innerJoin('users as u', 'u.id', 'r.user_id')
+      .select(['r.id', 'r.user_id', 'r.tenant_id', 'r.expires_at', 'u.email', 'u.name'])
+      .where('r.token_hash', '=', hashLinkToken(token))
+      .where('r.used_at', 'is', null)
+      .where('r.expires_at', '>', this.now().toISOString())
+      .executeTakeFirst();
     if (row === undefined) throw new DomainError(410, LINK_GONE_MESSAGE);
     return row;
   }

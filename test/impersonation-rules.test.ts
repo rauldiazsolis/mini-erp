@@ -25,16 +25,18 @@ describe('lo que no puede quien impersona (#23, M7b)', () => {
     app = bundle.app;
     const auth = bundle.authService;
     const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
     const coOwner = await auth.createUser({ email: 'co@x.com', password: 'password123', name: 'Co' });
     const admin = await auth.createUser({ email: 'adm@x.com', password: 'password123', name: 'Adm' });
-    systemDb
-      .prepare(
-        "INSERT INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, 'kiosco', 'owner', 'active', '2026-10-01'), (?, 'kiosco', 'admin', 'active', '2026-10-01')",
-      )
-      .run(coOwner.user.id, admin.user.id);
+    await db()
+      .system.insertInto('memberships')
+      .values([
+        { user_id: coOwner.user.id, tenant_id: 'kiosco', role: 'owner', status: 'active', created_at: '2026-10-01T00:00:00.000Z' },
+        { user_id: admin.user.id, tenant_id: 'kiosco', role: 'admin', status: 'active', created_at: '2026-10-01T00:00:00.000Z' },
+      ])
+      .execute();
     ids = { owner: owner.user.id, support: support.user.id, coOwner: coOwner.user.id, admin: admin.user.id };
     imp = await impersonate(app, support.token, owner.user.id, 'kiosco');
   });

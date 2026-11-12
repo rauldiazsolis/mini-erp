@@ -134,7 +134,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   it('una membresía desactivada no da acceso al comercio (#19)', async () => {
     const a = await authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
     await tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
-    systemDb.prepare("UPDATE memberships SET status = 'disabled' WHERE user_id = ?").run(a.user.id);
+    await db().system.updateTable('memberships').set({ status: 'disabled' }).where('user_id', '=', a.user.id).execute();
     expect(await authService.listUserTenants(a.user.id)).toEqual([]);
   });
 });
