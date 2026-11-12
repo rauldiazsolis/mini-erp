@@ -152,11 +152,17 @@ export const invitationServiceDef = fn.singleton(
 // --- IMPERSONACIÓN (#23, M7b) ---
 
 export const helpRequestServiceDef = fn.singleton(
-  (c) => new HelpRequestService({ db: c.use(systemDbDef), now: c.use(clockDef), billing: c.use(billingServiceDef) }),
+  (c) => new HelpRequestService({ db: c.use(systemKyselyDef), now: c.use(clockDef), billing: c.use(billingServiceDef) }),
 );
 export const impersonationServiceDef = fn.singleton(
   (c) =>
-    new ImpersonationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), help: c.use(helpRequestServiceDef) }),
+    new ImpersonationService({
+      db: c.use(systemKyselyDef),
+      auth: c.use(authServiceDef),
+      audit: c.use(auditLogDef),
+      help: c.use(helpRequestServiceDef),
+      demos: c.use(legacyDemoBridgeDef),
+    }),
 );
 
 // --- PLATAFORMA (#23) ---

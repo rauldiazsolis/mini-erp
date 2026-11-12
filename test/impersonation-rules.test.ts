@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
@@ -14,14 +12,12 @@ const MSG = 'No disponible mientras ves como otro usuario';
 
 describe('lo que no puede quien impersona (#23, M7b)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let imp: string;
   let ids: { owner: string; support: string; coOwner: string; admin: string };
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const auth = bundle.authService;
     const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
@@ -71,7 +67,9 @@ describe('lo que no puede quien impersona (#23, M7b)', () => {
 
   it('la auditoría guarda los dos y la lectura devuelve el nombre de quien impersona', async () => {
     await request(app).post('/api/tenants/kiosco/invitations').set(as()).send({ email: 'nuevo@x.com', role: 'member' });
-    expect(systemDb.prepare("SELECT actor_user_id, impersonator_user_id FROM audit_log WHERE action = 'invitation.created'").all()).toEqual([
+    expect(
+      await db().system.selectFrom('audit_log').select(['actor_user_id', 'impersonator_user_id']).where('action', '=', 'invitation.created').execute(),
+    ).toEqual([
       { actor_user_id: ids.owner, impersonator_user_id: ids.support },
     ]);
     const activity = await request(app).get('/api/tenants/kiosco/audit').set(as());
@@ -82,10 +80,11 @@ describe('lo que no puede quien impersona (#23, M7b)', () => {
   });
 
   it('un comercio suspendido no bloquea a quien impersona', async () => {
-    systemDb
-      .prepare("INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES ('s1', 'kiosco', '2026-10-05T14:00:00.000Z', NULL, 'Prueba', ?)")
-      .run(ids.support);
-    systemDb.prepare("UPDATE tenants SET status = 'suspended' WHERE id = 'kiosco'").run();
+    await db()
+      .system.insertInto('tenant_suspensions')
+      .values({ id: 's1', tenant_id: 'kiosco', from_at: '2026-10-05T14:00:00.000Z', to_at: null, reason: 'Prueba', created_by: ids.support })
+      .execute();
+    await db().system.updateTable('tenants').set({ status: 'suspended' }).where('id', '=', 'kiosco').execute();
     expect((await request(app).get('/api/tenants/kiosco/products').set(as())).status).toBe(200);
   });
 });
