@@ -4,7 +4,6 @@ import type { SystemDatabase } from '../src/server/db/pg/system-schema.ts';
 import { BillingService } from '../src/server/billing/billing-service.ts';
 import { readBillingSettings, writeBillingSettings, DEFAULT_BILLING_SETTINGS } from '../src/server/billing/settings.ts';
 import { setupTestDb } from './helpers/test-db.ts';
-import { fakeBillingBridge } from './helpers/billing-bridge.ts';
 
 const pgDb = setupTestDb();
 
@@ -43,8 +42,9 @@ describe('cargos y estado de cobro (#21)', () => {
       await db.insertInto('tenants').values({ id: t, slug: t, name: t, created_at: '2026-10-01T00:00:00.000Z', holder_user_id: 'u1' }).execute();
     }
     await db.insertInto('tenants').values({ id: 'demo', slug: 'demo', name: 'Demo', created_at: '2026-10-01T00:00:00.000Z' }).execute();
+    await db.insertInto('demo_tenants').values({ tenant_id: 'demo', template: 'kiosco', last_full_reset_at: '2026-10-01T00:00:00.000Z' }).execute();
     now = new Date('2026-10-05T15:00:00.000Z');
-    billing = new BillingService({ db, now: () => now, legacy: fakeBillingBridge({ demos: ['demo'] }) });
+    billing = new BillingService({ db, now: () => now });
   });
 
   it('un cargo por caja y día; repetir no cobra dos veces', async () => {

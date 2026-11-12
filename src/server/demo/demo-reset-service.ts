@@ -1,4 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import { writeStock } from '../stock/write-stock.ts';
 import {
@@ -16,7 +18,7 @@ import { argentinaToday } from '../../shared/argentina-day.ts';
 import type { DemoStatusItem } from '../../shared/demo-types.ts';
 
 export type DemoResetDeps = {
-  systemDb: DatabaseSync;
+  db: Kysely<SystemDatabase>;
   tenantManager: TenantManager;
   sessions: DemoSessionService;
   now: () => Date;
@@ -44,7 +46,7 @@ export class DemoResetService {
       await seedDemoCommerce(db, template, now);
     });
     const revoked = await this.deps.sessions.revokeTenant(tenantId, 'reset');
-    this.deps.systemDb.prepare('UPDATE demo_tenants SET last_full_reset_at = ? WHERE tenant_id = ?').run(now.toISOString(), tenantId);
+    await this.deps.db.updateTable('demo_tenants').set({ last_full_reset_at: now.toISOString() }).where('tenant_id', '=', tenantId).execute();
     return { revoked };
   }
 
@@ -99,15 +101,13 @@ export class DemoResetService {
         "UPDATE discrepancies SET resolved_at = ?, resolution = 'dismissed', resolved_by = 'system', note = 'Reinicio parcial de la demo' WHERE resolved_at IS NULL",
       ).run(at);
     });
-    this.deps.systemDb.prepare('UPDATE demo_tenants SET last_partial_reset_at = ? WHERE tenant_id = ?').run(at, tenantId);
+    await this.deps.db.updateTable('demo_tenants').set({ last_partial_reset_at: at }).where('tenant_id', '=', tenantId).execute();
   }
 
   /** Los rubros cuyo último reinicio total es anterior a la hora del reinicio automático más reciente. */
   async dueTemplates(): Promise<DemoTemplate[]> {
     const boundary = lastResetBoundary(this.deps.now(), this.deps.sessions.resetHour()).toISOString();
-    const rows = this.deps.systemDb
-      .prepare('SELECT template FROM demo_tenants WHERE last_full_reset_at < ? ORDER BY rowid')
-      .all(boundary) as { template: string }[];
+    const rows = await this.deps.db.selectFrom('demo_tenants').select('template').where('last_full_reset_at', '<', boundary).orderBy('seq').execute();
     return rows.map((r) => r.template).filter(isDemoTemplate);
   }
 
@@ -122,25 +122,33 @@ export class DemoResetService {
   async status(): Promise<DemoStatusItem[]> {
     const today = argentinaToday(this.deps.now());
     const dayStart = new Date(`${today}T00:00:00.000-03:00`).toISOString();
-    const rows = this.deps.systemDb
-      .prepare(
-        `SELECT d.tenant_id, d.template, d.last_full_reset_at, d.last_partial_reset_at, t.name,
-           (SELECT COUNT(*) FROM demo_sessions s WHERE s.tenant_id = d.tenant_id AND s.revoked_at IS NULL) AS active,
-           (SELECT COUNT(*) FROM demo_sessions s WHERE s.tenant_id = d.tenant_id AND s.created_at >= ?) AS created
-         FROM demo_tenants d JOIN tenants t ON t.id = d.tenant_id ORDER BY d.rowid`,
-      )
-      .all(dayStart) as {
-      tenant_id: string;
-      template: string;
-      last_full_reset_at: string;
-      last_partial_reset_at: string | null;
-      name: string;
-      active: number;
-      created: number;
-    }[];
+    const rows = await this.deps.db
+      .selectFrom('demo_tenants as d')
+      .innerJoin('tenants as t', 't.id', 'd.tenant_id')
+      .select((eb) => [
+        'd.tenant_id',
+        'd.template',
+        'd.last_full_reset_at',
+        'd.last_partial_reset_at',
+        't.name',
+        eb
+          .selectFrom('demo_sessions as s')
+          .select((sub) => sub.fn.countAll<number>().as('n'))
+          .whereRef('s.tenant_id', '=', 'd.tenant_id')
+          .where('s.revoked_at', 'is', null)
+          .as('active'),
+        eb
+          .selectFrom('demo_sessions as s')
+          .select((sub) => sub.fn.countAll<number>().as('n'))
+          .whereRef('s.tenant_id', '=', 'd.tenant_id')
+          .where('s.created_at', '>=', dayStart)
+          .as('created'),
+      ])
+      .orderBy('d.seq')
+      .execute();
     const items: DemoStatusItem[] = [];
     for (const r of rows) {
-      items.push(await this.salesToday(r, today));
+      items.push(await this.salesToday({ ...r, active: r.active ?? 0, created: r.created ?? 0 }, today));
     }
     return items;
   }
@@ -168,10 +176,7 @@ export class DemoResetService {
   async restock(): Promise<number> {
     const at = this.deps.now().toISOString();
     let restocked = 0;
-    const rows = this.deps.systemDb.prepare('SELECT tenant_id, template FROM demo_tenants ORDER BY rowid').all() as {
-      tenant_id: string;
-      template: string;
-    }[];
+    const rows = await this.deps.db.selectFrom('demo_tenants').select(['tenant_id', 'template']).orderBy('seq').execute();
     for (const row of rows) {
       const template = row.template;
       if (!isDemoTemplate(template)) continue;

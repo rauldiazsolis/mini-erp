@@ -28,17 +28,33 @@ async function boot(env: NodeJS.ProcessEnv) {
 
 const n = (db: DatabaseSync, sql: string, ...params: string[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
-function counts(db: DatabaseSync) {
+type Counted = 'users' | 'tenants' | 'memberships' | 'tenant_api_keys' | 'gift_credits' | 'charges' | 'paid_movements' | 'demo_sessions' | 'demo_tenants';
+const pgCount = async (table: Counted): Promise<number> =>
+  (await pgDb().system.selectFrom(table).select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow()).n;
+
+async function counts() {
   return {
-    users: n(db, 'SELECT COUNT(*) AS n FROM users'),
-    tenants: n(db, 'SELECT COUNT(*) AS n FROM tenants'),
-    memberships: n(db, 'SELECT COUNT(*) AS n FROM memberships'),
-    keys: n(db, 'SELECT COUNT(*) AS n FROM tenant_api_keys'),
-    gifts: n(db, 'SELECT COUNT(*) AS n FROM gift_credits'),
-    charges: n(db, 'SELECT COUNT(*) AS n FROM charges'),
-    paid: n(db, 'SELECT COUNT(*) AS n FROM paid_movements'),
-    demos: n(db, 'SELECT COUNT(*) AS n FROM demo_sessions'),
+    users: await pgCount('users'),
+    tenants: await pgCount('tenants'),
+    memberships: await pgCount('memberships'),
+    keys: await pgCount('tenant_api_keys'),
+    gifts: await pgCount('gift_credits'),
+    charges: await pgCount('charges'),
+    paid: await pgCount('paid_movements'),
+    demos: await pgCount('demo_sessions'),
   };
+}
+
+/** Las cajas de demo vivas con esa key: key activa y demo sin revocar. */
+async function aliveDemoKeys(rawKey: string) {
+  return await pgDb()
+    .system.selectFrom('tenant_api_keys as k')
+    .innerJoin('demo_sessions as s', 's.register_id', 'k.register_id')
+    .select(['s.template', 's.tenant_id'])
+    .where('k.key_hash', '=', hashApiKey(rawKey))
+    .where('k.active', '=', true)
+    .where('s.revoked_at', 'is', null)
+    .execute();
 }
 
 const [kiosco, almacen, ferreteria] = DEV_TENANTS;
@@ -46,9 +62,9 @@ if (kiosco === undefined || almacen === undefined || ferreteria === undefined) t
 
 describe('bootstrap (#3)', () => {
   it('en producción no siembra nada de desarrollo: solo los tres comercios demo (#24)', async () => {
-    const { result, systemDb } = await boot({ NODE_ENV: 'production' });
+    const { result } = await boot({ NODE_ENV: 'production' });
     expect(result.devInfo).toBeUndefined();
-    const c = counts(systemDb);
+    const c = await counts();
     expect([c.users, c.tenants, c.keys, c.demos]).toEqual([0, 3, 0, 0]);
   });
 });
@@ -165,49 +181,42 @@ describe('seed de desarrollo (#21)', () => {
   });
 
   it('crea los tres comercios demo, sin dueño (#24)', async () => {
-    const { systemDb } = await boot({});
-    expect(systemDb.prepare('SELECT tenant_id FROM demo_tenants ORDER BY tenant_id').all()).toEqual([
+    await boot({});
+    expect(await pgDb().system.selectFrom('demo_tenants').select('tenant_id').orderBy('tenant_id').execute()).toEqual([
       { tenant_id: 'demo-almacen' },
       { tenant_id: 'demo-ferreteria' },
       { tenant_id: 'demo-kiosco' },
     ]);
-    expect(n(systemDb, "SELECT COUNT(*) AS n FROM memberships WHERE tenant_id LIKE 'demo-%'")).toBe(0);
+    const demoMembers = await pgDb().system.selectFrom('memberships').select('tenant_id').where('tenant_id', 'like', 'demo-%').execute();
+    expect(demoMembers).toEqual([]);
   });
 
   it('en producción también crea los comercios demo (#24)', async () => {
-    const { systemDb } = await boot({ NODE_ENV: 'production' });
-    expect(n(systemDb, 'SELECT COUNT(*) AS n FROM demo_tenants')).toBe(3);
+    await boot({ NODE_ENV: 'production' });
+    expect(await pgCount('demo_tenants')).toBe(3);
   });
 
   it('hay dos cajas de demo andando, con key fija, en los comercios demo (#24)', async () => {
-    const { systemDb } = await boot({});
+    await boot({});
     for (const d of DEV_DEMOS) {
-      const row = systemDb
-        .prepare(
-          `SELECT s.template, s.tenant_id FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
-           WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`,
-        )
-        .get(hashApiKey(d.rawKey));
-      expect({ ...row }).toEqual({ template: d.template, tenant_id: `demo-${d.template}` });
+      expect(await aliveDemoKeys(d.rawKey)).toEqual([{ template: d.template, tenant_id: `demo-${d.template}` }]);
     }
   });
 
   it('una caja de demo revocada se vuelve a crear al arrancar, con la misma key (#24)', async () => {
-    const { systemDb, bundle, run } = await boot({});
+    const { bundle, run } = await boot({});
     const first = DEV_DEMOS[0];
     if (first === undefined) throw new Error('Faltan demos');
     await bundle.demoSessions.revokeTenant(`demo-${first.template}`, 'reset');
     await run();
-    const alive = `SELECT COUNT(*) AS n FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
-      WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`;
-    expect(n(systemDb, alive, hashApiKey(first.rawKey))).toBe(1);
+    expect(await aliveDemoKeys(first.rawKey)).toHaveLength(1);
   });
 
   it('arrancar otra vez no duplica nada', async () => {
-    const { systemDb, run } = await boot({});
-    const before = counts(systemDb);
+    const { run } = await boot({});
+    const before = await counts();
     await run();
-    expect(counts(systemDb)).toEqual(before);
+    expect(await counts()).toEqual(before);
   });
 
   it('devuelve los usuarios y las keys para el log del arranque', async () => {

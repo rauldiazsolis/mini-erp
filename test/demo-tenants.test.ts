@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import {
@@ -15,12 +14,6 @@ import {
 import { setupTestDb } from './helpers/test-db.ts';
 
 const pgDb = setupTestDb();
-
-function systemDb(): DatabaseSync {
-  const db = new DatabaseSync(':memory:');
-  initSystemDb(db);
-  return db;
-}
 
 function count(db: DatabaseSync, sql: string, ...params: string[]): number {
   return (db.prepare(sql).get(...params) as { n: number }).n;
@@ -102,13 +95,12 @@ describe('TenantManager y demos (#9)', () => {
   });
 
   it('las demos no aparecen en la lista de comercios, ni para root', async () => {
-    const sys = systemDb();
     const manager = new TenantManager(pgDb().system, { inMemory: true });
     const auth = new AuthService(pgDb().system);
     const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     await manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
-    sys.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-d', 'kiosco', 'x')").run();
+    await pgDb().system.insertInto('demo_tenants').values({ tenant_id: 'demo-d', template: 'kiosco', last_full_reset_at: new Date().toISOString() }).execute();
 
     const ids = (await auth.listUserTenants(user.id)).map((t) => t.tenantId);
     expect(ids).toEqual(['tienda']);

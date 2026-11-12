@@ -3,7 +3,6 @@ import { sql, type Kysely } from 'kysely';
 import type { SystemDatabase } from '../src/server/db/pg/system-schema.ts';
 import { BillingService } from '../src/server/billing/billing-service.ts';
 import { setupTestDb } from './helpers/test-db.ts';
-import { fakeBillingBridge } from './helpers/billing-bridge.ts';
 
 const pgDb = setupTestDb();
 
@@ -39,7 +38,7 @@ describe('pagos, créditos, gracia, devoluciones y titular (#21)', () => {
       ])
       .execute();
     now = new Date('2026-10-05T15:00:00.000Z');
-    billing = new BillingService({ db, now: () => now, legacy: fakeBillingBridge() });
+    billing = new BillingService({ db, now: () => now });
   });
 
   it('un pago cancela primero la deuda, del cargo más antiguo, y el resto queda de saldo', async () => {

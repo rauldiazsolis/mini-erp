@@ -3,7 +3,7 @@ import { sql, type ExpressionBuilder, type Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { allocateCharge, type GiftBalance } from './allocation.ts';
 import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
-import type { LegacyDemoBridge } from './legacy-bridge.ts';
+import { isDemoTenant } from '../demo/demo-tenant-ids.ts';
 import { suspendedDays } from '../platform/suspensions.ts';
 import { DomainError } from '../errors.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
@@ -52,12 +52,10 @@ function remainingOf(eb: GiftScope) {
 export class BillingService {
   private db: Db;
   private now: () => Date;
-  private legacy: LegacyDemoBridge;
 
-  constructor(deps: { db: Db; now: () => Date; legacy: LegacyDemoBridge }) {
+  constructor(deps: { db: Db; now: () => Date }) {
     this.db = deps.db;
     this.now = deps.now;
-    this.legacy = deps.legacy;
   }
 
   /** Los comercios con titular (los que se cobran), para el barrido. */
@@ -74,7 +72,7 @@ export class BillingService {
   async charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): Promise<number> {
     const holder = await this.holderOf(p.tenantId);
     if (holder === null) {
-      if (!(await this.legacy.isDemoTenant(p.tenantId))) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
+      if (!(await isDemoTenant(this.db, p.tenantId))) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
       return 0;
     }
     // Los días con el comercio suspendido no se cobran (#23)
@@ -463,7 +461,7 @@ export class BillingService {
   /** Un comercio por su identificador, para la planilla; `demo` si es una demo. */
   async findTenantBySlug(slug: string): Promise<{ id: string; name: string; demo: boolean } | undefined> {
     const row = await this.db.selectFrom('tenants').select(['id', 'name']).where('slug', '=', slug).executeTakeFirst();
-    return row === undefined ? undefined : { id: row.id, name: row.name, demo: await this.legacy.isDemoTenant(row.id) };
+    return row === undefined ? undefined : { id: row.id, name: row.name, demo: await isDemoTenant(this.db, row.id) };
   }
 
   async paymentRefExists(ref: string): Promise<boolean> {
@@ -512,7 +510,7 @@ export class BillingService {
 
   private async requireTenant(tenantId: string): Promise<void> {
     const row = await this.db.selectFrom('tenants').select('id').where('id', '=', tenantId).executeTakeFirst();
-    if (row === undefined || (await this.legacy.isDemoTenant(tenantId))) throw new DomainError(404, 'Comercio no encontrado');
+    if (row === undefined || (await isDemoTenant(this.db, tenantId))) throw new DomainError(404, 'Comercio no encontrado');
   }
 
   private async requireHolder(tenantId: string): Promise<string> {

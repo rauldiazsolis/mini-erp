@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
@@ -12,7 +11,6 @@ const pgDb = setupTestDb();
 const DAY = 24 * 60 * 60 * 1000;
 
 describe('reinicios del comercio demo (#24)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let apiKeyService: ApiKeyService;
   let service: DemoSessionService;
@@ -21,18 +19,17 @@ describe('reinicios del comercio demo (#24)', () => {
   let db: DatabaseSync;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T15:00:00.000Z');
     service = new DemoSessionService({
-      systemDb,
+      db: pgDb().system,
       tenantManager,
       apiKeyService,
       config: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
       now: () => clock,
     });
-    resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock });
+    resets = new DemoResetService({ db: pgDb().system, tenantManager, sessions: service, now: () => clock });
     await service.ensureDemoTenants();
     db = tenantManager.getTenantDb('demo-kiosco');
   });
@@ -46,10 +43,10 @@ describe('reinicios del comercio demo (#24)', () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM products WHERE id = 'p_x'").get()).toEqual({ n: 0 });
     expect(db.prepare("SELECT price FROM products WHERE id = 'demo_KIO-001'").get()).toEqual({ price: 950 });
     expect(await apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
-    expect(systemDb.prepare('SELECT revoke_reason AS r FROM demo_sessions').all()).toEqual([{ r: 'reset' }]);
+    expect(await pgDb().system.selectFrom('demo_sessions').select('revoke_reason as r').execute()).toEqual([{ r: 'reset' }]);
     const last = db.prepare('SELECT MAX(created_at) AS at FROM sales').get() as { at: string };
     expect(last.at > new Date(clock.getTime() - DAY).toISOString()).toBe(true); // historial al día
-    expect(systemDb.prepare("SELECT last_full_reset_at AS at FROM demo_tenants WHERE template = 'kiosco'").get()).toEqual({
+    expect(await pgDb().system.selectFrom('demo_tenants').select('last_full_reset_at as at').where('template', '=', 'kiosco').executeTakeFirst()).toEqual({
       at: clock.toISOString(),
     });
   });
@@ -109,8 +106,8 @@ describe('reinicios del comercio demo (#24)', () => {
     expect(await apiKeyService.validateApiKey(a.apiKey)).toBeDefined();
     expect(db.prepare("SELECT updated_at FROM products WHERE id = 'demo_KIO-004'").get()).toEqual({ updated_at: clock.toISOString() });
     expect(db.prepare("SELECT updated_at FROM customers WHERE id = 'cust-cf'").get()).toEqual({ updated_at: clock.toISOString() });
-    expect(systemDb.prepare("SELECT last_partial_reset_at AS at FROM demo_tenants WHERE template = 'kiosco'").get()).toEqual({
-      at: clock.toISOString(),
-    });
+    expect(
+      await pgDb().system.selectFrom('demo_tenants').select('last_partial_reset_at as at').where('template', '=', 'kiosco').executeTakeFirst(),
+    ).toEqual({ at: clock.toISOString() });
   });
 });

@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { searchable, searchPattern } from '../db/pg/sql-helpers.ts';
-import type { LegacyDemoBridge } from '../billing/legacy-bridge.ts';
+import { demoTenantIds } from '../demo/demo-tenant-ids.ts';
 import type { BillingService } from '../billing/billing-service.ts';
 import type { MembershipService } from '../users/membership-service.ts';
 import { DomainError } from '../errors.ts';
@@ -40,20 +40,18 @@ function accountStatus(value: string): AccountStatus {
 }
 
 /**
- * Las consultas del panel de plataforma (#23): solo lectura, sobre la base de sistema. Sin demos: los
- * ids de los comercios demo salen todavía del puente a SQLite (`LegacyDemoBridge`, lo borra el dominio 7).
+ * Las consultas del panel de plataforma (#23): solo lectura, sobre la base de sistema. Sin los comercios demo
+ * (`demoTenantIds`).
  */
 export class PlatformQueryService {
   private db: Kysely<SystemDatabase>;
   private billing: BillingService;
   private members: MembershipService;
-  private demos: LegacyDemoBridge;
 
-  constructor(deps: { db: Kysely<SystemDatabase>; billing: BillingService; members: MembershipService; demos: LegacyDemoBridge }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; billing: BillingService; members: MembershipService }) {
     this.db = deps.db;
     this.billing = deps.billing;
     this.members = deps.members;
-    this.demos = deps.demos;
   }
 
   async listTenants(q?: string): Promise<PlatformTenantItem[]> {
@@ -148,8 +146,7 @@ export class PlatformQueryService {
 
   /** Los comercios con su titular y sus miembros activos, sin los demo. */
   private async tenantQuery() {
-    const demoIds = await this.demos.demoTenantIds();
-    let query = this.db
+    return this.db
       .selectFrom('tenants as t')
       .leftJoin('users as h', 'h.id', 't.holder_user_id')
       .select((eb) => [
@@ -167,9 +164,8 @@ export class PlatformQueryService {
           .whereRef('m.tenant_id', '=', 't.id')
           .where('m.status', '=', 'active')
           .as('members'),
-      ]);
-    if (demoIds.length > 0) query = query.where('t.id', 'not in', demoIds);
-    return query;
+      ])
+      .where('t.id', 'not in', demoTenantIds(this.db));
   }
 
   private async toItem(r: Omit<TenantRow, 'members'> & { members: number | null }): Promise<PlatformTenantItem> {

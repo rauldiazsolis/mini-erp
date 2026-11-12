@@ -3,7 +3,7 @@ import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { AuthService, Impersonator, UserSession } from '../auth/auth-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { HelpRequestService } from '../help/help-request-service.ts';
-import type { LegacyDemoBridge } from '../billing/legacy-bridge.ts';
+import { demoTenantIds } from '../demo/demo-tenant-ids.ts';
 import { DomainError } from '../errors.ts';
 
 export type ImpersonationStart = { token: string; user: UserSession; impersonator: Impersonator; tenantSlug: string; path: string };
@@ -19,14 +19,12 @@ export class ImpersonationService {
   private auth: AuthService;
   private audit: AuditLog;
   private help: HelpRequestService;
-  private demos: LegacyDemoBridge;
 
-  constructor(deps: { db: Kysely<SystemDatabase>; auth: AuthService; audit: AuditLog; help: HelpRequestService; demos: LegacyDemoBridge }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; auth: AuthService; audit: AuditLog; help: HelpRequestService }) {
     this.db = deps.db;
     this.auth = deps.auth;
     this.audit = deps.audit;
     this.help = deps.help;
-    this.demos = deps.demos;
   }
 
   async start(p: { staff: UserSession; parentToken: string; userId: string; tenantSlug?: string | undefined }): Promise<ImpersonationStart> {
@@ -62,15 +60,14 @@ export class ImpersonationService {
     if (row === undefined) throw new DomainError(404, 'Usuario no encontrado');
     if (row.global_role !== 'user') throw new DomainError(403, 'No se puede entrar como root o soporte');
     if (row.status !== 'active') throw new DomainError(409, 'La cuenta está desactivada');
-    const demoIds = await this.demos.demoTenantIds();
-    let query = this.db
+    const tenants: TargetTenant[] = await this.db
       .selectFrom('memberships as m')
       .innerJoin('tenants as t', 't.id', 'm.tenant_id')
       .select(['t.id', 't.slug'])
       .where('m.user_id', '=', userId)
-      .where('m.status', '=', 'active');
-    if (demoIds.length > 0) query = query.where('t.id', 'not in', demoIds);
-    const tenants: TargetTenant[] = await query.orderBy('m.created_at', 'desc').orderBy('m.seq', 'desc').execute();
+      .where('m.status', '=', 'active')
+      .where('t.id', 'not in', demoTenantIds(this.db))
+      .orderBy('m.created_at', 'desc').orderBy('m.seq', 'desc').execute();
     if (tenants.length === 0) throw new DomainError(409, 'El usuario no tiene comercios activos');
     const tenant = tenantSlug === undefined ? tenants[0] : tenants.find((t) => t.slug === tenantSlug);
     if (tenant === undefined) throw new DomainError(409, 'El usuario no es miembro activo de ese comercio');

@@ -125,8 +125,7 @@ describe('API de plataforma de cobro (#21)', () => {
 
     beforeEach(async () => {
       await db().system.insertInto('tenants').values({ id: 'demo-x', slug: 'demo-x', name: 'Demo', created_at: '2026-10-01T00:00:00.000Z' }).execute();
-      // La marca de demo sigue en SQLite hasta el dominio 7 (puente del cobro)
-      systemDb.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-x', 'kiosco', '2026-10-01T00:00:00.000Z')").run();
+      await db().system.insertInto('demo_tenants').values({ tenant_id: 'demo-x', template: 'kiosco', last_full_reset_at: '2026-10-01T00:00:00.000Z' }).execute();
     });
 
     it('la vista previa marca cada fila y no registra nada', async () => {

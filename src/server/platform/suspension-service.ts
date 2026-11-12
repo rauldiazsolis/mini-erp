@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
-import type { LegacyDemoBridge } from '../billing/legacy-bridge.ts';
+import { isDemoTenant } from '../demo/demo-tenant-ids.ts';
 import { DomainError } from '../errors.ts';
 import { isSuspended } from './suspensions.ts';
 
@@ -11,13 +11,11 @@ export class SuspensionService {
   private db: Kysely<SystemDatabase>;
   private audit: AuditLog;
   private now: () => Date;
-  private demos: LegacyDemoBridge;
 
-  constructor(deps: { db: Kysely<SystemDatabase>; audit: AuditLog; now: () => Date; demos: LegacyDemoBridge }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; audit: AuditLog; now: () => Date }) {
     this.db = deps.db;
     this.audit = deps.audit;
     this.now = deps.now;
-    this.demos = deps.demos;
   }
 
   async suspend(p: { tenantId: string; reason: string; actorUserId: string }): Promise<void> {
@@ -50,6 +48,6 @@ export class SuspensionService {
 
   private async requireRealTenant(tenantId: string): Promise<void> {
     const row = await this.db.selectFrom('tenants').select('id').where('id', '=', tenantId).executeTakeFirst();
-    if (row === undefined || (await this.demos.isDemoTenant(tenantId))) throw new DomainError(404, 'Comercio no encontrado');
+    if (row === undefined || (await isDemoTenant(this.db, tenantId))) throw new DomainError(404, 'Comercio no encontrado');
   }
 }

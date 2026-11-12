@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
@@ -14,18 +13,19 @@ const SALES = '/api/tenants/demo-kiosco/sales?from=2026-10-05&to=2026-10-05';
 
 type Bundle = ReturnType<typeof createApp>;
 
+const count = async (table: 'portal_links' | 'anonymous_sessions'): Promise<number> =>
+  (await db().system.selectFrom(table).select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow()).n;
+
 describe('portal y acceso anónimo de la demo (#24)', () => {
   let app: Express;
   let bundle: Bundle;
-  let systemDb: DatabaseSync;
   let clock: Date;
 
   beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: db(),
-      systemDb,
+      systemDb: openSystemDb(':memory:'),
       tenantManager,
       now: () => clock,
       demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 },
@@ -64,7 +64,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     const body = res.body as { url: string; expiresAt: string };
     expect(body.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/portal#t=[\w-]{43}$/);
     expect(body.expiresAt).toBe(new Date(clock.getTime() + 60_000).toISOString());
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM portal_links').get()).toEqual({ n: 1 });
+    expect(await count('portal_links')).toBe(1);
   });
 
   it('el canje da la sesión anónima del comercio demo; el link no sirve dos veces', async () => {
@@ -117,7 +117,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     const { session, apiKey } = await anonymous();
     await bundle.demoResets.resetFull('kiosco');
     expect((await request(app).get(SALES).set({ Authorization: `Bearer ${session}` })).status).toBe(401);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM anonymous_sessions').get()).toEqual({ n: 0 });
+    expect(await count('anonymous_sessions')).toBe(0);
     expect((await link(apiKey)).status).toBe(401);
   });
 
@@ -125,20 +125,18 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     const { session } = await anonymous();
     clock = new Date(clock.getTime() + 2 * 60_000);
     await request(app).get(SALES).set({ Authorization: `Bearer ${session}` });
-    expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: clock.toISOString() });
+    expect(await db().system.selectFrom('demo_sessions').select('last_used_at as at').executeTakeFirst()).toEqual({ at: clock.toISOString() });
   });
 });
 
 describe('portal de una caja real (M10, #26)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let clock: Date;
 
   beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    app = createApp({ database: db(), systemDb, tenantManager, now: () => clock }).app;
+    app = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => clock }).app;
   });
 
   type Kiosco = { tenantId: string; key: string; owner: string; registerId: string };
@@ -216,7 +214,7 @@ describe('portal de una caja real (M10, #26)', () => {
     const rotated = await request(app).post(`/api/tenants/${k.tenantId}/pos-registers/${k.registerId}/rotate-key`).set(asOwner(k));
     expect(rotated.status).toBe(200);
     expect((await products(k, session)).status).toBe(401);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM anonymous_sessions').get()).toEqual({ n: 0 });
+    expect(await count('anonymous_sessions')).toBe(0);
   });
 
   it('desactivar la caja corta la sesión; desligar el equipo no', async () => {
@@ -245,7 +243,9 @@ describe('portal de una caja real (M10, #26)', () => {
     const audit = await request(app).get(`/api/tenants/${k.tenantId}/audit`).set(asOwner(k));
     const entries = audit.body as { action: string; actorName: string }[];
     expect(entries.find((e) => e.action === 'portal.opened')).toMatchObject({ actorName: 'Caja 1 (desde el POS)' });
-    expect(systemDb.prepare("SELECT actor_user_id, actor_register_id FROM audit_log WHERE action = 'portal.opened'").get()).toEqual({
+    expect(
+      await db().system.selectFrom('audit_log').select(['actor_user_id', 'actor_register_id']).where('action', '=', 'portal.opened').executeTakeFirst(),
+    ).toEqual({
       actor_user_id: 'register',
       actor_register_id: k.registerId,
     });
@@ -254,9 +254,10 @@ describe('portal de una caja real (M10, #26)', () => {
   it('un comercio suspendido no deja entrar a la caja', async () => {
     const k = await alta();
     const session = await sessionOf(k);
-    systemDb
-      .prepare("INSERT INTO tenant_suspensions (id, tenant_id, from_at, reason, created_by) VALUES ('susp_1', ?, ?, 'deuda', 'u')")
-      .run(k.tenantId, new Date(clock.getTime() - 60_000).toISOString());
+    await db()
+      .system.insertInto('tenant_suspensions')
+      .values({ id: 'susp_1', tenant_id: k.tenantId, from_at: new Date(clock.getTime() - 60_000).toISOString(), reason: 'deuda', created_by: 'u' })
+      .execute();
     expect((await products(k, session)).status).toBe(403);
   });
 });

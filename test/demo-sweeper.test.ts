@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
@@ -35,7 +33,6 @@ describe('hora del reinicio automático (#24)', () => {
 });
 
 describe('barrido de demos (#24)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let apiKeyService: ApiKeyService;
   let service: DemoSessionService;
@@ -43,18 +40,17 @@ describe('barrido de demos (#24)', () => {
   let clock: Date;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T06:00:00.000Z'); // 3:00 AR
     service = new DemoSessionService({
-      systemDb,
+      db: pgDb().system,
       tenantManager,
       apiKeyService,
       config: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
       now: () => clock,
     });
-    resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock });
+    resets = new DemoResetService({ db: pgDb().system, tenantManager, sessions: service, now: () => clock });
     await service.ensureDemoTenants();
   });
 
