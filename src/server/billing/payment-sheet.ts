@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { normalizeHeader, parseAmount, parseCsv, parseDay } from '../io/csv.ts';
+import { normalizeHeader, parseCsv, parseDay, parseDecimal } from '../io/csv.ts';
+import { moneyAmount } from '../../shared/money.ts';
 
 /** Una fila de la planilla: válida (con su referencia idempotente) o con su error. */
 export type SheetRow = { line: number; day?: string; slug?: string; amount?: number; info: string; ref?: string; error?: string };
@@ -25,8 +26,12 @@ export function parsePaymentSheet(csv: string): SheetRow[] {
     if (day === undefined) return { line, info, error: 'Fecha inválida' };
     const slug = cell(cells, 'comercio').toLowerCase();
     if (slug === '') return { line, info, error: 'Falta el comercio' };
-    const amount = parseAmount(cell(cells, 'importe'));
-    if (amount === undefined || amount <= 0) return { line, info, error: AMOUNT_ERROR };
+    const raw = parseDecimal(cell(cells, 'importe'));
+    if (raw === undefined || raw <= 0) return { line, info, error: AMOUNT_ERROR };
+    // Con más de 2 decimales no se redondea: la fila queda con el error (spec de PostgreSQL, punto 2)
+    const parsed = moneyAmount.safeParse(raw);
+    if (!parsed.success) return { line, info, error: parsed.error.issues[0]?.message ?? AMOUNT_ERROR };
+    const amount = parsed.data;
     const ref = createHash('sha256').update(`${day}|${slug}|${amount.toFixed(2)}|${info}`).digest('hex');
     return { line, day, slug, amount, info, ref };
   });

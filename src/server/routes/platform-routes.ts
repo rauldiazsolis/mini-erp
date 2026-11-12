@@ -10,11 +10,11 @@ import { parsePaymentSheet } from '../billing/payment-sheet.ts';
 import type { SheetResultRow } from '../../shared/credits-types.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
 import { routeParam } from '../http/route-param.ts';
+import { moneyAmount } from '../../shared/money.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'Fecha inválida');
-const amount = z
-  .number({ error: (iss) => (iss.input === undefined ? undefined : 'Importe inválido') })
-  .positive('El importe tiene que ser mayor que 0');
+// Pago, bono y devolución: positivos y con a lo sumo 2 decimales, nunca redondeados (spec de PostgreSQL, punto 2)
+const amount = moneyAmount;
 const note = z.string().trim().max(200).optional();
 
 const paymentSchema = z.object({ day, amount, info: note });

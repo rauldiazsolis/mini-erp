@@ -40,8 +40,8 @@ describe('API de plataforma de cobro (#21)', () => {
 
   const as = (who: keyof typeof tokens) => ({ Authorization: `Bearer ${tokens[who]}` });
   const base = `/api/platform/tenants/${tenantId}`;
-  const audit = (action: string) =>
-    systemDb.prepare('SELECT tenant_id, details FROM audit_log WHERE action = ?').all(action) as { tenant_id: string | null; details: string }[];
+  const audit = async (action: string) =>
+    await db().system.selectFrom('audit_log').select(['tenant_id', 'details']).where('action', '=', action).orderBy('seq').execute();
 
   it('root y soporte registran pagos, otorgan y anulan créditos, extienden la gracia y cambian el titular', async () => {
     for (const who of ['root', 'support'] as const) {
@@ -55,11 +55,11 @@ describe('API de plataforma de cobro (#21)', () => {
       expect((await request(app).put(`${base}/holder`).set(as(who)).send({ userId: ownerId })).status).toBe(200);
     }
     expect((await billing.summary(tenantId)).paidBalance).toBe(10000);
-    expect(audit('billing.payment_registered')).toHaveLength(2);
-    expect(audit('billing.payment_registered')[0]?.tenant_id).toBe(tenantId);
-    expect(JSON.parse(audit('billing.payment_registered')[0]?.details ?? '{}')).toMatchObject({ amount: 5000, day: '2026-10-05' });
+    expect(await audit('billing.payment_registered')).toHaveLength(2);
+    expect((await audit('billing.payment_registered'))[0]?.tenant_id).toBe(tenantId);
+    expect((await audit('billing.payment_registered'))[0]?.details).toMatchObject({ amount: 5000, day: '2026-10-05' });
     for (const action of ['billing.credits_granted', 'billing.credit_voided', 'billing.grace_extended', 'billing.holder_changed']) {
-      expect(audit(action)).toHaveLength(2);
+      expect(await audit(action)).toHaveLength(2);
     }
   });
 
@@ -67,14 +67,14 @@ describe('API de plataforma de cobro (#21)', () => {
     await request(app).post(`${base}/payments`).set(as('root')).send({ day: '2026-10-05', amount: 5000 });
     expect((await request(app).post(`${base}/refunds`).set(as('support')).send({ amount: 100 })).status).toBe(403);
     expect((await request(app).post(`${base}/refunds`).set(as('root')).send({ amount: 100, info: 'Baja' })).status).toBe(201);
-    expect(audit('billing.refund')).toHaveLength(1);
+    expect(await audit('billing.refund')).toHaveLength(1);
 
     expect((await request(app).get('/api/platform/settings').set(as('support'))).status).toBe(200);
     expect((await request(app).put('/api/platform/settings').set(as('support')).send({ paidShare: 0.7 })).status).toBe(403);
     const put = await request(app).put('/api/platform/settings').set(as('root')).send({ paidShare: 0.7, paymentAlias: 'mini.contax' });
     expect(put.status).toBe(200);
     expect(put.body).toMatchObject({ paidShare: 0.7, paymentAlias: 'mini.contax', pricePerRegisterDay: 1000 });
-    expect(audit('billing.settings_updated')).toEqual([{ tenant_id: null, details: JSON.stringify({ keys: ['paidShare', 'paymentAlias'] }) }]);
+    expect(await audit('billing.settings_updated')).toEqual([{ tenant_id: null, details: { keys: ['paidShare', 'paymentAlias'] } }]);
     expect((await request(app).put('/api/platform/settings').set(as('root')).send({ nada: 1 })).status).toBe(400);
     expect((await request(app).put('/api/platform/settings').set(as('root')).send({ paidShare: 2 })).status).toBe(400);
   });
@@ -88,8 +88,20 @@ describe('API de plataforma de cobro (#21)', () => {
   it('validaciones: importe, fecha, comercio, devolución mayor que el saldo y titular inválido', async () => {
     expect((await request(app).post(`${base}/payments`).set(as('root')).send({ day: '2026-10-05', amount: 0 })).status).toBe(400);
     expect((await request(app).post(`${base}/payments`).set(as('root')).send({ day: '05/10/2026', amount: 10 })).status).toBe(400);
+    // El dinero de sistema no se redondea en silencio: más de 2 decimales es un importe inválido
+    for (const [path, body] of [
+      ['payments', { day: '2026-10-05', amount: 10.155 }],
+      ['gift-credits', { amount: 0.001, expiresOn: '2026-12-31' }],
+      ['refunds', { amount: 1.999 }],
+    ] as const) {
+      const res = await request(app).post(`${base}/${path}`).set(as('root')).send(body);
+      expect([path, res.status, (res.body as { error: string }).error]).toEqual([path, 400, 'Importe inválido']);
+    }
+    const cents = await request(app).post(`${base}/payments`).set(as('root')).send({ day: '2026-10-05', amount: 10.15 });
+    expect(cents.status).toBe(201);
+    expect((await billing.summary(tenantId)).paidBalance).toBe(10.15);
     expect((await request(app).post('/api/platform/tenants/nada/payments').set(as('root')).send({ day: '2026-10-05', amount: 10 })).status).toBe(404);
-    const refund = await request(app).post(`${base}/refunds`).set(as('root')).send({ amount: 10 });
+    const refund = await request(app).post(`${base}/refunds`).set(as('root')).send({ amount: 10.16 });
     expect(refund.status).toBe(400);
     expect((refund.body as { error: string }).error).toBe('La devolución supera el saldo pagado');
     expect((await request(app).put(`${base}/holder`).set(as('root')).send({ userId: 'nadie' })).status).toBe(400);
@@ -105,13 +117,15 @@ describe('API de plataforma de cobro (#21)', () => {
       '05/10/2026;kiosco;5000;op 1',
       '05/10/2026;demo-x;100;op 3',
       '31/02/2026;kiosco;100;op 4',
+      '05/10/2026;kiosco;100,555;op 5',
     ].join('\n');
     type SheetResponse = { applied: boolean; rows: { line: number; status: string; message?: string; tenantName?: string; amount?: number }[] };
     const subir = (csv: string, dryRun: boolean, who: keyof typeof tokens = 'support') =>
       request(app).post(`/api/platform/payments/import${dryRun ? '?dryRun=1' : ''}`).set(as(who)).send({ csv });
 
-    beforeEach(() => {
-      systemDb.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('demo-x', 'demo-x', 'Demo', '2026-10-01T00:00:00.000Z')").run();
+    beforeEach(async () => {
+      await db().system.insertInto('tenants').values({ id: 'demo-x', slug: 'demo-x', name: 'Demo', created_at: '2026-10-01T00:00:00.000Z' }).execute();
+      // La marca de demo sigue en SQLite hasta el dominio 7 (puente del cobro)
       systemDb.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-x', 'kiosco', '2026-10-01T00:00:00.000Z')").run();
     });
 
@@ -126,6 +140,7 @@ describe('API de plataforma de cobro (#21)', () => {
         [4, 'duplicate', 'Repetido en la planilla'],
         [5, 'error', 'Las demos no se cobran'],
         [6, 'error', 'Fecha inválida'],
+        [7, 'error', 'Importe inválido'],
       ]);
       expect(body.rows[0]).toMatchObject({ tenantName: 'Kiosco', amount: 5000 });
       expect(await billing.listPayments()).toEqual([]);
@@ -140,8 +155,8 @@ describe('API de plataforma de cobro (#21)', () => {
       expect(again.rows[0]).toMatchObject({ status: 'duplicate', message: 'Ya registrado' });
       expect(await billing.listPayments()).toHaveLength(1);
       expect((await billing.listPayments())[0]?.fromSheet).toBe(true);
-      expect(audit('billing.payment_registered')).toHaveLength(1);
-      expect(JSON.parse(audit('billing.payment_registered')[0]?.details ?? '{}')).toMatchObject({ fromSheet: true, line: 2 });
+      expect(await audit('billing.payment_registered')).toHaveLength(1);
+      expect((await audit('billing.payment_registered'))[0]?.details).toMatchObject({ fromSheet: true, line: 2 });
     });
 
     it('una planilla vacía da 400 y un owner común 403', async () => {
