@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
-import { writeStock } from '../stock/write-stock.ts';
+import { writeStock } from '../stock/write-stock.sqlite.ts';
 import {
   DEMO_BRANCH_ID,
   DEMO_CUSTOMERS,

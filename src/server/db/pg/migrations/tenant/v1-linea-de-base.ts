@@ -52,6 +52,7 @@ CREATE TABLE stock (
 -- product_id sin FK: el kardex guarda también el movimiento de un producto que el comercio no tiene
 -- (el push nunca rechaza) y sobrevive al producto.
 CREATE TABLE stock_movements (
+  seq bigint GENERATED ALWAYS AS IDENTITY,
   id text PRIMARY KEY,
   product_id text NOT NULL,
   branch_id text NOT NULL,

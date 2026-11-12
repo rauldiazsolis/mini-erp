@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeHeader, parseAmount, parseBool, type DecimalMode } from './csv.ts';
-import { writeStock } from '../stock/write-stock.ts';
+import { writeStock } from '../stock/write-stock.sqlite.ts';
 import type { RowContext } from './import-service.ts';
 import { stockField, type ImportBranch, type ImportRowResult } from '../../shared/import-fields.ts';
 

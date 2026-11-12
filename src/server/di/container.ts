@@ -195,7 +195,7 @@ export const passwordResetServiceDef = fn.singleton(
 // --- DEFINICIONES SCOPED POR REQUEST / TENANT ---
 
 export const catalogServiceDef = fn.scoped((c) => new CatalogService(c.use(tenantDbDef)));
-export const stockServiceDef = fn.scoped((c) => new StockService(c.use(legacyTenantSqliteDef)));
+export const stockServiceDef = fn.scoped((c) => new StockService(c.use(tenantDbDef)));
 export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(legacyTenantSqliteDef)));
 export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(legacyTenantSqliteDef)));
 export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(legacyTenantSqliteDef)));

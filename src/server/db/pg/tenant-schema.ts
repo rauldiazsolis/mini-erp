@@ -29,6 +29,7 @@ export const TENANT_TABLES = {
     updated_at: 'timestamptz',
   },
   stock_movements: {
+    seq: 'bigint!',
     id: 'text',
     product_id: 'text',
     branch_id: 'text',
