@@ -220,6 +220,9 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 - **Los tests corren contra PostgreSQL**: un test que usa la base llama a `setupTestDb()`
   (`test/helpers/test-db.ts`) arriba del archivo y recibe la base de su worker, vacía antes de cada
   test; ninguno crea un pool propio ni usa `DATABASE_URL`.
+- **Rama del epic**: toda la migración vive en `epic/postgres-kysely`. Cada sesión parte de ella y,
+  al cerrar su fase verificada, la mergea ahí con `git merge --no-ff` (sin PR), la sube y borra su
+  rama local y remota. A `main` entra todo junto, en un PR, al terminar la fase 6.
 - **Subagentes**: en esta migración, y solo en ella, el agente delega en subagentes la lectura
   extensa y la migración de un servicio con sus tests; el hilo principal coordina y verifica. La
   regla general ("nunca un subagente por tarea") no cambia.

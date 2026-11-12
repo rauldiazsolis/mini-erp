@@ -119,9 +119,11 @@ hilo revisa la arquitectura y corre la verificación. Mientras dura una de esas 
 intermedios se verifican con el typecheck y los tests del dominio migrado; la suite entera vuelve a
 verde al cerrar la fase.
 
-**Qué se puede mergear y publicar**: las fases 1 y 2 van a `main` solas (producción sigue en
-SQLite). Las fases 3 a 6 se juntan y entran a `main` juntas, con el cambio de producción: en el
-medio, el sistema está en PostgreSQL y los comercios en SQLite, y eso no se publica.
+**Rama del epic y merge a `main`** (decisión del usuario, 2026-11-12): todas las fases se juntan en
+la rama `epic/postgres-kysely` y entran a `main` juntas, en un solo PR, al terminar la fase 6 (en el
+medio, el sistema está en PostgreSQL y los comercios en SQLite, y eso no se publica). Cada sesión
+trabaja en su rama, que parte de `epic/postgres-kysely`; al cerrar la fase se mergea ahí con merge
+commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
 
 ## Estado
 
