@@ -94,7 +94,7 @@ export class CatalogService {
 
   // --- SUCURSALES (BRANCHES) ---
 
-  listBranches(): BranchRecord[] {
+  async listBranches(): Promise<BranchRecord[]> {
     const rows = this.db.prepare('SELECT id, name, code, created_at FROM branches ORDER BY created_at ASC').all() as unknown as RawBranchRow[];
     return rows.map((r) => ({
       id: r.id,
@@ -104,7 +104,7 @@ export class CatalogService {
     }));
   }
 
-  getBranch(id: string): BranchRecord | undefined {
+  async getBranch(id: string): Promise<BranchRecord | undefined> {
     const row = this.db.prepare('SELECT id, name, code, created_at FROM branches WHERE id = ?').get(id) as unknown as RawBranchRow | undefined;
     if (!row) return undefined;
     return {
@@ -115,7 +115,7 @@ export class CatalogService {
     };
   }
 
-  createBranch(data: CreateBranchInput): BranchRecord {
+  async createBranch(data: CreateBranchInput): Promise<BranchRecord> {
     const existing = this.db.prepare('SELECT id FROM branches WHERE code = ?').get(data.code);
     if (existing !== undefined) {
       throw new Error(`Ya existe una sucursal con el código '${data.code}'`);
@@ -145,8 +145,8 @@ export class CatalogService {
     };
   }
 
-  updateBranch(id: string, data: UpdateBranchInput): BranchRecord | undefined {
-    const current = this.getBranch(id);
+  async updateBranch(id: string, data: UpdateBranchInput): Promise<BranchRecord | undefined> {
+    const current = await this.getBranch(id);
     if (!current) return undefined;
 
     if (data.code !== undefined && data.code !== current.code) {
@@ -171,7 +171,7 @@ export class CatalogService {
 
   // --- PRODUCTOS (PRODUCTS) ---
 
-  listProducts(filter?: ProductFilter): ProductRecord[] {
+  async listProducts(filter?: ProductFilter): Promise<ProductRecord[]> {
     let sql = 'SELECT * FROM products WHERE 1=1';
     const params: (string | number)[] = [];
 
@@ -209,19 +209,19 @@ export class CatalogService {
     return rows.map((r) => this.mapProductRow(r));
   }
 
-  getProduct(id: string): ProductRecord | undefined {
+  async getProduct(id: string): Promise<ProductRecord | undefined> {
     const row = this.db.prepare('SELECT * FROM products WHERE id = ?').get(id) as unknown as RawProductRow | undefined;
     if (!row) return undefined;
     return this.mapProductRow(row);
   }
 
-  getProductBySku(sku: string): ProductRecord | undefined {
+  async getProductBySku(sku: string): Promise<ProductRecord | undefined> {
     const row = this.db.prepare('SELECT * FROM products WHERE sku = ?').get(sku) as unknown as RawProductRow | undefined;
     if (!row) return undefined;
     return this.mapProductRow(row);
   }
 
-  createProduct(data: CreateProductInput): ProductRecord {
+  async createProduct(data: CreateProductInput): Promise<ProductRecord> {
     const existingSku = this.db.prepare('SELECT id FROM products WHERE sku = ?').get(data.sku);
     if (existingSku !== undefined) {
       throw new Error(`Ya existe un producto con el SKU '${data.sku}'`);
@@ -280,8 +280,8 @@ export class CatalogService {
     };
   }
 
-  updateProduct(id: string, data: UpdateProductInput): ProductRecord | undefined {
-    const current = this.getProduct(id);
+  async updateProduct(id: string, data: UpdateProductInput): Promise<ProductRecord | undefined> {
+    const current = await this.getProduct(id);
     if (!current) return undefined;
 
     if (data.sku !== undefined && data.sku !== current.sku) {
@@ -335,8 +335,8 @@ export class CatalogService {
     };
   }
 
-  deleteProduct(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): ProductRecord | { deleted: boolean } {
-    const current = this.getProduct(id);
+  async deleteProduct(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): Promise<ProductRecord | { deleted: boolean }> {
+    const current = await this.getProduct(id);
     if (!current) {
       throw new Error(`Producto '${id}' no encontrado`);
     }
@@ -348,14 +348,14 @@ export class CatalogService {
 
     // Por defecto, soft delete / bloqueo
     const reason = options?.blockedReason ?? 'Archivado por administración';
-    const updated = this.updateProduct(id, { blockedReason: reason });
+    const updated = await this.updateProduct(id, { blockedReason: reason });
     if (!updated) {
       throw new Error(`No se pudo actualizar el producto '${id}'`);
     }
     return updated;
   }
 
-  listCategories(): string[] {
+  async listCategories(): Promise<string[]> {
     const rows = this.db
       .prepare("SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != '' ORDER BY category ASC")
       .all() as unknown as { category: string }[];

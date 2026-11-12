@@ -52,7 +52,7 @@ export class ImportExportService {
 
   // --- EXPORTACIÓN ---
 
-  exportProducts(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
+  async exportProducts(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
     const rows = this.db.prepare('SELECT * FROM products ORDER BY name ASC').all() as unknown as RawProductRecord[];
     const items = rows.map((r) => {
       let barcodes: string[];
@@ -93,7 +93,7 @@ export class ImportExportService {
     return { content: items, isCsv: false };
   }
 
-  exportCustomers(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
+  async exportCustomers(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
     const rows = this.db.prepare('SELECT * FROM customers ORDER BY name ASC').all() as unknown as RawCustomerRecord[];
     const items = rows.map((r) => ({
       id: r.id,
@@ -126,7 +126,7 @@ export class ImportExportService {
     return { content: items, isCsv: false };
   }
 
-  exportStock(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
+  async exportStock(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
     const rows = this.db
       .prepare(
         `SELECT s.product_id, p.sku, p.name as product_name, s.branch_id, b.code as branch_code, b.name as branch_name, s.quantity
@@ -157,12 +157,12 @@ export class ImportExportService {
 
   // --- SEMILLAS DE NEGOCIO ---
 
-  countProducts(): number {
+  async countProducts(): Promise<number> {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
     return row.n;
   }
 
-  applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): BusinessPresetResult {
+  async applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): Promise<BusinessPresetResult> {
     return applyPreset(this.db, preset);
   }
 

@@ -75,7 +75,7 @@ function parseRow(row: RowContext): { data: Parsed; errors: string[] } {
  * nombre normalizado. El saldo de un cliente nuevo entra como "Saldo inicial (importado)"; al
  * reimportar se corrige solo si todos sus movimientos son de importación (`opening`).
  */
-export function importCustomers(db: DatabaseSync, rows: RowContext[], now: string): ImportRowResult[] {
+export async function importCustomers(db: DatabaseSync, rows: RowContext[], now: string): Promise<ImportRowResult[]> {
   const byName = new Map<string, string[]>();
   const rememberName = (name: string, id: string): void => {
     const key = normalizeHeader(name);

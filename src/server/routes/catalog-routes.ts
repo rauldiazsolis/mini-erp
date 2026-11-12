@@ -60,10 +60,10 @@ export function createCatalogRoutes(): Router {
 
   // --- SUCURSALES ---
 
-  router.get('/branches', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
-      const branches = service.listBranches();
+      const branches = await service.listBranches();
       res.status(200).json(branches);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al listar sucursales';
@@ -71,7 +71,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.post('/branches', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/branches', requirePermission('settings.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createBranchSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de sucursal inválidos' });
@@ -80,7 +80,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const created = service.createBranch(parseResult.data);
+      const created = await service.createBranch(parseResult.data);
       res.status(201).json(created);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al crear sucursal';
@@ -88,7 +88,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/branches/:branchId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/branches/:branchId', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const branchId = routeParam(req, 'branchId');
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
@@ -97,7 +97,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const branch = service.getBranch(branchId);
+      const branch = await service.getBranch(branchId);
       if (!branch) {
         res.status(404).json({ error: 'Sucursal no encontrada' });
         return;
@@ -109,7 +109,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.put('/branches/:branchId', requirePermission('settings.manage'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/branches/:branchId', requirePermission('settings.manage'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const branchId = routeParam(req, 'branchId');
     if (branchId === undefined) {
       res.status(400).json({ error: 'ID de sucursal requerido' });
@@ -124,7 +124,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const updated = service.updateBranch(branchId, parseResult.data);
+      const updated = await service.updateBranch(branchId, parseResult.data);
       if (!updated) {
         res.status(404).json({ error: 'Sucursal no encontrada' });
         return;
@@ -138,7 +138,7 @@ export function createCatalogRoutes(): Router {
 
   // --- PRODUCTOS ---
 
-  router.get('/products', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
       const search = typeof req.query['search'] === 'string' ? req.query['search'] : (typeof req.query['q'] === 'string' ? req.query['q'] : undefined);
@@ -149,7 +149,7 @@ export function createCatalogRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const products = service.listProducts({
+      const products = await service.listProducts({
         search,
         category,
         blocked,
@@ -164,7 +164,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.post('/products', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/products', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createProductSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de producto inválidos' });
@@ -173,7 +173,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const product = service.createProduct(parseResult.data);
+      const product = await service.createProduct(parseResult.data);
       res.status(201).json(product);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al crear producto';
@@ -181,7 +181,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.get('/products/:productId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/products/:productId', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -190,7 +190,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const product = service.getProduct(productId);
+      const product = await service.getProduct(productId);
       if (!product) {
         res.status(404).json({ error: 'Producto no encontrado' });
         return;
@@ -202,7 +202,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.put('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.put('/products/:productId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -217,7 +217,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const updated = service.updateProduct(productId, parseResult.data);
+      const updated = await service.updateProduct(productId, parseResult.data);
       if (!updated) {
         res.status(404).json({ error: 'Producto no encontrado' });
         return;
@@ -229,7 +229,7 @@ export function createCatalogRoutes(): Router {
     }
   });
 
-  router.delete('/products/:productId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/products/:productId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const productId = routeParam(req, 'productId');
     if (productId === undefined) {
       res.status(400).json({ error: 'ID de producto requerido' });
@@ -242,7 +242,7 @@ export function createCatalogRoutes(): Router {
 
     try {
       const service = getCatalogService(req);
-      const result = service.deleteProduct(productId, { hard, blockedReason: reason });
+      const result = await service.deleteProduct(productId, { hard, blockedReason: reason });
       res.status(200).json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al eliminar/bloquear producto';
@@ -252,10 +252,10 @@ export function createCatalogRoutes(): Router {
 
   // --- CATEGORÍAS ---
 
-  router.get('/categories', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/categories', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCatalogService(req);
-      const categories = service.listCategories();
+      const categories = await service.listCategories();
       res.status(200).json(categories);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al listar categorías';

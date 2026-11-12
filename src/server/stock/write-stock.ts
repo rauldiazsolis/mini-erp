@@ -17,7 +17,7 @@ export type WriteStockResult = { previousQuantity: number; delta: number; newQua
  * Fija o suma el stock de un producto en una sucursal, con su movimiento de kardex, y toca el
  * producto para que el POS lo reciba en el pull. No valida que existan: lo hace quien llama.
  */
-export function writeStock(db: DatabaseSync, p: WriteStockInput): WriteStockResult {
+export async function writeStock(db: DatabaseSync, p: WriteStockInput): Promise<WriteStockResult> {
   const row = db.prepare('SELECT quantity FROM stock WHERE product_id = ? AND branch_id = ?').get(p.productId, p.branchId) as
     | { quantity: number }
     | undefined;

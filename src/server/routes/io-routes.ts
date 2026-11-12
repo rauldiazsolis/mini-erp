@@ -51,7 +51,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
-  router.get('/export/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/export/:entity', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const entity = routeParam(req, 'entity');
     const format = req.query['format'] === 'csv' ? 'csv' : 'json';
     const tenantId = req.activeTenantId ?? 'tenant';
@@ -62,13 +62,13 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
 
       switch (entity) {
         case 'products':
-          result = service.exportProducts(format);
+          result = await service.exportProducts(format);
           break;
         case 'customers':
-          result = service.exportCustomers(format);
+          result = await service.exportCustomers(format);
           break;
         case 'stock':
-          result = service.exportStock(format);
+          result = await service.exportStock(format);
           break;
         default:
           res.status(400).json({ error: "Entidad inválida. Debe ser 'products', 'customers' o 'stock'" });
@@ -88,8 +88,8 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
     }
   });
 
-  // POST /import/:entity - CSV con mapeo de columnas (#22): vista previa (dryRun) o confirmación
-  router.post('/import/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  // POST /import/:entity - CSV con mapeo de columnas async (#22): vista previa (dryRun) o confirmación
+  router.post('/import/:entity', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const entity = routeParam(req, 'entity');
     if (entity !== 'customers' && entity !== 'products') {
       res.status(400).json({ error: "Entidad de importación inválida. Debe ser 'products' o 'customers'" });
@@ -104,7 +104,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
       const service = req.tenantScope?.use(importServiceDef);
       if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
-      const result = service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
+      const result = await service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
       if (!dryRun && result.totals.create + result.totals.update > 0) recordLoad(funnel, req.activeTenantId, `import-${entity}`);
       res.status(200).json(result);
     } catch (err: unknown) {
@@ -116,7 +116,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
   router.get('/catalog/example', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const businessType = await tenants.getBusinessType(req.activeTenantId ?? '');
-      const available = hasExampleCatalog(businessType) && getImportExportService(req).countProducts() === 0;
+      const available = hasExampleCatalog(businessType) && (await getImportExportService(req).countProducts()) === 0;
       res.status(200).json({ businessType, available });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -131,7 +131,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
         return;
       }
       // Idempotente: el preset saltea los SKU que ya existen
-      const { productsCreated } = getImportExportService(req).applyBusinessPreset(businessType);
+      const { productsCreated } = await getImportExportService(req).applyBusinessPreset(businessType);
       if (productsCreated > 0) recordLoad(funnel, req.activeTenantId, 'example');
       res.status(200).json({ productsCreated });
     } catch (err: unknown) {

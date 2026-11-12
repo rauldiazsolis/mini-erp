@@ -46,7 +46,7 @@ export class ImportService {
     this.db = db;
   }
 
-  run(entity: ImportEntity, req: ImportRequest, now: string = new Date().toISOString()): ImportPreview {
+  async run(entity: ImportEntity, req: ImportRequest, now: string = new Date().toISOString()): Promise<ImportPreview> {
     const table = parseCsv(req.csv);
     const branches = this.db.prepare('SELECT id, name, code FROM branches ORDER BY created_at, code').all() as ImportBranch[];
     const mapping = req.mapping ?? suggestMapping(entity, table.headers, branches);
@@ -74,7 +74,7 @@ export class ImportService {
     let rows: ImportRowResult[];
     this.db.exec('SAVEPOINT import_csv');
     try {
-      rows = entity === 'customers' ? importCustomers(this.db, contexts, now) : importProducts(this.db, contexts, branches, now);
+      rows = entity === 'customers' ? await importCustomers(this.db, contexts, now) : await importProducts(this.db, contexts, branches, now);
       if (req.dryRun) this.db.exec('ROLLBACK TO import_csv');
       this.db.exec('RELEASE import_csv');
     } catch (err: unknown) {

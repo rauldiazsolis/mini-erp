@@ -23,8 +23,8 @@ describe('importación de productos y stock (#22)', () => {
     service = new ImportService(db);
   });
 
-  it('crea con SKU propio, del código de barras o correlativo, IVA normalizado y stock en la sucursal mapeada', () => {
-    const p = service.run('products', { csv: EXCEL, dryRun: false }, now);
+  it('crea con SKU propio, del código de barras o correlativo, IVA normalizado y stock en la sucursal mapeada', async () => {
+    const p = await service.run('products', { csv: EXCEL, dryRun: false }, now);
     expect(p.totals).toEqual({ create: 3, update: 0, unchanged: 0, error: 0 });
     expect(db.prepare('SELECT sku, barcodes, name, price, tax_rate FROM products ORDER BY name').all()).toEqual([
       { sku: '7790002', barcodes: '["7790002","7790003"]', name: 'Azúcar 1kg', price: 1200, tax_rate: 0.105 },
@@ -44,23 +44,23 @@ describe('importación de productos y stock (#22)', () => {
     ]);
   });
 
-  it('la vista previa no escribe nada', () => {
-    expect(service.run('products', { csv: EXCEL, dryRun: true }, now).totals.create).toBe(3);
+  it('la vista previa no escribe nada', async () => {
+    expect((await service.run('products', { csv: EXCEL, dryRun: true }, now)).totals.create).toBe(3);
     expect(db.prepare('SELECT COUNT(*) AS n FROM products').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: 0 });
   });
 
-  it('reimportar el mismo archivo da "sin cambios" y no genera movimientos', () => {
-    service.run('products', { csv: EXCEL, dryRun: false }, now);
-    const again = service.run('products', { csv: EXCEL, dryRun: false }, now);
+  it('reimportar el mismo archivo da "sin cambios" y no genera movimientos', async () => {
+    await service.run('products', { csv: EXCEL, dryRun: false }, now);
+    const again = await service.run('products', { csv: EXCEL, dryRun: false }, now);
     expect(again.totals).toEqual({ create: 0, update: 0, unchanged: 3, error: 0 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM products').get()).toEqual({ n: 3 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: 2 });
   });
 
-  it('un archivo de código + stock solo actualiza, y no toca lo que no está mapeado', () => {
-    service.run('products', { csv: EXCEL, dryRun: false }, now);
-    const p = service.run('products', { csv: 'EAN;Stock Norte\n7790003;7\n', dryRun: false }, now);
+  it('un archivo de código + stock solo actualiza, y no toca lo que no está mapeado', async () => {
+    await service.run('products', { csv: EXCEL, dryRun: false }, now);
+    const p = await service.run('products', { csv: 'EAN;Stock Norte\n7790003;7\n', dryRun: false }, now);
     expect(p.rows[0]).toMatchObject({ action: 'update' });
     expect(db.prepare("SELECT name, price FROM products WHERE sku = '7790002'").get()).toEqual({ name: 'Azúcar 1kg', price: 1200 });
     expect(
@@ -68,16 +68,16 @@ describe('importación de productos y stock (#22)', () => {
     ).toEqual({ quantity: 7 });
   });
 
-  it('una columna "Stock" genérica con dos sucursales pide elegir y no deja confirmar', () => {
+  it('una columna "Stock" genérica con dos sucursales pide elegir y no deja confirmar', async () => {
     const csv = 'Nombre;Precio;Stock\nPan;100;3\n';
-    expect(service.run('products', { csv, dryRun: true }, now).needsBranch).toEqual([2]);
-    expect(() => service.run('products', { csv, dryRun: false }, now)).toThrow(/Asigná/);
-    const ok = service.run('products', { csv, dryRun: false, mapping: { '0': 'name', '1': 'price', '2': 'stock:branch-norte' } }, now);
+    expect((await service.run('products', { csv, dryRun: true }, now)).needsBranch).toEqual([2]);
+    await expect(service.run('products', { csv, dryRun: false }, now)).rejects.toThrow(/Asigná/);
+    const ok = await service.run('products', { csv, dryRun: false, mapping: { '0': 'name', '1': 'price', '2': 'stock:branch-norte' } }, now);
     expect(ok.totals.create).toBe(1);
   });
 
-  it('errores: sin precio para crear, precio negativo, IVA fuera de rango, SKU y código de productos distintos', () => {
-    service.run('products', { csv: EXCEL, dryRun: false }, now);
+  it('errores: sin precio para crear, precio negativo, IVA fuera de rango, SKU y código de productos distintos', async () => {
+    await service.run('products', { csv: EXCEL, dryRun: false }, now);
     const csv =
       'SKU;Código de barras;Nombre;Precio;IVA\n' +
       ';;Nuevo;;\n' +
@@ -85,7 +85,7 @@ describe('importación de productos y stock (#22)', () => {
       ';;Otro2;10;150\n' +
       'YER1;7790002;Choque;10;\n' +
       'YER1;7790003;Azúcar;;\n';
-    expect(service.run('products', { csv, dryRun: true }, now).rows.map((r) => r.messages[0])).toEqual([
+    expect((await service.run('products', { csv, dryRun: true }, now)).rows.map((r) => r.messages[0])).toEqual([
       'Falta el precio para crearlo',
       'Precio: no puede ser negativo',
       'IVA: tiene que estar entre 0 y 100 %',
@@ -94,16 +94,16 @@ describe('importación de productos y stock (#22)', () => {
     ]);
   });
 
-  it('sin códigos se reconoce por nombre normalizado', () => {
-    service.run('products', { csv: EXCEL, dryRun: false }, now);
-    const p = service.run('products', { csv: 'Nombre;Precio\nfideos 500G;950\n', dryRun: false }, now);
+  it('sin códigos se reconoce por nombre normalizado', async () => {
+    await service.run('products', { csv: EXCEL, dryRun: false }, now);
+    const p = await service.run('products', { csv: 'Nombre;Precio\nfideos 500G;950\n', dryRun: false }, now);
     expect(p.rows[0]).toMatchObject({ action: 'update' });
     expect(db.prepare("SELECT price FROM products WHERE sku = 'IMP-000001'").get()).toEqual({ price: 950 });
   });
 
-  it('reconocido por el código de barras, toma el SKU nuevo del archivo', () => {
-    service.run('products', { csv: EXCEL, dryRun: false }, now);
-    const p = service.run('products', { csv: 'Cód. Barras;SKU\n7790001;YER-NUEVO\n', dryRun: false }, now);
+  it('reconocido por el código de barras, toma el SKU nuevo del archivo', async () => {
+    await service.run('products', { csv: EXCEL, dryRun: false }, now);
+    const p = await service.run('products', { csv: 'Cód. Barras;SKU\n7790001;YER-NUEVO\n', dryRun: false }, now);
     expect(p.rows[0]).toMatchObject({ action: 'update' });
     expect(db.prepare("SELECT name FROM products WHERE sku = 'YER-NUEVO'").get()).toEqual({ name: 'Yerba 1kg' });
   });

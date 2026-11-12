@@ -113,7 +113,7 @@ export class StockService {
 
   // --- MATRIZ DE STOCK MULTI-SUCURSAL ---
 
-  getStockMatrix(filter?: StockMatrixFilter): StockMatrixProduct[] {
+  async getStockMatrix(filter?: StockMatrixFilter): Promise<StockMatrixProduct[]> {
     // 1. Obtener todas las sucursales
     const branches = this.db.prepare('SELECT id, name, code FROM branches ORDER BY created_at ASC').all() as unknown as RawBranchRow[];
 
@@ -191,7 +191,7 @@ export class StockService {
 
   // --- AJUSTE MANUAL DE STOCK (KARDEX AUDITADO) ---
 
-  adjustStock(params: AdjustStockInput): AdjustStockResult {
+  async adjustStock(params: AdjustStockInput): Promise<AdjustStockResult> {
     // 1. Verificar producto
     const prodRow = this.db.prepare('SELECT id, name FROM products WHERE id = ?').get(params.productId) as { id: string; name: string } | undefined;
     if (!prodRow) {
@@ -210,7 +210,7 @@ export class StockService {
 
     // 3. Movimiento en el kardex, stock y producto tocado para el pull (#22: lo comparte la importación)
     const now = new Date().toISOString();
-    const written = writeStock(this.db, {
+    const written = await writeStock(this.db, {
       productId: params.productId,
       branchId: params.branchId,
       type: params.type,
@@ -225,7 +225,7 @@ export class StockService {
 
   // --- CONSULTA DE KARDEX ---
 
-  getKardex(filter?: KardexFilter): KardexMovement[] {
+  async getKardex(filter?: KardexFilter): Promise<KardexMovement[]> {
     let sql = `
       SELECT
         sm.id,

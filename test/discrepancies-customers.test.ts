@@ -30,14 +30,14 @@ describe('pendientes al crear un cliente (#2)', () => {
     expect(listOpenDiscrepancies(db)).toEqual([]);
   });
 
-  it('la importación aplica la venta pendiente', () => {
-    new ImportService(db).run('customers', { csv: CSV, dryRun: false }, at);
+  it('la importación aplica la venta pendiente', async () => {
+    await new ImportService(db).run('customers', { csv: CSV, dryRun: false }, at);
     expect(saldo()).toBe(950);
     expect(listOpenDiscrepancies(db)).toEqual([]);
   });
 
-  it('una importación en dryRun no aplica nada', () => {
-    new ImportService(db).run('customers', { csv: CSV, dryRun: true }, at);
+  it('una importación en dryRun no aplica nada', async () => {
+    await new ImportService(db).run('customers', { csv: CSV, dryRun: true }, at);
     expect(listOpenDiscrepancies(db)).toHaveLength(1);
   });
 });

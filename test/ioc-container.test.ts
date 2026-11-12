@@ -116,7 +116,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(catalogSvcA).toBe(catalogSvcB);
     });
 
-    it('garantiza aislamiento total entre tenants: dos scopes tienen instancias y bases de datos diferentes', () => {
+    it('garantiza aislamiento total entre tenants: dos scopes tienen instancias y bases de datos diferentes', async () => {
       const root = createRootContainer({ systemDb });
       const scopeTenant1 = createTenantScope(root, tenant1Db);
       const scopeTenant2 = createTenantScope(root, tenant2Db);
@@ -127,7 +127,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(catalog1).not.toBe(catalog2);
 
       // Crear un producto en tenant 1 a través de su servicio resuelto
-      catalog1.createProduct({
+      await catalog1.createProduct({
         name: 'Yerba Mate 1Kg',
         sku: 'YM-1KG',
         price: 2500,
@@ -135,12 +135,12 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       });
 
       // El producto debe existir en tenant 1
-      const prodsTenant1 = catalog1.listProducts();
+      const prodsTenant1 = await catalog1.listProducts();
       expect(prodsTenant1).toHaveLength(1);
       expect(prodsTenant1[0]?.name).toBe('Yerba Mate 1Kg');
 
       // En tenant 2, el catálogo debe permanecer completamente vacío (cero leakage)
-      const prodsTenant2 = catalog2.listProducts();
+      const prodsTenant2 = await catalog2.listProducts();
       expect(prodsTenant2).toHaveLength(0);
     });
   });

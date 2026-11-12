@@ -45,7 +45,7 @@ export function createBulkRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // POST /bulk/prices - Actualización masiva de precios
-  router.post('/bulk/prices', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/prices', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkPriceSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -54,7 +54,7 @@ export function createBulkRoutes(): Router {
 
     try {
       const service = getBulkService(req);
-      const result = service.previewOrApplyPrices(parseResult.data);
+      const result = await service.previewOrApplyPrices(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error en actualización masiva de precios';
@@ -63,7 +63,7 @@ export function createBulkRoutes(): Router {
   });
 
   // POST /bulk/interests - Devengamiento masivo de intereses en cuentas corrientes
-  router.post('/bulk/interests', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/interests', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkInterestSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -72,7 +72,7 @@ export function createBulkRoutes(): Router {
 
     try {
       const service = getBulkService(req);
-      const result = service.previewOrApplyInterests(parseResult.data);
+      const result = await service.previewOrApplyInterests(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error en cálculo masivo de intereses';

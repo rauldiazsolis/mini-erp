@@ -30,7 +30,7 @@ export function createStockRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /stock - Matriz de stock consolidada y por sucursal
-  router.get('/stock', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const search =
@@ -43,7 +43,7 @@ export function createStockRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const matrix = service.getStockMatrix({
+      const matrix = await service.getStockMatrix({
         search,
         category,
         limit: Number.isNaN(limit) ? undefined : limit,
@@ -58,7 +58,7 @@ export function createStockRoutes(): Router {
   });
 
   // POST /stock/adjust - Ajuste manual auditado de stock (Kardex)
-  router.post('/stock/adjust', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/stock/adjust', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = adjustStockSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de ajuste inválidos' });
@@ -67,7 +67,7 @@ export function createStockRoutes(): Router {
 
     try {
       const service = getStockService(req);
-      const result = service.adjustStock(parseResult.data);
+      const result = await service.adjustStock(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
@@ -77,7 +77,7 @@ export function createStockRoutes(): Router {
   });
 
   // GET /stock/kardex - Historial de movimientos de stock con filtros
-  router.get('/stock/kardex', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock/kardex', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const productId = typeof req.query['productId'] === 'string' ? req.query['productId'] : undefined;
@@ -88,7 +88,7 @@ export function createStockRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const movements = service.getKardex({
+      const movements = await service.getKardex({
         productId,
         branchId,
         reason,

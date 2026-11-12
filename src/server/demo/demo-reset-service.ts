@@ -39,7 +39,7 @@ export class DemoResetService {
     const now = this.deps.now();
     const db = this.deps.tenantManager.getTenantDb(tenantId);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
-    inTransaction(db, () => {
+    await inTransaction(db, async () => {
       for (const t of tables) db.exec(`DELETE FROM "${t.name}"`);
       seedDemoCommerce(db, template, now);
     });
@@ -56,7 +56,7 @@ export class DemoResetService {
     const customers = DEMO_CUSTOMERS.filter((c): c is SeedCustomer & { id: string } => c.id !== undefined);
     const productIds = sqlList(products.map((p) => p.id));
     const customerIds = sqlList(customers.map((c) => c.id));
-    inTransaction(db, () => {
+    await inTransaction(db, async () => {
       // Los productos de visitantes afuera (con su stock y su kardex), antes de devolverles el SKU a los de la semilla
       db.exec(`DELETE FROM stock WHERE product_id NOT IN (${productIds})`);
       db.exec(`DELETE FROM stock_movements WHERE product_id NOT IN (${productIds})`);
@@ -69,7 +69,7 @@ export class DemoResetService {
       );
       for (const p of products) {
         upsertProduct.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate ?? 0.21, p.category, at, at);
-        writeStock(db, {
+        await writeStock(db, {
           productId: p.id,
           branchId: DEMO_BRANCH_ID,
           type: 'set',
@@ -155,7 +155,7 @@ export class DemoResetService {
   }
 
   /** Repone los productos de la semilla que bajaron de un cuarto de su cantidad inicial. Un producto borrado no. */
-  restock(): number {
+  async restock(): Promise<number> {
     const at = this.deps.now().toISOString();
     let restocked = 0;
     const rows = this.deps.systemDb.prepare('SELECT tenant_id, template FROM demo_tenants ORDER BY rowid').all() as {
@@ -167,11 +167,11 @@ export class DemoResetService {
       if (!isDemoTemplate(template)) continue;
       const db = this.deps.tenantManager.getTenantDb(row.tenant_id);
       const qty = db.prepare('SELECT s.quantity FROM stock s JOIN products p ON p.id = s.product_id WHERE s.product_id = ? AND s.branch_id = ?');
-      inTransaction(db, () => {
+      await inTransaction(db, async () => {
         for (const p of demoSeedProducts(template)) {
           const current = (qty.get(p.id, DEMO_BRANCH_ID) as { quantity: number } | undefined)?.quantity;
           if (current === undefined || current >= p.stock / 4) continue;
-          writeStock(db, {
+          await writeStock(db, {
             productId: p.id,
             branchId: DEMO_BRANCH_ID,
             type: 'set',
@@ -193,10 +193,10 @@ function sqlList(ids: string[]): string {
   return ids.map((id) => `'${id.replace(/'/g, "''")}'`).join(', ');
 }
 
-function inTransaction(db: DatabaseSync, work: () => void): void {
+async function inTransaction(db: DatabaseSync, work: () => Promise<void>): Promise<void> {
   db.exec('BEGIN');
   try {
-    work();
+    await work();
     db.exec('COMMIT');
   } catch (err: unknown) {
     db.exec('ROLLBACK');

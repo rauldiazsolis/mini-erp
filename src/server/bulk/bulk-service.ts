@@ -74,7 +74,7 @@ export class BulkService {
 
   // --- ACTUALIZACIÓN MASIVA DE PRECIOS ---
 
-  previewOrApplyPrices(input: BulkPriceInput): BulkPriceResult {
+  async previewOrApplyPrices(input: BulkPriceInput): Promise<BulkPriceResult> {
     const rounding = input.rounding ?? 'none';
     const isDryRun = input.dryRun ?? false;
     const now = new Date().toISOString();
@@ -159,7 +159,7 @@ export class BulkService {
 
   // --- CÁLCULO MASIVO DE INTERESES ---
 
-  previewOrApplyInterests(input: BulkInterestInput): BulkInterestResult {
+  async previewOrApplyInterests(input: BulkInterestInput): Promise<BulkInterestResult> {
     if (input.interestRatePercent <= 0) {
       throw new Error('La tasa de interés debe ser mayor a cero');
     }

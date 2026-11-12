@@ -19,7 +19,7 @@ export async function startDemoSweeper(
       await p.audit?.record({ actorUserId: SYSTEM_ACTOR, tenantId: DEMO_COMMERCES[template].tenantId, action: 'demo.reset', details: { template, kind: 'full', automatic: true } });
     }
     const idle = p.sessions.revokeIdle();
-    const restocked = p.resets.restock();
+    const restocked = await p.resets.restock();
     if (always || legacy + reset.length + idle + restocked > 0) {
       console.log(
         `[demos] barrido: ${String(legacy)} demos de antes borradas, reinicio automático: ${reset.length === 0 ? 'ninguno' : reset.join(', ')}, ` +

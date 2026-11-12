@@ -86,7 +86,7 @@ function parseRow(row: RowContext, branches: readonly ImportBranch[]): { data: P
  * nombre normalizado. Al actualizar solo se tocan los campos mapeados (los códigos de barras nuevos
  * se suman); el stock se fija por sucursal con un movimiento `inventory_count`.
  */
-export function importProducts(db: DatabaseSync, rows: RowContext[], branches: readonly ImportBranch[], now: string): ImportRowResult[] {
+export async function importProducts(db: DatabaseSync, rows: RowContext[], branches: readonly ImportBranch[], now: string): Promise<ImportRowResult[]> {
   const bySku = db.prepare('SELECT id FROM products WHERE sku = ?');
   const byBarcode = db.prepare('SELECT DISTINCT p.id FROM products p, json_each(p.barcodes) j WHERE j.value = ?');
   const getProduct = db.prepare('SELECT * FROM products WHERE id = ?');
@@ -208,7 +208,7 @@ export function importProducts(db: DatabaseSync, rows: RowContext[], branches: r
     for (const s of data.stock) {
       const cur = (currentStock.get(productId, s.branchId) as { quantity: number } | undefined)?.quantity ?? 0;
       if (cur === s.quantity) continue;
-      writeStock(db, { productId, branchId: s.branchId, type: 'set', quantity: s.quantity, reason: 'inventory_count', notes: STOCK_NOTE, now });
+      await writeStock(db, { productId, branchId: s.branchId, type: 'set', quantity: s.quantity, reason: 'inventory_count', notes: STOCK_NOTE, now });
       changed = true;
     }
     results.push({ line: row.line, key, action: created ? 'create' : changed ? 'update' : 'unchanged', messages: [] });

@@ -64,19 +64,19 @@ describe('barrido de demos (#24)', () => {
     expect(await resets.runDue()).toEqual([]);
   });
 
-  it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', () => {
+  it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', async () => {
     const db = tenantManager.getTenantDb('demo-kiosco');
-    resets.restock(); // lo que el historial sembrado ya haya bajado
+    await resets.restock(); // lo que el historial sembrado ya haya bajado
     db.prepare("UPDATE stock SET quantity = 11 WHERE product_id = 'demo_KIO-001'").run(); // 48 / 4 = 12
     db.prepare("UPDATE stock SET quantity = 14 WHERE product_id = 'demo_KIO-002'").run(); // 60 / 4 = 15
     db.prepare("UPDATE stock SET quantity = 30 WHERE product_id = 'demo_KIO-004'").run(); // 72 / 4 = 18: no
-    expect(resets.restock()).toBe(2);
+    expect(await resets.restock()).toBe(2);
     expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-001'").get()).toEqual({ quantity: 48 });
     expect(
       db.prepare("SELECT reason, notes FROM stock_movements WHERE product_id = 'demo_KIO-001' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(),
     ).toEqual({ reason: 'restock', notes: 'Reposición automática' });
     expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-004'").get()).toEqual({ quantity: 30 });
-    expect(resets.restock()).toBe(0);
+    expect(await resets.restock()).toBe(0);
   });
 
   it('el barrido al arrancar hace todo y loguea', async () => {
