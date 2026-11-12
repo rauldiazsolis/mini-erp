@@ -51,7 +51,7 @@ export function createAdminAuthMiddleware(
       return;
     }
 
-    const anonymous = portal?.resolveAnonymous(token);
+    const anonymous = await portal?.resolveAnonymous(token);
     if (anonymous !== undefined) {
       req.anonymous = anonymous;
       req.sessionToken = token;
@@ -95,7 +95,7 @@ export function createPosAuthMiddleware(
   tenantManager: TenantManager,
   rootContainer?: Container,
   /** Se llama con cada key válida: así una caja de demo en uso no se revoca (#24). */
-  onAuthenticated?: (key: ValidatedPosKey) => void,
+  onAuthenticated?: (key: ValidatedPosKey) => Promise<void>,
 ) {
   return async (req: AuthenticatedPosRequest, res: Response, next: NextFunction): Promise<void> => {
     const authHeader = req.headers.authorization;
@@ -111,7 +111,7 @@ export function createPosAuthMiddleware(
       return;
     }
 
-    onAuthenticated?.(validated);
+    await onAuthenticated?.(validated);
 
     const tenantDb = tenantManager.getTenantDb(validated.tenantId);
 

@@ -18,8 +18,8 @@ export function createPlatformDemoRoutes(deps: { resets: DemoResetService; audit
   const router = Router();
   const staff = requirePlatformRole('root', 'support');
 
-  router.get('/demos', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(deps.resets.status());
+  router.get('/demos', staff, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await deps.resets.status());
   });
 
   router.post('/demos/reset', staff, async (req: AuthenticatedAdminRequest, res: Response) => {

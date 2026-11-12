@@ -85,7 +85,7 @@ export class AltaService {
       // El comercio queda ligado a la demo de la que salió (#25); si no se puede, el alta sigue
       if (params.demoSessionId !== undefined) {
         try {
-          this.funnel.linkTenant(tenant.id, params.demoSessionId);
+          await this.funnel.linkTenant(tenant.id, params.demoSessionId);
         } catch (err: unknown) {
           console.error('[embudo] no se pudo ligar el comercio a su demo:', err);
         }

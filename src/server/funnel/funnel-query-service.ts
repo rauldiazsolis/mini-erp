@@ -89,7 +89,7 @@ export class FunnelQueryService {
     this.db = deps.db;
   }
 
-  report(f: { from: string; to: string; rubro?: FunnelRubro | undefined }): FunnelReport {
+  async report(f: { from: string; to: string; rubro?: FunnelRubro | undefined }): Promise<FunnelReport> {
     const built = this.build(f.from, f.to).filter((b) => f.rubro === undefined || b.item.rubro === f.rubro);
     const stages = FUNNEL_STAGES.map((stage) => {
       const reached = built.filter((b) => b.stages[stage] !== null);
@@ -103,7 +103,7 @@ export class FunnelQueryService {
     return { from: f.from, to: f.to, landing, visitors: { total: built.length, byRubro: countBy(built, (b) => b.item.rubro) }, stages };
   }
 
-  visitors(f: VisitorQuery): FunnelVisitorItem[] {
+  async visitors(f: VisitorQuery): Promise<FunnelVisitorItem[]> {
     // "Sin atender" muestra todos los pendientes, sin rango de fechas
     const pending = f.filter === 'pending';
     const text = f.q?.trim().toLowerCase() ?? '';
@@ -126,7 +126,7 @@ export class FunnelQueryService {
       .slice(0, MAX_ITEMS);
   }
 
-  visitor(id: string): FunnelVisitorDetail | undefined {
+  async visitor(id: string): Promise<FunnelVisitorDetail | undefined> {
     const b = this.buildOne(id);
     if (b === undefined) return undefined;
     const holderId = b.tenant?.holder_user_id ?? null;

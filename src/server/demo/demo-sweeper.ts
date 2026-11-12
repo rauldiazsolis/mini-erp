@@ -18,7 +18,7 @@ export async function startDemoSweeper(
     for (const template of reset) {
       await p.audit?.record({ actorUserId: SYSTEM_ACTOR, tenantId: DEMO_COMMERCES[template].tenantId, action: 'demo.reset', details: { template, kind: 'full', automatic: true } });
     }
-    const idle = p.sessions.revokeIdle();
+    const idle = await p.sessions.revokeIdle();
     const restocked = await p.resets.restock();
     if (always || legacy + reset.length + idle + restocked > 0) {
       console.log(

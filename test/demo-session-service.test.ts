@@ -69,9 +69,9 @@ describe('DemoSessionService (#24)', () => {
     expect(await tenantManager.getTenantName('demo-kiosco')).toBe('Kiosco Demo');
     const sales = tenantManager.getTenantDb('demo-kiosco').prepare('SELECT COUNT(*) AS n FROM sales').get() as { n: number };
     expect(sales.n).toBeGreaterThan(0);
-    expect(service.isDemoTenant('demo-kiosco')).toBe(true);
-    expect(service.templateOf('demo-kiosco')).toBe('kiosco');
-    expect(service.isDemoTenant('tienda')).toBe(false);
+    expect(await service.isDemoTenant('demo-kiosco')).toBe(true);
+    expect(await service.templateOf('demo-kiosco')).toBe('kiosco');
+    expect(await service.isDemoTenant('tienda')).toBe(false);
   });
 
   it('create da una caja de visitante en el comercio del rubro, con su sesión', async () => {
@@ -83,7 +83,7 @@ describe('DemoSessionService (#24)', () => {
     expect(key).toMatchObject({ tenantId: 'demo-almacen', pointOfSale: s.pointOfSale });
     const row = systemDb.prepare('SELECT id, template, tenant_id, register_id, revoked_at FROM demo_sessions').get();
     expect(row).toEqual({ id: s.sessionId, template: 'almacen', tenant_id: 'demo-almacen', register_id: key?.registerId, revoked_at: null });
-    expect(service.activeSessionOfRegister(key?.registerId ?? '')).toEqual({
+    expect(await service.activeSessionOfRegister(key?.registerId ?? '')).toEqual({
       id: s.sessionId,
       tenantId: 'demo-almacen',
       template: 'almacen',
@@ -97,7 +97,7 @@ describe('DemoSessionService (#24)', () => {
     const b = await service.create('kiosco');
     expect(a.tenantId).toBe(b.tenantId);
     expect(a.pointOfSale).not.toBe(b.pointOfSale);
-    expect(service.countActive()).toBe(2);
+    expect(await service.countActive()).toBe(2);
   });
 
   it('touchRegister corre el último uso a lo sumo una vez por minuto', async () => {
@@ -105,10 +105,10 @@ describe('DemoSessionService (#24)', () => {
     const reg = await registerOf((await service.create('kiosco')).apiKey);
     const t0 = clock.now.toISOString();
     advance(30_000);
-    service.touchRegister(reg);
+    await service.touchRegister(reg);
     expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: t0 });
     advance(60_000);
-    service.touchRegister(reg);
+    await service.touchRegister(reg);
     expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: clock.now.toISOString() });
   });
 
@@ -118,11 +118,11 @@ describe('DemoSessionService (#24)', () => {
     advance(23 * HOUR);
     const fresh = await service.create('kiosco');
     advance(2 * HOUR);
-    expect(service.revokeIdle()).toBe(1);
+    expect(await service.revokeIdle()).toBe(1);
     expect(await apiKeyService.validateApiKey(old.apiKey)).toBeUndefined();
     expect(await apiKeyService.validateApiKey(fresh.apiKey)).toBeDefined();
     expect(systemDb.prepare('SELECT revoke_reason AS r FROM demo_sessions WHERE revoked_at IS NOT NULL').all()).toEqual([{ r: 'idle' }]);
-    expect(service.countActive()).toBe(1);
+    expect(await service.countActive()).toBe(1);
   });
 
   it('revokeTenant revoca todas las cajas del comercio y nunca borra el registro', async () => {
@@ -130,21 +130,21 @@ describe('DemoSessionService (#24)', () => {
     const a = await service.create('kiosco');
     await service.create('kiosco');
     await service.create('almacen');
-    expect(service.revokeTenant('demo-kiosco', 'reset')).toBe(2);
+    expect(await service.revokeTenant('demo-kiosco', 'reset')).toBe(2);
     expect(systemDb.prepare('SELECT COUNT(*) AS n FROM demo_sessions').get()).toEqual({ n: 3 });
-    expect(service.countActive()).toBe(1);
-    expect(service.activeSessionOfRegister(await registerOf(a.apiKey))).toBeUndefined();
+    expect(await service.countActive()).toBe(1);
+    expect(await service.activeSessionOfRegister(await registerOf(a.apiKey))).toBeUndefined();
   });
 
   it('isFull cuenta las cajas de visitante activas', async () => {
     const { service } = setup({ maxActive: 3 });
     await service.create('kiosco');
     await service.create('kiosco');
-    expect(service.isFull()).toBe(false);
+    expect(await service.isFull()).toBe(false);
     await service.create('almacen');
-    expect(service.isFull()).toBe(true);
-    service.revokeTenant('demo-almacen', 'reset');
-    expect(service.isFull()).toBe(false);
+    expect(await service.isFull()).toBe(true);
+    await service.revokeTenant('demo-almacen', 'reset');
+    expect(await service.isFull()).toBe(false);
   });
 
   it('sweepLegacy borra los tenants por visitante de antes de M8', async () => {

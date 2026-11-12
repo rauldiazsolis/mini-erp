@@ -48,7 +48,7 @@ export class PortalService {
     this.funnel = deps.funnel;
   }
 
-  createLink(p: { tenantId: string; registerId: string; keyId: string; origin: string }): { url: string; expiresAt: string } {
+  async createLink(p: { tenantId: string; registerId: string; keyId: string; origin: string }): Promise<{ url: string; expiresAt: string }> {
     const token = randomBytes(32).toString('base64url');
     const now = this.now();
     const expiresAt = new Date(now.getTime() + LINK_TTL_MS).toISOString();
@@ -64,13 +64,13 @@ export class PortalService {
       .prepare('SELECT token_hash, tenant_id, register_id, api_key_id FROM portal_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?')
       .get(hashLinkToken(token), now) as { token_hash: string; tenant_id: string; register_id: string; api_key_id: string | null } | undefined;
     if (link === undefined || link.api_key_id === null) throw new DomainError(410, PORTAL_EXPIRED);
-    const register = this.activeRegister(link.register_id, link.api_key_id);
+    const register = await this.activeRegister(link.register_id, link.api_key_id);
     const tenant = this.db.prepare('SELECT id, slug, name FROM tenants WHERE id = ?').get(link.tenant_id) as
       | { id: string; slug: string; name: string }
       | undefined;
-    const demo = this.demos.activeSessionOfRegister(link.register_id);
+    const demo = await this.demos.activeSessionOfRegister(link.register_id);
     // Una caja de un comercio demo sin su demo activa ya terminó
-    if (register === undefined || tenant === undefined || (demo === undefined && this.demos.isDemoTenant(link.tenant_id))) {
+    if (register === undefined || tenant === undefined || (demo === undefined && (await this.demos.isDemoTenant(link.tenant_id)))) {
       throw new DomainError(410, PORTAL_EXPIRED);
     }
     const session = randomBytes(32).toString('base64url');
@@ -97,7 +97,7 @@ export class PortalService {
       throw err;
     }
     // Mini desde el POS (#25): la sesión anónima se borra al revocar, así que se registra
-    if (demo !== undefined) this.funnel.tryRecord('portal-opened', { demoSessionId: demo.id });
+    if (demo !== undefined) await this.funnel.tryRecord('portal-opened', { demoSessionId: demo.id });
     const base = {
       token: session,
       tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
@@ -108,7 +108,7 @@ export class PortalService {
   }
 
   /** La sesión anónima del token, si sigue valiendo; si no, la borra. Usarla corre su último uso. */
-  resolveAnonymous(token: string): AnonymousContext | undefined {
+  async resolveAnonymous(token: string): Promise<AnonymousContext | undefined> {
     const hash = hashLinkToken(token);
     const row = this.db
       .prepare('SELECT kind, tenant_id, register_id, api_key_id, demo_session_id, last_used_at FROM anonymous_sessions WHERE token_hash = ?')
@@ -117,16 +117,16 @@ export class PortalService {
       | undefined;
     if (row === undefined) return undefined;
     const now = this.now();
-    const register = this.activeRegister(row.register_id, row.api_key_id);
+    const register = await this.activeRegister(row.register_id, row.api_key_id);
     const idle = now.getTime() - Date.parse(row.last_used_at);
     const demoSessionId = row.kind === 'demo' ? row.demo_session_id : null;
     const alive =
-      demoSessionId !== null ? this.demos.activeSessionOfRegister(row.register_id) !== undefined : row.kind === 'register' && idle < REGISTER_IDLE_MS;
+      demoSessionId !== null ? (await this.demos.activeSessionOfRegister(row.register_id)) !== undefined : row.kind === 'register' && idle < REGISTER_IDLE_MS;
     if (register === undefined || !alive) {
       this.db.prepare('DELETE FROM anonymous_sessions WHERE token_hash = ?').run(hash);
       return undefined;
     }
-    if (demoSessionId !== null) this.demos.touchRegister(row.register_id);
+    if (demoSessionId !== null) await this.demos.touchRegister(row.register_id);
     else if (idle >= TOUCH_EVERY_MS) this.db.prepare('UPDATE anonymous_sessions SET last_used_at = ? WHERE token_hash = ?').run(now.toISOString(), hash);
     const context = {
       tenantId: row.tenant_id,
@@ -139,7 +139,7 @@ export class PortalService {
   }
 
   /** La caja, si está activa y la key es una key activa suya. */
-  private activeRegister(registerId: string, keyId: string): ActiveRegister | undefined {
+  private async activeRegister(registerId: string, keyId: string): Promise<ActiveRegister | undefined> {
     return this.db
       .prepare(
         `SELECT r.name, r.branch, r.point_of_sale FROM registers r JOIN tenant_api_keys k ON k.register_id = r.id

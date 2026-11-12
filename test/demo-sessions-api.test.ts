@@ -125,11 +125,11 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     advance(23 * HOUR);
     expect((await info()).status).toBe(200); // el request la toca
     advance(23 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
     expect((await info()).status).toBe(200);
 
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
     expect((await info()).status).toBe(401);
   });
 
@@ -156,7 +156,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     const { app, advance, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
 
     const headers = { Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.5.0' };
     expect((await request(app).get('/connector/info').set(headers)).status).toBe(401);
@@ -176,7 +176,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
   it('el reinicio total revoca las cajas: su key da 401', async () => {
     const { app, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
-    demoSessions.revokeTenant('demo-kiosco', 'reset');
+    await demoSessions.revokeTenant('demo-kiosco', 'reset');
     const res = await request(app)
       .post('/connector/sync/pull')
       .set({ Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.6.0' })
@@ -188,7 +188,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     const { app, advance, demoSessions, tenantManager } = makeApp();
     expect((await startDemo(app, { template: 'almacen' })).status).toBe(201);
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
 
     // Lo que hace /alta?template=almacen&return_url=…&wipe_key=…: nunca usa la key de la demo
     const res = await request(app).post('/api/alta').send({

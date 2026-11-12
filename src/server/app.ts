@@ -133,8 +133,8 @@ export function createApp(deps?: AppDependencies): {
   // La cadena del comercio acepta también la sesión anónima de una demo (#24); el resto, solo usuarios
   const portal = rootContainer.use(portalServiceDef);
   const requireTenantSession = createAdminAuthMiddleware(authService, tenantManager, portal);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, (key) => {
-    demoSessions.touchRegister(key.registerId);
+  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, async (key) => {
+    await demoSessions.touchRegister(key.registerId);
   });
 
   app.use(allowPrivateNetwork);

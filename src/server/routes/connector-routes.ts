@@ -89,7 +89,7 @@ export function createConnectorRoutes(
       res.status(422).json({ code: 'unknown-template', templates: [...DEMO_TEMPLATES] });
       return;
     }
-    if (demoSessions.isFull()) {
+    if (await demoSessions.isFull()) {
       res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;
     }
@@ -121,14 +121,14 @@ export function createConnectorRoutes(
   router.use(checkContractVersion);
 
   // POST /portal-links (4.6.0, capacidad portal; #24 y M10): el link de un uso para abrir mini en la caja de la key
-  router.post('/portal-links', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/portal-links', async (req: AuthenticatedPosRequest, res: Response) => {
     const ctx = req.posContext;
     if (ctx === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
     const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
-    res.status(201).json(deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, keyId: ctx.keyId, origin }));
+    res.status(201).json(await deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, keyId: ctx.keyId, origin }));
   });
 
   // POST /sync/push (con Idempotency-Key)
@@ -172,8 +172,8 @@ export function createConnectorRoutes(
         console.error('[cobro] no se pudo generar el cargo:', err);
       }
       // La primera venta de una caja de visitante (#25): el reinicio de la demo la borra, así que se registra
-      const demo = demoSessions.activeSessionOfRegister(registerId);
-      if (demo !== undefined) deps.funnel.tryRecord('demo-sale', { demoSessionId: demo.id });
+      const demo = await demoSessions.activeSessionOfRegister(registerId);
+      if (demo !== undefined) await deps.funnel.tryRecord('demo-sale', { demoSessionId: demo.id });
     }
 
     // Logging detallado del lote recibido

@@ -32,7 +32,7 @@ export async function bootstrap(params: {
     interval,
   );
   // La retención del embudo (#25), aunque las demos estén apagadas
-  const funnelSweeper = startFunnelSweeper(bundle.funnel, interval);
+  const funnelSweeper = await startFunnelSweeper(bundle.funnel, interval);
   if (params.env['NODE_ENV'] === 'production') {
     return { sweeper, billingSweeper, funnelSweeper };
   }

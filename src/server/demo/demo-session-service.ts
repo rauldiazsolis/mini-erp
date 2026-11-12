@@ -56,7 +56,8 @@ export class DemoSessionService {
   /** Crea los comercios demo que falten. Devuelve los rubros creados. */
   async ensureDemoTenants(): Promise<DemoTemplate[]> {
     const created: DemoTemplate[] = [];
-    for (const t of DEMO_TEMPLATES.filter((t) => !this.hasDemoTenant(t))) {
+    for (const t of DEMO_TEMPLATES) {
+      if (await this.hasDemoTenant(t)) continue;
       await this.ensureDemoTenant(t);
       created.push(t);
     }
@@ -66,7 +67,7 @@ export class DemoSessionService {
   /** El comercio demo del rubro; si falta, lo crea y lo siembra. */
   async ensureDemoTenant(template: DemoTemplate): Promise<string> {
     const { tenantId, name } = DEMO_COMMERCES[template];
-    if (this.hasDemoTenant(template)) return tenantId;
+    if (await this.hasDemoTenant(template)) return tenantId;
     const now = this.deps.now();
     if (!(await this.deps.tenantManager.tenantExists(tenantId))) {
       await this.deps.tenantManager.createTenant({ id: tenantId, slug: tenantId, name });
@@ -81,7 +82,7 @@ export class DemoSessionService {
   async create(template: DemoTemplate): Promise<DemoSession> {
     const tenantId = await this.ensureDemoTenant(template);
     const sessionId = randomUUID();
-    const pointOfSale = this.freePointOfSale(tenantId, sessionId);
+    const pointOfSale = await this.freePointOfSale(tenantId, sessionId);
     const { rawKey, registerId } = await this.deps.apiKeyService.createApiKey({
       tenantId,
       name: pointOfSale,
@@ -96,7 +97,7 @@ export class DemoSessionService {
   }
 
   /** Corre el último uso de la demo de una caja (a lo sumo por minuto). En una caja real no hace nada. */
-  touchRegister(registerId: string): void {
+  async touchRegister(registerId: string): Promise<void> {
     const now = this.deps.now();
     const since = new Date(now.getTime() - TOUCH_EVERY_MS).toISOString();
     this.deps.systemDb
@@ -104,20 +105,20 @@ export class DemoSessionService {
       .run(now.toISOString(), registerId, since);
   }
 
-  countActive(): number {
+  async countActive(): Promise<number> {
     const row = this.deps.systemDb.prepare('SELECT COUNT(*) AS n FROM demo_sessions WHERE revoked_at IS NULL').get() as { n: number };
     return row.n;
   }
 
-  isFull(): boolean {
-    return this.countActive() >= this.deps.config.maxActive;
+  async isFull(): Promise<boolean> {
+    return (await this.countActive()) >= this.deps.config.maxActive;
   }
 
-  isDemoTenant(tenantId: string): boolean {
-    return this.templateOf(tenantId) !== undefined;
+  async isDemoTenant(tenantId: string): Promise<boolean> {
+    return (await this.templateOf(tenantId)) !== undefined;
   }
 
-  templateOf(tenantId: string): DemoTemplate | undefined {
+  async templateOf(tenantId: string): Promise<DemoTemplate | undefined> {
     const row = this.deps.systemDb.prepare('SELECT template FROM demo_tenants WHERE tenant_id = ?').get(tenantId) as
       | { template: string }
       | undefined;
@@ -125,7 +126,7 @@ export class DemoSessionService {
   }
 
   /** La sesión vigente de una caja de visitante, o `undefined` (caja real o revocada). */
-  activeSessionOfRegister(registerId: string): ActiveDemoSession | undefined {
+  async activeSessionOfRegister(registerId: string): Promise<ActiveDemoSession | undefined> {
     const row = this.deps.systemDb
       .prepare(
         `SELECT s.id, s.tenant_id, s.template, r.point_of_sale FROM demo_sessions s JOIN registers r ON r.id = s.register_id
@@ -137,14 +138,14 @@ export class DemoSessionService {
   }
 
   /** Revoca las cajas sin uso por `ttlHours`. */
-  revokeIdle(): number {
+  async revokeIdle(): Promise<number> {
     const cutoff = new Date(this.deps.now().getTime() - this.deps.config.ttlHours * HOUR_MS).toISOString();
-    return this.revoke('last_used_at < ?', [cutoff], 'idle');
+    return await this.revoke('last_used_at < ?', [cutoff], 'idle');
   }
 
   /** Revoca todas las cajas de visitante de un comercio (reinicio total). */
-  revokeTenant(tenantId: string, reason: 'reset'): number {
-    return this.revoke('tenant_id = ?', [tenantId], reason);
+  async revokeTenant(tenantId: string, reason: 'reset'): Promise<number> {
+    return await this.revoke('tenant_id = ?', [tenantId], reason);
   }
 
   /** Borra los tenants por visitante de #9 que quedaron de antes de M8. */
@@ -154,12 +155,12 @@ export class DemoSessionService {
     return rows.length;
   }
 
-  private hasDemoTenant(template: DemoTemplate): boolean {
+  private async hasDemoTenant(template: DemoTemplate): Promise<boolean> {
     return this.deps.systemDb.prepare('SELECT 1 FROM demo_tenants WHERE template = ?').get(template) !== undefined;
   }
 
   /** `Demo XXXX` con 4 caracteres del id, distinto de las cajas activas del comercio. */
-  private freePointOfSale(tenantId: string, sessionId: string): string {
+  private async freePointOfSale(tenantId: string, sessionId: string): Promise<string> {
     const used = this.deps.systemDb.prepare('SELECT 1 FROM registers WHERE tenant_id = ? AND point_of_sale = ? AND active = 1');
     let candidate = `Demo ${sessionId.slice(0, 4).toUpperCase()}`;
     while (used.get(tenantId, candidate) !== undefined) {
@@ -168,7 +169,7 @@ export class DemoSessionService {
     return candidate;
   }
 
-  private revoke(where: string, params: string[], reason: RevokeReason): number {
+  private async revoke(where: string, params: string[], reason: RevokeReason): Promise<number> {
     const db = this.deps.systemDb;
     const rows = db.prepare(`SELECT id, register_id FROM demo_sessions WHERE revoked_at IS NULL AND ${where}`).all(...params) as {
       id: string;

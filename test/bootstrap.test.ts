@@ -193,7 +193,7 @@ describe('seed de desarrollo (#21)', () => {
     const { systemDb, bundle, run } = await boot({});
     const first = DEV_DEMOS[0];
     if (first === undefined) throw new Error('Faltan demos');
-    bundle.demoSessions.revokeTenant(`demo-${first.template}`, 'reset');
+    await bundle.demoSessions.revokeTenant(`demo-${first.template}`, 'reset');
     await run();
     const alive = `SELECT COUNT(*) AS n FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
       WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`;

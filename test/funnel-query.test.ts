@@ -50,8 +50,8 @@ describe('FunnelQueryService (#25)', () => {
     ).run();
   });
 
-  it('el embudo cuenta la cohorte del rango por etapa y por rubro', () => {
-    const r = q.report({ from: '2026-10-05', to: '2026-10-05' });
+  it('el embudo cuenta la cohorte del rango por etapa y por rubro', async () => {
+    const r = await q.report({ from: '2026-10-05', to: '2026-10-05' });
     expect(r.landing).toEqual({ landing: 7, 'demo-click': 3, 'alta-open': 0 });
     // El tamaño de la cohorte: la base de los porcentajes del panel
     expect(r.visitors).toEqual({ total: 3, byRubro: { kiosco: 1, almacen: 0, ferreteria: 1, otro: 1 } });
@@ -62,14 +62,14 @@ describe('FunnelQueryService (#25)', () => {
     expect(r.stages.find((s) => s.stage === 'contact')?.byRubro.otro).toBe(1); // el contacto del landing
   });
 
-  it('el filtro de rubro deja solo esa cohorte', () => {
-    const r = q.report({ from: '2026-10-05', to: '2026-10-05', rubro: 'kiosco' });
+  it('el filtro de rubro deja solo esa cohorte', async () => {
+    const r = await q.report({ from: '2026-10-05', to: '2026-10-05', rubro: 'kiosco' });
     expect(r.stages.find((s) => s.stage === 'commerce')?.total).toBe(1);
     expect(r.stages.find((s) => s.stage === 'contact')?.total).toBe(1);
   });
 
-  it('la lista trae cada visitante con su etapa más avanzada', () => {
-    const items = q.visitors({ from: '2026-10-05', to: '2026-10-05' });
+  it('la lista trae cada visitante con su etapa más avanzada', async () => {
+    const items = await q.visitors({ from: '2026-10-05', to: '2026-10-05' });
     expect(items.map((i) => [i.id, i.furthest, i.rubro])).toEqual([
       ['t-ferre-caro', 'commerce', 'ferreteria'],
       ['c-c_b', 'contact', 'otro'],
@@ -78,25 +78,25 @@ describe('FunnelQueryService (#25)', () => {
     expect(items[2]).toMatchObject({ pointOfSale: 'Demo AB12', tenant: { slug: 'kiosco-ana' }, contact: { name: 'Ana', handledAt: null } });
   });
 
-  it('filtra por etapa, contacto, alta y texto', () => {
+  it('filtra por etapa, contacto, alta y texto', async () => {
     const range = { from: '2026-10-05', to: '2026-10-05' };
-    expect(q.visitors({ ...range, stage: 'load' }).map((i) => i.id)).toEqual(['demo_a']);
-    expect(q.visitors({ ...range, filter: 'contact' }).map((i) => i.id)).toEqual(['c-c_b', 'demo_a']);
-    expect(q.visitors({ ...range, filter: 'alta' }).map((i) => i.id)).toEqual(['t-ferre-caro', 'demo_a']);
-    expect(q.visitors({ ...range, q: 'ab12' }).map((i) => i.id)).toEqual(['demo_a']);
-    expect(q.visitors({ ...range, q: '114444' }).map((i) => i.id)).toEqual(['c-c_b']);
+    expect((await q.visitors({ ...range, stage: 'load' })).map((i) => i.id)).toEqual(['demo_a']);
+    expect((await q.visitors({ ...range, filter: 'contact' })).map((i) => i.id)).toEqual(['c-c_b', 'demo_a']);
+    expect((await q.visitors({ ...range, filter: 'alta' })).map((i) => i.id)).toEqual(['t-ferre-caro', 'demo_a']);
+    expect((await q.visitors({ ...range, q: 'ab12' })).map((i) => i.id)).toEqual(['demo_a']);
+    expect((await q.visitors({ ...range, q: '114444' })).map((i) => i.id)).toEqual(['c-c_b']);
   });
 
-  it('los contactos sin atender son todos, sin rango', () => {
+  it('los contactos sin atender son todos, sin rango', async () => {
     db.prepare(
       "INSERT INTO funnel_contacts (id, source, name, whatsapp, created_at, updated_at) VALUES ('c_viejo', 'landing', 'Viejo', '1100000000', '2026-01-01T12:00:00.000Z', '2026-01-01T12:00:00.000Z')",
     ).run();
     db.prepare("UPDATE funnel_contacts SET handled_at = ?, handled_by = 'u_ana' WHERE id = 'c_b'").run(plus(70));
-    expect(q.visitors({ from: '2026-10-05', to: '2026-10-05', filter: 'pending' }).map((i) => i.id)).toEqual(['demo_a', 'c-c_viejo']);
+    expect((await q.visitors({ from: '2026-10-05', to: '2026-10-05', filter: 'pending' })).map((i) => i.id)).toEqual(['demo_a', 'c-c_viejo']);
   });
 
-  it('la historia trae cada etapa con su fecha, la demo, el titular y la carga', () => {
-    const d = q.visitor('demo_a');
+  it('la historia trae cada etapa con su fecha, la demo, el titular y la carga', async () => {
+    const d = await q.visitor('demo_a');
     expect(d?.stages.map((s) => [s.stage, s.at !== null])).toEqual([
       ['demo', true],
       ['demo-sale', true],
@@ -111,17 +111,17 @@ describe('FunnelQueryService (#25)', () => {
     expect(d?.demo).toMatchObject({ template: 'kiosco', pointOfSale: 'Demo AB12', revokeReason: 'idle' });
     expect(d?.holder).toEqual({ name: 'Ana', accountCreatedAt: '2026-10-05T13:25:00.000Z' });
     expect(d?.loadSource).toBe('example');
-    expect(q.visitor('t-ferre-caro')?.stages.find((s) => s.stage === 'alta')?.at).toBe('2026-10-05T14:00:00.000Z');
-    expect(q.visitor('c-c_b')?.contact).toMatchObject({ name: 'Beto', source: 'landing' });
-    expect(q.visitor('nada')).toBeUndefined();
-    expect(q.visitor('t-demo-kiosco')).toBeUndefined(); // un comercio demo nunca es visitante
-    expect(q.visitor('t-kiosco-ana')).toBeUndefined(); // tiene demo: su historia es la de la demo
+    expect((await q.visitor('t-ferre-caro'))?.stages.find((s) => s.stage === 'alta')?.at).toBe('2026-10-05T14:00:00.000Z');
+    expect((await q.visitor('c-c_b'))?.contact).toMatchObject({ name: 'Beto', source: 'landing' });
+    expect(await q.visitor('nada')).toBeUndefined();
+    expect(await q.visitor('t-demo-kiosco')).toBeUndefined(); // un comercio demo nunca es visitante
+    expect(await q.visitor('t-kiosco-ana')).toBeUndefined(); // tiene demo: su historia es la de la demo
   });
 
-  it('el pago es el primero del titular desde que nace el comercio', () => {
+  it('el pago es el primero del titular desde que nace el comercio', async () => {
     const pm = db.prepare('INSERT INTO paid_movements (id, user_id, tenant_id, kind, amount, day, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     pm.run('pm0', 'u_ana', null, 'payment', 5000, '2026-10-04', '2026-10-04T12:00:00.000Z');
     pm.run('pm1', 'u_ana', 'kiosco-ana', 'payment', 5000, '2026-10-06', '2026-10-06T12:00:00.000Z');
-    expect(q.visitor('demo_a')?.stages.find((s) => s.stage === 'payment')?.at).toBe('2026-10-06T12:00:00.000Z');
+    expect((await q.visitor('demo_a'))?.stages.find((s) => s.stage === 'payment')?.at).toBe('2026-10-06T12:00:00.000Z');
   });
 });

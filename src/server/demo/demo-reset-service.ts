@@ -43,7 +43,7 @@ export class DemoResetService {
       for (const t of tables) db.exec(`DELETE FROM "${t.name}"`);
       await seedDemoCommerce(db, template, now);
     });
-    const revoked = this.deps.sessions.revokeTenant(tenantId, 'reset');
+    const revoked = await this.deps.sessions.revokeTenant(tenantId, 'reset');
     this.deps.systemDb.prepare('UPDATE demo_tenants SET last_full_reset_at = ? WHERE tenant_id = ?').run(now.toISOString(), tenantId);
     return { revoked };
   }
@@ -103,7 +103,7 @@ export class DemoResetService {
   }
 
   /** Los rubros cuyo último reinicio total es anterior a la hora del reinicio automático más reciente. */
-  dueTemplates(): DemoTemplate[] {
+  async dueTemplates(): Promise<DemoTemplate[]> {
     const boundary = lastResetBoundary(this.deps.now(), this.deps.sessions.resetHour()).toISOString();
     const rows = this.deps.systemDb
       .prepare('SELECT template FROM demo_tenants WHERE last_full_reset_at < ? ORDER BY rowid')
@@ -113,13 +113,13 @@ export class DemoResetService {
 
   /** El reinicio automático (#24): hace los que tocan y devuelve cuáles. */
   async runDue(): Promise<DemoTemplate[]> {
-    const due = this.dueTemplates();
+    const due = await this.dueTemplates();
     for (const t of due) await this.resetFull(t);
     return due;
   }
 
   /** El estado de los comercios demo para la plataforma (#24): cajas activas, demos y ventas de hoy, reinicios. */
-  status(): DemoStatusItem[] {
+  async status(): Promise<DemoStatusItem[]> {
     const today = argentinaToday(this.deps.now());
     const dayStart = new Date(`${today}T00:00:00.000-03:00`).toISOString();
     const rows = this.deps.systemDb

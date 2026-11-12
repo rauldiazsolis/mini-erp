@@ -14,16 +14,16 @@ const beaconSchema = z.object({ kind: z.enum(FUNNEL_DAILY_KINDS), demoSessionId:
 export function createFunnelRoutes(funnel: FunnelService, limits: { beacon: RequestHandler; contact: RequestHandler }): Router {
   const router = Router();
 
-  router.post('/beacon', limits.beacon, (req: Request, res: Response) => {
+  router.post('/beacon', limits.beacon, async (req: Request, res: Response) => {
     const body: unknown = req.body;
     const parsed = beaconSchema.safeParse(body);
     if (parsed.success) {
       try {
         const { kind, demoSessionId } = parsed.data;
-        if (kind === 'alta-open' && demoSessionId !== undefined && funnel.isDemoSession(demoSessionId)) {
-          funnel.record('alta-opened', { demoSessionId });
+        if (kind === 'alta-open' && demoSessionId !== undefined && (await funnel.isDemoSession(demoSessionId))) {
+          await funnel.record('alta-opened', { demoSessionId });
         } else {
-          funnel.bump(kind);
+          await funnel.bump(kind);
         }
       } catch (err: unknown) {
         console.error('[embudo] beacon:', err);
@@ -32,7 +32,7 @@ export function createFunnelRoutes(funnel: FunnelService, limits: { beacon: Requ
     res.status(204).end();
   });
 
-  router.post('/contacts', limits.contact, (req: Request, res: Response) => {
+  router.post('/contacts', limits.contact, async (req: Request, res: Response) => {
     const body: unknown = req.body;
     const parsed = funnelContactSchema.safeParse(body);
     if (!parsed.success) {
@@ -40,7 +40,7 @@ export function createFunnelRoutes(funnel: FunnelService, limits: { beacon: Requ
       return;
     }
     try {
-      res.status(201).json(funnel.saveContact(parsed.data));
+      res.status(201).json(await funnel.saveContact(parsed.data));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }

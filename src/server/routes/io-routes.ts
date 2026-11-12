@@ -38,10 +38,10 @@ function getImportExportService(req: AuthenticatedAdminRequest): ImportExportSer
 }
 
 /** La carga del embudo (#25): la primera vez que un comercio real carga algo, nunca en un comercio demo. */
-function recordLoad(funnel: FunnelService, tenantId: string | undefined, source: string): void {
+async function recordLoad(funnel: FunnelService, tenantId: string | undefined, source: string): Promise<void> {
   if (tenantId === undefined) return;
   try {
-    if (!funnel.isDemoTenant(tenantId)) funnel.record('catalog-loaded', { tenantId, data: { source } });
+    if (!(await funnel.isDemoTenant(tenantId))) await funnel.record('catalog-loaded', { tenantId, data: { source } });
   } catch (err: unknown) {
     console.error('[embudo] no se pudo registrar la carga:', err);
   }
@@ -105,7 +105,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
       if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
       const result = await service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
-      if (!dryRun && result.totals.create + result.totals.update > 0) recordLoad(funnel, req.activeTenantId, `import-${entity}`);
+      if (!dryRun && result.totals.create + result.totals.update > 0) await recordLoad(funnel, req.activeTenantId, `import-${entity}`);
       res.status(200).json(result);
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -132,7 +132,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
       }
       // Idempotente: el preset saltea los SKU que ya existen
       const { productsCreated } = await getImportExportService(req).applyBusinessPreset(businessType);
-      if (productsCreated > 0) recordLoad(funnel, req.activeTenantId, 'example');
+      if (productsCreated > 0) await recordLoad(funnel, req.activeTenantId, 'example');
       res.status(200).json({ productsCreated });
     } catch (err: unknown) {
       sendError(res, err, 500);
