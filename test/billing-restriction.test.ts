@@ -2,16 +2,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { impersonate } from './helpers/impersonate.ts';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('restricción del admin por deuda (#21)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let billing: BillingService;
   let tokens: { owner: string; member: string; root: string };
@@ -20,9 +20,8 @@ describe('restricción del admin por deuda (#21)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
@@ -30,7 +29,7 @@ describe('restricción del admin por deuda (#21)', () => {
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     ownerId = owner.user.id;
-    await new MembershipService(systemDb).addMembership(tenantId, member.user.id, 'member');
+    await new MembershipService(db().system).addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, member: member.token, root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token };
     const key = await request(app).post(`/api/tenants/${tenantId}/pos-registers`).set(as('owner')).send({ name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
     apiKey = (key.body as { rawKey: string }).rawKey;

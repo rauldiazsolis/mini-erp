@@ -1,6 +1,6 @@
 import { createDatabase } from '../../src/server/db/pg/database.ts';
 import { migrateSystem } from '../../src/server/db/pg/migrations/migrate.ts';
-import { createDb, TEMPLATE_DB, TEST_DB_PREFIX, testDbUrl, withAdmin } from './pg-admin.ts';
+import { createDb, dropDb, TEMPLATE_DB, TEST_DB_PREFIX, testDbUrl, withAdmin } from './pg-admin.ts';
 
 async function dropTestDbs(): Promise<void> {
   await withAdmin(async (client) => {
@@ -8,7 +8,7 @@ async function dropTestDbs(): Promise<void> {
       `${TEST_DB_PREFIX.replace(/_/g, '\\_')}%`,
     ]);
     for (const row of rows) {
-      await client.query(`DROP DATABASE IF EXISTS "${row.datname}" WITH (FORCE)`);
+      await dropDb(client, row.datname);
     }
   });
 }

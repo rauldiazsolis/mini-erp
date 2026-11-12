@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
-import { DatabaseSync } from 'node:sqlite';
+import type { Database } from './db/pg/database.ts';
 import { TenantManager } from './db/tenant-manager.ts';
 import { AuthService } from './auth/auth-service.ts';
 import { ApiKeyService } from './tenant/api-key-service.ts';
@@ -39,7 +39,8 @@ import { createRateLimit, readRateLimitConfig, type RateLimitConfig } from './mi
 import type { Container } from 'hardwired';
 import {
   createRootContainer,
-  systemDbDef,
+  databaseDef,
+  systemKyselyDef,
   tenantManagerDef,
   authServiceDef,
   apiKeyServiceDef,
@@ -72,7 +73,8 @@ import type { FunnelService } from './funnel/funnel-service.ts';
 import { APP_VERSION } from './app-version.ts';
 
 export type AppDependencies = {
-  systemDb?: DatabaseSync;
+  /** La base de PostgreSQL; sin ella, el contenedor la abre de `DATABASE_URL`. */
+  database?: Database | undefined;
   tenantManager?: TenantManager;
   rootContainer?: Container;
   demoConfig?: DemoConfig | undefined;
@@ -82,7 +84,7 @@ export type AppDependencies = {
 
 export function createApp(deps?: AppDependencies): {
   app: Express;
-  systemDb: DatabaseSync;
+  database: Database;
   tenantManager: TenantManager;
   authService: AuthService;
   apiKeyService: ApiKeyService;
@@ -98,13 +100,13 @@ export function createApp(deps?: AppDependencies): {
   app.set('trust proxy', 'loopback');
 
   const rootContainer = deps?.rootContainer ?? createRootContainer({
-    systemDb: deps?.systemDb,
+    database: deps?.database,
     tenantManager: deps?.tenantManager,
     demoConfig: deps?.demoConfig,
     now: deps?.now,
   });
 
-  const systemDb = rootContainer.use(systemDbDef);
+  const database = rootContainer.use(databaseDef);
   const tenantManager = rootContainer.use(tenantManagerDef);
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
@@ -146,7 +148,7 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(systemDb, membershipService, tenantManager, rootContainer);
+  const requireTenantContext = createTenantContextMiddleware(rootContainer.use(systemKyselyDef), membershipService, tenantManager, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));
@@ -207,7 +209,7 @@ export function createApp(deps?: AppDependencies): {
   app.use(
     '/api/platform',
     requireAdmin,
-    createPlatformFunnelRoutes({ funnel, queries: rootContainer.use(funnelQueryServiceDef), audit: auditLog, now }),
+    createPlatformFunnelRoutes({ funnel, queries: rootContainer.use(funnelQueryServiceDef), now }),
   );
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
@@ -222,7 +224,7 @@ export function createApp(deps?: AppDependencies): {
 
   return {
     app,
-    systemDb,
+    database,
     tenantManager,
     authService,
     apiKeyService,

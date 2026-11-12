@@ -1,6 +1,8 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from './pg/system-schema.ts';
 import { initTenantDb, openTenantDb } from './tenant-db.ts';
 import { seedDemoTenant } from '../seeds/index.ts';
 import { isBusinessType, type BusinessType } from '../../shared/business-type.ts';
@@ -30,17 +32,21 @@ export type CreateTenantParams = {
   businessType?: BusinessType | undefined;
 };
 
+/**
+ * Los comercios: sus filas de sistema (`tenants`, la membresía del owner) en PostgreSQL y la base de
+ * cada uno, todavía en SQLite (un `.sqlite` por comercio o en memoria, para los tests).
+ */
 export class TenantManager {
-  private systemDb: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private cache = new Map<string, DatabaseSync>();
   private baseDir: string;
   private inMemory: boolean;
 
   constructor(
-    systemDb: DatabaseSync,
+    db: Kysely<SystemDatabase>,
     options?: { baseDir?: string; inMemory?: boolean },
   ) {
-    this.systemDb = systemDb;
+    this.db = db;
     this.baseDir = options?.baseDir ?? join(process.cwd(), 'data', 'tenants');
     this.inMemory = options?.inMemory ?? false;
   }
@@ -64,17 +70,19 @@ export class TenantManager {
     return db;
   }
 
-  async tenantExists(id: string): Promise<boolean> {
-    const row = this.systemDb
-      .prepare('SELECT id FROM tenants WHERE id = ? OR slug = ?')
-      .get(id, id);
+  async tenantExists(id: string, db: Kysely<SystemDatabase> = this.db): Promise<boolean> {
+    const row = await db
+      .selectFrom('tenants')
+      .select('id')
+      .where((eb) => eb.or([eb('id', '=', id), eb('slug', '=', id)]))
+      .executeTakeFirst();
     return row !== undefined;
   }
 
-  async resolveAvailableSlug(baseSlug: string): Promise<string> {
+  async resolveAvailableSlug(baseSlug: string, db: Kysely<SystemDatabase> = this.db): Promise<string> {
     let candidate = baseSlug;
     let counter = 2;
-    while (await this.tenantExists(candidate)) {
+    while (await this.tenantExists(candidate, db)) {
       candidate = `${baseSlug}-${String(counter)}`;
       counter++;
     }
@@ -83,58 +91,58 @@ export class TenantManager {
 
   /** El nombre del comercio, el que se ve en el admin (#58); `null` si no existe. */
   async getTenantName(tenantId: string): Promise<string | null> {
-    const row = this.systemDb.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as
-      | { name: string }
-      | undefined;
+    const row = await this.db.selectFrom('tenants').select('name').where('id', '=', tenantId).executeTakeFirst();
     return row?.name ?? null;
   }
 
   /** El rubro del comercio (#22); `null` si no tiene (comercios de antes de M6, demos). */
   async getBusinessType(tenantId: string): Promise<BusinessType | null> {
-    const row = this.systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get(tenantId) as
-      | { business_type: string | null }
-      | undefined;
+    const row = await this.db.selectFrom('tenants').select('business_type').where('id', '=', tenantId).executeTakeFirst();
     const value = row?.business_type ?? null;
     return value !== null && isBusinessType(value) ? value : null;
   }
 
+  /** Crea el comercio entero: sus filas de sistema (en su transacción) y después su base. */
   async createTenant(params: CreateTenantParams): Promise<TenantRecord> {
+    const record = await this.db.transaction().execute(async (trx) => await this.createTenantRecord(params, trx));
+    // La base del comercio sigue en SQLite: no hay transacción común con la de sistema
+    await this.initTenantStorage(record.id, { seedDemoData: params.seedDemoData === true, now: record.created_at });
+    return record;
+  }
+
+  /**
+   * Las filas de sistema de un comercio nuevo (`tenants` y la membresía del owner), con el executor
+   * de quien llama: el alta lo hace dentro de su transacción y crea la base después
+   * (`initTenantStorage`), compensando con `deleteTenant` si falla.
+   */
+  async createTenantRecord(params: CreateTenantParams, db: Kysely<SystemDatabase> = this.db): Promise<TenantRecord> {
     const now = new Date().toISOString();
     const status: TenantRecord['status'] = 'active';
 
     // Desambiguar silenciosamente sólo si ya existe uno anterior
     let finalId = params.id;
     let finalSlug = params.slug;
-    if ((await this.tenantExists(finalId)) || (await this.tenantExists(finalSlug))) {
-      finalId = await this.resolveAvailableSlug(params.id);
+    if ((await this.tenantExists(finalId, db)) || (await this.tenantExists(finalSlug, db))) {
+      finalId = await this.resolveAvailableSlug(params.id, db);
       finalSlug = finalId;
     }
 
-    this.systemDb
-      .prepare(
+    const ownerUserId = params.ownerUserId;
+    await db
+      .insertInto('tenants')
+      .values({
+        id: finalId,
+        slug: finalSlug,
+        name: params.name,
+        status,
+        created_at: now,
         // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
-        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id, business_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null, params.businessType ?? null);
-
-    if (params.ownerUserId !== undefined) {
-      this.systemDb
-        .prepare(
-          'INSERT INTO memberships (user_id, tenant_id, role, created_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(params.ownerUserId, finalId, 'owner', now);
-    }
-
-    const tenantDb = this.getTenantDb(finalId);
-
-    // Sucursal por defecto
-    const defaultBranchId = 'branch-central';
-    tenantDb
-      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
-      .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', now);
-
-    if (params.seedDemoData === true) {
-      await seedDemoTenant(tenantDb, defaultBranchId);
+        holder_user_id: ownerUserId ?? null,
+        business_type: params.businessType ?? null,
+      })
+      .execute();
+    if (ownerUserId !== undefined) {
+      await db.insertInto('memberships').values({ user_id: ownerUserId, tenant_id: finalId, role: 'owner', created_at: now }).execute();
     }
 
     return {
@@ -146,9 +154,23 @@ export class TenantManager {
     };
   }
 
+  /** La base de un comercio recién creado (todavía SQLite): la sucursal por defecto y, si se pide, la semilla. */
+  async initTenantStorage(tenantId: string, options: { seedDemoData?: boolean; now?: string } = {}): Promise<void> {
+    const tenantDb = this.getTenantDb(tenantId);
+    const defaultBranchId = 'branch-central';
+    tenantDb
+      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
+      .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', options.now ?? new Date().toISOString());
+
+    if (options.seedDemoData === true) {
+      await seedDemoTenant(tenantDb, defaultBranchId);
+    }
+  }
+
   /**
-   * Borra un tenant entero: cierra su base, borra sus filas de sistema y su archivo. Lo usa el
-   * barrido de las demos por visitante de antes de M8 (#9, #24). No depende de `PRAGMA foreign_keys`.
+   * Borra un comercio entero: cierra su base, borra su fila de sistema y su archivo. Lo usa el alta
+   * para deshacer un comercio a medio crear. Sus cajas (con sus equipos), keys, membresías,
+   * invitaciones, suspensiones y pedidos de ayuda se van con la fila (`ON DELETE CASCADE`).
    */
   async deleteTenant(id: string): Promise<void> {
     const db = this.cache.get(id);
@@ -161,19 +183,7 @@ export class TenantManager {
       this.cache.delete(id);
     }
 
-    this.systemDb.exec('BEGIN');
-    try {
-      this.systemDb.prepare('DELETE FROM register_devices WHERE register_id IN (SELECT id FROM registers WHERE tenant_id = ?)').run(id);
-      this.systemDb.prepare('DELETE FROM registers WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM legacy_demo_sessions WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM tenants WHERE id = ?').run(id);
-      this.systemDb.exec('COMMIT');
-    } catch (err: unknown) {
-      this.systemDb.exec('ROLLBACK');
-      throw err;
-    }
+    await this.db.deleteFrom('tenants').where('id', '=', id).execute();
 
     if (!this.inMemory) {
       const file = join(this.baseDir, `${id}.sqlite`);

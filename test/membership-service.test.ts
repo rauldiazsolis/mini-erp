@@ -1,22 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
-import { AuditLog } from '../src/server/audit/audit-log.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 
-describe('MembershipService y AuditLog (#19)', () => {
-  let systemDb: DatabaseSync;
+const db = setupTestDb();
+
+describe('MembershipService (#19)', () => {
   let auth: AuthService;
   let tm: TenantManager;
   let members: MembershipService;
 
   beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    auth = new AuthService(systemDb);
-    tm = new TenantManager(systemDb, { inMemory: true });
-    members = new MembershipService(systemDb);
+    auth = new AuthService(db().system);
+    tm = new TenantManager(db().system, { inMemory: true });
+    members = new MembershipService(db().system);
   });
 
   it('resuelve el rol: membresía activa, nada si está desactivada ni para root sin membresía (#16)', async () => {
@@ -26,7 +24,7 @@ describe('MembershipService y AuditLog (#19)', () => {
     expect(await members.resolveRole(ana, 'kiosco-a')).toBe('owner');
     expect(await members.resolveRole(root, 'kiosco-a')).toBeUndefined();
     expect(await members.resolveRole(root, 'no-existe')).toBeUndefined();
-    systemDb.prepare("UPDATE memberships SET status = 'disabled'").run();
+    await db().system.updateTable('memberships').set({ status: 'disabled' }).execute();
     expect(await members.resolveRole(ana, 'kiosco-a')).toBeUndefined();
   });
 
@@ -65,19 +63,5 @@ describe('MembershipService y AuditLog (#19)', () => {
     await expect(members.updateMember({ tenantId: 'kiosco-a', actor, targetUserId: ana.id, role: 'admin' })).rejects.toThrow(
       'El comercio necesita al menos un owner activo',
     );
-  });
-
-  it('AuditLog registra y lista con nombres, lo más nuevo primero', async () => {
-    let t = 0;
-    const audit = new AuditLog(systemDb, () => new Date(Date.UTC(2026, 9, 1, 10, t++)));
-    const ana = (await auth.createUser({ email: 'ana@x.com', password: 'password123', name: 'Ana' })).user;
-    const bob = (await auth.createUser({ email: 'bob@x.com', password: 'password123', name: 'Bob' })).user;
-    await audit.record({ actorUserId: ana.id, tenantId: 'kiosco-a', action: 'tenant.created' });
-    await audit.record({ actorUserId: ana.id, tenantId: 'kiosco-a', action: 'member.disabled', targetUserId: bob.id, details: { role: 'member' } });
-    await audit.record({ actorUserId: ana.id, tenantId: 'otro', action: 'tenant.created' });
-    const list = await audit.listForTenant('kiosco-a');
-    expect(list.map((e) => e.action)).toEqual(['member.disabled', 'tenant.created']);
-    expect(list[0]).toMatchObject({ actorName: 'Ana', targetName: 'Bob', details: { role: 'member' } });
-    expect(list[1]?.targetName).toBeNull();
   });
 });

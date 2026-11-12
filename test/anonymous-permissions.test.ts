@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { ANONYMOUS_DENIED, REGISTER_ALLOWED } from '../src/shared/permissions.ts';
 import { RUTAS } from './helpers/tenant-routes.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const V = { 'X-POS-Contract-Version': '4.6.0' };
 
@@ -19,9 +21,8 @@ function sample(route: string, tenantId = 'demo-kiosco'): { method: 'get' | 'pos
 
 describe('permisos del acceso anónimo en todas las rutas del comercio (#24, M10)', () => {
   it('lo que no puede da 403; lo demás pasa el permiso', async () => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const { app } = createApp({ systemDb, tenantManager, demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 } });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const { app } = createApp({ database: db(), tenantManager, demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 } });
     const demo = await request(app).post('/connector/demo-sessions').set(V).send({});
     const apiKey = (demo.body as { apiKey: string }).apiKey;
     const link = await request(app).post('/connector/portal-links').set({ Authorization: `Bearer ${apiKey}`, ...V });
@@ -38,8 +39,7 @@ describe('permisos del acceso anónimo en todas las rutas del comercio (#24, M10
   });
 
   it('la caja real solo pasa tenant.view y sales.view (M10)', async () => {
-    const systemDb = openSystemDb(':memory:');
-    const { app } = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) });
+    const { app } = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }) });
     const alta = await request(app).post('/api/alta').send({
       name: 'Ana',
       email: 'ana@kiosco.com',

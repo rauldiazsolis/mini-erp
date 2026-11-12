@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { backendInfo } from '../src/server/connector/backend-info.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const at = '2026-10-02T12:00:00.000Z';
 const origin = { branch: 'CENTRAL', pointOfSale: 'POS-01' };
@@ -16,10 +17,8 @@ describe('reglas de evolución del contrato 4.4.0 (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
@@ -101,10 +100,8 @@ describe('contratos 4.5.0 (#58) y 4.6.0 (#63)', () => {
   let apiKey: string;
 
   beforeEach(async () => {
-    const systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco Pepe', ownerUserId: user.id });

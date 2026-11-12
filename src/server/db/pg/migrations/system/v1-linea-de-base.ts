@@ -2,7 +2,7 @@ import { sql } from 'kysely';
 import type { Migration } from '../types.ts';
 
 /**
- * Línea de base del esquema `system` en PostgreSQL: lo que en SQLite era `system.sqlite` v11.
+ * Línea de base del esquema `system` en PostgreSQL: lo que en SQLite era la base de sistema v11.
  * No se toca nunca más: cada cambio es una migración nueva.
  *
  * Dinero en `numeric(14,2)`, instantes en `timestamptz`, días argentinos en `date` (también

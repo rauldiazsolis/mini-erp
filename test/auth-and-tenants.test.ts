@@ -1,22 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('Auth & Multitenancy (Etapa 1.3)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let authService: ReturnType<typeof createApp>['authService'];
 
   beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
 
-    const bundle = createApp({ systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     authService = bundle.authService;
   });
@@ -131,7 +129,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   it('una membresía desactivada no da acceso al comercio (#19)', async () => {
     const a = await authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
     await tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
-    systemDb.prepare("UPDATE memberships SET status = 'disabled' WHERE user_id = ?").run(a.user.id);
+    await db().system.updateTable('memberships').set({ status: 'disabled' }).where('user_id', '=', a.user.id).execute();
     expect(await authService.listUserTenants(a.user.id)).toEqual([]);
   });
 });

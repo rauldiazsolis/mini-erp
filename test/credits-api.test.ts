@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
 import type { ChargesPage, CreditMovementItem, CreditsResponse, GiftItem } from '../src/shared/credits-types.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const origin = { branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 const venta = (eventId: string, saleId: string, createdAt: string) => ({
@@ -20,7 +21,6 @@ const venta = (eventId: string, saleId: string, createdAt: string) => ({
 
 describe('API de Créditos del comercio (#21)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let billing: BillingService;
   let tokens: { owner: string; admin: string; member: string; root: string };
   let keys: string[];
@@ -28,9 +28,8 @@ describe('API de Créditos del comercio (#21)', () => {
   const at = new Date('2026-10-05T15:00:00.000Z');
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => at });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), tenantManager, now: () => at });
     app = bundle.app;
     billing = bundle.billing;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
@@ -38,7 +37,7 @@ describe('API de Créditos del comercio (#21)', () => {
     const admin = await bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
-    const members = new MembershipService(systemDb);
+    const members = new MembershipService(db().system);
     await members.addMembership(tenantId, admin.user.id, 'admin');
     await members.addMembership(tenantId, member.user.id, 'member');
     await billing.grantSignupBonus(tenantId, owner.user.id);

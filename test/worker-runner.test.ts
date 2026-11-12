@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
 import { currentVersion } from '../src/server/db/migrations/types.ts';
 import { readVersion } from '../src/server/db/migrations/migrate.ts';
@@ -16,13 +15,10 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Sistema al día y un comercio en v1 (como el de producción antes de la 0.4.0), con un producto. */
+/** Un comercio en v1 (como el de producción antes de la 0.4.0), con un producto; lo de sistema está en PostgreSQL. */
 function sembrar(tenantVersion = 1): string {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-worker-'));
   const dataDir = join(root, 'data');
-  const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
-  systemDb.prepare('INSERT INTO tenants (id, slug, name, status, created_at) VALUES (?, ?, ?, ?, ?)').run('kiosco', 'kiosco', 'Kiosco', 'active', new Date().toISOString());
-  systemDb.close();
   mkdirSync(join(dataDir, 'tenants'), { recursive: true });
   const tenant = createDbAtVersion(TENANT_SCHEMA, 1, join(dataDir, 'tenants', 'kiosco.sqlite'));
   const at = new Date().toISOString();

@@ -164,7 +164,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
 Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
-(aprobada el 2026-11-11; fases 1 y 2 hechas). Mientras dure la migración, lo de SQLite que sigue más abajo
+(aprobada el 2026-11-11; fases 1 a 3 hechas: el sistema ya está en PostgreSQL, los comercios siguen en SQLite). Mientras dure la migración, lo de SQLite que sigue más abajo
 describe el código que todavía no se migró; al cerrar la última fase se reemplaza por esta sección.
 Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
 PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
@@ -230,8 +230,9 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 ## Arquitectura
 
 - **DB por tenant** con `DatabaseSync` de `node:sqlite`:
-  - `data/system.sqlite`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`),
-    cajas con sus keys y todo el cobro (cargos, pagados, regalados, configuración).
+  - Lo de sistema (usuarios, tenants, membresías, roles globales `root`, `support`, `user`, cajas con
+    sus keys y todo el cobro) está en el esquema `system` de PostgreSQL (fase 3, ver "Persistencia"):
+    ya no hay `system.sqlite`, y `test/pg-guards.test.ts` falla si `src/server` o `scripts/` lo nombran.
   - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
     ventas y lotes de sincronización.
 - **Migraciones de esquema** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`):
@@ -247,10 +248,11 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`). Migra
     con el esquema cortado en su versión (`HASTA_VN`, como `test/system-migration-v9.test.ts`): así
     una migración posterior no lo rompe.
-  - Solo el arranque migra bases con datos (`runMigrations`, en un worker): antes copia lo que va a
-    migrar a `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas.
-    `openSystemDb` y `openTenantDb` crean bases nuevas y verifican las existentes (`checkDb`), nunca
-    migran.
+  - Solo el arranque migra bases con datos (`runMigrations`, en un worker, solo las de comercio: lo
+    de sistema lo migra `migrateSystem` en PostgreSQL): antes copia lo que va a migrar a
+    `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas. `openTenantDb`
+    crea bases nuevas y verifica las existentes (`checkDb`), nunca migra. `migrations/system.ts` y
+    sus migraciones de SQLite quedan solo para sus tests, hasta la fase 5.
   - Una base anterior a la línea de base o más nueva que el código (un rollback) no arranca.
 - **Arranque en dos fases** (`src/server/startup.ts`): el servidor escucha enseguida con el app de
   mantenimiento (`src/server/maintenance/`, sin bases), migra y recién ahí monta el app completo.
@@ -299,7 +301,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     Caja 1 del Kiosco.
   - Dos cajas de demo con key fija (`DEV_DEMOS`: Kiosco y Almacén demo), que se vuelven a crear al
     arrancar si un reinicio o la inactividad las revocó.
-  - Es idempotente y no borra nada: para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
+  - Es idempotente y no borra nada: para sembrar de nuevo, se borran la carpeta de datos de desarrollo y la base de `DATABASE_URL`.
     El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
@@ -341,7 +343,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   - **Un comercio fijo por rubro**: `demo-kiosco`, `demo-almacen` y `demo-ferreteria` ("Kiosco Demo",
     etc.), sin dueño, marcados en `demo_tenants`. La semilla (`seedDemoCommerce`,
     `seeds/demo-commerce.ts`) pone el catálogo con ids deterministas (`demo_<sku>`), los clientes demo
-    y 30 días de historial de dos cajas de la casa, relativos a `now`. `DEMO_TENANT_IDS_SQL`
+    y 30 días de historial de dos cajas de la casa, relativos a `now`. `demoTenantIds(db)`
     (`demo/demo-tenant-ids.ts`) es la marca de demo para cobro, plataforma, suspensión,
     impersonación y backup: los comercios demo nunca cobran ni aparecen en Comercios o Usuarios.
   - **Una caja por visitante**: `POST /connector/demo-sessions` (el único endpoint sin key) crea en
@@ -357,8 +359,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
     cajas.
   - **El barrido** (`startDemoSweeper` en `demo/demo-sweeper.ts`, al arrancar y cada 15 minutos):
-    borra las demos por tenant de antes de M8 (`legacy_demo_sessions`), hace el reinicio total
-    automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
+    hace el reinicio total automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
     caído, al arrancar), revoca las cajas inactivas y repone el stock que bajó de un cuarto del de la
     semilla ("Reposición automática"). Loguea `[demos] barrido: …`.
   - **Portal**: el visitante abre el admin del comercio demo desde el POS con `/MINI` (ver "Portal y
@@ -653,7 +654,8 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
   `/health` responda la versión subida.
 - Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
-  `scripts/backup.ts` (`VACUUM INTO` de las bases reales, sin demos, 7 días).
+  `scripts/backup.ts` (`VACUUM INTO` de las bases de comercio reales, sin demos, 7 días; la lista
+  sale de PostgreSQL). Lo de sistema (PostgreSQL) va con `pg_dump`, en la fase 6 de la migración.
 - Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen
   hashes de contraseñas.
 

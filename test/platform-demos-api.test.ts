@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
+
+const pgDb = setupTestDb();
 
 const V = { 'X-POS-Contract-Version': '4.6.0' };
 
@@ -23,16 +25,13 @@ type DemoStatus = {
 describe('demos en la plataforma (#24)', () => {
   let app: Express;
   let bundle: ReturnType<typeof createApp>;
-  let systemDb: DatabaseSync;
   let tokens: { support: string; root: string; owner: string; ownerId: string };
   let clock: Date;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    bundle = createApp({
-      systemDb,
+    bundle = createApp({ database: pgDb(),
       tenantManager,
       now: () => clock,
       demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 },
@@ -40,7 +39,7 @@ describe('demos en la plataforma (#24)', () => {
     app = bundle.app;
     await bundle.demoSessions.ensureDemoTenants();
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
+    await pgDb().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const rootToken = (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Juan' });
@@ -79,14 +78,10 @@ describe('demos en la plataforma (#24)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ reset: ['kiosco'], revoked: 0 });
     expect((await pull(apiKey)).status).toBe(200);
-    const audit = systemDb.prepare("SELECT actor_user_id AS actor, tenant_id, details FROM audit_log WHERE action = 'demo.reset'").all() as {
-      actor: string;
-      tenant_id: string;
-      details: string;
-    }[];
+    const audit = await pgDb().system.selectFrom('audit_log').select(['tenant_id', 'details']).where('action', '=', 'demo.reset').execute();
     expect(audit).toHaveLength(1);
     expect(audit[0]?.tenant_id).toBe('demo-kiosco');
-    expect(JSON.parse(audit[0]?.details ?? '{}')).toEqual({ template: 'kiosco', kind: 'partial' });
+    expect(audit[0]?.details).toEqual({ template: 'kiosco', kind: 'partial' });
   });
 
   it('el reinicio total sin rubro reinicia los tres y revoca todas las cajas', async () => {
@@ -97,7 +92,8 @@ describe('demos en la plataforma (#24)', () => {
     expect(res.body).toEqual({ reset: ['kiosco', 'almacen', 'ferreteria'], revoked: 2 });
     expect((await pull(a)).status).toBe(401);
     expect((await pull(b)).status).toBe(401);
-    expect(systemDb.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'demo.reset'").get()).toEqual({ n: 3 });
+    const n = await pgDb().system.selectFrom('audit_log').select((eb) => eb.fn.countAll<number>().as('n')).where('action', '=', 'demo.reset').executeTakeFirst();
+    expect(n).toEqual({ n: 3 });
   });
 
   it('400 con un rubro o un tipo desconocidos', async () => {
@@ -113,11 +109,17 @@ describe('demos en la plataforma (#24)', () => {
 
   it('el registro de la plataforma muestra el reinicio y el automático sale como "Automático"', async () => {
     await request(app).post('/api/platform/demos/reset').set(as(tokens.support)).send({ template: 'kiosco', kind: 'partial' });
-    systemDb
-      .prepare(
-        "INSERT INTO audit_log (id, at, actor_user_id, tenant_id, action, details) VALUES ('a-auto', ?, 'system', 'demo-almacen', 'demo.reset', '{}')",
-      )
-      .run(new Date(clock.getTime() + 1000).toISOString());
+    await pgDb()
+      .system.insertInto('audit_log')
+      .values({
+        id: 'a-auto',
+        at: new Date(clock.getTime() + 1000).toISOString(),
+        actor_user_id: 'system',
+        tenant_id: 'demo-almacen',
+        action: 'demo.reset',
+        details: jsonValue({}),
+      })
+      .execute();
     const res = await request(app).get('/api/platform/audit').set(as(tokens.support));
     const items = res.body as { action: string; actorName: string; tenantName: string | null }[];
     expect(items.filter((i) => i.action === 'demo.reset').map((i) => [i.actorName, i.tenantName])).toEqual([

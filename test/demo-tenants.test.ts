@@ -1,35 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
-import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import {
   DEMO_CUSTOMERS,
   DEMO_TEMPLATES,
   isDemoTemplate,
   seedDemoSession,
 } from '../src/server/seeds/index.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 
-function systemDb(): DatabaseSync {
-  const db = new DatabaseSync(':memory:');
-  initSystemDb(db);
-  return db;
-}
+const pgDb = setupTestDb();
 
 function count(db: DatabaseSync, sql: string, ...params: string[]): number {
   return (db.prepare(sql).get(...params) as { n: number }).n;
 }
 
-/** Una demo por visitante de antes de M8 (#24): la que borra el barrido. */
-function markAsLegacyDemo(sys: DatabaseSync, tenantId: string): void {
-  const now = new Date().toISOString();
-  sys
-    .prepare('INSERT INTO legacy_demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
-    .run(tenantId, 'kiosco', now, now);
+async function insertUser(id: string): Promise<void> {
+  await pgDb()
+    .system.insertInto('users')
+    .values({ id, email: `${id}@b.com`, password_hash: 'hash', name: id, global_role: 'user', created_at: new Date().toISOString() })
+    .execute();
+}
+
+async function countWhere(table: 'memberships' | 'registers' | 'register_devices' | 'tenant_api_keys' | 'tenants'): Promise<number> {
+  const row = await pgDb().system.selectFrom(table).select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow();
+  return row.n;
 }
 
 describe('Templates de demo (#9)', () => {
@@ -40,7 +39,7 @@ describe('Templates de demo (#9)', () => {
   });
 
   it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', async () => {
-    const manager = new TenantManager(systemDb(), { inMemory: true });
+    const manager = new TenantManager(pgDb().system, { inMemory: true });
     await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
     const db = manager.getTenantDb('demo-a');
     await seedDemoSession(db, 'almacen');
@@ -53,40 +52,38 @@ describe('Templates de demo (#9)', () => {
 
 describe('TenantManager y demos (#9)', () => {
   it('crea un tenant sin dueño', async () => {
-    const sys = systemDb();
-    const manager = new TenantManager(sys, { inMemory: true });
+    const manager = new TenantManager(pgDb().system, { inMemory: true });
     await manager.createTenant({ id: 'demo-b', slug: 'demo-b', name: 'Demo' });
     expect(await manager.tenantExists('demo-b')).toBe(true);
-    expect(count(sys, 'SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ?', 'demo-b')).toBe(0);
+    expect(await countWhere('memberships')).toBe(0);
   });
 
-  it('deleteTenant borra el tenant, sus keys, membresías y su fila de demo', async () => {
-    const sys = systemDb();
+  it('deleteTenant borra el tenant con sus cajas, equipos, keys y membresías', async () => {
+    const sys = pgDb().system;
     const manager = new TenantManager(sys, { inMemory: true });
-    const auth = new AuthService(sys);
-    const { user } = await auth.createUser({ email: 'a@b.com', password: 'secreta1', name: 'A' });
-    await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
-    const keys = new ApiKeyService(sys);
-    const { rawKey } = await keys.createApiKey({
-      tenantId: 'tienda',
-      name: 'Caja',
-      branch: 'CENTRAL',
-      pointOfSale: 'Caja 1',
-    });
-    markAsLegacyDemo(sys, 'tienda');
+    await insertUser('ana');
+    await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: 'ana' });
+    const now = new Date().toISOString();
+    await sys
+      .insertInto('registers')
+      .values({ id: 'reg-1', tenant_id: 'tienda', name: 'Caja 1', branch: 'CENTRAL', point_of_sale: 'Caja 1', created_at: now })
+      .execute();
+    await sys.insertInto('register_devices').values({ register_id: 'reg-1', device_id: 'equipo-1', first_seen_at: now, last_seen_at: now }).execute();
+    await sys
+      .insertInto('tenant_api_keys')
+      .values({ id: 'key-1', tenant_id: 'tienda', name: 'Caja 1', key_hash: 'h', key_prefix: 'p', branch: 'CENTRAL', point_of_sale: 'Caja 1', created_at: now, register_id: 'reg-1' })
+      .execute();
 
     await manager.deleteTenant('tienda');
 
     expect(await manager.tenantExists('tienda')).toBe(false);
-    expect(await keys.validateApiKey(rawKey)).toBeUndefined();
-    expect(count(sys, 'SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ?', 'tienda')).toBe(0);
-    expect(count(sys, 'SELECT COUNT(*) AS n FROM legacy_demo_sessions WHERE tenant_id = ?', 'tienda')).toBe(0);
+    expect([await countWhere('tenants'), await countWhere('memberships'), await countWhere('registers'), await countWhere('register_devices'), await countWhere('tenant_api_keys')]).toEqual([0, 0, 0, 0, 0]);
   });
 
   it('deleteTenant borra el archivo de la base', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mini-erp-demo-'));
     try {
-      const manager = new TenantManager(systemDb(), { baseDir: dir });
+      const manager = new TenantManager(pgDb().system, { baseDir: dir });
       await manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
       const file = join(dir, 'demo-c.sqlite');
       expect(existsSync(file)).toBe(true);
@@ -98,13 +95,12 @@ describe('TenantManager y demos (#9)', () => {
   });
 
   it('las demos no aparecen en la lista de comercios, ni para root', async () => {
-    const sys = systemDb();
-    const manager = new TenantManager(sys, { inMemory: true });
-    const auth = new AuthService(sys);
+    const manager = new TenantManager(pgDb().system, { inMemory: true });
+    const auth = new AuthService(pgDb().system);
     const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });
     await manager.createTenant({ id: 'demo-d', slug: 'demo-d', name: 'Demo' });
-    sys.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-d', 'kiosco', 'x')").run();
+    await pgDb().system.insertInto('demo_tenants').values({ tenant_id: 'demo-d', template: 'kiosco', last_full_reset_at: new Date().toISOString() }).execute();
 
     const ids = (await auth.listUserTenants(user.id)).map((t) => t.tenantId);
     expect(ids).toEqual(['tienda']);

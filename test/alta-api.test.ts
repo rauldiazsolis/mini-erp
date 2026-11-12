@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import type { BillingService } from '../src/server/billing/billing-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type AltaBody = {
   token?: string;
@@ -15,13 +17,14 @@ type AltaBody = {
 
 describe('alta atómica (#19)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
+  let billing: BillingService;
 
   beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    app = createApp({ systemDb, tenantManager }).app;
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), tenantManager });
+    app = bundle.app;
+    billing = bundle.billing;
   });
 
   const alta = {
@@ -48,16 +51,15 @@ describe('alta atómica (#19)', () => {
     ]);
     const products = tenantManager.getTenantDb('kiosco-marta').prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
     expect(products.n).toBe(0);
-    expect(systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get('kiosco-marta')).toEqual({ business_type: 'kiosco' });
-    expect(systemDb.prepare('SELECT whatsapp FROM users WHERE email = ?').get('marta@kiosco.com')).toEqual({ whatsapp: '5491155551234' });
-    const audit = systemDb.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'tenant.created'").get() as { n: number };
-    expect(audit.n).toBe(1);
+    expect(await db().system.selectFrom('tenants').select('business_type').where('id', '=', 'kiosco-marta').executeTakeFirst()).toEqual({ business_type: 'kiosco' });
+    expect(await db().system.selectFrom('users').select('whatsapp').where('email', '=', 'marta@kiosco.com').executeTakeFirst()).toEqual({ whatsapp: '5491155551234' });
+    expect(await db().system.selectFrom('audit_log').select('id').where('action', '=', 'tenant.created').execute()).toHaveLength(1);
   });
 
   it('el comercio nace con titular y el bono de alta de $50.000 (#21)', async () => {
     const body = (await request(app).post('/api/alta').send(alta)).body as AltaBody;
-    expect(systemDb.prepare('SELECT holder_user_id FROM tenants WHERE id = ?').get(body.tenant.id)).toEqual({ holder_user_id: body.user.id });
-    expect(systemDb.prepare('SELECT origin, amount, granted_by FROM gift_credits WHERE tenant_id = ?').all(body.tenant.id)).toEqual([
+    expect(await db().system.selectFrom('tenants').select('holder_user_id').where('id', '=', body.tenant.id).executeTakeFirst()).toEqual({ holder_user_id: body.user.id });
+    expect(await db().system.selectFrom('gift_credits').select(['origin', 'amount', 'granted_by']).where('tenant_id', '=', body.tenant.id).execute()).toEqual([
       { origin: 'signup', amount: 50000, granted_by: body.user.id },
     ]);
   });
@@ -66,7 +68,7 @@ describe('alta atómica (#19)', () => {
     const res = await request(app).post('/api/alta').send({ ...alta, businessType: 'empty' });
     expect(res.status).toBe(400);
     expect((res.body as { error: string }).error).toBe('Elegí el rubro de tu comercio');
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM tenants').get()).toEqual({ n: 0 });
+    expect(await db().system.selectFrom('tenants').select('id').execute()).toEqual([]);
   });
 
   it('sin WhatsApp o con uno inválido: 400 y no crea nada', async () => {
@@ -75,7 +77,7 @@ describe('alta atómica (#19)', () => {
       expect(res.status).toBe(400);
       expect((res.body as { error: string }).error).toBe('Escribí un WhatsApp con código de área (8 a 15 números)');
     }
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM users').get()).toEqual({ n: 0 });
+    expect(await db().system.selectFrom('users').select('id').execute()).toEqual([]);
   });
 
   it('con sesión crea otro comercio para la misma cuenta, sin token nuevo', async () => {
@@ -102,8 +104,33 @@ describe('alta atómica (#19)', () => {
     const res = await request(app).post('/api/alta').send({ ...alta, businessName: 'Otro' });
     expect(res.status).toBe(409);
     expect((res.body as { error: string }).error).toBe('Ya tenés una cuenta con ese correo: iniciá sesión');
-    const tenants = systemDb.prepare('SELECT COUNT(*) AS n FROM tenants').get() as { n: number };
-    expect(tenants.n).toBe(1);
+    expect(await db().system.selectFrom('tenants').select('id').execute()).toHaveLength(1);
+  });
+
+  it('si la base del comercio falla, no queda nada de sistema: ni cuenta, ni comercio, ni caja, ni bono', async () => {
+    const init = vi.spyOn(tenantManager, 'initTenantStorage').mockRejectedValueOnce(new Error('disco lleno'));
+    const res = await request(app).post('/api/alta').send(alta);
+    expect(res.status).toBe(500);
+    expect(init).toHaveBeenCalledOnce();
+    const sys = db().system;
+    expect(await sys.selectFrom('users').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('tenants').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('registers').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('gift_credits').select('id').execute()).toEqual([]);
+  });
+
+  it('si algo de sistema falla, la transacción no deja nada a medias ni crea la base', async () => {
+    vi.spyOn(billing, 'grantSignupBonus').mockRejectedValueOnce(new Error('se cortó la base'));
+    const init = vi.spyOn(tenantManager, 'initTenantStorage');
+    const res = await request(app).post('/api/alta').send(alta);
+    expect(res.status).toBe(500);
+    expect(init).not.toHaveBeenCalled();
+    const sys = db().system;
+    expect(await sys.selectFrom('users').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('tenants').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('memberships').select('user_id').execute()).toEqual([]);
+    expect(await sys.selectFrom('tenant_api_keys').select('id').execute()).toEqual([]);
+    expect(await sys.selectFrom('audit_log').select('id').execute()).toEqual([]);
   });
 
   it('pide 8 caracteres de contraseña', async () => {

@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
+
+async function insertUser(id: string, email: string, name: string): Promise<void> {
+  await db().system.insertInto('users').values({ id, email, password_hash: 'hash', name, global_role: 'user', created_at: new Date().toISOString() }).execute();
+}
 
 describe('TenantManager', () => {
-  let systemDb: DatabaseSync;
   let manager: TenantManager;
 
   beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    // Manager configurado en memoria para tests
-    manager = new TenantManager(systemDb, { inMemory: true });
+    // Lo de sistema en PostgreSQL; la base de cada comercio, en memoria
+    manager = new TenantManager(db().system, { inMemory: true });
   });
 
   afterEach(() => {
@@ -19,9 +21,7 @@ describe('TenantManager', () => {
   });
 
   it('crea un nuevo tenant con sucursal por defecto y datos seed iniciales', async () => {
-    systemDb
-      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run('user-1', 'owner@example.com', 'hash', 'Owner', 'user', new Date().toISOString());
+    await insertUser('user-1', 'owner@example.com', 'Owner');
 
     const tenant = await manager.createTenant({
       id: 'tenant-kiosco',
@@ -34,11 +34,14 @@ describe('TenantManager', () => {
     expect(tenant.id).toBe('tenant-kiosco');
     expect(tenant.status).toBe('active');
 
-    // Verificar en systemDb
-    const membership = systemDb
-      .prepare('SELECT role FROM memberships WHERE user_id = ? AND tenant_id = ?')
-      .get('user-1', 'tenant-kiosco') as { role: string };
-    expect(membership.role).toBe('owner');
+    // Verificar en el sistema (PostgreSQL)
+    const membership = await db()
+      .system.selectFrom('memberships')
+      .select(['role', 'status'])
+      .where('user_id', '=', 'user-1')
+      .where('tenant_id', '=', 'tenant-kiosco')
+      .executeTakeFirst();
+    expect(membership).toEqual({ role: 'owner', status: 'active' });
 
     // Verificar en tenantDb
     const tenantDb = manager.getTenantDb('tenant-kiosco');
@@ -54,12 +57,10 @@ describe('TenantManager', () => {
   });
 
   it('el owner que crea el comercio es su titular; sin owner (una demo), no hay titular (#21)', async () => {
-    systemDb
-      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run('user-9', 'titular@example.com', 'hash', 'Titular', 'user', new Date().toISOString());
+    await insertUser('user-9', 'titular@example.com', 'Titular');
     await manager.createTenant({ id: 'con-titular', slug: 'con-titular', name: 'Con titular', ownerUserId: 'user-9' });
     await manager.createTenant({ id: 'sin-titular', slug: 'sin-titular', name: 'Sin titular' });
-    const rows = systemDb.prepare('SELECT id, holder_user_id FROM tenants ORDER BY id').all();
+    const rows = await db().system.selectFrom('tenants').select(['id', 'holder_user_id']).orderBy('id').execute();
     expect(rows).toEqual([
       { id: 'con-titular', holder_user_id: 'user-9' },
       { id: 'sin-titular', holder_user_id: null },
@@ -67,9 +68,7 @@ describe('TenantManager', () => {
   });
 
   it('permite consultar stock consolidado por producto', async () => {
-    systemDb
-      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run('user-stock', 'stock@example.com', 'hash', 'Stock Owner', 'user', new Date().toISOString());
+    await insertUser('user-stock', 'stock@example.com', 'Stock Owner');
 
     await manager.createTenant({
       id: 'tenant-stock-test',
@@ -88,9 +87,7 @@ describe('TenantManager', () => {
   });
 
   it('desambigua silenciosamente el slug agregando -2, -3 sólo si ya existe uno anterior', async () => {
-    systemDb
-      .prepare('INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run('user-dup', 'dup@example.com', 'hash', 'Dup Owner', 'user', new Date().toISOString());
+    await insertUser('user-dup', 'dup@example.com', 'Dup Owner');
 
     // Primer tenant con slug "mi-tienda"
     const t1 = await manager.createTenant({
@@ -125,5 +122,27 @@ describe('TenantManager', () => {
     expect(t3.slug).toBe('mi-tienda-3');
     expect(t3.id).toBe('mi-tienda-3');
   });
-});
 
+  it('lee el nombre y el rubro del comercio; null si no existe o no tiene rubro', async () => {
+    await manager.createTenant({ id: 'con-rubro', slug: 'con-rubro', name: 'Con rubro', businessType: 'almacen' });
+    await manager.createTenant({ id: 'sin-rubro', slug: 'sin-rubro', name: 'Sin rubro' });
+    expect(await manager.getTenantName('con-rubro')).toBe('Con rubro');
+    expect(await manager.getTenantName('no-existe')).toBeNull();
+    expect(await manager.getBusinessType('con-rubro')).toBe('almacen');
+    expect(await manager.getBusinessType('sin-rubro')).toBeNull();
+    expect(await manager.getBusinessType('no-existe')).toBeNull();
+  });
+
+  it('tenantExists busca por id y por slug', async () => {
+    await manager.createTenant({ id: 'id-1', slug: 'slug-1', name: 'Uno' });
+    expect(await manager.tenantExists('id-1')).toBe(true);
+    expect(await manager.tenantExists('slug-1')).toBe(true);
+    expect(await manager.tenantExists('otro')).toBe(false);
+  });
+
+  it('si la membresía falla, el comercio no queda a medias en sistema', async () => {
+    // El owner no existe: la FK de memberships lo rechaza y la fila de tenants se deshace con ella
+    await expect(manager.createTenant({ id: 'huerfano', slug: 'huerfano', name: 'Huérfano', ownerUserId: 'nadie' })).rejects.toThrow();
+    expect(await manager.tenantExists('huerfano')).toBe(false);
+  });
+});

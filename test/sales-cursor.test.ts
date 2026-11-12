@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
 import type { ListResult } from '../src/shared/sales-types.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 /**
  * Scroll infinito (#87): las listas sin límite se piden por tramos con un cursor ("después de esta
@@ -20,9 +22,8 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   const origin = { deviceId: 'dev-1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

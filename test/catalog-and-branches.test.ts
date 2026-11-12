@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface BranchItem {
   id: string;
@@ -32,16 +33,14 @@ interface ConnectorPullProductsResponse {
 }
 
 describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
   const tenantId = 'kiosco-central';
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador (primer usuario es root)

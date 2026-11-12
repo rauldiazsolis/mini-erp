@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const at = '2026-10-02T12:00:00.000Z';
 const origin = { branch: 'CENTRAL', pointOfSale: 'POS-01' };
@@ -12,15 +13,12 @@ describe('notices en el pull (#2)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let apiKey: string;
-  let systemDb: DatabaseSync;
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
     // Reloj fijo: la deuda y su fecha límite no dependen del día en que corre el test
-    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });
@@ -78,7 +76,7 @@ describe('notices en el pull (#2)', () => {
   });
 
   it('sin créditos, todos los equipos reciben el aviso critical de deuda (#21)', async () => {
-    systemDb.prepare('DELETE FROM gift_credits').run();
+    await db().system.deleteFrom('gift_credits').execute();
     await push('l1', [{ ...ventaACuenta, sale: { ...ventaACuenta.sale, customerId: undefined, payments: [{ method: 'cash', amount: 950 }] } }]);
     const avisos = await notices('dev-1');
     expect(avisos.map((n) => [n.id, n.severity])).toEqual([['credits:debt', 'critical']]);

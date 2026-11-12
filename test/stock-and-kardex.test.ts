@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface StockMatrixItem {
   productId: string;
@@ -33,7 +34,6 @@ interface KardexMovementItem {
 }
 
 describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
@@ -43,9 +43,8 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
   let testProductId: string;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador

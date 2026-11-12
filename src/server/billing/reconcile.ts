@@ -1,17 +1,15 @@
-import type { DatabaseSync } from 'node:sqlite';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { BillingService } from './billing-service.ts';
 
-type Deps = { systemDb: DatabaseSync; tenantManager: TenantManager; billing: BillingService };
+type Deps = { tenantManager: TenantManager; billing: BillingService };
 
 /**
  * Crea los cargos que falten (#21): una caída entre el commit del lote y el cargo. Recorre las ventas
  * con caja (no anulaciones) de los comercios con titular. Devuelve cuántos creó.
  */
 export async function reconcileCharges(deps: Deps): Promise<number> {
-  const tenants = deps.systemDb.prepare('SELECT id FROM tenants WHERE holder_user_id IS NOT NULL').all() as { id: string }[];
   let created = 0;
-  for (const { id } of tenants) {
+  for (const id of await deps.billing.billableTenantIds()) {
     const groups = deps.tenantManager
       .getTenantDb(id)
       .prepare(

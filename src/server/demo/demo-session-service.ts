@@ -1,9 +1,11 @@
-import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { ApiKeyService } from '../tenant/api-key-service.ts';
 import { DEMO_BRANCH_CODE, DEMO_COMMERCES, DEMO_TEMPLATES, isDemoTemplate, seedDemoCommerce, type DemoTemplate } from '../seeds/index.ts';
 import type { DemoConfig } from './demo-config.ts';
+import { isDemoTenant } from './demo-tenant-ids.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
 const TOUCH_EVERY_MS = 60 * 1000;
@@ -22,7 +24,7 @@ export type DemoSession = {
 export type ActiveDemoSession = { id: string; tenantId: string; template: DemoTemplate; pointOfSale: string };
 
 export type DemoSessionDeps = {
-  systemDb: DatabaseSync;
+  db: Kysely<SystemDatabase>;
   tenantManager: TenantManager;
   apiKeyService: ApiKeyService;
   config: DemoConfig;
@@ -73,9 +75,11 @@ export class DemoSessionService {
       await this.deps.tenantManager.createTenant({ id: tenantId, slug: tenantId, name });
     }
     await seedDemoCommerce(this.deps.tenantManager.getTenantDb(tenantId), template, now);
-    this.deps.systemDb
-      .prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)')
-      .run(tenantId, template, now.toISOString());
+    await this.deps.db
+      .insertInto('demo_tenants')
+      .values({ tenant_id: tenantId, template, last_full_reset_at: now.toISOString() })
+      .onConflict((oc) => oc.doNothing())
+      .execute();
     return tenantId;
   }
 
@@ -83,16 +87,16 @@ export class DemoSessionService {
     const tenantId = await this.ensureDemoTenant(template);
     const sessionId = randomUUID();
     const pointOfSale = await this.freePointOfSale(tenantId, sessionId);
-    const { rawKey, registerId } = await this.deps.apiKeyService.createApiKey({
-      tenantId,
-      name: pointOfSale,
-      branch: DEMO_BRANCH_CODE,
-      pointOfSale,
-    });
     const at = this.deps.now().toISOString();
-    this.deps.systemDb
-      .prepare('INSERT INTO demo_sessions (id, template, tenant_id, register_id, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(sessionId, template, tenantId, registerId, at, at);
+    // La caja, su key y la demo nacen juntas
+    const rawKey = await this.deps.db.transaction().execute(async (trx) => {
+      const key = await this.deps.apiKeyService.createApiKey({ tenantId, name: pointOfSale, branch: DEMO_BRANCH_CODE, pointOfSale }, trx);
+      await trx
+        .insertInto('demo_sessions')
+        .values({ id: sessionId, template, tenant_id: tenantId, register_id: key.registerId, created_at: at, last_used_at: at })
+        .execute();
+      return key.rawKey;
+    });
     return { sessionId, tenantId, apiKey: rawKey, branch: DEMO_BRANCH_CODE, pointOfSale, template };
   }
 
@@ -100,13 +104,21 @@ export class DemoSessionService {
   async touchRegister(registerId: string): Promise<void> {
     const now = this.deps.now();
     const since = new Date(now.getTime() - TOUCH_EVERY_MS).toISOString();
-    this.deps.systemDb
-      .prepare('UPDATE demo_sessions SET last_used_at = ? WHERE register_id = ? AND revoked_at IS NULL AND last_used_at <= ?')
-      .run(now.toISOString(), registerId, since);
+    await this.deps.db
+      .updateTable('demo_sessions')
+      .set({ last_used_at: now.toISOString() })
+      .where('register_id', '=', registerId)
+      .where('revoked_at', 'is', null)
+      .where('last_used_at', '<=', since)
+      .execute();
   }
 
   async countActive(): Promise<number> {
-    const row = this.deps.systemDb.prepare('SELECT COUNT(*) AS n FROM demo_sessions WHERE revoked_at IS NULL').get() as { n: number };
+    const row = await this.deps.db
+      .selectFrom('demo_sessions')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('revoked_at', 'is', null)
+      .executeTakeFirstOrThrow();
     return row.n;
   }
 
@@ -115,24 +127,24 @@ export class DemoSessionService {
   }
 
   async isDemoTenant(tenantId: string): Promise<boolean> {
-    return (await this.templateOf(tenantId)) !== undefined;
+    return await isDemoTenant(this.deps.db, tenantId);
   }
 
   async templateOf(tenantId: string): Promise<DemoTemplate | undefined> {
-    const row = this.deps.systemDb.prepare('SELECT template FROM demo_tenants WHERE tenant_id = ?').get(tenantId) as
-      | { template: string }
-      | undefined;
+    const row = await this.deps.db.selectFrom('demo_tenants').select('template').where('tenant_id', '=', tenantId).executeTakeFirst();
     return row !== undefined && isDemoTemplate(row.template) ? row.template : undefined;
   }
 
   /** La sesión vigente de una caja de visitante, o `undefined` (caja real o revocada). */
   async activeSessionOfRegister(registerId: string): Promise<ActiveDemoSession | undefined> {
-    const row = this.deps.systemDb
-      .prepare(
-        `SELECT s.id, s.tenant_id, s.template, r.point_of_sale FROM demo_sessions s JOIN registers r ON r.id = s.register_id
-         WHERE s.register_id = ? AND s.revoked_at IS NULL AND r.active = 1`,
-      )
-      .get(registerId) as { id: string; tenant_id: string; template: string; point_of_sale: string } | undefined;
+    const row = await this.deps.db
+      .selectFrom('demo_sessions as s')
+      .innerJoin('registers as r', 'r.id', 's.register_id')
+      .select(['s.id', 's.tenant_id', 's.template', 'r.point_of_sale'])
+      .where('s.register_id', '=', registerId)
+      .where('s.revoked_at', 'is', null)
+      .where('r.active', '=', true)
+      .executeTakeFirst();
     if (row === undefined || !isDemoTemplate(row.template)) return undefined;
     return { id: row.id, tenantId: row.tenant_id, template: row.template, pointOfSale: row.point_of_sale };
   }
@@ -140,57 +152,45 @@ export class DemoSessionService {
   /** Revoca las cajas sin uso por `ttlHours`. */
   async revokeIdle(): Promise<number> {
     const cutoff = new Date(this.deps.now().getTime() - this.deps.config.ttlHours * HOUR_MS).toISOString();
-    return await this.revoke('last_used_at < ?', [cutoff], 'idle');
+    return await this.revoke({ idleBefore: cutoff }, 'idle');
   }
 
   /** Revoca todas las cajas de visitante de un comercio (reinicio total). */
   async revokeTenant(tenantId: string, reason: 'reset'): Promise<number> {
-    return await this.revoke('tenant_id = ?', [tenantId], reason);
-  }
-
-  /** Borra los tenants por visitante de #9 que quedaron de antes de M8. */
-  async sweepLegacy(): Promise<number> {
-    const rows = this.deps.systemDb.prepare('SELECT tenant_id FROM legacy_demo_sessions').all() as { tenant_id: string }[];
-    for (const row of rows) await this.deps.tenantManager.deleteTenant(row.tenant_id);
-    return rows.length;
+    return await this.revoke({ tenantId }, reason);
   }
 
   private async hasDemoTenant(template: DemoTemplate): Promise<boolean> {
-    return this.deps.systemDb.prepare('SELECT 1 FROM demo_tenants WHERE template = ?').get(template) !== undefined;
+    return (await this.deps.db.selectFrom('demo_tenants').select('tenant_id').where('template', '=', template).executeTakeFirst()) !== undefined;
   }
 
   /** `Demo XXXX` con 4 caracteres del id, distinto de las cajas activas del comercio. */
   private async freePointOfSale(tenantId: string, sessionId: string): Promise<string> {
-    const used = this.deps.systemDb.prepare('SELECT 1 FROM registers WHERE tenant_id = ? AND point_of_sale = ? AND active = 1');
     let candidate = `Demo ${sessionId.slice(0, 4).toUpperCase()}`;
-    while (used.get(tenantId, candidate) !== undefined) {
+    while (await this.deps.apiKeyService.pointOfSaleInUse(tenantId, candidate)) {
       candidate = `Demo ${randomUUID().slice(0, 4).toUpperCase()}`;
     }
     return candidate;
   }
 
-  private async revoke(where: string, params: string[], reason: RevokeReason): Promise<number> {
-    const db = this.deps.systemDb;
-    const rows = db.prepare(`SELECT id, register_id FROM demo_sessions WHERE revoked_at IS NULL AND ${where}`).all(...params) as {
-      id: string;
-      register_id: string;
-    }[];
-    if (rows.length === 0) return 0;
+  /** Revoca en una transacción las cajas y keys, la demo, sus sesiones anónimas y sus links. */
+  private async revoke(which: { idleBefore: string } | { tenantId: string }, reason: RevokeReason): Promise<number> {
     const at = this.deps.now().toISOString();
-    db.exec('BEGIN');
-    try {
-      for (const r of rows) {
-        db.prepare('UPDATE registers SET active = 0 WHERE id = ?').run(r.register_id);
-        db.prepare('UPDATE tenant_api_keys SET active = 0 WHERE register_id = ?').run(r.register_id);
-        db.prepare('UPDATE demo_sessions SET revoked_at = ?, revoke_reason = ? WHERE id = ?').run(at, reason, r.id);
-        db.prepare('DELETE FROM anonymous_sessions WHERE register_id = ?').run(r.register_id);
-        db.prepare('DELETE FROM portal_links WHERE register_id = ?').run(r.register_id);
-      }
-      db.exec('COMMIT');
-    } catch (err: unknown) {
-      db.exec('ROLLBACK');
-      throw err;
-    }
-    return rows.length;
+    return await this.deps.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom('demo_sessions').select(['id', 'register_id']).where('revoked_at', 'is', null);
+      query = 'tenantId' in which ? query.where('tenant_id', '=', which.tenantId) : query.where('last_used_at', '<', which.idleBefore);
+      const rows = await query.forUpdate().execute();
+      if (rows.length === 0) return 0;
+      const registerIds = rows.map((r) => r.register_id);
+      await this.deps.apiKeyService.deactivateRegisters(registerIds, trx);
+      await trx
+        .updateTable('demo_sessions')
+        .set({ revoked_at: at, revoke_reason: reason })
+        .where('id', 'in', rows.map((r) => r.id))
+        .execute();
+      await trx.deleteFrom('anonymous_sessions').where('register_id', 'in', registerIds).execute();
+      await trx.deleteFrom('portal_links').where('register_id', 'in', registerIds).execute();
+      return rows.length;
+    });
   }
 }

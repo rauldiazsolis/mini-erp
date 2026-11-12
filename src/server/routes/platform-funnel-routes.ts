@@ -6,7 +6,6 @@ import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts
 import { requirePlatformRole } from '../middleware/platform-role-middleware.ts';
 import type { FunnelService } from '../funnel/funnel-service.ts';
 import type { FunnelQueryService } from '../funnel/funnel-query-service.ts';
-import type { AuditLog } from '../audit/audit-log.ts';
 import { auditActor } from '../audit/audit-actor.ts';
 import { sendError } from '../errors.ts';
 import { routeParam } from '../http/route-param.ts';
@@ -24,7 +23,7 @@ const visitorsSchema = rangeSchema.extend({
 });
 
 /** El embudo de la plataforma (#25), para root y soporte: el reporte, los visitantes y sus contactos. */
-export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; queries: FunnelQueryService; audit: AuditLog; now: () => Date }): Router {
+export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; queries: FunnelQueryService; now: () => Date }): Router {
   const router = Router();
   const staff = requirePlatformRole('root', 'support');
   /** Por omisión, los últimos 30 días argentinos. */
@@ -77,9 +76,8 @@ export function createPlatformFunnelRoutes(deps: { funnel: FunnelService; querie
   router.post('/contacts/:contactId/handled', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const contactId = routeParam(req, 'contactId') ?? '';
     try {
-      const actor = auditActor(req);
-      await deps.funnel.markHandled(contactId, actor.actorUserId);
-      await deps.audit.record({ ...actor, tenantId: null, action: 'funnel.contact-handled', details: { contactId } });
+      // Marca y audita en una transacción
+      await deps.funnel.markHandled(contactId, auditActor(req));
       res.status(200).json({ ok: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

@@ -1,4 +1,5 @@
-import type { DatabaseSync } from 'node:sqlite';
+import { sql, type Kysely } from 'kysely';
+import type { SystemDatabase } from './pg/system-schema.ts';
 import type { AuthService } from '../auth/auth-service.ts';
 import type { TenantManager } from './tenant-manager.ts';
 import { hashApiKey } from '../auth/crypto.ts';
@@ -16,7 +17,6 @@ import {
   type DevUserKey,
 } from '../seeds/dev-fixtures.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import { readBillingSettings, writeBillingSettings } from '../billing/settings.ts';
 
 /** Lo que el arranque muestra en el log: con qué entrar y qué keys conectar al POS. */
 export type DevInfo = {
@@ -26,7 +26,8 @@ export type DevInfo = {
 };
 
 type Deps = {
-  systemDb: DatabaseSync;
+  /** Lo global, en PostgreSQL (`Database.system`); los comercios siguen en SQLite. */
+  db: Kysely<SystemDatabase>;
   authService: AuthService;
   tenantManager: TenantManager;
   billing: BillingService;
@@ -43,14 +44,14 @@ type UserIds = Record<DevUserKey, string>;
 export async function ensureDevData(deps: Deps): Promise<DevInfo> {
   const ids = await ensureUsers(deps);
   // Sin WhatsApp de soporte no hay "Pedir ayuda" (#23); no pisa uno cargado a mano
-  if ((await readBillingSettings(deps.systemDb)).supportWhatsapp === '') {
-    await writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
+  if ((await deps.billing.settings()).supportWhatsapp === '') {
+    await deps.billing.updateSettings({ supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root);
   }
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {
     if (!(await deps.tenantManager.tenantExists(tenant.id))) await seedTenant(deps, tenant, ids);
     // Los sembrados antes de M6 no tienen rubro (#22)
-    deps.systemDb.prepare('UPDATE tenants SET business_type = ? WHERE id = ? AND business_type IS NULL').run(tenant.preset, tenant.id);
+    await deps.db.updateTable('tenants').set({ business_type: tenant.preset }).where('id', '=', tenant.id).where('business_type', 'is', null).execute();
   }
   await ensureDemos(deps);
   return devInfo();
@@ -66,7 +67,7 @@ async function ensureUsers(deps: Deps): Promise<UserIds> {
     const existing = await deps.authService.findUserByEmail(u.email);
     const id = existing?.id ?? (await deps.authService.createUser({ email: u.email, password: DEV_PASSWORD, name: u.name })).user.id;
     // Las cuentas nacen como user: el soporte se marca acá, como lo haría root a mano
-    if (key === 'support') deps.systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(id);
+    if (key === 'support') await deps.db.updateTable('users').set({ global_role: 'support' }).where('id', '=', id).execute();
     ids[key] = id;
   }
   const { root, support, ownerA, ownerB, adminK, memberK } = ids;
@@ -83,14 +84,21 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
   // El catálogo del rubro y los clientes, como una demo
   await seedDemoSession(db, t.preset);
 
-  const addMember = deps.systemDb.prepare(
-    "INSERT OR IGNORE INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)",
-  );
-  for (const s of t.staff) addMember.run(ids[s.user], t.id, s.role, now.toISOString());
+  const at = now.toISOString();
+  // El staff y las cajas con su key fija, juntos
+  await deps.db.transaction().execute(async (trx) => {
+    for (const s of t.staff) {
+      await trx
+        .insertInto('memberships')
+        .values({ user_id: ids[s.user], tenant_id: t.id, role: s.role, status: 'active', created_at: at })
+        .onConflict((oc) => oc.columns(['user_id', 'tenant_id']).doNothing())
+        .execute();
+    }
+    for (const r of t.registers) await insertRegisterWithKey(trx, t.id, r, at);
+  });
 
   const branchId = (db.prepare('SELECT id FROM branches ORDER BY created_at LIMIT 1').get() as { id: string }).id;
   for (const [index, r] of t.registers.entries()) {
-    await insertRegisterWithKey(deps.systemDb, t.id, r, now.toISOString());
     // Las ventas quedan de su caja, sin equipo ligado: el primer POS que se conecte con la key la liga
     await generateHistoricalDemoActivity(db, branchId, now, {
       days: r.historyDays,
@@ -102,16 +110,28 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
   await seedCredits(deps, t, ids, now);
 }
 
-async function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevTenant['registers'][number], at: string): Promise<void> {
-  systemDb
-    .prepare('INSERT OR IGNORE INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
-    .run(r.id, tenantId, r.name, DEV_BRANCH, r.pointOfSale, at);
-  systemDb
-    .prepare(
-      `INSERT OR IGNORE INTO tenant_api_keys (id, tenant_id, name, key_hash, key_prefix, branch, point_of_sale, active, created_at, register_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    )
-    .run(r.keyId, tenantId, r.name, hashApiKey(r.rawKey), r.rawKey.slice(0, 10), DEV_BRANCH, r.pointOfSale, at, r.id);
+async function insertRegisterWithKey(db: Kysely<SystemDatabase>, tenantId: string, r: DevTenant['registers'][number], at: string): Promise<void> {
+  await db
+    .insertInto('registers')
+    .values({ id: r.id, tenant_id: tenantId, name: r.name, branch: DEV_BRANCH, point_of_sale: r.pointOfSale, active: true, created_at: at })
+    .onConflict((oc) => oc.column('id').doNothing())
+    .execute();
+  await db
+    .insertInto('tenant_api_keys')
+    .values({
+      id: r.keyId,
+      tenant_id: tenantId,
+      name: r.name,
+      key_hash: hashApiKey(r.rawKey),
+      key_prefix: r.rawKey.slice(0, 10),
+      branch: DEV_BRANCH,
+      point_of_sale: r.pointOfSale,
+      active: true,
+      created_at: at,
+      register_id: r.id,
+    })
+    .onConflict((oc) => oc.column('id').doNothing())
+    .execute();
 }
 
 /**
@@ -153,7 +173,7 @@ async function seedCredits(deps: Deps, t: DevTenant, ids: UserIds, now: Date): P
       // El bono venció hace 4 días y nunca pagó: lo de esos días es deuda, todavía en gracia
       const cut = shiftDay(today, -4);
       await chargeSales(all.from, shiftDay(cut, -1));
-      deps.systemDb.prepare('UPDATE gift_credits SET expires_at = ? WHERE id = ?').run(`${cut}T03:00:00.000Z`, bonusId);
+      await deps.db.updateTable('gift_credits').set({ expires_at: `${cut}T03:00:00.000Z` }).where('id', '=', bonusId).execute();
       await chargeSales(cut, today);
       break;
     }
@@ -168,18 +188,26 @@ async function ensureDemos(deps: Deps): Promise<void> {
   if (!deps.demoSessions.enabled()) return;
   for (const d of DEV_DEMOS) {
     const hash = hashApiKey(d.rawKey);
-    const alive = deps.systemDb
-      .prepare(
-        `SELECT 1 FROM tenant_api_keys k JOIN demo_sessions s ON s.register_id = k.register_id
-         WHERE k.key_hash = ? AND k.active = 1 AND s.revoked_at IS NULL`,
-      )
-      .get(hash);
+    const alive = await deps.db
+      .selectFrom('tenant_api_keys as k')
+      .innerJoin('demo_sessions as s', 's.register_id', 'k.register_id')
+      .select('k.id')
+      .where('k.key_hash', '=', hash)
+      .where('k.active', '=', true)
+      .where('s.revoked_at', 'is', null)
+      .executeTakeFirst();
     if (alive !== undefined) continue;
-    deps.systemDb.prepare("UPDATE tenant_api_keys SET key_hash = key_hash || ':revocada:' || id WHERE key_hash = ?").run(hash);
+    await deps.db
+      .updateTable('tenant_api_keys')
+      .set({ key_hash: sql<string>`${sql.ref('key_hash')} || ':revocada:' || ${sql.ref('id')}` })
+      .where('key_hash', '=', hash)
+      .execute();
     const session = await deps.demoSessions.create(d.template);
-    deps.systemDb
-      .prepare('UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ? WHERE register_id = (SELECT register_id FROM demo_sessions WHERE id = ?)')
-      .run(hash, d.rawKey.slice(0, 10), session.sessionId);
+    await deps.db
+      .updateTable('tenant_api_keys')
+      .set({ key_hash: hash, key_prefix: d.rawKey.slice(0, 10) })
+      .where('register_id', '=', (eb) => eb.selectFrom('demo_sessions').select('register_id').where('id', '=', session.sessionId))
+      .execute();
   }
 }
 

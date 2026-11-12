@@ -1,15 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('AuthService.ensureRoot (#3)', () => {
   let auth: AuthService;
 
   beforeEach(() => {
-    const db = new DatabaseSync(':memory:');
-    initSystemDb(db);
-    auth = new AuthService(db);
+    auth = new AuthService(db().system);
   });
 
   it('crea el root si el email no existe', async () => {

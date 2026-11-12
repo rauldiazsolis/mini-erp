@@ -36,13 +36,14 @@ function readyApp() {
 }
 
 const quiet = { log: () => undefined, logError: () => undefined };
+const noPg = { migrateDatabase: () => Promise.resolve() };
 
 describe('startServer (#47)', () => {
   it('atiende en mantenimiento mientras migra y pasa al app listo', async () => {
     const migration = deferred<MigrationRunResult>();
     let progress: ((p: MigrationProgress) => void) | undefined;
     started = await startServer({
-      port: 0, dataDir: 'no-se-usa', demos: false, ...quiet,
+      port: 0, dataDir: 'no-se-usa', demos: false, ...quiet, ...noPg,
       runner: (_dir, onProgress) => { progress = onProgress; return migration.promise; },
       createReadyHandler: () => Promise.resolve(readyApp()),
     });
@@ -64,7 +65,7 @@ describe('startServer (#47)', () => {
   it('si la migración falla, sigue vivo en mantenimiento con migration-failed', async () => {
     const errores: string[] = [];
     started = await startServer({
-      port: 0, dataDir: 'no-se-usa', demos: false, log: () => undefined, logError: (l) => { errores.push(l); },
+      port: 0, dataDir: 'no-se-usa', demos: false, ...noPg, log: () => undefined, logError: (l) => { errores.push(l); },
       runner: () => Promise.reject(new Error('tenants/b.sqlite, migración v3 columna: pedido de romper')),
       createReadyHandler: () => Promise.reject(new Error('no se tiene que llamar')),
     });
@@ -79,23 +80,55 @@ describe('startServer (#47)', () => {
     root = mkdtempSync(join(tmpdir(), 'mini-erp-startup-'));
     const dataDir = join(root, 'data');
     const runDir = join(dataDir, 'pre-migracion', '2026-10-02T14-30-00');
-    mkdirSync(runDir, { recursive: true });
-    const copia = new DatabaseSync(join(runDir, 'system.sqlite'));
+    mkdirSync(join(runDir, 'tenants'), { recursive: true });
+    mkdirSync(join(dataDir, 'tenants'), { recursive: true });
+    const copia = new DatabaseSync(join(runDir, 'tenants', 'kiosco.sqlite'));
     copia.exec('PRAGMA user_version = 4');
     copia.close();
-    const migrada = new DatabaseSync(join(dataDir, 'system.sqlite'));
+    const migrada = new DatabaseSync(join(dataDir, 'tenants', 'kiosco.sqlite'));
     migrada.exec('PRAGMA user_version = 5');
     migrada.close();
 
     started = await startServer({
-      port: 0, dataDir, demos: false, ...quiet,
-      runner: () => Promise.resolve({ runDir, migrated: [{ file: 'system.sqlite', from: 4, to: 5 }] }),
+      port: 0, dataDir, demos: false, ...quiet, ...noPg,
+      runner: () => Promise.resolve({ runDir, migrated: [{ file: 'tenants/kiosco.sqlite', from: 4, to: 5 }] }),
       createReadyHandler: () => Promise.reject(new Error('no arranca')),
     });
     expect(await started.ready).toBe('failed');
-    const db = new DatabaseSync(join(dataDir, 'system.sqlite'));
+    const db = new DatabaseSync(join(dataDir, 'tenants', 'kiosco.sqlite'));
     expect(readVersion(db)).toBe(4);
     db.close();
     expect((await request(started.server).get('/health')).body).toMatchObject({ status: 'migration-failed' });
+  });
+
+  it('migra PostgreSQL en mantenimiento, antes que las bases de SQLite y que el app', async () => {
+    const pg = deferred<undefined>();
+    const orden: string[] = [];
+    started = await startServer({
+      port: 0, dataDir: 'no-se-usa', demos: false, ...quiet,
+      migrateDatabase: async () => { orden.push('pg'); await pg.promise; },
+      runner: () => { orden.push('sqlite'); return Promise.resolve({ migrated: [] }); },
+      createReadyHandler: () => { orden.push('app'); return Promise.resolve(readyApp()); },
+    });
+    expect((await request(started.server).get('/health')).status).toBe(503);
+    expect(orden).toEqual(['pg']);
+    pg.resolve(undefined);
+    expect(await started.ready).toBe('ready');
+    expect(orden).toEqual(['pg', 'sqlite', 'app']);
+  });
+
+  it('si la migración de PostgreSQL falla, queda en migration-failed sin tocar SQLite ni armar el app', async () => {
+    const errores: string[] = [];
+    const orden: string[] = [];
+    started = await startServer({
+      port: 0, dataDir: 'no-se-usa', demos: false, log: () => undefined, logError: (l) => { errores.push(l); },
+      migrateDatabase: () => Promise.reject(new Error('migración v2 algo en system: pedido de romper')),
+      runner: () => { orden.push('sqlite'); return Promise.resolve({ migrated: [] }); },
+      createReadyHandler: () => { orden.push('app'); return Promise.resolve(readyApp()); },
+    });
+    expect(await started.ready).toBe('failed');
+    expect(orden).toEqual([]);
+    expect((await request(started.server).get('/health')).body).toMatchObject({ status: 'migration-failed' });
+    expect(errores.join('\n')).toMatch(/FALLÓ.*PostgreSQL.*v2 algo/s);
   });
 });

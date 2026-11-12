@@ -51,7 +51,7 @@ flowchart LR
   subgraph S["mini-erp · Express en Node 24"]
     C --> SV["Servicios por request<br/>(Hardwired)"]
     API --> SV
-    SV --> SYS[("system.sqlite<br/>usuarios, comercios,<br/>cajas, cobro")]
+    SV --> SYS[("PostgreSQL · system<br/>usuarios, comercios,<br/>cajas, cobro")]
     SV --> TEN[("tenants/&lt;id&gt;.sqlite<br/>catálogo, stock, clientes,<br/>ventas")]
   end
 ```
@@ -79,21 +79,31 @@ el contrato **4.6.0** con las capacidades `customer-payment-void`, `demo-session
 
 ## Levantarlo
 
-Requiere Node 24 y pnpm 10. Los tests necesitan además PostgreSQL 16 andando (la persistencia está migrando de SQLite a PostgreSQL; ver "Verificación" en `AGENTS.md`).
+Requiere Node 24, pnpm 10 y PostgreSQL 16 (la persistencia está migrando de SQLite a PostgreSQL:
+el sistema ya está en PostgreSQL y los comercios, todavía en SQLite). El servidor no arranca sin
+`DATABASE_URL`; los tests usan su propio servidor (ver "Verificación" en `AGENTS.md`).
 
 ```bash
 pnpm install
-pnpm dev
+```
+
+```bash
+createdb -T template0 -E UTF8 --lc-collate=C --lc-ctype=C.UTF-8 minierp
+```
+
+```bash
+DATABASE_URL=postgres://usuario:clave@localhost:5432/minierp pnpm dev
 ```
 
 El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el landing en `/`, el admin
 en `/admin`, el alta en `/alta`, la plataforma en `/plataforma`, la API del admin en `/api` y el
-Connector API en `/connector`. Los datos van a `data/` (o a `DATA_DIR`).
+Connector API en `/connector`. Lo de sistema va a la base de `DATABASE_URL` (el arranque la migra) y
+las bases de los comercios, a `data/` (o a `DATA_DIR`).
 
 Fuera de producción, el arranque siembra datos de desarrollo si no existen y los lista en la consola:
 usuarios con la contraseña `admin123` (`root@local.test`, `soporte@local.test`, `dueno-a@local.test`
 y otros), un comercio por rubro con 30 días de ventas y cajas con key fija (`mpos_dev_demo_key_12345`
-es la Caja 1 del Kiosco). Para sembrar de nuevo, se borra la carpeta de datos. Con
+es la Caja 1 del Kiosco). Para sembrar de nuevo, se borran la carpeta de datos y la base (`dropdb minierp` y otra vez `createdb`). Con
 `NODE_ENV=production` no se crea nada de eso; el `root` se crea una vez con
 `node scripts/create-root.ts` (pide email, nombre y una contraseña de al menos 8 caracteres).
 
@@ -119,8 +129,8 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
-| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
+| `DATA_DIR` | `data` | Carpeta de las bases de SQLite de los comercios (`tenants/`) |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de los comercios de `node scripts/backup.ts` (se guardan 7 días) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (404) y los comercios demo |

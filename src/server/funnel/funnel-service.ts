@@ -1,8 +1,11 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
 import { randomUUID } from 'node:crypto';
 import { argentinaToday } from '../../shared/argentina-day.ts';
 import type { FunnelContactSource, FunnelDailyKind, FunnelEventType } from '../../shared/funnel-types.ts';
-import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import { jsonValue } from '../db/pg/sql-helpers.ts';
+import type { AuditLog } from '../audit/audit-log.ts';
+import { isDemoTenant } from '../demo/demo-tenant-ids.ts';
 import { DomainError } from '../errors.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -12,26 +15,30 @@ export const CONTACT_RETENTION_DAYS = 365;
 
 export type FunnelRef = { demoSessionId?: string | undefined; tenantId?: string | undefined; data?: Record<string, string> | undefined };
 
+type Db = Kysely<SystemDatabase>;
+
 /**
  * El embudo (M9, #25), de sistema: los eventos que se perderían (venta demo, mini desde el POS, alta
  * abierta, carga), los totales anónimos del landing y los contactos. Cada evento, a lo sumo una vez por
- * demo o por comercio (índices únicos de la migración v11). Sin IP ni navegador.
+ * demo o por comercio (índices únicos parciales de `funnel_events`). Sin IP ni navegador.
  */
 export class FunnelService {
-  private db: DatabaseSync;
+  private db: Db;
   private now: () => Date;
+  private audit: AuditLog;
 
-  constructor(deps: { db: DatabaseSync; now: () => Date }) {
+  constructor(deps: { db: Db; now: () => Date; audit: AuditLog }) {
     this.db = deps.db;
     this.now = deps.now;
+    this.audit = deps.audit;
   }
 
-  async isDemoSession(id: string): Promise<boolean> {
-    return this.db.prepare('SELECT 1 FROM demo_sessions WHERE id = ?').get(id) !== undefined;
+  async isDemoSession(id: string, db: Db = this.db): Promise<boolean> {
+    return (await db.selectFrom('demo_sessions').select('id').where('id', '=', id).executeTakeFirst()) !== undefined;
   }
 
   async isDemoTenant(tenantId: string): Promise<boolean> {
-    return this.db.prepare(`SELECT 1 WHERE ? IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId) !== undefined;
+    return await isDemoTenant(this.db, tenantId);
   }
 
   /** Registra el evento si es nuevo; una demo desconocida no cuenta. Devuelve si lo escribió. */
@@ -39,10 +46,20 @@ export class FunnelService {
     const demo = ref.demoSessionId !== undefined && (await this.isDemoSession(ref.demoSessionId)) ? ref.demoSessionId : null;
     const tenant = ref.tenantId ?? null;
     if (demo === null && tenant === null) return false;
-    const result = this.db
-      .prepare('INSERT OR IGNORE INTO funnel_events (id, type, demo_session_id, tenant_id, at, data) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(randomUUID(), type, demo, tenant, this.now().toISOString(), ref.data === undefined ? null : JSON.stringify(ref.data));
-    return Number(result.changes) > 0;
+    const result = await this.db
+      .insertInto('funnel_events')
+      .values({
+        id: randomUUID(),
+        type,
+        demo_session_id: demo,
+        tenant_id: tenant,
+        at: this.now().toISOString(),
+        data: ref.data === undefined ? null : jsonValue(ref.data),
+      })
+      // Los índices únicos son parciales (por demo y por comercio): cualquiera de los dos frena el repetido
+      .onConflict((oc) => oc.doNothing())
+      .executeTakeFirst();
+    return Number(result.numInsertedOrUpdatedRows ?? 0n) > 0;
   }
 
   /** `record` para los puntos de registro: un error queda en el log y no corta lo de fondo. */
@@ -55,15 +72,17 @@ export class FunnelService {
   }
 
   async bump(kind: FunnelDailyKind): Promise<void> {
-    this.db
-      .prepare('INSERT INTO funnel_daily (day, kind, count) VALUES (?, ?, 1) ON CONFLICT (day, kind) DO UPDATE SET count = count + 1')
-      .run(argentinaToday(this.now()), kind);
+    await this.db
+      .insertInto('funnel_daily')
+      .values({ day: argentinaToday(this.now()), kind, count: 1 })
+      .onConflict((oc) => oc.columns(['day', 'kind']).doUpdateSet((eb) => ({ count: eb('funnel_daily.count', '+', 1) })))
+      .execute();
   }
 
   /** Liga el comercio que nace de un alta a su demo (vigente o revocada). Devuelve si la demo existe. */
-  async linkTenant(tenantId: string, demoSessionId: string): Promise<boolean> {
-    if (!(await this.isDemoSession(demoSessionId))) return false;
-    this.db.prepare('UPDATE tenants SET demo_session_id = ? WHERE id = ?').run(demoSessionId, tenantId);
+  async linkTenant(tenantId: string, demoSessionId: string, db: Db = this.db): Promise<boolean> {
+    if (!(await this.isDemoSession(demoSessionId, db))) return false;
+    await db.updateTable('tenants').set({ demo_session_id: demoSessionId }).where('id', '=', tenantId).execute();
     return true;
   }
 
@@ -71,33 +90,61 @@ export class FunnelService {
   async saveContact(input: { name: string; whatsapp: string; source: FunnelContactSource; demoSessionId?: string | undefined }): Promise<{ id: string }> {
     const at = this.now().toISOString();
     const demo = input.demoSessionId !== undefined && (await this.isDemoSession(input.demoSessionId)) ? input.demoSessionId : null;
-    if (demo !== null) {
-      const existing = this.db.prepare('SELECT id FROM funnel_contacts WHERE demo_session_id = ?').get(demo) as { id: string } | undefined;
-      if (existing !== undefined) {
-        this.db
-          .prepare(
-            'UPDATE funnel_contacts SET name = ?, whatsapp = ?, source = ?, updated_at = ?, handled_at = NULL, handled_by = NULL, erased_at = NULL WHERE id = ?',
-          )
-          .run(input.name, input.whatsapp, input.source, at, existing.id);
-        return { id: existing.id };
-      }
-    }
     const id = randomUUID();
-    this.db
-      .prepare('INSERT INTO funnel_contacts (id, demo_session_id, source, name, whatsapp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, demo, input.source, input.name, input.whatsapp, at, at);
-    return { id };
+    if (demo === null) {
+      await this.db
+        .insertInto('funnel_contacts')
+        .values({ id, demo_session_id: null, source: input.source, name: input.name, whatsapp: input.whatsapp, created_at: at, updated_at: at })
+        .execute();
+      return { id };
+    }
+    // Uno por demo (índice único parcial): el segundo pisa al primero en el mismo INSERT, sin carrera
+    const row = await this.db
+      .insertInto('funnel_contacts')
+      .values({ id, demo_session_id: demo, source: input.source, name: input.name, whatsapp: input.whatsapp, created_at: at, updated_at: at })
+      .onConflict((oc) =>
+        oc
+          .column('demo_session_id')
+          .where('demo_session_id', 'is not', null)
+          .doUpdateSet({
+            name: input.name,
+            whatsapp: input.whatsapp,
+            source: input.source,
+            updated_at: at,
+            handled_at: null,
+            handled_by: null,
+            erased_at: null,
+          }),
+      )
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    return { id: row.id };
   }
 
-  async markHandled(contactId: string, userId: string): Promise<void> {
-    const result = this.db
-      .prepare('UPDATE funnel_contacts SET handled_at = COALESCE(handled_at, ?), handled_by = COALESCE(handled_by, ?) WHERE id = ?')
-      .run(this.now().toISOString(), userId, contactId);
-    if (Number(result.changes) === 0) throw new DomainError(404, 'No existe ese contacto');
+  /** Marca el contacto como atendido (la primera vez cuenta) y lo audita en la misma transacción. */
+  async markHandled(contactId: string, actor: { actorUserId: string; impersonatorUserId?: string | undefined }): Promise<void> {
+    const at = this.now().toISOString();
+    await this.db.transaction().execute(async (trx) => {
+      const result = await trx
+        .updateTable('funnel_contacts')
+        .set((eb) => ({
+          handled_at: eb.fn.coalesce('handled_at', eb.val(at)),
+          handled_by: eb.fn.coalesce('handled_by', eb.val(actor.actorUserId)),
+        }))
+        .where('id', '=', contactId)
+        .executeTakeFirst();
+      if (Number(result.numUpdatedRows) === 0) throw new DomainError(404, 'No existe ese contacto');
+      await this.audit.record({ ...actor, tenantId: null, action: 'funnel.contact-handled', details: { contactId } }, trx);
+    });
   }
 
   async pendingCount(): Promise<number> {
-    const row = this.db.prepare('SELECT COUNT(*) AS n FROM funnel_contacts WHERE handled_at IS NULL AND erased_at IS NULL').get() as { n: number };
+    const row = await this.db
+      .selectFrom('funnel_contacts')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('handled_at', 'is', null)
+      .where('erased_at', 'is', null)
+      .executeTakeFirstOrThrow();
     return row.n;
   }
 
@@ -106,14 +153,23 @@ export class FunnelService {
     const now = this.now();
     const eventsCutoff = new Date(now.getTime() - EVENT_RETENTION_DAYS * DAY_MS).toISOString();
     const contactsCutoff = new Date(now.getTime() - CONTACT_RETENTION_DAYS * DAY_MS).toISOString();
-    const events = this.db.prepare('DELETE FROM funnel_events WHERE at < ?').run(eventsCutoff).changes;
-    const contacts = this.db
-      .prepare(
-        `UPDATE funnel_contacts SET name = NULL, whatsapp = NULL, erased_at = ?
-         WHERE erased_at IS NULL AND updated_at < ?
-           AND (demo_session_id IS NULL OR demo_session_id NOT IN (SELECT demo_session_id FROM tenants WHERE demo_session_id IS NOT NULL))`,
+    const events = await this.db.deleteFrom('funnel_events').where('at', '<', eventsCutoff).executeTakeFirst();
+    const contacts = await this.db
+      .updateTable('funnel_contacts as c')
+      .set({ name: null, whatsapp: null, erased_at: now.toISOString() })
+      .where('c.erased_at', 'is', null)
+      .where('c.updated_at', '<', contactsCutoff)
+      .where((eb) =>
+        eb.or([
+          eb('c.demo_session_id', 'is', null),
+          eb.not(
+            eb.exists(
+              eb.selectFrom('tenants as t').select('t.id').whereRef('t.demo_session_id', '=', 'c.demo_session_id'),
+            ),
+          ),
+        ]),
       )
-      .run(now.toISOString(), contactsCutoff).changes;
-    return { events: Number(events), contacts: Number(contacts) };
+      .executeTakeFirst();
+    return { events: Number(events.numDeletedRows), contacts: Number(contacts.numUpdatedRows) };
   }
 }

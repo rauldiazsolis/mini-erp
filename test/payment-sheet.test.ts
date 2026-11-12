@@ -30,6 +30,15 @@ describe('planilla de cobranzas (#21)', () => {
     expect(rows.map((r) => r.error)).toEqual(['Fecha inválida', 'El importe tiene que ser mayor que 0', 'Falta el comercio', 'El importe tiene que ser mayor que 0']);
   });
 
+  it('un importe con más de 2 decimales no se redondea: la fila queda con "Importe inválido"', () => {
+    const rows = parsePaymentSheet('fecha;comercio;importe\n05/10/2026;kiosco;100,555\n05/10/2026;kiosco;100,55\n');
+    expect(rows.map((r) => [r.error, r.amount])).toEqual([
+      ['Importe inválido', undefined],
+      [undefined, 100.55],
+    ]);
+    expect(parsePaymentSheet('fecha,comercio,importe\n2026-10-05,kiosco,1500.755\n')[0]?.error).toBe('Importe inválido');
+  });
+
   it('sin las columnas obligatorias, un error en la línea 1', () => {
     expect(parsePaymentSheet('fecha;importe\n05/10/2026;100\n')).toEqual([{ line: 1, info: '', error: 'Faltan columnas: comercio' }]);
   });

@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (ver "Estado"). Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 3 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -140,13 +140,45 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
   espera código de cuerpo síncrono, así ningún otro request se intercala en la conexión.
   `@typescript-eslint/require-await` está apagada en servidor, scripts y tests hasta la fase 5.
 
+- **Fase 3, hecha** (2026-11-12): las tablas de sistema y sus servicios están en el esquema `system`
+  (Kysely sobre `Database.system`, `systemKyselyDef` en el contenedor); los comercios siguen en SQLite.
+  - **El executor va al final y es opcional** (`metodo(…, db = this.db)`): quien abre la transacción
+    pasa el `trx` a los demás servicios (auditoría, cuentas, cajas, bono, embudo). Las lecturas que no
+    son de PostgreSQL se hacen antes de abrir la transacción.
+  - **Un link de un uso** (invitación, restablecimiento, soporte, portal) se marca con un `UPDATE`
+    condicional; si no actualizó, se deshace todo y da `410`. Igual los `409` de estado (suspender).
+  - **El saldo pagado de un titular** se escribe con `lockHolder` (`pg_advisory_xact_lock`) dentro de
+    su transacción: dos cargos a la vez no gastan de más.
+  - **El alta** es una transacción de sistema (`TenantManager.createTenantRecord`) y después del commit
+    crea la base del comercio (`initTenantStorage`); si eso falla, compensa (borra el comercio, sus
+    bonos y la cuenta nueva). La liga con la demo ahora va adentro: un error de base aborta el alta.
+  - **Demos**: `demoTenantIds(db)` e `isDemoTenant(db, id)` (`demo/demo-tenant-ids.ts`) reemplazan a
+    `DEMO_TENANT_IDS_SQL`. Revocar una demo es una sola transacción. `legacy_demo_sessions` y
+    `sweepLegacy`, borrados.
+  - **Arranque**: `migrateSystem` corre en la fase de mantenimiento, antes de las migraciones de
+    SQLite, que ahora son solo de comercio (`runMigrations` mira `tenants/*.sqlite`). Nadie abre
+    `system.sqlite` (guardián en `test/pg-guards.test.ts`). `create-root` y la semilla de desarrollo
+    escriben en PostgreSQL.
+  - **Backup**: copia solo las bases de comercio; el sistema queda para el `pg_dump` de la fase 6.
+  - **Tests y e2e**: ninguno usa SQLite de sistema; el e2e recrea `minierp_e2e` (`e2e/serve.ts`) y
+    consulta el sistema con `e2e/system-db.ts`. `dropDb` reintenta si un autovacuum tiene la base (el
+    rol local no es superusuario).
+  - **Para la fase 4**: `gift_credits` no tiene FK a `tenants` en la línea de base (el alta la borra a
+    mano al compensar); se puede agregar con `ON DELETE CASCADE` mientras la v1 no esté congelada.
+
 ## Para decidir en las fases que siguen
 
 1. **Fechas imposibles e instantes ilegibles** (fase 4): hoy `2026-02-31` pasa la validación del
    push y un `createdAt` es texto libre; PostgreSQL los rechaza y el evento quedaría como `issue`.
    Hay que validar la fecha en `push-events.ts` o decidir qué se guarda.
 2. **Redondeo de `numeric(14,2)`** (fases 3 y 4): un total o un precio con más de 2 decimales se
-   redondea en la columna y puede diferir del `payload`.
+   redondea en la columna y puede diferir del `payload`. **Decidido para sistema** (2026-11-12, fase
+   3): el dinero de sistema nunca se redondea en silencio. Lo que calcula el cobro (precio por caja y
+   día, reparto, bono, deuda) ya es en pesos enteros (`allocation.ts` y `billing_settings` exigen
+   enteros). Lo que entra de afuera (pago, bono y devolución de plataforma, planilla de cobranzas) se
+   valida en la frontera con a lo sumo 2 decimales (`moneyAmount` en `src/shared/money.ts`): con más,
+   "Importe inválido" (`400`, o la fila con error en la planilla). Así lo guardado es siempre lo que
+   se validó. Para comercio (precios y totales del POS) se decide en la fase 4.
 3. **FK que cambian comportamiento** (fase 4): el push de stock de un producto desconocido viola
    `stock.product_id`; borrar un producto o un cliente ahora arrastra su stock o su cuenta corriente.
 4. **`\u0000` en un lote** (fase 4): `jsonb` no lo admite y `push_lots.events` se guarda fuera de

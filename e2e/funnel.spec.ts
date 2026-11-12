@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_DATA_DIR } from '../playwright.config.ts';
+import { querySystem } from './system-db.ts';
 import { FUNNEL_STAGES, type FunnelReport, type FunnelStage } from '../src/shared/funnel-types.ts';
 
 /**
@@ -72,9 +73,8 @@ test('demo → contacto → alta → venta real: una sola historia y cada etapa 
   const commandBar = page.getByLabel('Barra de comandos');
   await expect(page).toHaveTitle(/^Demo [0-9A-F]{4} - /);
   const pos = (await page.title()).split(' - ')[0] ?? '';
-  const [demo] = query<{ id: string }>(
-    'system.sqlite',
-    'SELECT s.id FROM demo_sessions s JOIN registers r ON r.id = s.register_id WHERE r.point_of_sale = ? ORDER BY s.created_at DESC',
+  const [demo] = await querySystem<{ id: string }>(
+    'SELECT s.id FROM system.demo_sessions s JOIN system.registers r ON r.id = s.register_id WHERE r.point_of_sale = $1 ORDER BY s.created_at DESC',
     pos,
   );
   const demoId = demo?.id ?? '';
@@ -111,9 +111,9 @@ test('demo → contacto → alta → venta real: una sola historia y cada etapa 
   await expect(page.getByText('DEMO', { exact: true })).toHaveCount(0);
 
   // 4. Venta real en el comercio nuevo, que quedó ligado a la demo
-  const [alta] = query<{ id: string; demo: string | null }>(
-    'system.sqlite',
-    'SELECT t.id, t.demo_session_id AS demo FROM memberships m JOIN users u ON u.id = m.user_id JOIN tenants t ON t.id = m.tenant_id WHERE u.email = ?',
+  const [alta] = await querySystem<{ id: string; demo: string | null }>(
+    `SELECT t.id, t.demo_session_id AS demo FROM system.memberships m JOIN system.users u ON u.id = m.user_id
+     JOIN system.tenants t ON t.id = m.tenant_id WHERE u.email = $1`,
     email,
   );
   const tenantId = alta?.id ?? '';

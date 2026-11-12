@@ -1,60 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb, SYSTEM_SCHEMA_VERSION } from '../src/server/db/system-db.ts';
 import { initTenantDb, TENANT_SCHEMA_VERSION } from '../src/server/db/tenant-db.ts';
 
 describe('Database Engine (DB-per-tenant)', () => {
-  let systemDb: DatabaseSync;
   let tenantDb: DatabaseSync;
 
   beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-
     tenantDb = new DatabaseSync(':memory:');
     initTenantDb(tenantDb);
-  });
-
-  describe('System DB', () => {
-    it('inicializa correctamente las tablas del sistema con la versión de schema esperada', () => {
-      const versionRow = systemDb.prepare('PRAGMA user_version').get() as { user_version: number };
-      expect(versionRow.user_version).toBe(SYSTEM_SCHEMA_VERSION);
-
-      const tables = systemDb
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-        .all() as { name: string }[];
-      const names = tables.map((t) => t.name);
-
-      expect(names).toContain('users');
-      expect(names).toContain('tenants');
-      expect(names).toContain('memberships');
-      expect(names).toContain('tenant_api_keys');
-      expect(names).toContain('invitations');
-      expect(names).toContain('password_resets');
-      expect(names).toContain('audit_log');
-    });
-
-    it('frena con una base de sistema anterior a la línea de base (#47)', () => {
-      const db = new DatabaseSync(':memory:');
-      db.exec('CREATE TABLE vieja (id TEXT); PRAGMA user_version = 3');
-      expect(() => { initSystemDb(db); }).toThrow(/anterior a la línea de base/);
-    });
-
-    it('permite insertar y consultar usuarios con roles', () => {
-      systemDb
-        .prepare(
-          'INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-        )
-        .run('user-1', 'root@example.com', 'hash123', 'Root User', 'root', new Date().toISOString());
-
-      const user = systemDb.prepare('SELECT * FROM users WHERE id = ?').get('user-1') as {
-        email: string;
-        global_role: string;
-      };
-
-      expect(user.email).toBe('root@example.com');
-      expect(user.global_role).toBe('root');
-    });
   });
 
   describe('Tenant DB', () => {

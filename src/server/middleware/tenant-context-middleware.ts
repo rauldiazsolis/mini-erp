@@ -1,5 +1,6 @@
 import type { Response, NextFunction } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { Container } from 'hardwired';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { MembershipService } from '../users/membership-service.ts';
@@ -15,7 +16,7 @@ import { routeParam } from '../http/route-param.ts';
  * suspendido (#23) solo deja a sus usuarios lo abierto (Uso y pagos, estado de cobro y exportar).
  */
 export function createTenantContextMiddleware(
-  systemDb: DatabaseSync,
+  system: Kysely<SystemDatabase>,
   membershipService: MembershipService,
   tenantManager: TenantManager,
   rootContainer?: Container,
@@ -30,7 +31,7 @@ export function createTenantContextMiddleware(
         res.status(403).json({ error: 'No tienes acceso a este tenant' });
         return;
       }
-      if (req.anonymous.kind === 'register' && (await isSuspended(systemDb, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+      if (req.anonymous.kind === 'register' && (await isSuspended(system, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
         res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
         return;
       }
@@ -59,7 +60,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    if (req.impersonator === undefined && (await isSuspended(systemDb, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator === undefined && (await isSuspended(system, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
       return;
     }

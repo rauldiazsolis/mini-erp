@@ -1,4 +1,5 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { z } from '../../shared/zod.ts';
 import type { BillingSettings } from '../../shared/credits-types.ts';
 
@@ -37,8 +38,8 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
 const KEYS = Object.keys(DEFAULT_BILLING_SETTINGS);
 
 /** Lo guardado sobre los valores por defecto; un valor guardado que no valida se ignora. */
-export async function readBillingSettings(db: DatabaseSync): Promise<BillingSettings> {
-  const rows = db.prepare('SELECT key, value FROM billing_settings').all() as { key: string; value: string }[];
+export async function readBillingSettings(db: Kysely<SystemDatabase>): Promise<BillingSettings> {
+  const rows = await db.selectFrom('billing_settings').select(['key', 'value']).execute();
   const merged: Record<string, unknown> = { ...DEFAULT_BILLING_SETTINGS };
   for (const row of rows) {
     if (!KEYS.includes(row.key)) continue;
@@ -50,13 +51,22 @@ export async function readBillingSettings(db: DatabaseSync): Promise<BillingSett
   return billingSettingsSchema.parse(merged);
 }
 
-export async function writeBillingSettings(db: DatabaseSync, patch: BillingSettingsPatch, userId: string, at: string): Promise<BillingSettings> {
-  const upsert = db.prepare(
-    `INSERT INTO billing_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+export async function writeBillingSettings(db: Kysely<SystemDatabase>, patch: BillingSettingsPatch, userId: string, at: string): Promise<BillingSettings> {
+  const rows = Object.entries(patch).flatMap(([key, value]) =>
+    value === undefined ? [] : [{ key, value: JSON.stringify(value), updated_by: userId, updated_at: at }],
   );
-  for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) upsert.run(key, JSON.stringify(value), userId, at);
+  if (rows.length > 0) {
+    await db
+      .insertInto('billing_settings')
+      .values(rows)
+      .onConflict((oc) =>
+        oc.column('key').doUpdateSet((eb) => ({
+          value: eb.ref('excluded.value'),
+          updated_by: eb.ref('excluded.updated_by'),
+          updated_at: eb.ref('excluded.updated_at'),
+        })),
+      )
+      .execute();
   }
   return await readBillingSettings(db);
 }

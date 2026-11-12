@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { ImportPreview } from '../src/shared/import-fields.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 // Un CSV "de Excel": punto y coma, coma decimal, encabezados propios y una columna que no se importa
 const EXCEL =
@@ -21,9 +23,8 @@ describe('POST /import/:entity (#22)', () => {
   let member: string;
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    tenants = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager: tenants });
+    tenants = new TenantManager(pgDb().system, { inMemory: true });
+    const created = createApp({ database: pgDb(), tenantManager: tenants });
     app = created.app;
     const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     const a = await created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });
@@ -32,7 +33,7 @@ describe('POST /import/:entity (#22)', () => {
     admin = a.token;
     member = m.token;
     await tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
-    const members = new MembershipService(systemDb);
+    const members = new MembershipService(pgDb().system);
     await members.addMembership('t1', a.user.id, 'admin');
     await members.addMembership('t1', m.user.id, 'member');
   });
