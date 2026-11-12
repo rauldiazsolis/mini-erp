@@ -72,12 +72,11 @@ function plan(dataDir: string, schemas: { system: Schema; tenant: Schema }): Pen
     if (assessDb(system, schemas.system).kind === 'new') {
       return undefined;
     }
-    const rows = system.prepare('SELECT id FROM tenants ORDER BY id').all() as { id: string }[];
-    for (const { id } of rows) {
-      const file = `tenants/${id}.sqlite`;
-      if (existsSync(join(dataDir, file))) {
-        targets.push({ file, schema: schemas.tenant });
-      }
+    // Los comercios están en `tenants` de PostgreSQL (fase 3): la lista sale de los archivos
+    const tenantsDir = join(dataDir, 'tenants');
+    const files = existsSync(tenantsDir) ? readdirSync(tenantsDir).filter((name) => name.endsWith('.sqlite')).sort() : [];
+    for (const name of files) {
+      targets.push({ file: `tenants/${name}`, schema: schemas.tenant });
     }
   } catch (err: unknown) {
     if (err instanceof SchemaError) {

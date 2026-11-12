@@ -4,9 +4,11 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
-import { AuditLog } from '../src/server/audit/audit-log.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 
-describe('MembershipService y AuditLog (#19)', () => {
+const db = setupTestDb();
+
+describe('MembershipService (#19)', () => {
   let systemDb: DatabaseSync;
   let auth: AuthService;
   let tm: TenantManager;
@@ -15,7 +17,7 @@ describe('MembershipService y AuditLog (#19)', () => {
   beforeEach(() => {
     systemDb = openSystemDb(':memory:');
     auth = new AuthService(systemDb);
-    tm = new TenantManager(systemDb, { inMemory: true });
+    tm = new TenantManager(db().system, { inMemory: true });
     members = new MembershipService(systemDb);
   });
 
@@ -65,19 +67,5 @@ describe('MembershipService y AuditLog (#19)', () => {
     await expect(members.updateMember({ tenantId: 'kiosco-a', actor, targetUserId: ana.id, role: 'admin' })).rejects.toThrow(
       'El comercio necesita al menos un owner activo',
     );
-  });
-
-  it('AuditLog registra y lista con nombres, lo más nuevo primero', async () => {
-    let t = 0;
-    const audit = new AuditLog(systemDb, () => new Date(Date.UTC(2026, 9, 1, 10, t++)));
-    const ana = (await auth.createUser({ email: 'ana@x.com', password: 'password123', name: 'Ana' })).user;
-    const bob = (await auth.createUser({ email: 'bob@x.com', password: 'password123', name: 'Bob' })).user;
-    await audit.record({ actorUserId: ana.id, tenantId: 'kiosco-a', action: 'tenant.created' });
-    await audit.record({ actorUserId: ana.id, tenantId: 'kiosco-a', action: 'member.disabled', targetUserId: bob.id, details: { role: 'member' } });
-    await audit.record({ actorUserId: ana.id, tenantId: 'otro', action: 'tenant.created' });
-    const list = await audit.listForTenant('kiosco-a');
-    expect(list.map((e) => e.action)).toEqual(['member.disabled', 'tenant.created']);
-    expect(list[0]).toMatchObject({ actorName: 'Ana', targetName: 'Bob', details: { role: 'member' } });
-    expect(list[1]?.targetName).toBeNull();
   });
 });

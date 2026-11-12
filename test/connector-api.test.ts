@@ -5,6 +5,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   let app: ReturnType<typeof createApp>['app'];
@@ -15,9 +18,9 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   beforeEach(async () => {
     const systemDb = new DatabaseSync(':memory:');
     initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
 
-    const bundle = createApp({ systemDb, tenantManager });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
 
     // Dueño y comercio con la semilla de demo (sin pasar por el alta, #19)

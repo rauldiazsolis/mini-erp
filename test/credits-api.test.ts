@@ -8,6 +8,9 @@ import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
 import type { ChargesPage, CreditMovementItem, CreditsResponse, GiftItem } from '../src/shared/credits-types.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const origin = { branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 const venta = (eventId: string, saleId: string, createdAt: string) => ({
@@ -29,8 +32,8 @@ describe('API de Créditos del comercio (#21)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => at });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => at });
     app = bundle.app;
     billing = bundle.billing;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

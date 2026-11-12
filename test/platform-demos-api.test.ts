@@ -6,6 +6,9 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const V = { 'X-POS-Contract-Version': '4.6.0' };
 
@@ -29,9 +32,9 @@ describe('demos en la plataforma (#24)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    bundle = createApp({
+    bundle = createApp({ database: pgDb(),
       systemDb,
       tenantManager,
       now: () => clock,

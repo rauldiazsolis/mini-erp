@@ -7,13 +7,16 @@ import { readDemoConfig, type DemoConfig } from '../src/server/demo/demo-config.
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
 import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
 import { startDemoSweeper } from '../src/server/demo/demo-sweeper.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const HOUR = 60 * 60 * 1000;
 
 function setup(overrides: Partial<DemoConfig> = {}) {
   const systemDb = new DatabaseSync(':memory:');
   initSystemDb(systemDb);
-  const tenantManager = new TenantManager(systemDb, { inMemory: true });
+  const tenantManager = new TenantManager(db().system, { inMemory: true });
   const apiKeyService = new ApiKeyService(systemDb);
   const clock = { now: new Date('2026-10-05T15:00:00.000Z') };
   const service = new DemoSessionService({
@@ -145,17 +148,6 @@ describe('DemoSessionService (#24)', () => {
     expect(await service.isFull()).toBe(true);
     await service.revokeTenant('demo-almacen', 'reset');
     expect(await service.isFull()).toBe(false);
-  });
-
-  it('sweepLegacy borra los tenants por visitante de antes de M8', async () => {
-    const { service, tenantManager, systemDb } = setup();
-    await tenantManager.createTenant({ id: 'demo-ab12', slug: 'demo-ab12', name: 'Demo' });
-    systemDb
-      .prepare('INSERT INTO legacy_demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
-      .run('demo-ab12', 'kiosco', 'x', 'x');
-    expect(await service.sweepLegacy()).toBe(1);
-    expect(await tenantManager.tenantExists('demo-ab12')).toBe(false);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM legacy_demo_sessions').get()).toEqual({ n: 0 });
   });
 });
 

@@ -7,6 +7,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
 import { reconcileCharges } from '../src/server/billing/reconcile.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const origin = { branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
@@ -31,8 +34,8 @@ describe('cargos generados por el push (#21)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

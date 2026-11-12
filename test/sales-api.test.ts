@@ -8,6 +8,9 @@ import type {
 } from '../src/shared/sales-types.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('API de Ventas & Caja (#20)', () => {
   let app: ReturnType<typeof createApp>['app'];
@@ -16,8 +19,8 @@ describe('API de Ventas & Caja (#20)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

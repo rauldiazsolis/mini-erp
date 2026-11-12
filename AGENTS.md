@@ -357,8 +357,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
     cajas.
   - **El barrido** (`startDemoSweeper` en `demo/demo-sweeper.ts`, al arrancar y cada 15 minutos):
-    borra las demos por tenant de antes de M8 (`legacy_demo_sessions`), hace el reinicio total
-    automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
+    hace el reinicio total automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
     caído, al arrancar), revoca las cajas inactivas y repone el stock que bajó de un cuarto del de la
     semilla ("Reposición automática"). Loguea `[demos] barrido: …`.
   - **Portal**: el visitante abre el admin del comercio demo desde el POS con `/MINI` (ver "Portal y

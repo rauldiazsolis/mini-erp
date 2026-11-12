@@ -5,6 +5,9 @@ import { createApp } from '../src/server/app.ts';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface DashboardSummaryResponse {
   period: string;
@@ -36,8 +39,8 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
 
     // Registrar admin

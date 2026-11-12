@@ -1,5 +1,8 @@
 import { container, unbound, fn, type Container, type IContainer } from 'hardwired';
 import { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import { createDatabase, databaseUrl, type Database } from '../db/pg/database.ts';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { openSystemDb } from '../db/system-db.ts';
 import { dataDir } from '../db/data-dir.ts';
 import { join } from 'node:path';
@@ -39,8 +42,19 @@ import { FunnelQueryService } from '../funnel/funnel-query-service.ts';
 // --- DEFINICIONES DE BASE DE DATOS ---
 
 /**
+ * La base de PostgreSQL (un solo pool, de `DATABASE_URL`). En tests y en el arranque se pasa con
+ * `database` en `createRootContainer`. Los servicios nunca la reciben entera: los de sistema usan
+ * `systemKyselyDef`.
+ */
+export const databaseDef = fn.singleton<Database>(() => createDatabase({ connectionString: databaseUrl() }));
+
+/** Lo global en PostgreSQL (`Database.system`): lo que reciben los servicios de sistema ya migrados. */
+export const systemKyselyDef = fn.singleton((c): Kysely<SystemDatabase> => c.use(databaseDef).system);
+
+/**
  * Definición singleton para la base de datos del sistema: `<DATA_DIR>/system.sqlite`, la misma que
  * migra el arranque (#47). En tests se sobreescribe con toValue() en createRootContainer.
+ * Fase 3 de PostgreSQL: la usan los servicios de sistema que todavía no se migraron; se borra con el último.
  */
 export const systemDbDef = fn.singleton<DatabaseSync>(() => {
   return openSystemDb(join(dataDir(), 'system.sqlite'));
@@ -57,7 +71,7 @@ export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
 // --- DEFINICIONES SINGLETON DE APLICACIÓN ---
 
 export const tenantManagerDef = fn.singleton(
-  (c) => new TenantManager(c.use(systemDbDef), { baseDir: join(dataDir(), 'tenants') }),
+  (c) => new TenantManager(c.use(systemKyselyDef), { baseDir: join(dataDir(), 'tenants') }),
 );
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemDbDef)));
 
@@ -96,7 +110,7 @@ export const billingServiceDef = fn.singleton((c) => new BillingService({ db: c.
 
 // --- USUARIOS Y AUDITORÍA (#19) ---
 
-export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemDbDef), c.use(clockDef)));
+export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemKyselyDef), c.use(clockDef)));
 
 // El embudo (#25): eventos, totales del landing y contactos
 export const funnelServiceDef = fn.singleton((c) => new FunnelService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
@@ -187,6 +201,7 @@ export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
 
 export type ContainerDependencies = {
+  database?: Database | undefined;
   systemDb?: DatabaseSync | undefined;
   tenantManager?: TenantManager | undefined;
   demoConfig?: DemoConfig | undefined;
@@ -198,6 +213,10 @@ export type ContainerDependencies = {
  */
 export function createRootContainer(deps?: ContainerDependencies): Container {
   return container.new((c) => {
+    if (deps?.database !== undefined) {
+      c.bindCascading(databaseDef).toValue(deps.database);
+    }
+
     if (deps?.systemDb !== undefined) {
       c.bindCascading(systemDbDef).toValue(deps.systemDb);
     }

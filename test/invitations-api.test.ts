@@ -5,6 +5,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('invitaciones por link (#19)', () => {
   let app: Express;
@@ -16,7 +19,7 @@ describe('invitaciones por link (#19)', () => {
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
     systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }), now: () => clock }).app;
+    app = createApp({ database: db(), systemDb, tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => clock }).app;
     const res = await request(app)
       .post('/api/alta')
       .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' });

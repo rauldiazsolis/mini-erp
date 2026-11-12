@@ -4,6 +4,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('Auth & Multitenancy (Etapa 1.3)', () => {
   let systemDb: DatabaseSync;
@@ -14,9 +17,9 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   beforeEach(() => {
     systemDb = new DatabaseSync(':memory:');
     initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
 
-    const bundle = createApp({ systemDb, tenantManager });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     authService = bundle.authService;
   });

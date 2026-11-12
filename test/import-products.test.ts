@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ImportService } from '../src/server/io/import-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const now = '2026-10-03T12:00:00.000Z';
 const EXCEL =
@@ -16,7 +18,7 @@ describe('importación de productos y stock (#22)', () => {
   let service: ImportService;
 
   beforeEach(async () => {
-    const tm = new TenantManager(openSystemDb(':memory:'), { inMemory: true });
+    const tm = new TenantManager(pgDb().system, { inMemory: true });
     await tm.createTenant({ id: 't1', slug: 't1', name: 'T1', seedDemoData: false });
     db = tm.getTenantDb('t1');
     db.prepare("INSERT INTO branches (id, name, code, created_at) VALUES ('branch-norte', 'Norte', 'NORTE', ?)").run(now);

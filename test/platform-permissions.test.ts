@@ -4,6 +4,9 @@ import type { Express } from 'express';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Need = 'root' | 'staff';
 
@@ -76,8 +79,8 @@ describe('permisos de la plataforma (#23)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
     systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);

@@ -4,6 +4,9 @@ import type { Express } from 'express';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Users = {
   members: { userId: string; email: string; role: string; status: string; canReset: boolean }[];
@@ -18,7 +21,7 @@ describe('usuarios del comercio (#19)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) }).app;
+    app = createApp({ database: db(), systemDb, tenantManager: new TenantManager(db().system, { inMemory: true }) }).app;
     const alta = (await request(app)
       .post('/api/alta')
       .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' })).body as {

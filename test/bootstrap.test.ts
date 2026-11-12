@@ -7,12 +7,15 @@ import { bootstrap } from '../src/server/bootstrap.ts';
 import { DEV_DEMOS, DEV_PASSWORD, DEV_POS_API_KEY, DEV_SUPPORT_WHATSAPP, DEV_TENANTS, DEV_USERS } from '../src/server/seeds/dev-fixtures.ts';
 import { readBillingSettings, writeBillingSettings } from '../src/server/billing/settings.ts';
 import { hashApiKey } from '../src/server/auth/crypto.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 async function boot(env: NodeJS.ProcessEnv) {
   const systemDb = new DatabaseSync(':memory:');
   initSystemDb(systemDb);
-  const tenantManager = new TenantManager(systemDb, { inMemory: true });
-  const bundle = createApp({ systemDb, tenantManager });
+  const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+  const bundle = createApp({ database: pgDb(), systemDb, tenantManager });
   const run = async () => {
     const result = await bootstrap({ env, bundle });
     clearInterval(result.sweeper);

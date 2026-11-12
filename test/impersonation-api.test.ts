@@ -6,6 +6,9 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const MIN = 60 * 1000;
 
@@ -19,8 +22,8 @@ describe('sesión de impersonación (#23, M7b)', () => {
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => now });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;
     const root = (await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' })).user;

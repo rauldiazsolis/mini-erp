@@ -5,6 +5,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
 import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -19,7 +22,7 @@ describe('reinicios del comercio demo (#24)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     apiKeyService = new ApiKeyService(systemDb);
     clock = new Date('2026-10-05T15:00:00.000Z');
     service = new DemoSessionService({

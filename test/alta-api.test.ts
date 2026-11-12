@@ -5,6 +5,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type AltaBody = {
   token?: string;
@@ -20,8 +23,8 @@ describe('alta atómica (#19)', () => {
 
   beforeEach(() => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    app = createApp({ systemDb, tenantManager }).app;
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    app = createApp({ database: db(), systemDb, tenantManager }).app;
   });
 
   const alta = {

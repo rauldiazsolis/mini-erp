@@ -6,6 +6,9 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 /**
  * Los textos propios de los esquemas de `/api` (#6): Zod 4 cambia cómo se declaran
@@ -19,8 +22,8 @@ describe('textos de validación de /api (#6)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const o = await bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     owner = o.token;

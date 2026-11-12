@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ImportService } from '../src/server/io/import-service.ts';
 import { applyToBalance } from '../src/server/customer/account-ledger.ts';
 import { recordDiscrepancy } from '../src/server/discrepancy/discrepancies.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const EXCEL = 'Razón Social;DNI;Celular;Deuda\r\nPérez Juan;20.123.456;11 5555-1234;12.345,50\r\nAna Gómez;;;0\r\n';
 
@@ -20,7 +22,7 @@ describe('importación de clientes (#22)', () => {
   const now = '2026-10-03T12:00:00.000Z';
 
   beforeEach(async () => {
-    const tm = new TenantManager(openSystemDb(':memory:'), { inMemory: true });
+    const tm = new TenantManager(pgDb().system, { inMemory: true });
     await tm.createTenant({ id: 't1', slug: 't1', name: 'T1', seedDemoData: false });
     db = tm.getTenantDb('t1');
     service = new ImportService(db);

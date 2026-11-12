@@ -4,6 +4,9 @@ import type { Express } from 'express';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('catálogo de ejemplo del rubro (#22)', () => {
   let app: Express;
@@ -11,8 +14,8 @@ describe('catálogo de ejemplo del rubro (#22)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenants = new TenantManager(systemDb, { inMemory: true });
-    app = createApp({ systemDb, tenantManager: tenants }).app;
+    const tenants = new TenantManager(db().system, { inMemory: true });
+    app = createApp({ database: db(), systemDb, tenantManager: tenants }).app;
     const res = await request(app).post('/api/alta').send({
       name: 'Marta',
       email: 'm@x.com',

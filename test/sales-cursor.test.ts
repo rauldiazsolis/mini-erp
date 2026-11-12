@@ -7,6 +7,9 @@ import { createApp } from '../src/server/app.ts';
 import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
 import type { ListResult } from '../src/shared/sales-types.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 /**
  * Scroll infinito (#87): las listas sin límite se piden por tramos con un cursor ("después de esta
@@ -21,8 +24,8 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const bundle = createApp({ database: pgDb(), systemDb, tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

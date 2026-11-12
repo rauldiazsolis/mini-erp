@@ -5,6 +5,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const V = { 'X-POS-Contract-Version': '4.6.0' };
 const SALES = '/api/tenants/demo-kiosco/sales?from=2026-10-05&to=2026-10-05';
@@ -19,9 +22,9 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
 
   beforeEach(() => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    bundle = createApp({
+    bundle = createApp({ database: db(),
       systemDb,
       tenantManager,
       now: () => clock,
@@ -133,9 +136,9 @@ describe('portal de una caja real (M10, #26)', () => {
 
   beforeEach(() => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    app = createApp({ systemDb, tenantManager, now: () => clock }).app;
+    app = createApp({ database: db(), systemDb, tenantManager, now: () => clock }).app;
   });
 
   type Kiosco = { tenantId: string; key: string; owner: string; registerId: string };

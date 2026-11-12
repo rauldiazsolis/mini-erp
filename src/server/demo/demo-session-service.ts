@@ -148,13 +148,6 @@ export class DemoSessionService {
     return await this.revoke('tenant_id = ?', [tenantId], reason);
   }
 
-  /** Borra los tenants por visitante de #9 que quedaron de antes de M8. */
-  async sweepLegacy(): Promise<number> {
-    const rows = this.deps.systemDb.prepare('SELECT tenant_id FROM legacy_demo_sessions').all() as { tenant_id: string }[];
-    for (const row of rows) await this.deps.tenantManager.deleteTenant(row.tenant_id);
-    return rows.length;
-  }
-
   private async hasDemoTenant(template: DemoTemplate): Promise<boolean> {
     return this.deps.systemDb.prepare('SELECT 1 FROM demo_tenants WHERE template = ?').get(template) !== undefined;
   }

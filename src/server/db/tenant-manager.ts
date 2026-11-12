@@ -1,6 +1,8 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from './pg/system-schema.ts';
 import { initTenantDb, openTenantDb } from './tenant-db.ts';
 import { seedDemoTenant } from '../seeds/index.ts';
 import { isBusinessType, type BusinessType } from '../../shared/business-type.ts';
@@ -30,17 +32,21 @@ export type CreateTenantParams = {
   businessType?: BusinessType | undefined;
 };
 
+/**
+ * Los comercios: sus filas de sistema (`tenants`, la membresía del owner) en PostgreSQL y la base de
+ * cada uno, todavía en SQLite (un `.sqlite` por comercio o en memoria, para los tests).
+ */
 export class TenantManager {
-  private systemDb: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private cache = new Map<string, DatabaseSync>();
   private baseDir: string;
   private inMemory: boolean;
 
   constructor(
-    systemDb: DatabaseSync,
+    db: Kysely<SystemDatabase>,
     options?: { baseDir?: string; inMemory?: boolean },
   ) {
-    this.systemDb = systemDb;
+    this.db = db;
     this.baseDir = options?.baseDir ?? join(process.cwd(), 'data', 'tenants');
     this.inMemory = options?.inMemory ?? false;
   }
@@ -65,9 +71,11 @@ export class TenantManager {
   }
 
   async tenantExists(id: string): Promise<boolean> {
-    const row = this.systemDb
-      .prepare('SELECT id FROM tenants WHERE id = ? OR slug = ?')
-      .get(id, id);
+    const row = await this.db
+      .selectFrom('tenants')
+      .select('id')
+      .where((eb) => eb.or([eb('id', '=', id), eb('slug', '=', id)]))
+      .executeTakeFirst();
     return row !== undefined;
   }
 
@@ -83,17 +91,13 @@ export class TenantManager {
 
   /** El nombre del comercio, el que se ve en el admin (#58); `null` si no existe. */
   async getTenantName(tenantId: string): Promise<string | null> {
-    const row = this.systemDb.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as
-      | { name: string }
-      | undefined;
+    const row = await this.db.selectFrom('tenants').select('name').where('id', '=', tenantId).executeTakeFirst();
     return row?.name ?? null;
   }
 
   /** El rubro del comercio (#22); `null` si no tiene (comercios de antes de M6, demos). */
   async getBusinessType(tenantId: string): Promise<BusinessType | null> {
-    const row = this.systemDb.prepare('SELECT business_type FROM tenants WHERE id = ?').get(tenantId) as
-      | { business_type: string | null }
-      | undefined;
+    const row = await this.db.selectFrom('tenants').select('business_type').where('id', '=', tenantId).executeTakeFirst();
     const value = row?.business_type ?? null;
     return value !== null && isBusinessType(value) ? value : null;
   }
@@ -110,21 +114,27 @@ export class TenantManager {
       finalSlug = finalId;
     }
 
-    this.systemDb
-      .prepare(
-        // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
-        'INSERT INTO tenants (id, slug, name, status, created_at, holder_user_id, business_type) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(finalId, finalSlug, params.name, status, now, params.ownerUserId ?? null, params.businessType ?? null);
+    const ownerUserId = params.ownerUserId;
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto('tenants')
+        .values({
+          id: finalId,
+          slug: finalSlug,
+          name: params.name,
+          status,
+          created_at: now,
+          // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
+          holder_user_id: ownerUserId ?? null,
+          business_type: params.businessType ?? null,
+        })
+        .execute();
+      if (ownerUserId !== undefined) {
+        await trx.insertInto('memberships').values({ user_id: ownerUserId, tenant_id: finalId, role: 'owner', created_at: now }).execute();
+      }
+    });
 
-    if (params.ownerUserId !== undefined) {
-      this.systemDb
-        .prepare(
-          'INSERT INTO memberships (user_id, tenant_id, role, created_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(params.ownerUserId, finalId, 'owner', now);
-    }
-
+    // La base del comercio sigue en SQLite: no hay transacción común con la de sistema
     const tenantDb = this.getTenantDb(finalId);
 
     // Sucursal por defecto
@@ -147,8 +157,9 @@ export class TenantManager {
   }
 
   /**
-   * Borra un tenant entero: cierra su base, borra sus filas de sistema y su archivo. Lo usa el
-   * barrido de las demos por visitante de antes de M8 (#9, #24). No depende de `PRAGMA foreign_keys`.
+   * Borra un comercio entero: cierra su base, borra su fila de sistema y su archivo. Lo usa el alta
+   * para deshacer un comercio a medio crear. Sus cajas (con sus equipos), keys, membresías,
+   * invitaciones, suspensiones y pedidos de ayuda se van con la fila (`ON DELETE CASCADE`).
    */
   async deleteTenant(id: string): Promise<void> {
     const db = this.cache.get(id);
@@ -161,19 +172,7 @@ export class TenantManager {
       this.cache.delete(id);
     }
 
-    this.systemDb.exec('BEGIN');
-    try {
-      this.systemDb.prepare('DELETE FROM register_devices WHERE register_id IN (SELECT id FROM registers WHERE tenant_id = ?)').run(id);
-      this.systemDb.prepare('DELETE FROM registers WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM tenant_api_keys WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM memberships WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM legacy_demo_sessions WHERE tenant_id = ?').run(id);
-      this.systemDb.prepare('DELETE FROM tenants WHERE id = ?').run(id);
-      this.systemDb.exec('COMMIT');
-    } catch (err: unknown) {
-      this.systemDb.exec('ROLLBACK');
-      throw err;
-    }
+    await this.db.deleteFrom('tenants').where('id', '=', id).execute();
 
     if (!this.inMemory) {
       const file = join(this.baseDir, `${id}.sqlite`);

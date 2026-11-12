@@ -7,6 +7,9 @@ import { createApp } from '../src/server/app.ts';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const origin = { branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
@@ -19,8 +22,8 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const bundle = createApp({ database: pgDb(), systemDb, tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

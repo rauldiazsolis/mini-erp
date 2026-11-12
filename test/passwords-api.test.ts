@@ -5,6 +5,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Alta = { token: string; user: { id: string }; tenant: { id: string } };
 
@@ -42,7 +45,7 @@ describe('contraseñas (#19)', () => {
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
     systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }), now: () => clock }).app;
+    app = createApp({ database: db(), systemDb, tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => clock }).app;
     const a = await altaDe('ana@k.com', 'Kiosco Ana');
     owner = { token: a.token, id: a.user.id };
     tenantId = a.tenant.id;

@@ -6,6 +6,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { ImportPreview } from '../src/shared/import-fields.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 // Un CSV "de Excel": punto y coma, coma decimal, encabezados propios y una columna que no se importa
 const EXCEL =
@@ -22,8 +25,8 @@ describe('POST /import/:entity (#22)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    tenants = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager: tenants });
+    tenants = new TenantManager(pgDb().system, { inMemory: true });
+    const created = createApp({ database: pgDb(), systemDb, tenantManager: tenants });
     app = created.app;
     const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     const a = await created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });

@@ -8,6 +8,9 @@ import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
 import { startDemoSweeper } from '../src/server/demo/demo-sweeper.ts';
 import { lastResetBoundary } from '../src/server/demo/reset-schedule.ts';
 import { readDemoConfig } from '../src/server/demo/demo-config.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 describe('hora del reinicio automático (#24)', () => {
   it('las 4:00 argentinas son las 7:00 UTC', () => {
@@ -41,7 +44,7 @@ describe('barrido de demos (#24)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     apiKeyService = new ApiKeyService(systemDb);
     clock = new Date('2026-10-05T06:00:00.000Z'); // 3:00 AR
     service = new DemoSessionService({

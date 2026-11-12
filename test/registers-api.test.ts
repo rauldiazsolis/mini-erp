@@ -7,6 +7,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { RegisterItem } from '../src/shared/register-types.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('rutas de cajas del POS (#21)', () => {
   let app: Express;
@@ -16,8 +19,8 @@ describe('rutas de cajas del POS (#21)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });

@@ -6,6 +6,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
 import type { HelpRequestItem, SupportAccess } from '../src/shared/help-types.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const HOUR = 60 * 60 * 1000;
 
@@ -18,8 +21,8 @@ describe('pedidos de ayuda (#23, M7b)', () => {
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => now });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;
     await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

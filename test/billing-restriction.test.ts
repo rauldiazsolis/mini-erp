@@ -8,6 +8,9 @@ import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('restricción del admin por deuda (#21)', () => {
   let app: Express;
@@ -21,8 +24,8 @@ describe('restricción del admin por deuda (#21)', () => {
 
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
+    tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-25T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

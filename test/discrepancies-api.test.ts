@@ -4,6 +4,9 @@ import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const at = '2026-10-02T12:00:00.000Z';
 const origin = { branch: 'CENTRAL', pointOfSale: 'POS-01' };
@@ -18,8 +21,8 @@ describe('API de discrepancias (#2)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });

@@ -10,14 +10,17 @@ export type StartedServer = { server: Server; port: number; ready: Promise<'read
 const reason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /**
- * Arranque en dos fases (#47): escucha enseguida con el app de mantenimiento, migra con `runner` y
- * recién después arma el app completo. Si algo falla, el proceso sigue vivo en mantenimiento (sin un
+ * Arranque en dos fases (#47): escucha enseguida con el app de mantenimiento, migra PostgreSQL
+ * (`migrateDatabase`) y las bases de SQLite (`runner`) y recién después arma el app completo. Si algo falla, el proceso sigue vivo en mantenimiento (sin un
  * bucle de reinicios) y `/health` dice `migration-failed`.
  */
 export async function startServer(params: {
   port: number;
   dataDir: string;
   demos: boolean;
+  /** Migra PostgreSQL (`migrateSystem`); corre primero, todavía en mantenimiento. */
+  migrateDatabase: () => Promise<void>;
+  /** Migra las bases de SQLite que quedan (los comercios y, durante la fase 3, `system.sqlite`). */
   runner: MigrationRunner;
   /** Arma el app completo. Si falla, cierra lo que abrió antes de tirar el error. */
   createReadyHandler: () => Promise<RequestHandler>;
@@ -35,6 +38,14 @@ export async function startServer(params: {
   const port = typeof address === 'object' && address !== null ? address.port : params.port;
 
   const ready = (async (): Promise<'ready' | 'failed'> => {
+    try {
+      await params.migrateDatabase();
+    } catch (err: unknown) {
+      state = { phase: 'failed' };
+      logError(`[migraciones] FALLÓ PostgreSQL: ${reason(err)}. Las bases de SQLite no se tocaron.`);
+      return 'failed';
+    }
+
     let result: MigrationRunResult;
     try {
       result = await params.runner(params.dataDir, (progress) => {

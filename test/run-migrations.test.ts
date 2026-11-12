@@ -10,6 +10,9 @@ import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
 import { currentVersion, type Schema } from '../src/server/db/migrations/types.ts';
 import { MigrationRunError, PRE_MIGRATION_DIR, restoreRun, runMigrations, type MigrationProgress } from '../src/server/db/migrations/run-migrations.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 let root = '';
 
@@ -39,7 +42,7 @@ async function sembrar(ids: string[] = ['kiosco-real']): Promise<string> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
   const dataDir = join(root, 'data');
   const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
-  const tenants = new TenantManager(systemDb, { baseDir: join(dataDir, 'tenants') });
+  const tenants = new TenantManager(pgDb().system, { baseDir: join(dataDir, 'tenants') });
   for (const id of ids) {
     await tenants.createTenant({ id, slug: id, name: id });
   }

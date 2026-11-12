@@ -6,6 +6,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { backupAll } from '../src/server/backup/backup.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 let root = '';
 
@@ -17,7 +20,7 @@ async function seed(): Promise<{ dataDir: string; backupDir: string }> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-backup-'));
   const dataDir = join(root, 'data');
   const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
-  const tenants = new TenantManager(systemDb, { baseDir: join(dataDir, 'tenants') });
+  const tenants = new TenantManager(db().system, { baseDir: join(dataDir, 'tenants') });
   await tenants.createTenant({ id: 'kiosco-real', slug: 'kiosco-real', name: 'Kiosco real' });
   await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();

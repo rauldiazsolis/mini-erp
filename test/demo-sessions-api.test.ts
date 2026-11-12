@@ -5,6 +5,9 @@ import { createApp } from '../src/server/app.ts';
 import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import type { DemoConfig } from '../src/server/demo/demo-config.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const HOUR = 60 * 60 * 1000;
 
@@ -21,8 +24,8 @@ function makeApp(overrides: Partial<DemoConfig> = {}) {
   const systemDb = new DatabaseSync(':memory:');
   initSystemDb(systemDb);
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
-  const tenantManager = new TenantManager(systemDb, { inMemory: true });
-  const bundle = createApp({
+  const tenantManager = new TenantManager(db().system, { inMemory: true });
+  const bundle = createApp({ database: db(),
     systemDb,
     tenantManager,
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },

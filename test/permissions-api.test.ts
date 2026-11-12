@@ -7,6 +7,9 @@ import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { Capability } from '../src/shared/permissions.ts';
 import { RUTAS } from './helpers/tenant-routes.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Layer = {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: { capability?: Capability } }[] };
@@ -39,8 +42,8 @@ describe('permisos del comercio en la API (#19)', () => {
 
   beforeEach(async () => {
     const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const bundle = createApp({ database: db(), systemDb, tenantManager });
     app = bundle.app;
     const members = new MembershipService(systemDb);
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
