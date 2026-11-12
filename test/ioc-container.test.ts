@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import {
   createRootContainer,
@@ -34,14 +33,10 @@ import { setupTestDb } from './helpers/test-db.ts';
 const db = setupTestDb();
 
 describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multitenant (Fase 5)', () => {
-  let systemDb: DatabaseSync;
   let tenant1Db: DatabaseSync;
   let tenant2Db: DatabaseSync;
 
   beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-
     tenant1Db = new DatabaseSync(':memory:');
     initTenantDb(tenant1Db);
 
@@ -51,7 +46,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
 
   describe('Contenedor Raíz y Dependencias de Infraestructura', () => {
     it('crea el contenedor raíz y resuelve los singletons de infraestructura', () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
 
       const authService = root.use(authServiceDef);
       const tenantManager = root.use(tenantManagerDef);
@@ -67,7 +62,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('falla inmediatamente con error descriptivo si se intenta resolver tenantDbDef en el contenedor raíz', () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
 
       expect(() => {
         root.use(tenantDbDef);
@@ -75,7 +70,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('falla inmediatamente si se intenta resolver cualquier servicio dependiente de tenantDb en el contenedor raíz (prevención de fugas)', () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
 
       expect(() => root.use(catalogServiceDef)).toThrow(/tenantDb/);
       expect(() => root.use(stockServiceDef)).toThrow(/tenantDb/);
@@ -89,7 +84,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
 
   describe('Scopes por Request / Tenant y Resolución de Servicios', () => {
     it('crea un scope con tenantDb vinculado y resuelve todos los servicios scoped con su DB', () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
       const scope1 = createTenantScope(root, tenant1Db);
 
       const catalogSvc = scope1.use(catalogServiceDef);
@@ -110,7 +105,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('cachea la instancia dentro del mismo scope (ciclo de vida scoped)', () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
       const scope1 = createTenantScope(root, tenant1Db);
 
       const catalogSvcA = scope1.use(catalogServiceDef);
@@ -120,7 +115,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('garantiza aislamiento total entre tenants: dos scopes tienen instancias y bases de datos diferentes', async () => {
-      const root = createRootContainer({ database: db(), systemDb });
+      const root = createRootContainer({ database: db() });
       const scopeTenant1 = createTenantScope(root, tenant1Db);
       const scopeTenant2 = createTenantScope(root, tenant2Db);
 
@@ -151,7 +146,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
   describe('Integración HTTP con Express y Scopes de Request IoC', () => {
     it('aisla las peticiones HTTP entre tenants a través del middleware y req.tenantScope', async () => {
       const tenantManager = new TenantManager(db().system, { inMemory: true });
-      const { app, rootContainer } = createApp({ database: db(), systemDb, tenantManager });
+      const { app, rootContainer } = createApp({ database: db(), tenantManager });
 
       expect(rootContainer).toBeDefined();
 

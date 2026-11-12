@@ -1,6 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
-import { DatabaseSync } from 'node:sqlite';
 import type { Database } from './db/pg/database.ts';
 import { TenantManager } from './db/tenant-manager.ts';
 import { AuthService } from './auth/auth-service.ts';
@@ -41,7 +40,6 @@ import type { Container } from 'hardwired';
 import {
   createRootContainer,
   databaseDef,
-  systemDbDef,
   systemKyselyDef,
   tenantManagerDef,
   authServiceDef,
@@ -77,7 +75,6 @@ import { APP_VERSION } from './app-version.ts';
 export type AppDependencies = {
   /** La base de PostgreSQL; sin ella, el contenedor la abre de `DATABASE_URL`. */
   database?: Database | undefined;
-  systemDb?: DatabaseSync;
   tenantManager?: TenantManager;
   rootContainer?: Container;
   demoConfig?: DemoConfig | undefined;
@@ -88,7 +85,6 @@ export type AppDependencies = {
 export function createApp(deps?: AppDependencies): {
   app: Express;
   database: Database;
-  systemDb: DatabaseSync;
   tenantManager: TenantManager;
   authService: AuthService;
   apiKeyService: ApiKeyService;
@@ -105,14 +101,12 @@ export function createApp(deps?: AppDependencies): {
 
   const rootContainer = deps?.rootContainer ?? createRootContainer({
     database: deps?.database,
-    systemDb: deps?.systemDb,
     tenantManager: deps?.tenantManager,
     demoConfig: deps?.demoConfig,
     now: deps?.now,
   });
 
   const database = rootContainer.use(databaseDef);
-  const systemDb = rootContainer.use(systemDbDef);
   const tenantManager = rootContainer.use(tenantManagerDef);
   const authService = rootContainer.use(authServiceDef);
   const apiKeyService = rootContainer.use(apiKeyServiceDef);
@@ -231,7 +225,6 @@ export function createApp(deps?: AppDependencies): {
   return {
     app,
     database,
-    systemDb,
     tenantManager,
     authService,
     apiKeyService,

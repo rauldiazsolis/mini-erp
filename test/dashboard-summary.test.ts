@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -31,16 +29,14 @@ interface DashboardSummaryResponse {
 }
 
 describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
   const tenantId = 'kiosco-dash-test';
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
 
     // Registrar admin
@@ -67,7 +63,6 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
 
   afterEach(() => {
     tenantManager.closeAll();
-    systemDb.close();
   });
 
   it('requiere autenticación admin para consultar el resumen del dashboard', async () => {

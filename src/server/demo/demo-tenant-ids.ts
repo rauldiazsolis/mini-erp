@@ -13,10 +13,3 @@ export function demoTenantIds(db: Kysely<SystemDatabase>) {
 export async function isDemoTenant(db: Kysely<SystemDatabase>, tenantId: string): Promise<boolean> {
   return (await db.selectFrom('demo_tenants').select('tenant_id').where('tenant_id', '=', tenantId).executeTakeFirst()) !== undefined;
 }
-
-/**
- * La marca de demo en SQL de SQLite, para lo que todavía lee la base de sistema de SQLite (solo el
- * backup, dominio 9 de la fase 3). Ojo: `demo_tenants` ya está en PostgreSQL, así que en SQLite
- * esta subconsulta queda vacía. Se borra con el último que la use.
- */
-export const DEMO_TENANT_IDS_SQL = '(SELECT tenant_id FROM demo_tenants)';

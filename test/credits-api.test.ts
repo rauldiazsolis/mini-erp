@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
@@ -23,7 +21,6 @@ const venta = (eventId: string, saleId: string, createdAt: string) => ({
 
 describe('API de Créditos del comercio (#21)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let billing: BillingService;
   let tokens: { owner: string; admin: string; member: string; root: string };
   let keys: string[];
@@ -31,9 +28,8 @@ describe('API de Créditos del comercio (#21)', () => {
   const at = new Date('2026-10-05T15:00:00.000Z');
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => at });
+    const bundle = createApp({ database: db(), tenantManager, now: () => at });
     app = bundle.app;
     billing = bundle.billing;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

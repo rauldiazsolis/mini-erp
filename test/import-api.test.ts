@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
@@ -24,9 +23,8 @@ describe('POST /import/:entity (#22)', () => {
   let member: string;
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
     tenants = new TenantManager(pgDb().system, { inMemory: true });
-    const created = createApp({ database: pgDb(), systemDb, tenantManager: tenants });
+    const created = createApp({ database: pgDb(), tenantManager: tenants });
     app = created.app;
     const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     const a = await created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });

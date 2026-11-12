@@ -6,7 +6,7 @@ import { startFunnelSweeper } from './funnel/funnel-sweeper.ts';
 
 export type { DevInfo };
 
-type Bundle = Pick<ReturnType<typeof createApp>, 'systemDb' | 'authService' | 'tenantManager' | 'demoSessions' | 'demoResets' | 'auditLog' | 'billing' | 'funnel'>;
+type Bundle = Pick<ReturnType<typeof createApp>, 'database' | 'authService' | 'tenantManager' | 'demoSessions' | 'demoResets' | 'auditLog' | 'billing' | 'funnel'>;
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -37,7 +37,7 @@ export async function bootstrap(params: {
     return { sweeper, billingSweeper, funnelSweeper };
   }
   const devInfo = await ensureDevData({
-    systemDb: bundle.systemDb,
+    db: bundle.database.system,
     authService: bundle.authService,
     tenantManager: bundle.tenantManager,
     billing: bundle.billing,

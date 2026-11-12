@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
@@ -21,9 +20,8 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(pgDb().system, { inMemory: true });
-    const bundle = createApp({ database: pgDb(), systemDb, tenantManager });
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

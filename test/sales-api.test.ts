@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type {
@@ -18,9 +17,8 @@ describe('API de Ventas & Caja (#20)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;

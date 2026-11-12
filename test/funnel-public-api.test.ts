@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -16,7 +15,6 @@ describe('rutas públicas del embudo (#25)', () => {
   beforeEach(async () => {
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     app = createApp({ database: db(),
-      systemDb: openSystemDb(':memory:'),
       tenantManager,
       now: () => new Date(at),
       rateLimits: { demoPerHour: 10, authPer15Min: 20, contactPerHour: 2, beaconPerHour: 3 },

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
@@ -32,7 +31,7 @@ describe('cargos generados por el push (#21)', () => {
 
   beforeEach(async () => {
     tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     billing = bundle.billing;
     const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });

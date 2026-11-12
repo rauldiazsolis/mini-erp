@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -40,8 +39,7 @@ describe('contraseñas (#19)', () => {
 
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
-    // system.sqlite todavía lo abre createApp (dominios sin migrar): en memoria, nunca el de desarrollo
-    bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => clock });
+    bundle = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => clock });
     app = bundle.app;
     const a = await altaDe('ana@k.com', 'Kiosco Ana');
     owner = { token: a.token, id: a.user.id };

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
@@ -41,9 +40,8 @@ describe('permisos del comercio en la API (#19)', () => {
   const tenantId = 'kiosco-roles';
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const members = new MembershipService(db().system);
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });

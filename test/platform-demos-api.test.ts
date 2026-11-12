@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
@@ -33,7 +32,6 @@ describe('demos en la plataforma (#24)', () => {
     const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: pgDb(),
-      systemDb: openSystemDb(':memory:'),
       tenantManager,
       now: () => clock,
       demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 },

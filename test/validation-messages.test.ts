@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
@@ -16,14 +14,12 @@ const db = setupTestDb();
  */
 describe('textos de validación de /api (#6)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let owner: string;
   let root: string;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const o = await bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     owner = o.token;

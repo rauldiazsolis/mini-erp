@@ -2,15 +2,13 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:f
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { assessDb, migrateDb, SchemaError } from './migrate.ts';
-import { SYSTEM_SCHEMA } from './system.ts';
 import { TENANT_SCHEMA } from './tenant.ts';
 import type { Schema } from './types.ts';
 
 export const PRE_MIGRATION_DIR = 'pre-migracion';
 const RUN_DIR = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/;
-const SYSTEM_FILE = 'system.sqlite';
 
-/** `file` es relativo a `dataDir` y usa `/`: `system.sqlite`, `tenants/<id>.sqlite`. */
+/** `file` es relativo a `dataDir` y usa `/`: `tenants/<id>.sqlite`. */
 export type MigrationProgress = { file: string; done: number; total: number };
 export type MigratedFile = { file: string; from: number; to: number };
 export type MigrationRunResult = { runDir?: string; migrated: MigratedFile[] };
@@ -60,32 +58,15 @@ export function restoreRun(runDir: string, dataDir: string, files: readonly stri
   }
 }
 
-/** Qué bases están atrasadas. Si alguna está fuera de rango, no toca nada y lo dice. */
-function plan(dataDir: string, schemas: { system: Schema; tenant: Schema }): Pending[] | undefined {
-  const systemPath = join(dataDir, SYSTEM_FILE);
-  if (!existsSync(systemPath)) {
-    return undefined;
-  }
-  const targets: { file: string; schema: Schema }[] = [{ file: SYSTEM_FILE, schema: schemas.system }];
-  const system = new DatabaseSync(systemPath, { readOnly: true });
-  try {
-    if (assessDb(system, schemas.system).kind === 'new') {
-      return undefined;
-    }
-    // Los comercios están en `tenants` de PostgreSQL (fase 3): la lista sale de los archivos
-    const tenantsDir = join(dataDir, 'tenants');
-    const files = existsSync(tenantsDir) ? readdirSync(tenantsDir).filter((name) => name.endsWith('.sqlite')).sort() : [];
-    for (const name of files) {
-      targets.push({ file: `tenants/${name}`, schema: schemas.tenant });
-    }
-  } catch (err: unknown) {
-    if (err instanceof SchemaError) {
-      throw new SchemaError(`Bases fuera de rango, no se migró nada:\n${SYSTEM_FILE}: ${err.message}`);
-    }
-    throw err;
-  } finally {
-    system.close();
-  }
+/**
+ * Qué bases están atrasadas. Si alguna está fuera de rango, no toca nada y lo dice. Solo los comercios:
+ * lo de sistema está en PostgreSQL (fase 3) y lo migra `migrateSystem`.
+ */
+function plan(dataDir: string, schemas: { tenant: Schema }): Pending[] {
+  // La lista sale de los archivos: los comercios están en `tenants` de PostgreSQL
+  const tenantsDir = join(dataDir, 'tenants');
+  const files = existsSync(tenantsDir) ? readdirSync(tenantsDir).filter((name) => name.endsWith('.sqlite')).sort() : [];
+  const targets = files.map((name) => ({ file: `tenants/${name}`, schema: schemas.tenant }));
 
   const pending: Pending[] = [];
   const outOfRange: string[] = [];
@@ -112,7 +93,7 @@ function plan(dataDir: string, schemas: { system: Schema; tenant: Schema }): Pen
 }
 
 /**
- * Migra todas las bases al arrancar (#47): sistema y cada comercio, demos incluidas. Antes copia lo
+ * Migra las bases de SQLite al arrancar (#47): cada comercio, demos incluidas. Antes copia lo
  * que va a migrar a `pre-migracion/<fecha>/`. Si una falla, restaura las que ya migró: todas quedan
  * en la versión vieja, consistentes.
  */
@@ -121,10 +102,10 @@ export function runMigrations(params: {
   now: Date;
   keepRuns?: number | undefined;
   onProgress?: ((progress: MigrationProgress) => void) | undefined;
-  schemas?: { system: Schema; tenant: Schema } | undefined;
+  schemas?: { tenant: Schema } | undefined;
 }): MigrationRunResult {
-  const pending = plan(params.dataDir, params.schemas ?? { system: SYSTEM_SCHEMA, tenant: TENANT_SCHEMA });
-  if (pending === undefined || pending.length === 0) {
+  const pending = plan(params.dataDir, params.schemas ?? { tenant: TENANT_SCHEMA });
+  if (pending.length === 0) {
     return { migrated: [] };
   }
 

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -21,8 +20,7 @@ describe('usuarios del comercio (#19)', () => {
   const ids: Record<'owner' | 'admin' | 'member', string> = { owner: '', admin: '', member: '' };
 
   beforeEach(async () => {
-    // system.sqlite todavía lo abre createApp (dominios sin migrar): en memoria, nunca el de desarrollo
-    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager: new TenantManager(db().system, { inMemory: true }) });
+    const bundle = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }) });
     app = bundle.app;
     const alta = await createOwnerAccount(bundle, { name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana' });
     t.owner = alta.token;

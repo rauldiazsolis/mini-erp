@@ -34,7 +34,7 @@ describe('TenantManager', () => {
     expect(tenant.id).toBe('tenant-kiosco');
     expect(tenant.status).toBe('active');
 
-    // Verificar en systemDb
+    // Verificar en el sistema (PostgreSQL)
     const membership = await db()
       .system.selectFrom('memberships')
       .select(['role', 'status'])

@@ -3,7 +3,6 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import { createDatabase, databaseUrl, type Database } from '../db/pg/database.ts';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
-import { openSystemDb } from '../db/system-db.ts';
 import { dataDir } from '../db/data-dir.ts';
 import { join } from 'node:path';
 import { TenantManager } from '../db/tenant-manager.ts';
@@ -50,16 +49,6 @@ export const databaseDef = fn.singleton<Database>(() => createDatabase({ connect
 
 /** Lo global en PostgreSQL (`Database.system`): lo que reciben los servicios de sistema ya migrados. */
 export const systemKyselyDef = fn.singleton((c): Kysely<SystemDatabase> => c.use(databaseDef).system);
-
-/**
- * Definición singleton para la base de datos del sistema: `<DATA_DIR>/system.sqlite`, la misma que
- * migra el arranque (#47). En tests se sobreescribe con toValue() en createRootContainer.
- * Fase 3 de PostgreSQL: la usan los servicios de sistema que todavía no se migraron; se borra con el último.
- */
-export const systemDbDef = fn.singleton<DatabaseSync>(() => {
-  return openSystemDb(join(dataDir(), 'system.sqlite'));
-});
-export const masterDbDef = systemDbDef;
 
 /**
  * Definición no enlazada para la base de datos SQLite del tenant (scoped).
@@ -217,7 +206,6 @@ export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use
 
 export type ContainerDependencies = {
   database?: Database | undefined;
-  systemDb?: DatabaseSync | undefined;
   tenantManager?: TenantManager | undefined;
   demoConfig?: DemoConfig | undefined;
   now?: (() => Date) | undefined;
@@ -230,10 +218,6 @@ export function createRootContainer(deps?: ContainerDependencies): Container {
   return container.new((c) => {
     if (deps?.database !== undefined) {
       c.bindCascading(databaseDef).toValue(deps.database);
-    }
-
-    if (deps?.systemDb !== undefined) {
-      c.bindCascading(systemDbDef).toValue(deps.systemDb);
     }
 
     if (deps?.tenantManager !== undefined) {

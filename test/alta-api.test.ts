@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { BillingService } from '../src/server/billing/billing-service.ts';
@@ -23,7 +22,7 @@ describe('alta atómica (#19)', () => {
 
   beforeEach(() => {
     tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     billing = bundle.billing;
   });

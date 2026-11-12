@@ -35,4 +35,18 @@ describe('reglas de persistencia (AGENTS.md, "Persistencia")', () => {
   it('search_path solo lo toca el runner de migraciones', () => {
     expect(filesMatching(/search_path/i)).toEqual(['src/server/db/pg/migrations/migrate.ts', 'src/server/db/pg/migrations/types.ts']);
   });
+
+  it('lo de sistema no está en SQLite: nadie nombra system.sqlite ni el esquema viejo de sistema', () => {
+    // migrations/system.ts (SQLite) queda solo para sus tests, hasta la fase 5
+    expect(filesMatching(/system\.sqlite|system-db\.ts|migrations\/system\.ts|\bopenSystemDb\b|\bsystemDbDef\b/)).toEqual([]);
+  });
+
+  it('solo abren bases de SQLite los comercios, sus migraciones y el backup', () => {
+    expect(filesMatching(/new DatabaseSync\(/)).toEqual([
+      'src/server/backup/backup.ts',
+      'src/server/db/migrations/run-migrations.ts',
+      'src/server/db/tenant-db.ts',
+      'src/server/db/tenant-manager.ts',
+    ]);
+  });
 });

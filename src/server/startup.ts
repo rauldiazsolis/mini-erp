@@ -20,7 +20,7 @@ export async function startServer(params: {
   demos: boolean;
   /** Migra PostgreSQL (`migrateSystem`); corre primero, todavía en mantenimiento. */
   migrateDatabase: () => Promise<void>;
-  /** Migra las bases de SQLite que quedan (los comercios y, durante la fase 3, `system.sqlite`). */
+  /** Migra las bases de SQLite que quedan: las de los comercios. */
   runner: MigrationRunner;
   /** Arma el app completo. Si falla, cierra lo que abrió antes de tirar el error. */
   createReadyHandler: () => Promise<RequestHandler>;

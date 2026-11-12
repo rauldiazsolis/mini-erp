@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -36,8 +35,7 @@ describe('la caja fija en Ventas & Caja (M10, #26)', () => {
   };
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    app = createApp({ database: db(), systemDb, tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => new Date(`${DAY}T15:00:00.000Z`) }).app;
+    app = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => new Date(`${DAY}T15:00:00.000Z`) }).app;
     const alta = await request(app).post('/api/alta').send({
       name: 'Ana',
       email: 'ana@kiosco.com',

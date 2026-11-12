@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -18,10 +16,8 @@ describe('discrepancias del push (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
     tenantManager = new TenantManager(pgDb().system, { inMemory: true });
-    const bundle = createApp({ database: pgDb(), systemDb, tenantManager });
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });

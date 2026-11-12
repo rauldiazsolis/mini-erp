@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import { demoTenantIds } from '../demo/demo-tenant-ids.ts';
 
 const DAY_DIR = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -16,24 +18,31 @@ async function copyDb(from: string, to: string): Promise<void> {
 }
 
 /**
- * Backup nocturno (#3): `system.sqlite` y cada comercio real (las demos no) en `<backupDir>/<día>/`.
+ * Backup nocturno (#3): la base de cada comercio real (las demos no) en `<backupDir>/<día>/tenants/`.
+ * La lista de comercios sale de PostgreSQL. Lo de sistema ya no está en SQLite: su backup es un
+ * `pg_dump` (fase 6 de la migración a PostgreSQL), que este script no hace.
  * Reemplaza la carpeta del día y deja las últimas `keep`.
  */
-export async function backupAll(params: { dataDir: string; backupDir: string; now: Date; keep: number }): Promise<{
+export async function backupAll(params: {
+  system: Kysely<SystemDatabase>;
+  dataDir: string;
+  backupDir: string;
+  now: Date;
+  keep: number;
+}): Promise<{
   dir: string;
   tenants: string[];
 }> {
-  const systemPath = join(params.dataDir, 'system.sqlite');
-  const system = new DatabaseSync(systemPath, { readOnly: true, timeout: 10_000 });
-  const rows = system
-    .prepare(`SELECT id FROM tenants WHERE id NOT IN ${DEMO_TENANT_IDS_SQL} ORDER BY id`)
-    .all() as { id: string }[];
-  system.close();
+  const rows = await params.system
+    .selectFrom('tenants as t')
+    .select('t.id')
+    .where('t.id', 'not in', demoTenantIds(params.system))
+    .orderBy('t.id')
+    .execute();
 
   const dir = join(params.backupDir, params.now.toISOString().slice(0, 10));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'tenants'), { recursive: true });
-  await copyDb(systemPath, join(dir, 'system.sqlite'));
 
   const tenants: string[] = [];
   for (const { id } of rows) {

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { PlatformAuditItem, PlatformTenantDetail, PlatformTenantItem, PlatformUserItem } from '../src/shared/platform-types.ts';
@@ -15,11 +14,10 @@ describe('listados del panel de plataforma (#23)', () => {
   let otherOwnerId: string;
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     let tick = 0;
     // Cada lectura del reloj avanza un segundo: el orden por fecha es el de creación
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date(Date.parse('2026-10-05T15:00:00.000Z') + 1000 * tick++) });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date(Date.parse('2026-10-05T15:00:00.000Z') + 1000 * tick++) });
     app = bundle.app;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });

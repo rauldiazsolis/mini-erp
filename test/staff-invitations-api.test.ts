@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { AuthService } from '../src/server/auth/auth-service.ts';
@@ -18,7 +17,7 @@ describe('invitaciones de soporte (#23)', () => {
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => now });
+    const bundle = createApp({ database: db(), tenantManager, now: () => now });
     app = bundle.app;
     authService = bundle.authService;
     await authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

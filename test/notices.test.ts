@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -15,15 +13,12 @@ describe('notices en el pull (#2)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let apiKey: string;
-  let systemDb: DatabaseSync;
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
     tenantManager = new TenantManager(db().system, { inMemory: true });
     // Reloj fijo: la deuda y su fecha límite no dependen del día en que corre el test
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-03T12:00:00.000Z') });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: user.id });

@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import type { DemoConfig } from '../src/server/demo/demo-config.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -21,12 +19,9 @@ type DemoBody = {
 };
 
 function makeApp(overrides: Partial<DemoConfig> = {}) {
-  const systemDb = new DatabaseSync(':memory:');
-  initSystemDb(systemDb);
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
   const tenantManager = new TenantManager(db().system, { inMemory: true });
   const bundle = createApp({ database: db(),
-    systemDb,
     tenantManager,
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },
     now: () => clock.now,

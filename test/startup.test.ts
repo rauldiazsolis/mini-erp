@@ -80,21 +80,22 @@ describe('startServer (#47)', () => {
     root = mkdtempSync(join(tmpdir(), 'mini-erp-startup-'));
     const dataDir = join(root, 'data');
     const runDir = join(dataDir, 'pre-migracion', '2026-10-02T14-30-00');
-    mkdirSync(runDir, { recursive: true });
-    const copia = new DatabaseSync(join(runDir, 'system.sqlite'));
+    mkdirSync(join(runDir, 'tenants'), { recursive: true });
+    mkdirSync(join(dataDir, 'tenants'), { recursive: true });
+    const copia = new DatabaseSync(join(runDir, 'tenants', 'kiosco.sqlite'));
     copia.exec('PRAGMA user_version = 4');
     copia.close();
-    const migrada = new DatabaseSync(join(dataDir, 'system.sqlite'));
+    const migrada = new DatabaseSync(join(dataDir, 'tenants', 'kiosco.sqlite'));
     migrada.exec('PRAGMA user_version = 5');
     migrada.close();
 
     started = await startServer({
       port: 0, dataDir, demos: false, ...quiet, ...noPg,
-      runner: () => Promise.resolve({ runDir, migrated: [{ file: 'system.sqlite', from: 4, to: 5 }] }),
+      runner: () => Promise.resolve({ runDir, migrated: [{ file: 'tenants/kiosco.sqlite', from: 4, to: 5 }] }),
       createReadyHandler: () => Promise.reject(new Error('no arranca')),
     });
     expect(await started.ready).toBe('failed');
-    const db = new DatabaseSync(join(dataDir, 'system.sqlite'));
+    const db = new DatabaseSync(join(dataDir, 'tenants', 'kiosco.sqlite'));
     expect(readVersion(db)).toBe(4);
     db.close();
     expect((await request(started.server).get('/health')).body).toMatchObject({ status: 'migration-failed' });

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -25,7 +24,6 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: db(),
-      systemDb: openSystemDb(':memory:'),
       tenantManager,
       now: () => clock,
       demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 },
@@ -136,7 +134,7 @@ describe('portal de una caja real (M10, #26)', () => {
   beforeEach(() => {
     const tenantManager = new TenantManager(db().system, { inMemory: true });
     clock = new Date('2026-10-05T15:00:00.000Z');
-    app = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => clock }).app;
+    app = createApp({ database: db(), tenantManager, now: () => clock }).app;
   });
 
   type Kiosco = { tenantId: string; key: string; owner: string; registerId: string };

@@ -3,10 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { readVersion } from '../src/server/db/migrations/migrate.ts';
-import { SYSTEM_SCHEMA } from '../src/server/db/migrations/system.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
 import { currentVersion, type Schema } from '../src/server/db/migrations/types.ts';
 import { MigrationRunError, PRE_MIGRATION_DIR, restoreRun, runMigrations, type MigrationProgress } from '../src/server/db/migrations/run-migrations.ts';
@@ -16,17 +14,15 @@ const pgDb = setupTestDb();
 
 let root = '';
 
-/** Versiones de hoy y las de prueba (una más): el test no depende de cuántas migraciones reales haya. */
-const S = currentVersion(SYSTEM_SCHEMA);
+/** Versión de hoy y la de prueba (una más): el test no depende de cuántas migraciones reales haya. */
 const T = currentVersion(TENANT_SCHEMA);
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Schemas de prueba: sistema v5 y comercio v3 sobre lo que crea el código de hoy. */
-function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { system: Schema; tenant: Schema } {
+/** Schema de prueba: el de comercio de hoy con una migración más. Lo de sistema está en PostgreSQL. */
+function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { tenant: Schema } {
   return {
-    system: { ...SYSTEM_SCHEMA, migrations: [...SYSTEM_SCHEMA.migrations, { version: S + 1, name: 'prueba', up: (db) => { db.exec('CREATE TABLE prueba (id TEXT)'); } }] },
     tenant: {
       ...TENANT_SCHEMA,
       migrations: [
@@ -37,22 +33,19 @@ function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { system: Schem
   };
 }
 
-/** Un directorio de datos con el código de hoy: sistema v4, comercios v2 y una demo. */
+/** Un directorio de datos con el código de hoy: comercios al día y una demo, sin `system.sqlite`. */
 async function sembrar(ids: string[] = ['kiosco-real']): Promise<string> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
   const dataDir = join(root, 'data');
-  const systemDb = openSystemDb(join(dataDir, 'system.sqlite'));
   const tenants = new TenantManager(pgDb().system, { baseDir: join(dataDir, 'tenants') });
   for (const id of ids) {
     await tenants.createTenant({ id, slug: id, name: id });
   }
   await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
-  systemDb.prepare('INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES (?, ?, ?)').run('demo-abc', 'kiosco', at);
   const kiosco = tenants.getTenantDb(ids[0] ?? 'kiosco-real');
   kiosco.prepare('INSERT INTO products (id, sku, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('p1', 'SKU1', 'Yerba', at, at);
   tenants.closeAll();
-  systemDb.close();
   return dataDir;
 }
 
@@ -68,7 +61,7 @@ function versionDe(path: string): number {
 const NOW = new Date('2026-10-02T14:30:00Z');
 
 describe('runMigrations (#47)', () => {
-  it('sin base de sistema no hace nada', () => {
+  it('sin comercios no hace nada', () => {
     root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
     expect(runMigrations({ dataDir: join(root, 'vacio'), now: NOW })).toEqual({ migrated: [] });
   });
@@ -79,20 +72,19 @@ describe('runMigrations (#47)', () => {
     expect(existsSync(join(dataDir, PRE_MIGRATION_DIR))).toBe(false);
   });
 
-  it('migra sistema, comercios y demos, conserva los datos y avisa el progreso', async () => {
+  it('migra comercios y demos, conserva los datos y avisa el progreso', async () => {
     const dataDir = await sembrar();
     const progreso: MigrationProgress[] = [];
     const result = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba(), onProgress: (p) => progreso.push(p) });
 
     expect(result.migrated).toEqual([
-      { file: 'system.sqlite', from: S, to: S + 1 },
       { file: 'tenants/demo-abc.sqlite', from: T, to: T + 1 },
       { file: 'tenants/kiosco-real.sqlite', from: T, to: T + 1 },
     ]);
     expect(progreso.map((p) => `${p.file} ${String(p.done)}/${String(p.total)}`)).toEqual([
-      'system.sqlite 1/3', 'tenants/demo-abc.sqlite 2/3', 'tenants/kiosco-real.sqlite 3/3',
+      'tenants/demo-abc.sqlite 1/2', 'tenants/kiosco-real.sqlite 2/2',
     ]);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S + 1);
+    expect(existsSync(join(dataDir, 'system.sqlite'))).toBe(false);
     const kiosco = new DatabaseSync(join(dataDir, 'tenants', 'kiosco-real.sqlite'));
     expect(kiosco.prepare('SELECT name, prueba FROM products').all()).toEqual([{ name: 'Yerba', prueba: null }]);
     kiosco.close();
@@ -102,7 +94,6 @@ describe('runMigrations (#47)', () => {
     const dataDir = await sembrar();
     const { runDir } = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() });
     expect(runDir).toBe(join(dataDir, PRE_MIGRATION_DIR, '2026-10-02T14-30-00'));
-    expect(versionDe(join(runDir ?? '', 'system.sqlite'))).toBe(S);
     expect(versionDe(join(runDir ?? '', 'tenants', 'kiosco-real.sqlite'))).toBe(T);
     expect(readdirSync(join(runDir ?? '', 'tenants')).sort()).toEqual(['demo-abc.sqlite', 'kiosco-real.sqlite']);
   });
@@ -124,7 +115,7 @@ describe('runMigrations (#47)', () => {
     kiosco.exec('PRAGMA user_version = 9');
     kiosco.close();
     expect(() => runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() })).toThrow(/kiosco-real.*más nueva/s);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
+    expect(versionDe(join(dataDir, 'tenants', 'demo-abc.sqlite'))).toBe(T);
     expect(existsSync(join(dataDir, PRE_MIGRATION_DIR))).toBe(false);
   });
 
@@ -141,32 +132,32 @@ describe('runMigrations (#47)', () => {
     });
 
     expect(() => runMigrations({ dataDir, now: NOW, schemas })).toThrow(MigrationRunError);
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
     expect(versionDe(join(dataDir, 'tenants', 'a-ok.sqlite'))).toBe(T);
     expect(versionDe(join(dataDir, 'tenants', 'b-falla.sqlite'))).toBe(T);
-    const system = new DatabaseSync(join(dataDir, 'system.sqlite'));
-    expect(system.prepare("SELECT name FROM sqlite_master WHERE name = 'prueba'").get()).toBeUndefined();
-    system.close();
+    const ok = new DatabaseSync(join(dataDir, 'tenants', 'a-ok.sqlite'));
+    expect(ok.prepare("SELECT 1 FROM pragma_table_info('products') WHERE name = 'prueba'").get()).toBeUndefined();
+    ok.close();
   });
 
   it('el error dice qué base y qué migración fallaron', async () => {
     const dataDir = await sembrar(['b-falla']);
     const schemas = schemasDePrueba(() => { throw new Error('pedido de romper'); });
-    // Orden: sistema, b-falla, demo-abc. Falla b-falla y el sistema vuelve a v4
+    // Orden: b-falla, demo-abc. Falla la primera y no se toca la otra
     expect(() => runMigrations({ dataDir, now: NOW, schemas })).toThrow(
       `tenants/b-falla.sqlite, migración v${String(T + 1)} columna: pedido de romper`,
     );
-    expect(versionDe(join(dataDir, 'system.sqlite'))).toBe(S);
+    expect(versionDe(join(dataDir, 'tenants', 'demo-abc.sqlite'))).toBe(T);
   });
 
   it('restoreRun copia encima y borra -wal y -shm', async () => {
     const dataDir = await sembrar();
     const { runDir } = runMigrations({ dataDir, now: NOW, schemas: schemasDePrueba() });
-    const file = join(dataDir, 'system.sqlite');
+    const file = join(dataDir, 'tenants', 'kiosco-real.sqlite');
+    expect(versionDe(file)).toBe(T + 1);
     writeFileSync(`${file}-wal`, 'basura');
     writeFileSync(`${file}-shm`, 'basura');
-    restoreRun(runDir ?? '', dataDir, ['system.sqlite']);
-    expect(versionDe(file)).toBe(S);
+    restoreRun(runDir ?? '', dataDir, ['tenants/kiosco-real.sqlite']);
+    expect(versionDe(file)).toBe(T);
     expect(existsSync(`${file}-wal`)).toBe(false);
     expect(existsSync(`${file}-shm`)).toBe(false);
   });
