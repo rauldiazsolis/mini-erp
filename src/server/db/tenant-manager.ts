@@ -70,8 +70,8 @@ export class TenantManager {
     return db;
   }
 
-  async tenantExists(id: string): Promise<boolean> {
-    const row = await this.db
+  async tenantExists(id: string, db: Kysely<SystemDatabase> = this.db): Promise<boolean> {
+    const row = await db
       .selectFrom('tenants')
       .select('id')
       .where((eb) => eb.or([eb('id', '=', id), eb('slug', '=', id)]))
@@ -79,10 +79,10 @@ export class TenantManager {
     return row !== undefined;
   }
 
-  async resolveAvailableSlug(baseSlug: string): Promise<string> {
+  async resolveAvailableSlug(baseSlug: string, db: Kysely<SystemDatabase> = this.db): Promise<string> {
     let candidate = baseSlug;
     let counter = 2;
-    while (await this.tenantExists(candidate)) {
+    while (await this.tenantExists(candidate, db)) {
       candidate = `${baseSlug}-${String(counter)}`;
       counter++;
     }
@@ -102,49 +102,47 @@ export class TenantManager {
     return value !== null && isBusinessType(value) ? value : null;
   }
 
+  /** Crea el comercio entero: sus filas de sistema (en su transacción) y después su base. */
   async createTenant(params: CreateTenantParams): Promise<TenantRecord> {
+    const record = await this.db.transaction().execute(async (trx) => await this.createTenantRecord(params, trx));
+    // La base del comercio sigue en SQLite: no hay transacción común con la de sistema
+    await this.initTenantStorage(record.id, { seedDemoData: params.seedDemoData === true, now: record.created_at });
+    return record;
+  }
+
+  /**
+   * Las filas de sistema de un comercio nuevo (`tenants` y la membresía del owner), con el executor
+   * de quien llama: el alta lo hace dentro de su transacción y crea la base después
+   * (`initTenantStorage`), compensando con `deleteTenant` si falla.
+   */
+  async createTenantRecord(params: CreateTenantParams, db: Kysely<SystemDatabase> = this.db): Promise<TenantRecord> {
     const now = new Date().toISOString();
     const status: TenantRecord['status'] = 'active';
 
     // Desambiguar silenciosamente sólo si ya existe uno anterior
     let finalId = params.id;
     let finalSlug = params.slug;
-    if ((await this.tenantExists(finalId)) || (await this.tenantExists(finalSlug))) {
-      finalId = await this.resolveAvailableSlug(params.id);
+    if ((await this.tenantExists(finalId, db)) || (await this.tenantExists(finalSlug, db))) {
+      finalId = await this.resolveAvailableSlug(params.id, db);
       finalSlug = finalId;
     }
 
     const ownerUserId = params.ownerUserId;
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto('tenants')
-        .values({
-          id: finalId,
-          slug: finalSlug,
-          name: params.name,
-          status,
-          created_at: now,
-          // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
-          holder_user_id: ownerUserId ?? null,
-          business_type: params.businessType ?? null,
-        })
-        .execute();
-      if (ownerUserId !== undefined) {
-        await trx.insertInto('memberships').values({ user_id: ownerUserId, tenant_id: finalId, role: 'owner', created_at: now }).execute();
-      }
-    });
-
-    // La base del comercio sigue en SQLite: no hay transacción común con la de sistema
-    const tenantDb = this.getTenantDb(finalId);
-
-    // Sucursal por defecto
-    const defaultBranchId = 'branch-central';
-    tenantDb
-      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
-      .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', now);
-
-    if (params.seedDemoData === true) {
-      await seedDemoTenant(tenantDb, defaultBranchId);
+    await db
+      .insertInto('tenants')
+      .values({
+        id: finalId,
+        slug: finalSlug,
+        name: params.name,
+        status,
+        created_at: now,
+        // El owner que lo crea es el titular de la cuenta pagada (#21); una demo no tiene
+        holder_user_id: ownerUserId ?? null,
+        business_type: params.businessType ?? null,
+      })
+      .execute();
+    if (ownerUserId !== undefined) {
+      await db.insertInto('memberships').values({ user_id: ownerUserId, tenant_id: finalId, role: 'owner', created_at: now }).execute();
     }
 
     return {
@@ -154,6 +152,19 @@ export class TenantManager {
       status,
       created_at: now,
     };
+  }
+
+  /** La base de un comercio recién creado (todavía SQLite): la sucursal por defecto y, si se pide, la semilla. */
+  async initTenantStorage(tenantId: string, options: { seedDemoData?: boolean; now?: string } = {}): Promise<void> {
+    const tenantDb = this.getTenantDb(tenantId);
+    const defaultBranchId = 'branch-central';
+    tenantDb
+      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
+      .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', options.now ?? new Date().toISOString());
+
+    if (options.seedDemoData === true) {
+      await seedDemoTenant(tenantDb, defaultBranchId);
+    }
   }
 
   /**

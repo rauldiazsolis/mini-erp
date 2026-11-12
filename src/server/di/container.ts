@@ -115,8 +115,8 @@ export const billingServiceDef = fn.singleton(
 export const auditLogDef = fn.singleton((c) => new AuditLog(c.use(systemKyselyDef), c.use(clockDef)));
 
 // El embudo (#25): eventos, totales del landing y contactos
-export const funnelServiceDef = fn.singleton((c) => new FunnelService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
-export const funnelQueryServiceDef = fn.singleton((c) => new FunnelQueryService({ db: c.use(systemDbDef) }));
+export const funnelServiceDef = fn.singleton((c) => new FunnelService({ db: c.use(systemKyselyDef), now: c.use(clockDef), audit: c.use(auditLogDef) }));
+export const funnelQueryServiceDef = fn.singleton((c) => new FunnelQueryService({ db: c.use(systemKyselyDef) }));
 
 // El portal y el acceso anónimo (#24, M10): demos y cajas reales; audita las aperturas de las cajas
 export const portalServiceDef = fn.singleton(
@@ -178,6 +178,7 @@ export const platformQueryServiceDef = fn.singleton(
 export const altaServiceDef = fn.singleton(
   (c) =>
     new AltaService({
+      db: c.use(systemKyselyDef),
       auth: c.use(authServiceDef),
       tenants: c.use(tenantManagerDef),
       apiKeys: c.use(apiKeyServiceDef),

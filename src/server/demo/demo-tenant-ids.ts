@@ -15,8 +15,8 @@ export async function isDemoTenant(db: Kysely<SystemDatabase>, tenantId: string)
 }
 
 /**
- * La marca de demo en SQL de SQLite, para lo que todavía lee la base de sistema de SQLite (embudo y
- * backup, dominios 8 y 9 de la fase 3). Ojo: `demo_tenants` ya está en PostgreSQL, así que en SQLite
+ * La marca de demo en SQL de SQLite, para lo que todavía lee la base de sistema de SQLite (solo el
+ * backup, dominio 9 de la fase 3). Ojo: `demo_tenants` ya está en PostgreSQL, así que en SQLite
  * esta subconsulta queda vacía. Se borra con el último que la use.
  */
 export const DEMO_TENANT_IDS_SQL = '(SELECT tenant_id FROM demo_tenants)';

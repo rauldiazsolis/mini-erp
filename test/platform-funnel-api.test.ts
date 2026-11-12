@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
@@ -12,14 +11,12 @@ const db = setupTestDb();
 
 describe('el embudo en la plataforma (#25)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tokens: { support: string; root: string; owner: string; supportId: string };
   let contactId: string;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
     await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
@@ -66,8 +63,10 @@ describe('el embudo en la plataforma (#25)', () => {
     const res = await request(app).post(`/api/platform/contacts/${contactId}/handled`).set(as(tokens.support));
     expect(res.status).toBe(200);
     expect((await request(app).get('/api/platform/contacts/pending-count').set(as(tokens.support))).body).toEqual({ count: 0 });
-    expect(systemDb.prepare("SELECT actor_user_id AS actor, details FROM audit_log WHERE action = 'funnel.contact-handled'").all()).toEqual([
-      { actor: tokens.supportId, details: JSON.stringify({ contactId }) },
+    expect(
+      await db().system.selectFrom('audit_log').select(['actor_user_id as actor', 'details']).where('action', '=', 'funnel.contact-handled').execute(),
+    ).toEqual([
+      { actor: tokens.supportId, details: { contactId } },
     ]);
     const detail = await request(app).get(`/api/platform/visitors/c-${contactId}`).set(as(tokens.root));
     expect((detail.body as FunnelVisitorDetail).contact).toMatchObject({ handledByName: 'Ana' });

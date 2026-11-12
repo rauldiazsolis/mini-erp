@@ -215,7 +215,7 @@ export function createApp(deps?: AppDependencies): {
   app.use(
     '/api/platform',
     requireAdmin,
-    createPlatformFunnelRoutes({ funnel, queries: rootContainer.use(funnelQueryServiceDef), audit: auditLog, now }),
+    createPlatformFunnelRoutes({ funnel, queries: rootContainer.use(funnelQueryServiceDef), now }),
   );
 
   // Rutas para terminales POS (Connector API 4.5.0, #2, #58)
