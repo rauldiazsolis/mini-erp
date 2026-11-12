@@ -6,6 +6,7 @@ import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import { REGISTER_ACTOR, type AuditLog } from '../audit/audit-log.ts';
 import type { PortalRedeemResponse } from '../../shared/portal-types.ts';
 import type { FunnelService } from '../funnel/funnel-service.ts';
+import type { ActiveRegister, ApiKeyService } from '../tenant/api-key-service.ts';
 
 const LINK_TTL_MS = 60 * 1000;
 /** Una sesión de caja real vence a las 2 h sin uso (M10), como la impersonación. */
@@ -25,8 +26,6 @@ export type AnonymousContext = {
   demoSessionId?: string;
 };
 
-type ActiveRegister = { name: string; branch: string; point_of_sale: string };
-
 /**
  * El portal (#24, M10): el POS pide con su key la URL para abrir mini, un link de un uso que vence en
  * 60 s. Se canjea por una sesión anónima atada a esa key: la de una demo es admin del comercio demo y
@@ -39,13 +38,22 @@ export class PortalService {
   private demos: DemoSessionService;
   private audit: AuditLog;
   private funnel: FunnelService;
+  private apiKeys: ApiKeyService;
 
-  constructor(deps: { systemDb: DatabaseSync; now: () => Date; demos: DemoSessionService; audit: AuditLog; funnel: FunnelService }) {
+  constructor(deps: {
+    systemDb: DatabaseSync;
+    now: () => Date;
+    demos: DemoSessionService;
+    audit: AuditLog;
+    funnel: FunnelService;
+    apiKeys: ApiKeyService;
+  }) {
     this.db = deps.systemDb;
     this.now = deps.now;
     this.demos = deps.demos;
     this.audit = deps.audit;
     this.funnel = deps.funnel;
+    this.apiKeys = deps.apiKeys;
   }
 
   async createLink(p: { tenantId: string; registerId: string; keyId: string; origin: string }): Promise<{ url: string; expiresAt: string }> {
@@ -102,7 +110,7 @@ export class PortalService {
       token: session,
       tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
       branch: register.branch,
-      pointOfSale: register.point_of_sale,
+      pointOfSale: register.pointOfSale,
     };
     return demo === undefined ? { access: 'register', ...base, registerName: register.name } : { access: 'demo', ...base, template: demo.template, demoSessionId: demo.id };
   }
@@ -132,19 +140,14 @@ export class PortalService {
       tenantId: row.tenant_id,
       registerId: row.register_id,
       branch: register.branch,
-      pointOfSale: register.point_of_sale,
+      pointOfSale: register.pointOfSale,
       registerName: register.name,
     };
     return demoSessionId === null ? { kind: 'register', ...context } : { kind: 'demo', ...context, demoSessionId };
   }
 
-  /** La caja, si está activa y la key es una key activa suya. */
+  /** La caja, si está activa y la key es una key activa suya (las cajas ya están en PostgreSQL). */
   private async activeRegister(registerId: string, keyId: string): Promise<ActiveRegister | undefined> {
-    return this.db
-      .prepare(
-        `SELECT r.name, r.branch, r.point_of_sale FROM registers r JOIN tenant_api_keys k ON k.register_id = r.id
-         WHERE r.id = ? AND k.id = ? AND r.active = 1 AND k.active = 1`,
-      )
-      .get(registerId, keyId) as ActiveRegister | undefined;
+    return await this.apiKeys.activeRegister(registerId, keyId);
   }
 }

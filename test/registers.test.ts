@@ -1,21 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { RegisterService } from '../src/server/registers/register-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('cajas con equipo ligado (#21)', () => {
-  let db: DatabaseSync;
   let now: Date;
   let registers: RegisterService;
   let keys: ApiKeyService;
 
-  beforeEach(() => {
-    db = openSystemDb(':memory:');
-    db.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('t1', 't1', 'T1', '2026-10-01T00:00:00.000Z')").run();
+  beforeEach(async () => {
+    await db().system.insertInto('tenants').values({ id: 't1', slug: 't1', name: 'T1', created_at: '2026-10-01T00:00:00.000Z' }).execute();
     now = new Date('2026-10-03T12:00:00.000Z');
-    keys = new ApiKeyService(db);
-    registers = new RegisterService(db, () => now);
+    keys = new ApiKeyService(db().system);
+    registers = new RegisterService(db().system, () => now);
   });
 
   const nueva = async () => await registers.create({ tenantId: 't1', name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
@@ -13,14 +12,12 @@ const db = setupTestDb();
 
 describe('rutas de cajas del POS (#21)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tokens: { owner: string; member: string };
   const tenantId = 'kiosco-cajas';
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager });
+    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
     const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
@@ -77,9 +74,14 @@ describe('rutas de cajas del POS (#21)', () => {
     await request(app).post(`${base}/transfer`).set(auth()).send({ deviceId: 'dev-b' });
     await request(app).post(`${base}/unbind`).set(auth());
     await request(app).delete(base).set(auth());
-    const actions = systemDb
-      .prepare("SELECT action FROM audit_log WHERE tenant_id = ? AND action LIKE 'register.%' ORDER BY at, rowid")
-      .all(tenantId) as { action: string }[];
+    const actions = await db()
+      .system.selectFrom('audit_log')
+      .select('action')
+      .where('tenant_id', '=', tenantId)
+      .where('action', 'like', 'register.%')
+      .orderBy('at')
+      .orderBy('seq')
+      .execute();
     expect(actions.map((a) => a.action)).toEqual([
       'register.created',
       'register.key_rotated',

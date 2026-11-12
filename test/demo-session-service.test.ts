@@ -17,7 +17,7 @@ function setup(overrides: Partial<DemoConfig> = {}) {
   const systemDb = new DatabaseSync(':memory:');
   initSystemDb(systemDb);
   const tenantManager = new TenantManager(db().system, { inMemory: true });
-  const apiKeyService = new ApiKeyService(systemDb);
+  const apiKeyService = new ApiKeyService(db().system);
   const clock = { now: new Date('2026-10-05T15:00:00.000Z') };
   const service = new DemoSessionService({
     systemDb,

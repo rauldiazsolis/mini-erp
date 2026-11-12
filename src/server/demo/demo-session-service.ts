@@ -127,14 +127,14 @@ export class DemoSessionService {
 
   /** La sesión vigente de una caja de visitante, o `undefined` (caja real o revocada). */
   async activeSessionOfRegister(registerId: string): Promise<ActiveDemoSession | undefined> {
+    // Fase 3 de PostgreSQL: la caja ya está en PostgreSQL y la demo, todavía en SQLite.
     const row = this.deps.systemDb
-      .prepare(
-        `SELECT s.id, s.tenant_id, s.template, r.point_of_sale FROM demo_sessions s JOIN registers r ON r.id = s.register_id
-         WHERE s.register_id = ? AND s.revoked_at IS NULL AND r.active = 1`,
-      )
-      .get(registerId) as { id: string; tenant_id: string; template: string; point_of_sale: string } | undefined;
+      .prepare('SELECT id, tenant_id, template FROM demo_sessions WHERE register_id = ? AND revoked_at IS NULL')
+      .get(registerId) as { id: string; tenant_id: string; template: string } | undefined;
     if (row === undefined || !isDemoTemplate(row.template)) return undefined;
-    return { id: row.id, tenantId: row.tenant_id, template: row.template, pointOfSale: row.point_of_sale };
+    const register = await this.deps.apiKeyService.activeRegister(registerId);
+    if (register === undefined) return undefined;
+    return { id: row.id, tenantId: row.tenant_id, template: row.template, pointOfSale: register.pointOfSale };
   }
 
   /** Revoca las cajas sin uso por `ttlHours`. */
@@ -154,9 +154,8 @@ export class DemoSessionService {
 
   /** `Demo XXXX` con 4 caracteres del id, distinto de las cajas activas del comercio. */
   private async freePointOfSale(tenantId: string, sessionId: string): Promise<string> {
-    const used = this.deps.systemDb.prepare('SELECT 1 FROM registers WHERE tenant_id = ? AND point_of_sale = ? AND active = 1');
     let candidate = `Demo ${sessionId.slice(0, 4).toUpperCase()}`;
-    while (used.get(tenantId, candidate) !== undefined) {
+    while (await this.deps.apiKeyService.pointOfSaleInUse(tenantId, candidate)) {
       candidate = `Demo ${randomUUID().slice(0, 4).toUpperCase()}`;
     }
     return candidate;
@@ -170,11 +169,12 @@ export class DemoSessionService {
     }[];
     if (rows.length === 0) return 0;
     const at = this.deps.now().toISOString();
+    // Fase 3 de PostgreSQL: las cajas y keys se revocan primero, en PostgreSQL (lo que corta el 401);
+    // la demo, sus sesiones anónimas y sus links siguen en SQLite hasta el dominio 7.
+    await this.deps.apiKeyService.deactivateRegisters(rows.map((r) => r.register_id));
     db.exec('BEGIN');
     try {
       for (const r of rows) {
-        db.prepare('UPDATE registers SET active = 0 WHERE id = ?').run(r.register_id);
-        db.prepare('UPDATE tenant_api_keys SET active = 0 WHERE register_id = ?').run(r.register_id);
         db.prepare('UPDATE demo_sessions SET revoked_at = ?, revoke_reason = ? WHERE id = ?').run(at, reason, r.id);
         db.prepare('DELETE FROM anonymous_sessions WHERE register_id = ?').run(r.register_id);
         db.prepare('DELETE FROM portal_links WHERE register_id = ?').run(r.register_id);

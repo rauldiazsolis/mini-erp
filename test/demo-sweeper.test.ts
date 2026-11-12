@@ -45,7 +45,7 @@ describe('barrido de demos (#24)', () => {
   beforeEach(async () => {
     systemDb = openSystemDb(':memory:');
     tenantManager = new TenantManager(pgDb().system, { inMemory: true });
-    apiKeyService = new ApiKeyService(systemDb);
+    apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T06:00:00.000Z'); // 3:00 AR
     service = new DemoSessionService({
       systemDb,

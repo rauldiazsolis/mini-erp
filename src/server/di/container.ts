@@ -73,7 +73,7 @@ export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
 export const tenantManagerDef = fn.singleton(
   (c) => new TenantManager(c.use(systemKyselyDef), { baseDir: join(dataDir(), 'tenants') }),
 );
-export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemDbDef)));
+export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemKyselyDef)));
 
 // --- DEMOS (#9) ---
 
@@ -102,7 +102,7 @@ export const demoResetServiceDef = fn.singleton(
 
 // --- CAJAS (#21) ---
 
-export const registerServiceDef = fn.singleton((c) => new RegisterService(c.use(systemDbDef), c.use(clockDef)));
+export const registerServiceDef = fn.singleton((c) => new RegisterService(c.use(systemKyselyDef), c.use(clockDef)));
 
 // --- COBRO (#21) ---
 
@@ -125,6 +125,7 @@ export const portalServiceDef = fn.singleton(
       demos: c.use(demoSessionServiceDef),
       audit: c.use(auditLogDef),
       funnel: c.use(funnelServiceDef),
+      apiKeys: c.use(apiKeyServiceDef),
     }),
 );
 export const authServiceDef = fn.singleton((c) => new AuthService(c.use(systemKyselyDef), { now: c.use(clockDef), audit: c.use(auditLogDef) }));
