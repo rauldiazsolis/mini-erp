@@ -146,7 +146,13 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
    push y un `createdAt` es texto libre; PostgreSQL los rechaza y el evento quedaría como `issue`.
    Hay que validar la fecha en `push-events.ts` o decidir qué se guarda.
 2. **Redondeo de `numeric(14,2)`** (fases 3 y 4): un total o un precio con más de 2 decimales se
-   redondea en la columna y puede diferir del `payload`.
+   redondea en la columna y puede diferir del `payload`. **Decidido para sistema** (2026-11-12, fase
+   3): el dinero de sistema nunca se redondea en silencio. Lo que calcula el cobro (precio por caja y
+   día, reparto, bono, deuda) ya es en pesos enteros (`allocation.ts` y `billing_settings` exigen
+   enteros). Lo que entra de afuera (pago, bono y devolución de plataforma, planilla de cobranzas) se
+   valida en la frontera con a lo sumo 2 decimales (`moneyAmount` en `src/shared/money.ts`): con más,
+   "Importe inválido" (`400`, o la fila con error en la planilla). Así lo guardado es siempre lo que
+   se validó. Para comercio (precios y totales del POS) se decide en la fase 4.
 3. **FK que cambian comportamiento** (fase 4): el push de stock de un producto desconocido viola
    `stock.product_id`; borrar un producto o un cliente ahora arrastra su stock o su cuenta corriente.
 4. **`\u0000` en un lote** (fase 4): `jsonb` no lo admite y `push_lots.events` se guarda fuera de
