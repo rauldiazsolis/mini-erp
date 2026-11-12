@@ -164,7 +164,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
 Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
-(aprobada el 2026-11-11; fases 1 y 2 hechas). Mientras dure la migración, lo de SQLite que sigue más abajo
+(aprobada el 2026-11-11; fases 1 a 3 hechas: el sistema ya está en PostgreSQL, los comercios siguen en SQLite). Mientras dure la migración, lo de SQLite que sigue más abajo
 describe el código que todavía no se migró; al cerrar la última fase se reemplaza por esta sección.
 Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
 PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
@@ -301,7 +301,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     Caja 1 del Kiosco.
   - Dos cajas de demo con key fija (`DEV_DEMOS`: Kiosco y Almacén demo), que se vuelven a crear al
     arrancar si un reinicio o la inactividad las revocó.
-  - Es idempotente y no borra nada: para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
+  - Es idempotente y no borra nada: para sembrar de nuevo, se borran la carpeta de datos de desarrollo y la base de `DATABASE_URL`.
     El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
