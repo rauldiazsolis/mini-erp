@@ -21,3 +21,12 @@ export const moneyAmount = z
   .positive('El importe tiene que ser mayor que 0')
   .max(MAX_MONEY_AMOUNT, 'Importe inválido')
   .refine(hasAtMostTwoDecimals, 'Importe inválido');
+
+/**
+ * Si un importe de comercio que carga el admin (precio, límite de crédito, margen, cobranza, ajuste)
+ * entra tal cual en `numeric(14,2)`: a lo sumo 2 decimales y dentro del tope, con cualquier signo.
+ * Cada esquema decide aparte si admite cero o negativos.
+ */
+export function fitsMoneyColumn(n: number): boolean {
+  return Number.isFinite(n) && Math.abs(n) <= MAX_MONEY_AMOUNT && hasAtMostTwoDecimals(Math.abs(n));
+}

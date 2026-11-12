@@ -50,3 +50,11 @@ export function searchPattern(query: string): RawBuilder<string> {
   const escaped = query.replace(/[\\%_]/g, (char) => `\\${char}`);
   return sql<string>`lower(public.unaccent(${`%${escaped}%`}))`;
 }
+
+/** El código de PostgreSQL de una violación de unicidad. */
+const UNIQUE_VIOLATION = '23505';
+
+/** Si el error es de unicidad (un `sku`, un `code` o un id repetido): el servicio lo traduce a su mensaje. */
+export function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === UNIQUE_VIOLATION;
+}
