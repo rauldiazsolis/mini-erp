@@ -128,6 +128,15 @@ medio, el sistema está en PostgreSQL y los comercios en SQLite, y eso no se pub
 - **Fase 1, hecha** (2026-11-11): `src/server/db/pg/` (pool, manifiesto y tipos, líneas de base,
   runner), `test/helpers/` (`pg-admin`, `pg-global-setup`, `test-db`), los tests `test/pg-*.test.ts`
   y PostgreSQL en el CI. Ningún servicio lo usa todavía.
+- **Fase 2, hecha** (2026-11-12): Express 5 (`routeParam` en `src/server/http/route-param.ts`, porque
+  sus tipos dan `req.params` como `string | string[]`; el catch-all del cliente es `/{*splat}`). Todo
+  el acceso a datos de `src/server` es `async` con node:sqlite debajo: servicios, rutas, middleware,
+  barridos (esperan el primer pase y su intervalo loguea los errores, ya no tira el proceso),
+  bootstrap, semillas, backup y tests. Quedan síncronos a propósito `getTenantDb`/`closeAll`,
+  `openSystemDb`/`openTenantDb`/`checkDb`, las migraciones de SQLite y algunos helpers privados de
+  `FunnelQueryService` (se convierten en la fase 3). Adentro de una transacción de SQLite solo se
+  espera código de cuerpo síncrono, así ningún otro request se intercala en la conexión.
+  `@typescript-eslint/require-await` está apagada en servidor, scripts y tests hasta la fase 5.
 
 ## Para decidir en las fases que siguen
 

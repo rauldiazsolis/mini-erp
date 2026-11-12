@@ -164,7 +164,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
 Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
-(aprobada el 2026-11-11; fase 1 hecha). Mientras dure la migración, lo de SQLite que sigue más abajo
+(aprobada el 2026-11-11; fases 1 y 2 hechas). Mientras dure la migración, lo de SQLite que sigue más abajo
 describe el código que todavía no se migró; al cerrar la última fase se reemplaza por esta sección.
 Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
 PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
@@ -180,7 +180,10 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   porque `withSchema` no alcanza a un nombre escrito a mano (`test/pg-isolation.test.ts`). El
   `search_path` solo lo toca el runner de migraciones (test).
 - **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
-  `no-misused-promises`). Un handler de Express es `async` y deja que el error suba.
+  `no-misused-promises`). Un handler de Express (5) es `async` y deja que el error suba; un
+  parámetro de ruta se lee con `routeParam(req, nombre)`. `res.json(promesa)` no lo atrapa ni el lint
+  ni `tsc`: cada llamada lleva su `await`. `require-await` está apagada hasta la fase 5 (firmas async
+  con cuerpo todavía síncrono).
 - **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
   pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
 - **Columnas explícitas**: sin `.selectAll()` ni `returningAll()` en `src/server` (test), ni
