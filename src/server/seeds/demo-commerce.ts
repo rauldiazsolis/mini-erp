@@ -55,7 +55,7 @@ export async function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate,
     product.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate ?? 0.21, p.category, at, at);
     stock.run(p.id, DEMO_BRANCH_ID, p.stock, at);
   }
-  insertDemoCustomers(db, at);
+  await insertDemoCustomers(db, at);
   for (const [index, pointOfSale] of ['Caja 1', 'Caja 2'].entries()) {
     await generateHistoricalDemoActivity(db, DEMO_BRANCH_ID, now, {
       days: DEMO_HISTORY_DAYS,

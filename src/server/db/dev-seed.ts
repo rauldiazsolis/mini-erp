@@ -81,7 +81,7 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
   await deps.tenantManager.createTenant({ id: t.id, slug: t.id, name: t.name, ownerUserId: ids[t.owner], businessType: t.preset });
   const db = deps.tenantManager.getTenantDb(t.id);
   // El catálogo del rubro y los clientes, como una demo
-  seedDemoSession(db, t.preset);
+  await seedDemoSession(db, t.preset);
 
   const addMember = deps.systemDb.prepare(
     "INSERT OR IGNORE INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, ?, ?, 'active', ?)",
@@ -90,7 +90,7 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
 
   const branchId = (db.prepare('SELECT id FROM branches ORDER BY created_at LIMIT 1').get() as { id: string }).id;
   for (const [index, r] of t.registers.entries()) {
-    insertRegisterWithKey(deps.systemDb, t.id, r, now.toISOString());
+    await insertRegisterWithKey(deps.systemDb, t.id, r, now.toISOString());
     // Las ventas quedan de su caja, sin equipo ligado: el primer POS que se conecte con la key la liga
     await generateHistoricalDemoActivity(db, branchId, now, {
       days: r.historyDays,
@@ -102,7 +102,7 @@ async function seedTenant(deps: Deps, t: DevTenant, ids: UserIds): Promise<void>
   await seedCredits(deps, t, ids, now);
 }
 
-function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevTenant['registers'][number], at: string): void {
+async function insertRegisterWithKey(systemDb: DatabaseSync, tenantId: string, r: DevTenant['registers'][number], at: string): Promise<void> {
   systemDb
     .prepare('INSERT OR IGNORE INTO registers (id, tenant_id, name, branch, point_of_sale, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
     .run(r.id, tenantId, r.name, DEV_BRANCH, r.pointOfSale, at);

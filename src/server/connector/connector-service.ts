@@ -59,7 +59,7 @@ export class ConnectorService {
         )
         .run(params.lotId, params.deviceId, 'processing', JSON.stringify(params.events), now, now);
 
-      const resolvedBranchId = this.resolveBranchId(params.defaultBranchId);
+      const resolvedBranchId = await this.resolveBranchId(params.defaultBranchId);
       for (const raw of params.events) {
         const parsed = parseBatchEvent(raw);
         if (!parsed.ok) {
@@ -105,7 +105,7 @@ export class ConnectorService {
     };
   }
 
-  private resolveBranchId(branchCodeOrId?: string): string {
+  private async resolveBranchId(branchCodeOrId?: string): Promise<string> {
     if (!branchCodeOrId) {
       const defaultBranch = this.tenantDb.prepare('SELECT id FROM branches LIMIT 1').get() as { id: string } | undefined;
       return defaultBranch?.id ?? 'branch-central';
@@ -161,7 +161,7 @@ export class ConnectorService {
       case 'stock-movement': {
         const movement = event.movement;
 
-        const movementBranchId = this.resolveBranchId(originBranch ?? defaultBranchId);
+        const movementBranchId = await this.resolveBranchId(originBranch ?? defaultBranchId);
 
         this.tenantDb
           .prepare(
@@ -435,7 +435,7 @@ export class ConnectorService {
     // 3. Stock (filtrado por sucursal si se especifica, o consolidado por defecto)
     let stockRows: { product_id: string; quantity: number | null; updated_at: string }[];
     if (params.branchId !== undefined && params.branchId !== '') {
-      const resolvedBranchId = this.resolveBranchId(params.branchId);
+      const resolvedBranchId = await this.resolveBranchId(params.branchId);
       stockRows = this.tenantDb
         .prepare('SELECT product_id, quantity, updated_at FROM stock WHERE branch_id = ?')
         .all(resolvedBranchId) as { product_id: string; quantity: number | null; updated_at: string }[];
@@ -482,10 +482,10 @@ export class ConnectorService {
     };
   }
 
-  requestAccountHold(params: {
+  async requestAccountHold(params: {
     customerId: string;
     amount: number;
-  }): { approved: true; holdId: string } | { approved: false; reasonCode: string } {
+  }): Promise<{ approved: true; holdId: string } | { approved: false; reasonCode: string }> {
     const cust = this.tenantDb
       .prepare('SELECT credit_limit, margin, balance, unrestricted FROM customers WHERE id = ?')
       .get(params.customerId) as

@@ -70,13 +70,13 @@ export class PasswordResetService {
   }
 
   async lookup(token: string): Promise<{ email: string; name: string; expiresAt: string }> {
-    const row = this.findValid(token);
+    const row = await this.findValid(token);
     return { email: row.email, name: row.name, expiresAt: row.expires_at };
   }
 
   /** Fija la contraseña nueva, cierra todas las sesiones del usuario y abre una nueva. */
   async complete(params: { token: string; password: string }): Promise<{ token: string; user: UserSession }> {
-    const row = this.findValid(params.token);
+    const row = await this.findValid(params.token);
     await this.auth.setPassword(row.user_id, params.password);
     await this.auth.revokeSessions(row.user_id);
     this.db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(this.now().toISOString(), row.id);
@@ -87,7 +87,7 @@ export class PasswordResetService {
     return { token, user };
   }
 
-  private findValid(token: string): ResetRow {
+  private async findValid(token: string): Promise<ResetRow> {
     const row = this.db
       .prepare(
         `SELECT r.id, r.user_id, r.tenant_id, r.expires_at, u.email, u.name

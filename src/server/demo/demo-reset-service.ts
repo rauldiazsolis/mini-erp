@@ -138,20 +138,30 @@ export class DemoResetService {
       active: number;
       created: number;
     }[];
-    return rows.map((r) => {
-      const db = this.deps.tenantManager.getTenantDb(r.tenant_id);
-      const sales = db.prepare('SELECT COUNT(*) AS n FROM sales WHERE day = ? AND voids_sale_id IS NULL').get(today) as { n: number };
-      return {
-        template: r.template,
-        tenantId: r.tenant_id,
-        name: r.name,
-        activeRegisters: r.active,
-        createdToday: r.created,
-        salesToday: sales.n,
-        lastFullResetAt: r.last_full_reset_at,
-        lastPartialResetAt: r.last_partial_reset_at,
-      };
-    });
+    const items: DemoStatusItem[] = [];
+    for (const r of rows) {
+      items.push(await this.salesToday(r, today));
+    }
+    return items;
+  }
+
+  /** La fila de un comercio demo con sus ventas de hoy (su base de comercio). */
+  private async salesToday(
+    r: { tenant_id: string; template: string; last_full_reset_at: string; last_partial_reset_at: string | null; name: string; active: number; created: number },
+    today: string,
+  ): Promise<DemoStatusItem> {
+    const db = this.deps.tenantManager.getTenantDb(r.tenant_id);
+    const sales = db.prepare('SELECT COUNT(*) AS n FROM sales WHERE day = ? AND voids_sale_id IS NULL').get(today) as { n: number };
+    return {
+      template: r.template,
+      tenantId: r.tenant_id,
+      name: r.name,
+      activeRegisters: r.active,
+      createdToday: r.created,
+      salesToday: sales.n,
+      lastFullResetAt: r.last_full_reset_at,
+      lastPartialResetAt: r.last_partial_reset_at,
+    };
   }
 
   /** Repone los productos de la semilla que bajaron de un cuarto de su cantidad inicial. Un producto borrado no. */

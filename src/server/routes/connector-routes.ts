@@ -236,7 +236,7 @@ export function createConnectorRoutes(
   });
 
   // POST /account-holds
-  router.post('/account-holds', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/account-holds', async (req: AuthenticatedPosRequest, res: Response) => {
     const idempotencyKey = req.headers['idempotency-key'];
     if (typeof idempotencyKey !== 'string' || idempotencyKey.trim() === '') {
       res.status(400).json({ error: 'Falta cabecera Idempotency-Key' });
@@ -251,7 +251,7 @@ export function createConnectorRoutes(
 
     const connector = getConnectorService(req);
 
-    const holdResult = connector.requestAccountHold({
+    const holdResult = await connector.requestAccountHold({
       customerId: parseResult.data.customerId,
       amount: parseResult.data.amount,
     });

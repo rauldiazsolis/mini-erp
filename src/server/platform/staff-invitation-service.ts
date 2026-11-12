@@ -68,7 +68,7 @@ export class StaffInvitationService {
   }
 
   async lookup(token: string): Promise<StaffInvitationInfo> {
-    const inv = this.findValid(token);
+    const inv = await this.findValid(token);
     return {
       email: inv.email,
       invitedByName: inv.invitedByName,
@@ -78,7 +78,7 @@ export class StaffInvitationService {
   }
 
   async accept(params: { token: string; password: string; name?: string | undefined }): Promise<{ token: string; user: UserSession }> {
-    const inv = this.findValid(params.token);
+    const inv = await this.findValid(params.token);
     const existing = await this.auth.findUserByEmail(inv.email);
     let userId: string;
     if (existing !== undefined) {
@@ -103,7 +103,7 @@ export class StaffInvitationService {
     return { token, user };
   }
 
-  private findValid(token: string): ValidInvitation {
+  private async findValid(token: string): Promise<ValidInvitation> {
     const row = this.db
       .prepare(
         `SELECT i.id, i.email, i.expires_at, COALESCE(u.name, '') AS invited_by_name

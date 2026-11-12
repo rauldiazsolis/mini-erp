@@ -27,7 +27,7 @@ export class ImpersonationService {
   }
 
   async start(p: { staff: UserSession; parentToken: string; userId: string; tenantSlug?: string | undefined }): Promise<ImpersonationStart> {
-    const { user, tenant } = this.target(p.userId, p.tenantSlug);
+    const { user, tenant } = await this.target(p.userId, p.tenantSlug);
     return await this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: `/admin/${tenant.slug}/dashboard`, helpRequestId: null });
   }
 
@@ -35,7 +35,7 @@ export class ImpersonationService {
   async take(p: { staff: UserSession; parentToken: string; helpRequestId: string }): Promise<ImpersonationStart> {
     const request = await this.help.findOpen(p.helpRequestId);
     if (request === undefined) throw new DomainError(410, 'Este pedido venció');
-    const { user, tenant } = this.target(request.userId, request.tenantSlug);
+    const { user, tenant } = await this.target(request.userId, request.tenantSlug);
     const started = await this.open({ staff: p.staff, parentToken: p.parentToken, user, tenant, path: request.path, helpRequestId: request.id });
     await this.help.recordTake(request.id, p.staff.id);
     return started;
@@ -47,7 +47,7 @@ export class ImpersonationService {
   }
 
   /** La cuenta y el comercio de entrada: el pedido o, si no, la membresía activa más reciente. */
-  private target(userId: string, tenantSlug: string | undefined): { user: UserSession; tenant: TargetTenant } {
+  private async target(userId: string, tenantSlug: string | undefined): Promise<{ user: UserSession; tenant: TargetTenant }> {
     const row = this.db.prepare('SELECT id, email, name, global_role, status FROM users WHERE id = ?').get(userId) as
       | { id: string; email: string; name: string; global_role: string; status: string }
       | undefined;

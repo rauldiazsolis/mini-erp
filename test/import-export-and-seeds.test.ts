@@ -129,7 +129,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
   // El alta aplica el preset del rubro (#19): ya no hay endpoint /seed-preset
   describe('Semillas de Negocio Preconfiguradas (applyPreset)', () => {
     it('aplica el preset de "kiosco" poblando productos y categorías representativas', async () => {
-      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'kiosco');
+      const body: PresetResult = await applyPreset(tenantManager.getTenantDb(tenantId), 'kiosco');
       expect(body.preset).toBe('kiosco');
       expect(body.productsCreated).toBeGreaterThanOrEqual(6);
 
@@ -155,7 +155,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     });
 
     it('aplica el preset de "ferreteria" con productos y stock inicial correspondientes', async () => {
-      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'ferreteria');
+      const body: PresetResult = await applyPreset(tenantManager.getTenantDb(tenantId), 'ferreteria');
       expect(body.preset).toBe('ferreteria');
 
       const prodRes = await request(app)

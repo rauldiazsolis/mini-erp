@@ -100,7 +100,7 @@ export async function importProducts(db: DatabaseSync, rows: RowContext[], branc
     byName.set(key, [...(byName.get(key) ?? []), id]);
   };
   for (const p of db.prepare('SELECT id, name FROM products').all() as { id: string; name: string }[]) rememberName(p.name, p.id);
-  const nextSku = (): string => {
+  const nextSku = async (): Promise<string> => {
     const used = db.prepare("SELECT sku FROM products WHERE sku LIKE 'IMP-%'").all() as { sku: string }[];
     const max = used.reduce((m, r) => Math.max(m, Number(r.sku.slice('IMP-'.length)) || 0), 0);
     return `IMP-${String(max + 1).padStart(6, '0')}`;
@@ -159,7 +159,7 @@ export async function importProducts(db: DatabaseSync, rows: RowContext[], branc
       }
       // Sin SKU en el archivo: el primer código de barras (si está libre) o un correlativo
       const fromBarcode = data.barcodes[0];
-      const sku = data.sku ?? (fromBarcode !== undefined && bySku.get(fromBarcode) === undefined ? fromBarcode : nextSku());
+      const sku = data.sku ?? (fromBarcode !== undefined && bySku.get(fromBarcode) === undefined ? fromBarcode : await nextSku());
       const tracks = data.tracksStock ?? true;
       productId = `prod_${randomUUID()}`;
       db.prepare(

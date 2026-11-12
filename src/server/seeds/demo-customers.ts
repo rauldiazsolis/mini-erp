@@ -46,7 +46,7 @@ export const DEMO_CUSTOMERS: SeedCustomer[] = [
 ];
 
 /** Los clientes demo, con su saldo inicial en el libro. Los usan la semilla de las demos y la de desarrollo. */
-export function insertDemoCustomers(db: DatabaseSync, now: string): void {
+export async function insertDemoCustomers(db: DatabaseSync, now: string): Promise<void> {
   const insertCust = db.prepare(
     'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );

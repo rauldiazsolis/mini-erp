@@ -18,7 +18,7 @@ export class SuspensionService {
   }
 
   async suspend(p: { tenantId: string; reason: string; actorUserId: string }): Promise<void> {
-    this.requireRealTenant(p.tenantId);
+    await this.requireRealTenant(p.tenantId);
     if (await isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
     await this.inTransaction(async () => {
       this.db
@@ -30,7 +30,7 @@ export class SuspensionService {
   }
 
   async reactivate(p: { tenantId: string; actorUserId: string }): Promise<void> {
-    this.requireRealTenant(p.tenantId);
+    await this.requireRealTenant(p.tenantId);
     if (!(await isSuspended(this.db, p.tenantId))) throw new DomainError(409, 'El comercio no está suspendido');
     await this.inTransaction(async () => {
       this.db.prepare('UPDATE tenant_suspensions SET to_at = ? WHERE tenant_id = ? AND to_at IS NULL').run(this.now().toISOString(), p.tenantId);
@@ -39,7 +39,7 @@ export class SuspensionService {
     });
   }
 
-  private requireRealTenant(tenantId: string): void {
+  private async requireRealTenant(tenantId: string): Promise<void> {
     const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
   }

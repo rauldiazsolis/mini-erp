@@ -32,7 +32,7 @@ async function seed(): Promise<{ dataDir: string; backupDir: string }> {
 describe('backupAll (#3)', () => {
   it('copia system y los comercios reales, sin las demos', async () => {
     const { dataDir, backupDir } = await seed();
-    const result = backupAll({ dataDir, backupDir, now: new Date('2026-10-01T03:30:00Z'), keep: 7 });
+    const result = await backupAll({ dataDir, backupDir, now: new Date('2026-10-01T03:30:00Z'), keep: 7 });
     expect(result.dir).toBe(join(backupDir, '2026-10-01'));
     expect(result.tenants).toEqual(['kiosco-real']);
     expect(existsSync(join(result.dir, 'system.sqlite'))).toBe(true);
@@ -48,8 +48,8 @@ describe('backupAll (#3)', () => {
     for (const day of ['2026-09-20', '2026-09-21', '2026-09-22']) {
       mkdirSync(join(backupDir, day), { recursive: true });
     }
-    backupAll({ dataDir, backupDir, now: new Date('2026-10-01T03:30:00Z'), keep: 2 });
-    backupAll({ dataDir, backupDir, now: new Date('2026-10-01T04:00:00Z'), keep: 2 });
+    await backupAll({ dataDir, backupDir, now: new Date('2026-10-01T03:30:00Z'), keep: 2 });
+    await backupAll({ dataDir, backupDir, now: new Date('2026-10-01T04:00:00Z'), keep: 2 });
     expect(readdirSync(backupDir).sort()).toEqual(['2026-09-22', '2026-10-01']);
   });
 });

@@ -26,10 +26,10 @@ export function getPresetProducts(preset: BusinessPreset): SeedProduct[] {
   }
 }
 
-export function applyPreset(
+export async function applyPreset(
   db: DatabaseSync,
   preset: BusinessPreset,
-): { preset: BusinessPreset; productsCreated: number; stockEntries: number } {
+): Promise<{ preset: BusinessPreset; productsCreated: number; stockEntries: number }> {
   const items = getPresetProducts(preset);
   const now = new Date().toISOString();
   const branches = db.prepare('SELECT id FROM branches').all() as unknown as { id: string }[];
@@ -91,7 +91,7 @@ export async function seedDemoTenant(
   }
 
   // 2. Clientes iniciales
-  insertDemoCustomers(db, now);
+  await insertDemoCustomers(db, now);
 
   // 3. Generar historial de ventas y movimientos si está habilitado
   if (options?.withHistory ?? true) {
@@ -109,7 +109,7 @@ export function isDemoTemplate(value: string): value is DemoTemplate {
 }
 
 /** Datos de una demo: el catálogo del preset y los clientes demo, sin historial (el POS no lo ve). */
-export function seedDemoSession(db: DatabaseSync, template: DemoTemplate): void {
-  applyPreset(db, template);
-  insertDemoCustomers(db, new Date().toISOString());
+export async function seedDemoSession(db: DatabaseSync, template: DemoTemplate): Promise<void> {
+  await applyPreset(db, template);
+  await insertDemoCustomers(db, new Date().toISOString());
 }

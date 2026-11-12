@@ -6,7 +6,7 @@ import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 const DAY_DIR = /^\d{4}-\d{2}-\d{2}$/;
 
 /** `VACUUM INTO`: copia consistente aunque el servidor esté escribiendo. */
-function copyDb(from: string, to: string): void {
+async function copyDb(from: string, to: string): Promise<void> {
   const db = new DatabaseSync(from, { readOnly: true, timeout: 10_000 });
   try {
     db.prepare('VACUUM INTO ?').run(to);
@@ -19,10 +19,10 @@ function copyDb(from: string, to: string): void {
  * Backup nocturno (#3): `system.sqlite` y cada comercio real (las demos no) en `<backupDir>/<día>/`.
  * Reemplaza la carpeta del día y deja las últimas `keep`.
  */
-export function backupAll(params: { dataDir: string; backupDir: string; now: Date; keep: number }): {
+export async function backupAll(params: { dataDir: string; backupDir: string; now: Date; keep: number }): Promise<{
   dir: string;
   tenants: string[];
-} {
+}> {
   const systemPath = join(params.dataDir, 'system.sqlite');
   const system = new DatabaseSync(systemPath, { readOnly: true, timeout: 10_000 });
   const rows = system
@@ -33,13 +33,13 @@ export function backupAll(params: { dataDir: string; backupDir: string; now: Dat
   const dir = join(params.backupDir, params.now.toISOString().slice(0, 10));
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(join(dir, 'tenants'), { recursive: true });
-  copyDb(systemPath, join(dir, 'system.sqlite'));
+  await copyDb(systemPath, join(dir, 'system.sqlite'));
 
   const tenants: string[] = [];
   for (const { id } of rows) {
     const file = join(params.dataDir, 'tenants', `${id}.sqlite`);
     if (existsSync(file)) {
-      copyDb(file, join(dir, 'tenants', `${id}.sqlite`));
+      await copyDb(file, join(dir, 'tenants', `${id}.sqlite`));
       tenants.push(id);
     }
   }

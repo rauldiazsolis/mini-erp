@@ -43,7 +43,7 @@ describe('Templates de demo (#9)', () => {
     const manager = new TenantManager(systemDb(), { inMemory: true });
     await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
     const db = manager.getTenantDb('demo-a');
-    seedDemoSession(db, 'almacen');
+    await seedDemoSession(db, 'almacen');
     expect(count(db, 'SELECT COUNT(*) AS n FROM products WHERE sku = ?', 'ALM-001')).toBe(1);
     expect(count(db, 'SELECT COUNT(*) AS n FROM products WHERE sku LIKE ?', 'KIO-%')).toBe(0);
     expect(count(db, 'SELECT COUNT(*) AS n FROM customers')).toBe(DEMO_CUSTOMERS.length);

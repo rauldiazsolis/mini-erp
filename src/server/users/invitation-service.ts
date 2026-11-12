@@ -139,7 +139,7 @@ export class InvitationService {
   }
 
   async lookup(token: string): Promise<InvitationInfo> {
-    const inv = this.findValid(token);
+    const inv = await this.findValid(token);
     return {
       tenantName: inv.tenantName,
       role: inv.role,
@@ -155,7 +155,7 @@ export class InvitationService {
     user: UserSession;
     tenantId: string;
   }> {
-    const inv = this.findValid(params.token);
+    const inv = await this.findValid(params.token);
     const existing = await this.auth.findUserByEmail(inv.email);
     let user: UserSession;
     let sessionToken: string;
@@ -182,7 +182,7 @@ export class InvitationService {
     return { token: sessionToken, user, tenantId: inv.tenantId };
   }
 
-  private findValid(token: string): ValidInvitation {
+  private async findValid(token: string): Promise<ValidInvitation> {
     const row = this.db
       .prepare(
         `SELECT i.id, i.tenant_id, i.email, i.role, i.expires_at, t.name AS tenant_name, COALESCE(u.name, '') AS invited_by_name

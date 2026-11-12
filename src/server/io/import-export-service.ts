@@ -163,7 +163,7 @@ export class ImportExportService {
   }
 
   async applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): Promise<BusinessPresetResult> {
-    return applyPreset(this.db, preset);
+    return await applyPreset(this.db, preset);
   }
 
   // --- HELPERS CSV RFC 4180 ---
