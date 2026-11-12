@@ -65,7 +65,7 @@ describe('suspender comercios (#23)', () => {
       .set('X-POS-Contract-Version', '4.4.0')
       .set('Idempotency-Key', lotId)
       .send({ deviceId: 'dev-1', events });
-  const charges = () => systemDb.prepare('SELECT day FROM charges ORDER BY day').all() as { day: string }[];
+  const charges = async () => await db().system.selectFrom('charges').select('day').orderBy('day').execute();
 
   it('soporte suspende con motivo: el owner recibe 403 salvo Uso y pagos, billing-status y exportar', async () => {
     expect((await suspend('support')).status).toBe(200);
@@ -93,11 +93,11 @@ describe('suspender comercios (#23)', () => {
 
   it('el POS sigue sincronizando y los días suspendidos no se cobran', async () => {
     await push('l0', [venta('e0', '2026-10-04T13:00:00.000Z')]);
-    expect(charges()).toEqual([{ day: '2026-10-04' }]);
+    expect(await charges()).toEqual([{ day: '2026-10-04' }]);
     await suspend('root');
     const res = await push('l1', [venta('e1', '2026-10-05T13:00:00.000Z')]);
     expect(res.status).toBe(200);
-    expect(charges()).toEqual([{ day: '2026-10-04' }]);
+    expect(await charges()).toEqual([{ day: '2026-10-04' }]);
   });
 
   it('suspendedDays mira el día argentino', async () => {

@@ -16,7 +16,6 @@ import {
   type DevUserKey,
 } from '../seeds/dev-fixtures.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import { readBillingSettings, writeBillingSettings } from '../billing/settings.ts';
 
 /** Lo que el arranque muestra en el log: con qué entrar y qué keys conectar al POS. */
 export type DevInfo = {
@@ -43,8 +42,8 @@ type UserIds = Record<DevUserKey, string>;
 export async function ensureDevData(deps: Deps): Promise<DevInfo> {
   const ids = await ensureUsers(deps);
   // Sin WhatsApp de soporte no hay "Pedir ayuda" (#23); no pisa uno cargado a mano
-  if ((await readBillingSettings(deps.systemDb)).supportWhatsapp === '') {
-    await writeBillingSettings(deps.systemDb, { supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root, new Date().toISOString());
+  if ((await deps.billing.settings()).supportWhatsapp === '') {
+    await deps.billing.updateSettings({ supportWhatsapp: DEV_SUPPORT_WHATSAPP }, ids.root);
   }
   // En orden: el Almacén usa lo que el Kiosco dejó del saldo pagado del dueño A
   for (const tenant of DEV_TENANTS) {

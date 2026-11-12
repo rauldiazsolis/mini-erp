@@ -34,6 +34,7 @@ import { UserStatusService } from '../platform/user-status-service.ts';
 import { StaffInvitationService } from '../platform/staff-invitation-service.ts';
 import { PlatformQueryService } from '../platform/platform-query-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
+import { sqliteBillingBridge } from '../billing/legacy-bridge.ts';
 import { ImpersonationService } from '../impersonation/impersonation-service.ts';
 import { HelpRequestService } from '../help/help-request-service.ts';
 import { FunnelService } from '../funnel/funnel-service.ts';
@@ -106,7 +107,10 @@ export const registerServiceDef = fn.singleton((c) => new RegisterService(c.use(
 
 // --- COBRO (#21) ---
 
-export const billingServiceDef = fn.singleton((c) => new BillingService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
+// Las suspensiones y la marca de demo siguen en SQLite hasta los dominios 5 y 7 (puente temporal)
+export const billingServiceDef = fn.singleton(
+  (c) => new BillingService({ db: c.use(systemKyselyDef), now: c.use(clockDef), legacy: sqliteBillingBridge(c.use(systemDbDef)) }),
+);
 
 // --- USUARIOS Y AUDITORÍA (#19) ---
 
@@ -142,7 +146,9 @@ export const invitationServiceDef = fn.singleton(
 );
 // --- IMPERSONACIÓN (#23, M7b) ---
 
-export const helpRequestServiceDef = fn.singleton((c) => new HelpRequestService({ db: c.use(systemDbDef), now: c.use(clockDef) }));
+export const helpRequestServiceDef = fn.singleton(
+  (c) => new HelpRequestService({ db: c.use(systemDbDef), now: c.use(clockDef), billing: c.use(billingServiceDef) }),
+);
 export const impersonationServiceDef = fn.singleton(
   (c) =>
     new ImpersonationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), help: c.use(helpRequestServiceDef) }),

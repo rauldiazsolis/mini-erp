@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { readBillingSettings } from '../billing/settings.ts';
+import type { BillingService } from '../billing/billing-service.ts';
 import { IMPERSONATION_IDLE_MS } from '../auth/auth-service.ts';
 import { DomainError } from '../errors.ts';
 import { isAdminPathOf } from './help-path.ts';
@@ -37,10 +37,12 @@ function hasHelpRequest(details: string): boolean {
 export class HelpRequestService {
   private db: DatabaseSync;
   private now: () => Date;
+  private billing: BillingService;
 
-  constructor(deps: { db: DatabaseSync; now: () => Date }) {
+  constructor(deps: { db: DatabaseSync; now: () => Date; billing: BillingService }) {
     this.db = deps.db;
     this.now = deps.now;
+    this.billing = deps.billing;
   }
 
   /** Crea el pedido y cierra el abierto anterior del mismo usuario. */
@@ -134,7 +136,7 @@ export class HelpRequestService {
       )
       .get(userId, new Date(now.getTime() - IMPERSONATION_IDLE_MS).toISOString());
     return {
-      supportWhatsapp: (await readBillingSettings(this.db)).supportWhatsapp,
+      supportWhatsapp: (await this.billing.paymentInfo()).supportWhatsapp,
       openRequest: open === undefined ? null : { id: open.id, message: open.message, createdAt: open.created_at, expiresAt: open.expires_at },
       accesses: accesses.map((a) => ({ at: a.at, staffName: a.staff_name, byRequest: hasHelpRequest(a.details) })),
       activeNow: active !== undefined,

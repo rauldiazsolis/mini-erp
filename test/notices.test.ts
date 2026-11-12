@@ -81,7 +81,7 @@ describe('notices en el pull (#2)', () => {
   });
 
   it('sin créditos, todos los equipos reciben el aviso critical de deuda (#21)', async () => {
-    systemDb.prepare('DELETE FROM gift_credits').run();
+    await db().system.deleteFrom('gift_credits').execute();
     await push('l1', [{ ...ventaACuenta, sale: { ...ventaACuenta.sale, customerId: undefined, payments: [{ method: 'cash', amount: 950 }] } }]);
     const avisos = await notices('dev-1');
     expect(avisos.map((n) => [n.id, n.severity])).toEqual([['credits:debt', 'critical']]);

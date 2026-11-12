@@ -28,7 +28,7 @@ export async function bootstrap(params: {
   }
   const sweeper = await startDemoSweeper({ sessions: bundle.demoSessions, resets: bundle.demoResets, audit: bundle.auditLog }, interval);
   const billingSweeper = await startBillingSweeper(
-    { systemDb: bundle.systemDb, tenantManager: bundle.tenantManager, billing: bundle.billing },
+    { tenantManager: bundle.tenantManager, billing: bundle.billing },
     interval,
   );
   // La retención del embudo (#25), aunque las demos estén apagadas

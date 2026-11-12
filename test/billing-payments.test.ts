@@ -1,31 +1,45 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
+import { sql, type Kysely } from 'kysely';
+import type { SystemDatabase } from '../src/server/db/pg/system-schema.ts';
 import { BillingService } from '../src/server/billing/billing-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { fakeBillingBridge } from './helpers/billing-bridge.ts';
+
+const pgDb = setupTestDb();
 
 describe('pagos, créditos, gracia, devoluciones y titular (#21)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<SystemDatabase>;
   let now: Date;
   let billing: BillingService;
 
-  const gift = (tenantId: string, amount: number, expiresAt: string) =>
-    db
-      .prepare("INSERT INTO gift_credits (id, tenant_id, amount, expires_at, origin, created_at) VALUES (?, ?, ?, ?, 'grant', '2026-10-01T00:00:00.000Z')")
-      .run(`g-${tenantId}-${String(amount)}`, tenantId, amount, expiresAt);
+  const gift = async (tenantId: string, amount: number, expiresAt: string) =>
+    await db
+      .insertInto('gift_credits')
+      .values({ id: `g-${tenantId}-${String(amount)}`, tenant_id: tenantId, amount, expires_at: expiresAt, origin: 'grant', created_at: '2026-10-01T00:00:00.000Z' })
+      .execute();
 
-  beforeEach(() => {
-    db = openSystemDb(':memory:');
-    const user = db.prepare("INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES (?, ?, 'h', ?, 'user', '2026-10-01T00:00:00.000Z')");
-    user.run('u1', 'u1@x.com', 'Ana');
-    user.run('u2', 'u2@x.com', 'Beto');
+  beforeEach(async () => {
+    db = pgDb().system;
+    const at = '2026-10-01T00:00:00.000Z';
+    await db
+      .insertInto('users')
+      .values([
+        { id: 'u1', email: 'u1@x.com', password_hash: 'h', name: 'Ana', global_role: 'user', created_at: at },
+        { id: 'u2', email: 'u2@x.com', password_hash: 'h', name: 'Beto', global_role: 'user', created_at: at },
+      ])
+      .execute();
     for (const t of ['t1', 't2']) {
-      db.prepare("INSERT INTO tenants (id, slug, name, created_at, holder_user_id) VALUES (?, ?, ?, '2026-10-01T00:00:00.000Z', 'u1')").run(t, t, t);
+      await db.insertInto('tenants').values({ id: t, slug: t, name: t, created_at: at, holder_user_id: 'u1' }).execute();
     }
-    const member = db.prepare("INSERT INTO memberships (user_id, tenant_id, role, status, created_at) VALUES (?, 't1', ?, ?, '2026-10-01T00:00:00.000Z')");
-    member.run('u1', 'owner', 'active');
-    member.run('u2', 'owner', 'active');
+    await db
+      .insertInto('memberships')
+      .values([
+        { user_id: 'u1', tenant_id: 't1', role: 'owner', status: 'active', created_at: at },
+        { user_id: 'u2', tenant_id: 't1', role: 'owner', status: 'active', created_at: at },
+      ])
+      .execute();
     now = new Date('2026-10-05T15:00:00.000Z');
-    billing = new BillingService({ db, now: () => now });
+    billing = new BillingService({ db, now: () => now, legacy: fakeBillingBridge() });
   });
 
   it('un pago cancela primero la deuda, del cargo más antiguo, y el resto queda de saldo', async () => {
@@ -33,13 +47,36 @@ describe('pagos, créditos, gracia, devoluciones y titular (#21)', () => {
     await billing.charge({ tenantId: 't2', registerId: 'r2', chargeDevice: '', days: ['2026-10-03'] });
     const res = await billing.registerPayment({ tenantId: 't1', day: '2026-10-05', amount: 2500, actorUserId: 'root' });
     expect(res.settled).toBe(2500);
-    expect(db.prepare('SELECT day, debt_amount, paid_amount, debt_settled_at IS NOT NULL AS settled FROM charges ORDER BY day').all()).toEqual([
-      { day: '2026-10-01', debt_amount: 0, paid_amount: 1000, settled: 1 },
-      { day: '2026-10-02', debt_amount: 0, paid_amount: 1000, settled: 1 },
-      { day: '2026-10-03', debt_amount: 500, paid_amount: 500, settled: 0 },
+    const rows = await db
+      .selectFrom('charges')
+      .select(['day', 'debt_amount', 'paid_amount', sql<boolean>`debt_settled_at IS NOT NULL`.as('settled')])
+      .orderBy('day')
+      .execute();
+    expect(rows).toEqual([
+      { day: '2026-10-01', debt_amount: 0, paid_amount: 1000, settled: true },
+      { day: '2026-10-02', debt_amount: 0, paid_amount: 1000, settled: true },
+      { day: '2026-10-03', debt_amount: 500, paid_amount: 500, settled: false },
     ]);
     expect(await billing.summary('t1')).toMatchObject({ debt: 0, paidBalance: 0, state: 'low' });
     expect(await billing.summary('t2')).toMatchObject({ debt: 500 });
+  });
+
+  it('un pago con centavos cancela la deuda y deja los centavos de saldo, sin ruido de coma flotante', async () => {
+    await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-01'] });
+    const res = await billing.registerPayment({ tenantId: 't1', day: '2026-10-05', amount: 1000.15, actorUserId: 'root' });
+    expect(res.settled).toBe(1000);
+    expect(await billing.summary('t1')).toMatchObject({ debt: 0, paidBalance: 0.15 });
+  });
+
+  it('varios cargos a la vez del mismo titular no gastan dos veces el mismo saldo', async () => {
+    await billing.registerPayment({ tenantId: 't1', day: '2026-10-05', amount: 500, actorUserId: 'root' });
+    // Con las conexiones del pool ya abiertas, los cuatro cargos corren de verdad a la vez
+    await Promise.all(Array.from({ length: 4 }, async () => await sql`SELECT pg_sleep(0.05)`.execute(db)));
+    const registers = ['r1', 'r2', 'r3', 'r4'];
+    await Promise.all(registers.map((r, i) => billing.charge({ tenantId: i % 2 === 0 ? 't1' : 't2', registerId: r, chargeDevice: '', days: ['2026-10-05'] })));
+    expect(await billing.summary('t1')).toMatchObject({ paidBalance: 0 });
+    const paidOut = await db.selectFrom('charges').select('paid_amount').execute();
+    expect(paidOut.map((c) => c.paid_amount).sort()).toEqual([0, 0, 0, 500]);
   });
 
   it('un pago más grande que la deuda deja el resto de saldo', async () => {
@@ -49,10 +86,10 @@ describe('pagos, créditos, gracia, devoluciones y titular (#21)', () => {
   });
 
   it('después de un pago, los cargos siguientes se reparten según la proporción', async () => {
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z');
     await billing.registerPayment({ tenantId: 't1', day: '2026-10-05', amount: 10000, actorUserId: 'root' });
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] });
-    expect(db.prepare('SELECT paid_amount, gift_amount FROM charges').get()).toEqual({ paid_amount: 500, gift_amount: 500 });
+    expect(await db.selectFrom('charges').select(['paid_amount', 'gift_amount']).executeTakeFirst()).toEqual({ paid_amount: 500, gift_amount: 500 });
   });
 
   it('un crédito regalado nuevo no cancela deuda', async () => {
@@ -63,7 +100,7 @@ describe('pagos, créditos, gracia, devoluciones y titular (#21)', () => {
 
   it('otorgar vence al final del día argentino; anular deja el remanente en cero', async () => {
     const id = await billing.grantCredits({ tenantId: 't1', amount: 5000, expiresOn: '2026-12-31', reason: 'Cortesía', actorUserId: 'root' });
-    expect(db.prepare('SELECT expires_at, reason, granted_by, origin FROM gift_credits WHERE id = ?').get(id)).toEqual({
+    expect(await db.selectFrom('gift_credits').select(['expires_at', 'reason', 'granted_by', 'origin']).where('id', '=', id).executeTakeFirst()).toEqual({
       expires_at: '2027-01-01T03:00:00.000Z',
       reason: 'Cortesía',
       granted_by: 'root',

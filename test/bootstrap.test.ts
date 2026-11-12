@@ -157,11 +157,11 @@ describe('seed de desarrollo (#21)', () => {
   });
 
   it('carga un WhatsApp de soporte de prueba, sin pisar uno cargado a mano (#23)', async () => {
-    const { systemDb, run } = await boot({});
-    expect((await readBillingSettings(systemDb)).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
-    await writeBillingSettings(systemDb, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
+    const { run } = await boot({});
+    expect((await readBillingSettings(pgDb().system)).supportWhatsapp).toBe(DEV_SUPPORT_WHATSAPP);
+    await writeBillingSettings(pgDb().system, { supportWhatsapp: '5491177778888' }, 'root', new Date().toISOString());
     await run();
-    expect((await readBillingSettings(systemDb)).supportWhatsapp).toBe('5491177778888');
+    expect((await readBillingSettings(pgDb().system)).supportWhatsapp).toBe('5491177778888');
   });
 
   it('crea los tres comercios demo, sin dueño (#24)', async () => {

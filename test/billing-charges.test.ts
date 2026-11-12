@@ -1,80 +1,92 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../src/server/db/pg/system-schema.ts';
 import { BillingService } from '../src/server/billing/billing-service.ts';
 import { readBillingSettings, writeBillingSettings, DEFAULT_BILLING_SETTINGS } from '../src/server/billing/settings.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { fakeBillingBridge } from './helpers/billing-bridge.ts';
+
+const pgDb = setupTestDb();
 
 describe('cargos y estado de cobro (#21)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<SystemDatabase>;
   let now: Date;
   let billing: BillingService;
   let seq = 0;
 
-  const gift = (tenantId: string, amount: number, expiresAt: string, id = `g-${String(++seq)}`) =>
-    db
-      .prepare("INSERT INTO gift_credits (id, tenant_id, amount, expires_at, origin, created_at) VALUES (?, ?, ?, ?, 'grant', '2026-10-01T00:00:00.000Z')")
-      .run(id, tenantId, amount, expiresAt);
-  const paid = (userId: string, amount: number) =>
-    db
-      .prepare("INSERT INTO paid_movements (id, user_id, kind, amount, day, created_at) VALUES (?, ?, 'payment', ?, '2026-10-01', '2026-10-01T00:00:00.000Z')")
-      .run(`pm-${String(++seq)}`, userId, amount);
-  const charges = () =>
-    db
-      .prepare('SELECT tenant_id, register_id, device_id, day, amount, paid_amount, gift_amount, debt_amount, rule FROM charges ORDER BY day, register_id, device_id')
-      .all();
+  const gift = async (tenantId: string, amount: number, expiresAt: string, id = `g-${String(++seq)}`) =>
+    await db
+      .insertInto('gift_credits')
+      .values({ id, tenant_id: tenantId, amount, expires_at: expiresAt, origin: 'grant', created_at: '2026-10-01T00:00:00.000Z' })
+      .execute();
+  const paid = async (userId: string, amount: number) =>
+    await db
+      .insertInto('paid_movements')
+      .values({ id: `pm-${String(++seq)}`, user_id: userId, kind: 'payment', amount, day: '2026-10-01', created_at: '2026-10-01T00:00:00.000Z' })
+      .execute();
+  const charges = async () =>
+    await db
+      .selectFrom('charges')
+      .select(['tenant_id', 'register_id', 'device_id', 'day', 'amount', 'paid_amount', 'gift_amount', 'debt_amount', 'rule'])
+      .orderBy('day')
+      .orderBy('register_id')
+      .orderBy('device_id')
+      .execute();
 
-  beforeEach(() => {
-    db = openSystemDb(':memory:');
-    db.prepare("INSERT INTO users (id, email, password_hash, name, global_role, created_at) VALUES ('u1', 'u1@x.com', 'h', 'Ana', 'user', '2026-10-01T00:00:00.000Z')").run();
+  beforeEach(async () => {
+    db = pgDb().system;
+    await db
+      .insertInto('users')
+      .values({ id: 'u1', email: 'u1@x.com', password_hash: 'h', name: 'Ana', global_role: 'user', created_at: '2026-10-01T00:00:00.000Z' })
+      .execute();
     for (const t of ['t1', 't2']) {
-      db.prepare("INSERT INTO tenants (id, slug, name, created_at, holder_user_id) VALUES (?, ?, ?, '2026-10-01T00:00:00.000Z', 'u1')").run(t, t, t);
+      await db.insertInto('tenants').values({ id: t, slug: t, name: t, created_at: '2026-10-01T00:00:00.000Z', holder_user_id: 'u1' }).execute();
     }
-    db.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('demo', 'demo', 'Demo', '2026-10-01T00:00:00.000Z')").run();
-    db.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo', 'kiosco', '2026-10-01T00:00:00.000Z')").run();
+    await db.insertInto('tenants').values({ id: 'demo', slug: 'demo', name: 'Demo', created_at: '2026-10-01T00:00:00.000Z' }).execute();
     now = new Date('2026-10-05T15:00:00.000Z');
-    billing = new BillingService({ db, now: () => now });
+    billing = new BillingService({ db, now: () => now, legacy: fakeBillingBridge({ demos: ['demo'] }) });
   });
 
   it('un cargo por caja y día; repetir no cobra dos veces', async () => {
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z');
     expect(await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-04', '2026-10-05'] })).toBe(2);
     expect(await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] })).toBe(0);
     await billing.charge({ tenantId: 't1', registerId: 'r2', chargeDevice: '', days: ['2026-10-05'] });
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: 'dev-b', days: ['2026-10-05'] });
-    expect(charges()).toHaveLength(4);
+    expect(await charges()).toHaveLength(4);
   });
 
   it('guarda el reparto y la regla; consume regalados por vencimiento', async () => {
-    gift('t1', 300, '2026-11-01T00:00:00.000Z', 'g-pronto');
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z', 'g-tarde');
-    paid('u1', 5000);
+    await gift('t1', 300, '2026-11-01T00:00:00.000Z', 'g-pronto');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z', 'g-tarde');
+    await paid('u1', 5000);
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] });
-    expect(charges()).toEqual([
+    expect(await charges()).toEqual([
       expect.objectContaining({ day: '2026-10-05', amount: 1000, paid_amount: 500, gift_amount: 500, debt_amount: 0, rule: JSON.stringify({ price: 1000, paidShare: 0.5 }) }),
     ]);
-    expect(db.prepare('SELECT credit_id, amount FROM gift_consumptions ORDER BY credit_id').all()).toEqual([
+    expect(await db.selectFrom('gift_consumptions').select(['credit_id', 'amount']).orderBy('credit_id').execute()).toEqual([
       { credit_id: 'g-pronto', amount: 300 },
       { credit_id: 'g-tarde', amount: 200 },
     ]);
-    expect(db.prepare("SELECT amount, kind, tenant_id FROM paid_movements WHERE kind = 'charge'").all()).toEqual([
+    expect(await db.selectFrom('paid_movements').select(['amount', 'kind', 'tenant_id']).where('kind', '=', 'charge').execute()).toEqual([
       { amount: -500, kind: 'charge', tenant_id: 't1' },
     ]);
   });
 
   it('un regalado vencido o anulado no cuenta', async () => {
-    gift('t1', 5000, '2026-10-05T14:00:00.000Z', 'g-vencido');
-    gift('t1', 5000, '2027-01-01T00:00:00.000Z', 'g-anulado');
-    db.prepare("UPDATE gift_credits SET voided_at = '2026-10-02T00:00:00.000Z' WHERE id = 'g-anulado'").run();
+    await gift('t1', 5000, '2026-10-05T14:00:00.000Z', 'g-vencido');
+    await gift('t1', 5000, '2027-01-01T00:00:00.000Z', 'g-anulado');
+    await db.updateTable('gift_credits').set({ voided_at: '2026-10-02T00:00:00.000Z' }).where('id', '=', 'g-anulado').execute();
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] });
-    expect(charges()[0]).toMatchObject({ debt_amount: 1000 });
+    expect((await charges())[0]).toMatchObject({ debt_amount: 1000 });
   });
 
   it('cambiar el precio no reescribe los cargos hechos', async () => {
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z');
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-04'] });
     await writeBillingSettings(db, { pricePerRegisterDay: 1500 }, 'root', now.toISOString());
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] });
-    expect(charges().map((c) => (c as { amount: number }).amount)).toEqual([1000, 1500]);
+    expect((await charges()).map((c) => c.amount)).toEqual([1000, 1500]);
   });
 
   it('una demo o un comercio sin titular no cobra', async () => {
@@ -84,14 +96,14 @@ describe('cargos y estado de cobro (#21)', () => {
   });
 
   it('estado ok con saldo de sobra; low si cubre menos de 7 días', async () => {
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z');
     expect(await billing.summary('t1')).toMatchObject({ state: 'ok', giftBalance: 50000, paidBalance: 0, debt: 0, daysCovered: 50, dailyBurn: 1000 });
-    db.prepare('UPDATE gift_credits SET amount = 6000').run();
+    await db.updateTable('gift_credits').set({ amount: 6000 }).execute();
     expect(await billing.summary('t1')).toMatchObject({ state: 'low', daysCovered: 6 });
   });
 
   it('el consumo diario cuenta las cajas y equipos con cargos en los últimos 7 días', async () => {
-    gift('t1', 50000, '2027-01-01T00:00:00.000Z');
+    await gift('t1', 50000, '2027-01-01T00:00:00.000Z');
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-05'] });
     await billing.charge({ tenantId: 't1', registerId: 'r2', chargeDevice: '', days: ['2026-10-04'] });
     await billing.charge({ tenantId: 't1', registerId: 'r3', chargeDevice: '', days: ['2026-09-28'] });
@@ -109,16 +121,16 @@ describe('cargos y estado de cobro (#21)', () => {
 
   it('grace_until posterior extiende la fecha límite; anterior no la acorta', async () => {
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-03'] });
-    db.prepare("UPDATE tenants SET grace_until = '2026-10-20' WHERE id = 't1'").run();
+    await db.updateTable('tenants').set({ grace_until: '2026-10-20' }).where('id', '=', 't1').execute();
     now = new Date('2026-10-15T12:00:00.000Z');
     expect(await billing.summary('t1')).toMatchObject({ state: 'debt', deadline: '2026-10-20' });
-    db.prepare("UPDATE tenants SET grace_until = '2026-10-05' WHERE id = 't1'").run();
+    await db.updateTable('tenants').set({ grace_until: '2026-10-05' }).where('id', '=', 't1').execute();
     expect(await billing.summary('t1')).toMatchObject({ deadline: '2026-10-13' });
   });
 
   it('el pagado es del titular: lo comparten sus comercios; la deuda de uno no restringe al otro', async () => {
-    paid('u1', 1500);
-    gift('t2', 50000, '2027-01-01T00:00:00.000Z');
+    await paid('u1', 1500);
+    await gift('t2', 50000, '2027-01-01T00:00:00.000Z');
     await billing.charge({ tenantId: 't1', registerId: 'r1', chargeDevice: '', days: ['2026-10-01', '2026-10-02'] });
     expect(await billing.summary('t1')).toMatchObject({ paidBalance: 0, debt: 500 });
     expect(await billing.summary('t2')).toMatchObject({ paidBalance: 0, state: 'ok' });
@@ -126,7 +138,7 @@ describe('cargos y estado de cobro (#21)', () => {
 
   it('el bono de alta usa la configuración', async () => {
     const id = await billing.grantSignupBonus('t1', 'u1');
-    expect(db.prepare('SELECT amount, origin, expires_at, granted_by FROM gift_credits WHERE id = ?').get(id)).toEqual({
+    expect(await db.selectFrom('gift_credits').select(['amount', 'origin', 'expires_at', 'granted_by']).where('id', '=', id).executeTakeFirst()).toEqual({
       amount: 50000,
       origin: 'signup',
       expires_at: '2027-01-03T15:00:00.000Z',
@@ -138,7 +150,7 @@ describe('cargos y estado de cobro (#21)', () => {
     expect(await readBillingSettings(db)).toEqual(DEFAULT_BILLING_SETTINGS);
     await writeBillingSettings(db, { paidShare: 0.7, paymentAlias: 'mini.contax' }, 'root', now.toISOString());
     expect(await readBillingSettings(db)).toMatchObject({ paidShare: 0.7, paymentAlias: 'mini.contax' });
-    db.prepare("UPDATE billing_settings SET value = '-3' WHERE key = 'paidShare'").run();
+    await db.updateTable('billing_settings').set({ value: '-3' }).where('key', '=', 'paidShare').execute();
     expect((await readBillingSettings(db)).paidShare).toBe(0.5);
   });
 });
