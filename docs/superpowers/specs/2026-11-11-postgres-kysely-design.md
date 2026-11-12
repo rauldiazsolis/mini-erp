@@ -166,24 +166,63 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
   - **Para la fase 4**: `gift_credits` no tiene FK a `tenants` en la línea de base (el alta la borra a
     mano al compensar); se puede agregar con `ON DELETE CASCADE` mientras la v1 no esté congelada.
 
+## Decidido en la fase 4 (2026-11-12)
+
+Lo que quedaba "para decidir", resuelto antes de migrar los comercios.
+
+1. **Fechas imposibles e instantes ilegibles: se validan en la frontera, como el resto del evento.**
+   En `push-events.ts`, `ticket.date` y `receipt.date` tienen que ser un día que existe
+   (`z.iso.date()`: `2026-02-31` no pasa) y todo `createdAt` (el del sobre, el de la venta, la
+   cobranza y el movimiento de caja), un instante ISO 8601 con zona (`z.iso.datetime({ offset: true })`,
+   el `date-time` del contrato). Un evento que no cumple queda como `issue` del lote con su
+   `eventId`, igual que uno con el total mal: no se guarda nada suyo y el resto del lote se aplica.
+   No se adivina una fecha: el día de una venta decide el cargo de uso y el resumen de caja.
+   Un instante se escribe siempre normalizado (`toISOString()`), y lo que igual se le escape a la
+   validación (un año fuera de rango) lo ataja el savepoint del evento.
+2. **Redondeo en comercio: depende de quién manda el número.**
+   - **Push del POS: nunca se rechaza por decimales.** Un total del POS es coma flotante
+     (`0.1 + 0.2`), así que exigir 2 decimales rechazaría ventas buenas. La columna redondea al
+     centavo (`sales.total`, el importe de un movimiento de cuenta corriente) y el `payload` guarda
+     lo que mandó el POS, sin tocar. El saldo se suma en SQL sobre `numeric`: ya no acumula error
+     de coma flotante. Las cantidades (stock y kardex) se redondean a 4 decimales.
+   - **Admin: se valida.** Precio, límite de crédito, margen, cobranza y ajuste de cuenta corriente
+     entran con a lo sumo 2 decimales (`hasAtMostTwoDecimals` de `src/shared/money.ts`); con más,
+     `400` "Importe inválido". Los negativos y el cero siguen valiendo donde valían.
+   - **Importación: la fila con error.** Un precio, un límite, un margen o un saldo inicial con más
+     de 2 decimales da el error en esa fila (se ve en la vista previa) y el resto se importa.
+3. **FK que cambian comportamiento.**
+   - **`stock.product_id` queda sin FK**, igual que el kardex: el push de stock de un producto que
+     el comercio no tiene se guarda (el push nunca rechaza) y, cuando el producto aparece, su stock
+     ya está bien. Borrar un producto (`hard`) borra su stock a mano, en la misma transacción; el
+     kardex queda. `stock.branch_id` conserva su FK.
+   - **Un cliente con cuenta corriente no se borra.** `account_movements` y `account_holds` pasan
+     de `ON DELETE CASCADE` a sin acción: el borrado `hard` de un cliente con movimientos o
+     reservas da `409` ("tiene movimientos: archivalo") en vez de llevarse el libro. El admin solo
+     archiva; el reinicio parcial de demos ya borraba solo clientes sin movimientos.
+4. **`\u0000` en un lote: se quita al entrar.** PostgreSQL no lo admite ni en `text` ni en `jsonb`.
+   El push limpia el lote entero (`stripNul`, en claves y valores) antes de guardarlo y de aplicar
+   cada evento; `jsonValue()` hace lo mismo con todo lo que va a `jsonb`. Un carácter nulo nunca es
+   un dato: no vale perder una venta por él.
+5. **Slugs largos: `slugify` corta en 48 caracteres** (sin dejar un guion al final). El esquema
+   admite 56 (`tenant_` más el id entran en los 63 bytes de un identificador): quedan 8 para el
+   `-2`, `-3` que desambigua `TenantManager`.
+6. **`gift_credits.tenant_id` tiene FK a `tenants` con `ON DELETE CASCADE`** (línea de base de
+   sistema, todavía sin congelar): al compensar un alta, el bono se va con el comercio.
+
+Además:
+
+- **El día argentino en SQL** es `argentinaDay(expr)` (`db/pg/sql-helpers.ts`):
+  `((x - interval '3 hours') AT TIME ZONE 'UTC')::date`, UTC−3 fijo como en
+  `src/shared/argentina-day.ts`, sin depender de la zona de la sesión ni de `tzdata`.
+- **`TenantManager` recibe la `Database`**: crea el esquema (`createTenantSchema`), pone la sucursal
+  por defecto y, si eso falla, lo borra (`dropTenantSchema`). Un servicio de sistema que necesita
+  los datos de un comercio (demos, reconciliación, semillas) los pide con
+  `TenantManager.forTenant(id)`, que es `Database.forTenant`.
+- **El arranque migra todo PostgreSQL** (`migrateAll`: `system` y el esquema de cada comercio).
+- **El reinicio total de una demo** vacía las tablas del manifiesto (`TENANT_TABLES`) con
+  `TRUNCATE … RESTART IDENTITY`, en la misma transacción que vuelve a sembrar.
+
 ## Para decidir en las fases que siguen
 
-1. **Fechas imposibles e instantes ilegibles** (fase 4): hoy `2026-02-31` pasa la validación del
-   push y un `createdAt` es texto libre; PostgreSQL los rechaza y el evento quedaría como `issue`.
-   Hay que validar la fecha en `push-events.ts` o decidir qué se guarda.
-2. **Redondeo de `numeric(14,2)`** (fases 3 y 4): un total o un precio con más de 2 decimales se
-   redondea en la columna y puede diferir del `payload`. **Decidido para sistema** (2026-11-12, fase
-   3): el dinero de sistema nunca se redondea en silencio. Lo que calcula el cobro (precio por caja y
-   día, reparto, bono, deuda) ya es en pesos enteros (`allocation.ts` y `billing_settings` exigen
-   enteros). Lo que entra de afuera (pago, bono y devolución de plataforma, planilla de cobranzas) se
-   valida en la frontera con a lo sumo 2 decimales (`moneyAmount` en `src/shared/money.ts`): con más,
-   "Importe inválido" (`400`, o la fila con error en la planilla). Así lo guardado es siempre lo que
-   se validó. Para comercio (precios y totales del POS) se decide en la fase 4.
-3. **FK que cambian comportamiento** (fase 4): el push de stock de un producto desconocido viola
-   `stock.product_id`; borrar un producto o un cliente ahora arrastra su stock o su cuenta corriente.
-4. **`\u0000` en un lote** (fase 4): `jsonb` no lo admite y `push_lots.events` se guarda fuera de
-   los savepoints; hay que limpiarlo o un evento así tumba el push entero.
-5. **Slugs largos** (fase 4): el id de un comercio sale del nombre sin tope y el esquema admite 56
-   caracteres; el alta tiene que cortar el slug.
-6. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
+1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.
