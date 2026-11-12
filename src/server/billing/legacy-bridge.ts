@@ -1,21 +1,20 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { suspendedDays } from '../platform/suspensions.ts';
 
 /**
- * Lo que el cobro todavía lee de la base de sistema de SQLite, mientras dure la fase 3 de
- * PostgreSQL: las suspensiones (`tenant_suspensions`, dominio 5) y la marca de demo (`demo_tenants`,
- * dominio 7). El dominio que migre cada tabla reemplaza su mitad por una consulta en PostgreSQL y,
- * con las dos, este puente se borra.
+ * Lo que el sistema en PostgreSQL todavía lee de la base de sistema de SQLite, mientras dure la
+ * fase 3: la marca de demo (`demo_tenants`). La usan el cobro (no avisa de un comercio demo sin
+ * titular) y la plataforma (los comercios demo no aparecen en Comercios ni se suspenden). El dominio 7
+ * migra `demo_tenants` a PostgreSQL, reemplaza esto por una consulta (o un JOIN) y borra el puente.
  */
-export type BillingLegacyBridge = {
+export type LegacyDemoBridge = {
   isDemoTenant(tenantId: string): Promise<boolean>;
-  /** Los días argentinos de `days` con el comercio suspendido: no se cobran (#23). */
-  suspendedDays(tenantId: string, days: readonly string[]): Promise<Set<string>>;
+  /** Los ids de los comercios demo, para dejarlos afuera con un `where id not in`. */
+  demoTenantIds(): Promise<string[]>;
 };
 
-export function sqliteBillingBridge(systemDb: DatabaseSync): BillingLegacyBridge {
+export function sqliteDemoBridge(systemDb: DatabaseSync): LegacyDemoBridge {
   return {
     isDemoTenant: async (tenantId) => systemDb.prepare('SELECT 1 FROM demo_tenants WHERE tenant_id = ?').get(tenantId) !== undefined,
-    suspendedDays: async (tenantId, days) => await suspendedDays(systemDb, tenantId, days),
+    demoTenantIds: async () => (systemDb.prepare('SELECT tenant_id FROM demo_tenants ORDER BY tenant_id').all() as { tenant_id: string }[]).map((r) => r.tenant_id),
   };
 }

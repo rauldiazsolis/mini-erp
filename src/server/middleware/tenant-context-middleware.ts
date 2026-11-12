@@ -1,5 +1,6 @@
 import type { Response, NextFunction } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { Container } from 'hardwired';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { MembershipService } from '../users/membership-service.ts';
@@ -15,7 +16,7 @@ import { routeParam } from '../http/route-param.ts';
  * suspendido (#23) solo deja a sus usuarios lo abierto (Uso y pagos, estado de cobro y exportar).
  */
 export function createTenantContextMiddleware(
-  systemDb: DatabaseSync,
+  systemDb: Kysely<SystemDatabase>,
   membershipService: MembershipService,
   tenantManager: TenantManager,
   rootContainer?: Container,

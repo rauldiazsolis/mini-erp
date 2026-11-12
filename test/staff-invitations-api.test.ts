@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
@@ -12,16 +11,14 @@ const db = setupTestDb();
 
 describe('invitaciones de soporte (#23)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let authService: AuthService;
   let now: Date;
   let tokens: { root: string; support: string };
 
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => now });
+    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => now });
     app = bundle.app;
     authService = bundle.authService;
     await authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
@@ -41,8 +38,8 @@ describe('invitaciones de soporte (#23)', () => {
     return res.body as { id: string; token: string; expiresAt: string };
   };
   const accept = (body: Record<string, unknown>) => request(app).post('/api/staff-invitations/accept').send(body);
-  const actions = () =>
-    (systemDb.prepare("SELECT action FROM audit_log WHERE action LIKE 'staff.%' ORDER BY at, rowid").all() as { action: string }[]).map((r) => r.action);
+  const actions = async () =>
+    (await db().system.selectFrom('audit_log').select('action').where('action', 'like', 'staff.%').orderBy('at').orderBy('seq').execute()).map((r) => r.action);
 
   it('root invita a soporte; con un mail nuevo nace una cuenta de soporte con sesión', async () => {
     const res = await request(app).post('/api/platform/staff/invitations').set(as('root')).send({ email: 'Nueva@X.com' });
@@ -57,7 +54,7 @@ describe('invitaciones de soporte (#23)', () => {
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${(acc.body as { token: string }).token}`);
     expect((me.body as { user: { globalRole: string } }).user.globalRole).toBe('support');
     expect((await accept({ token, password: 'clave-nueva-1', name: 'Ana' })).status).toBe(410);
-    expect(actions()).toEqual(['staff.invited', 'staff.joined']);
+    expect(await actions()).toEqual(['staff.invited', 'staff.joined']);
   });
 
   it('una cuenta existente sin comercios se promueve con su contraseña; con comercios, 409', async () => {
@@ -96,7 +93,7 @@ describe('invitaciones de soporte (#23)', () => {
     expect((await request(app).delete(`/api/platform/staff/invitations/${second.id}`).set(as('root'))).status).toBe(200);
     expect((await request(app).post('/api/staff-invitations/lookup').send({ token: second.token })).status).toBe(410);
     expect((await request(app).delete(`/api/platform/staff/invitations/${second.id}`).set(as('root'))).status).toBe(404);
-    expect(actions()).toEqual(['staff.invited', 'staff.invited', 'staff.invitation_revoked']);
+    expect(await actions()).toEqual(['staff.invited', 'staff.invited', 'staff.invitation_revoked']);
   });
 
   it('vence a las 48 h', async () => {

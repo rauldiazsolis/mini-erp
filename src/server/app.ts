@@ -42,6 +42,7 @@ import {
   createRootContainer,
   databaseDef,
   systemDbDef,
+  systemKyselyDef,
   tenantManagerDef,
   authServiceDef,
   apiKeyServiceDef,
@@ -153,7 +154,7 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(systemDb, membershipService, tenantManager, rootContainer);
+  const requireTenantContext = createTenantContextMiddleware(rootContainer.use(systemKyselyDef), membershipService, tenantManager, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));

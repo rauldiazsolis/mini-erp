@@ -3,7 +3,8 @@ import { sql, type ExpressionBuilder, type Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { allocateCharge, type GiftBalance } from './allocation.ts';
 import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
-import type { BillingLegacyBridge } from './legacy-bridge.ts';
+import type { LegacyDemoBridge } from './legacy-bridge.ts';
+import { suspendedDays } from '../platform/suspensions.ts';
 import { DomainError } from '../errors.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import type {
@@ -51,9 +52,9 @@ function remainingOf(eb: GiftScope) {
 export class BillingService {
   private db: Db;
   private now: () => Date;
-  private legacy: BillingLegacyBridge;
+  private legacy: LegacyDemoBridge;
 
-  constructor(deps: { db: Db; now: () => Date; legacy: BillingLegacyBridge }) {
+  constructor(deps: { db: Db; now: () => Date; legacy: LegacyDemoBridge }) {
     this.db = deps.db;
     this.now = deps.now;
     this.legacy = deps.legacy;
@@ -77,7 +78,7 @@ export class BillingService {
       return 0;
     }
     // Los días con el comercio suspendido no se cobran (#23)
-    const skip = await this.legacy.suspendedDays(p.tenantId, p.days);
+    const skip = await suspendedDays(this.db, p.tenantId, p.days);
     let created = 0;
     for (const day of [...new Set(p.days)].filter((d) => !skip.has(d)).sort()) {
       if (await this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;

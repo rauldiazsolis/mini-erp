@@ -34,7 +34,7 @@ import { UserStatusService } from '../platform/user-status-service.ts';
 import { StaffInvitationService } from '../platform/staff-invitation-service.ts';
 import { PlatformQueryService } from '../platform/platform-query-service.ts';
 import { BillingService } from '../billing/billing-service.ts';
-import { sqliteBillingBridge } from '../billing/legacy-bridge.ts';
+import { sqliteDemoBridge } from '../billing/legacy-bridge.ts';
 import { ImpersonationService } from '../impersonation/impersonation-service.ts';
 import { HelpRequestService } from '../help/help-request-service.ts';
 import { FunnelService } from '../funnel/funnel-service.ts';
@@ -107,9 +107,14 @@ export const registerServiceDef = fn.singleton((c) => new RegisterService(c.use(
 
 // --- COBRO (#21) ---
 
-// Las suspensiones y la marca de demo siguen en SQLite hasta los dominios 5 y 7 (puente temporal)
+/**
+ * Fase 3 de PostgreSQL: la marca de demo (`demo_tenants`) sigue en SQLite hasta el dominio 7, que
+ * borra este puente. Lo usan el cobro y la plataforma.
+ */
+export const legacyDemoBridgeDef = fn.singleton((c) => sqliteDemoBridge(c.use(systemDbDef)));
+
 export const billingServiceDef = fn.singleton(
-  (c) => new BillingService({ db: c.use(systemKyselyDef), now: c.use(clockDef), legacy: sqliteBillingBridge(c.use(systemDbDef)) }),
+  (c) => new BillingService({ db: c.use(systemKyselyDef), now: c.use(clockDef), legacy: c.use(legacyDemoBridgeDef) }),
 );
 
 // --- USUARIOS Y AUDITORÍA (#19) ---
@@ -157,16 +162,21 @@ export const impersonationServiceDef = fn.singleton(
 // --- PLATAFORMA (#23) ---
 
 export const suspensionServiceDef = fn.singleton(
-  (c) => new SuspensionService({ db: c.use(systemDbDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
+  (c) => new SuspensionService({ db: c.use(systemKyselyDef), audit: c.use(auditLogDef), now: c.use(clockDef), demos: c.use(legacyDemoBridgeDef) }),
 );
 export const userStatusServiceDef = fn.singleton(
-  (c) => new UserStatusService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef) }),
+  (c) => new UserStatusService({ db: c.use(systemKyselyDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef) }),
 );
 export const staffInvitationServiceDef = fn.singleton(
-  (c) => new StaffInvitationService({ db: c.use(systemDbDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
+  (c) => new StaffInvitationService({ db: c.use(systemKyselyDef), auth: c.use(authServiceDef), audit: c.use(auditLogDef), now: c.use(clockDef) }),
 );
 export const platformQueryServiceDef = fn.singleton(
-  (c) => new PlatformQueryService({ db: c.use(systemDbDef), billing: c.use(billingServiceDef), members: c.use(membershipServiceDef) }),
+  (c) => new PlatformQueryService({
+      db: c.use(systemKyselyDef),
+      billing: c.use(billingServiceDef),
+      members: c.use(membershipServiceDef),
+      demos: c.use(legacyDemoBridgeDef),
+    }),
 );
 export const altaServiceDef = fn.singleton(
   (c) =>

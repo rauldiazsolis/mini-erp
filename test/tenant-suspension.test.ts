@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
@@ -24,15 +23,13 @@ function venta(eventId: string, createdAt: string) {
 
 describe('suspender comercios (#23)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tokens: { root: string; support: string; owner: string };
   let posKey: string;
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
     const tenantManager = new TenantManager(db().system, { inMemory: true });
-    const bundle = createApp({ database: db(), systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+    const bundle = createApp({ database: db(), systemDb: openSystemDb(':memory:'), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
@@ -53,8 +50,8 @@ describe('suspender comercios (#23)', () => {
   });
 
   const as = (who: keyof typeof tokens) => ({ Authorization: `Bearer ${tokens[who]}` });
-  const audit = (action: string) =>
-    systemDb.prepare('SELECT tenant_id, details FROM audit_log WHERE action = ?').all(action) as { tenant_id: string | null; details: string }[];
+  const audit = async (action: string) =>
+    await db().system.selectFrom('audit_log').select(['tenant_id', 'details']).where('action', '=', action).orderBy('seq').execute();
   const suspend = (who: keyof typeof tokens, body: unknown = { reason: 'Pedido del dueño' }) =>
     request(app).post(`/api/platform/tenants/${tenantId}/suspend`).set(as(who)).send(body as object);
   const reactivate = (who: keyof typeof tokens) => request(app).post(`/api/platform/tenants/${tenantId}/reactivate`).set(as(who)).send({});
@@ -77,7 +74,7 @@ describe('suspender comercios (#23)', () => {
     expect((await request(app).get(`/api/tenants/${tenantId}/export/products`).set(as('owner'))).status).toBe(200);
     // Sin membresía, soporte no entra (#16); impersonando al owner, sí (impersonation-rules.test.ts)
     expect((await request(app).get(`/api/tenants/${tenantId}/products`).set(as('support'))).status).toBe(403);
-    expect(audit('tenant.suspended')).toEqual([{ tenant_id: tenantId, details: JSON.stringify({ reason: 'Pedido del dueño' }) }]);
+    expect(await audit('tenant.suspended')).toEqual([{ tenant_id: tenantId, details: { reason: 'Pedido del dueño' } }]);
   });
 
   it('/auth/me muestra el comercio suspendido y reactivar lo devuelve a la normalidad', async () => {
@@ -88,7 +85,7 @@ describe('suspender comercios (#23)', () => {
     expect((await reactivate('root')).status).toBe(200);
     expect((await request(app).get(`/api/tenants/${tenantId}/products`).set(as('owner'))).status).toBe(200);
     expect((await reactivate('root')).status).toBe(409);
-    expect(audit('tenant.reactivated')).toHaveLength(1);
+    expect(await audit('tenant.reactivated')).toHaveLength(1);
   });
 
   it('el POS sigue sincronizando y los días suspendidos no se cobran', async () => {
@@ -101,13 +98,12 @@ describe('suspender comercios (#23)', () => {
   });
 
   it('suspendedDays mira el día argentino', async () => {
-    systemDb
-      .prepare(
-        "INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES ('s', ?, '2026-10-03T02:00:00.000Z', '2026-10-04T04:00:00.000Z', 'x', 'u')",
-      )
-      .run(tenantId);
+    await db()
+      .system.insertInto('tenant_suspensions')
+      .values({ id: 's', tenant_id: tenantId, from_at: '2026-10-03T02:00:00.000Z', to_at: '2026-10-04T04:00:00.000Z', reason: 'x', created_by: 'u' })
+      .execute();
     // 02:00Z del 3 es el 2 argentino; 04:00Z del 4 es el 4 argentino
-    expect([...(await suspendedDays(systemDb, tenantId, ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05']))].sort()).toEqual([
+    expect([...(await suspendedDays(db().system, tenantId, ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05']))].sort()).toEqual([
       '2026-10-02',
       '2026-10-03',
       '2026-10-04',
