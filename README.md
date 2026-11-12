@@ -51,7 +51,7 @@ flowchart LR
   subgraph S["mini-erp · Express en Node 24"]
     C --> SV["Servicios por request<br/>(Hardwired)"]
     API --> SV
-    SV --> SYS[("system.sqlite<br/>usuarios, comercios,<br/>cajas, cobro")]
+    SV --> SYS[("PostgreSQL · system<br/>usuarios, comercios,<br/>cajas, cobro")]
     SV --> TEN[("tenants/&lt;id&gt;.sqlite<br/>catálogo, stock, clientes,<br/>ventas")]
   end
 ```
@@ -119,8 +119,8 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
-| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
+| `DATA_DIR` | `data` | Carpeta de las bases de SQLite de los comercios (`tenants/`) |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de los comercios de `node scripts/backup.ts` (se guardan 7 días) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (404) y los comercios demo |

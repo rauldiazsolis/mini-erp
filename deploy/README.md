@@ -442,13 +442,13 @@ código"), por eso hay que restaurar la copia. Todo de a una línea, en la termi
 
 ## Restaurar un backup
 
-**Un comercio o el sistema, desde la copia nocturna** (por ejemplo, la del 2026-10-01):
+**Un comercio, desde la copia nocturna** (por ejemplo, la del 2026-10-01). Lo de sistema (usuarios,
+comercios, keys) ya está en PostgreSQL y no entra en esta copia: su backup con `pg_dump` llega con la
+fase 6 de la migración.
 
 ```bash
 sudo systemctl stop mini-erp
 sudo cp /var/lib/mini-erp-backups/2026-10-01/tenants/<id-del-comercio>.sqlite /var/lib/mini-erp/tenants/
-# y/o el sistema (usuarios, comercios, keys):
-sudo cp /var/lib/mini-erp-backups/2026-10-01/system.sqlite /var/lib/mini-erp/
 sudo chown -R minierp:minierp /var/lib/mini-erp
 sudo systemctl start mini-erp
 ```
