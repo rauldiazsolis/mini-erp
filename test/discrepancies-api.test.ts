@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { recordDiscrepancy } from '../src/server/discrepancy/discrepancies.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -66,5 +67,25 @@ describe('API de discrepancias (#2)', () => {
     expect(res.status).toBe(200);
     const [d] = res.body as { id: string }[];
     expect((await dismiss(memberToken, d?.id ?? '', 'x')).status).toBe(403);
+  });
+
+  it('una discrepancia del comercio se lista con su mensaje y se descarta una sola vez', async () => {
+    const id = await recordDiscrepancy(db().forTenant(tenantId), {
+      kind: 'void-duplicate', deviceId: 'dev-2', originBranch: 'CENTRAL', originPos: 'POS-02',
+      customerId: 'c1', refType: 'customer-payment', refId: 'p3', amount: 500,
+    }, at);
+    const abiertas = (await list(ownerToken)).body as { id: string; kind: string; originPos: string; amount: number; message: string; createdAt: string }[];
+    expect(abiertas.find((d) => d.id === id)).toMatchObject({
+      kind: 'void-duplicate', originPos: 'POS-02', amount: 500, createdAt: at,
+      message: 'Esa cobranza ya estaba anulada y se volvió a anular ($500): revisalo en mini contax.',
+    });
+
+    expect((await dismiss(ownerToken, id, 'Revisado')).status).toBe(200);
+    expect(((await list(ownerToken)).body as { id: string }[]).some((d) => d.id === id)).toBe(false);
+    expect((await dismiss(ownerToken, id, 'otra vez')).status).toBe(409);
+    expect((await dismiss(ownerToken, 'nada', 'x')).status).toBe(404);
+    expect(
+      await db().forTenant(tenantId).selectFrom('discrepancies').select(['resolution', 'note']).where('id', '=', id).execute(),
+    ).toMatchObject([{ resolution: 'dismissed', note: 'Revisado' }]);
   });
 });

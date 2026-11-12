@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import { applyToBalance } from '../customer/account-ledger.ts';
-import { saveCashMovement, saveCustomerPayment, saveSale, type DocumentOrigin } from '../sales/records.ts';
+import { applyToBalance } from '../customer/account-ledger.sqlite.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale, type DocumentOrigin } from '../sales/records.sqlite.ts';
 
 const CAJA: DocumentOrigin = { deviceId: 'pos_caja_1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 

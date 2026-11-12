@@ -3,7 +3,7 @@ import request from 'supertest';
 import type { DatabaseSync } from 'node:sqlite';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
-import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.sqlite.ts';
 import type { ListResult } from '../src/shared/sales-types.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
 import { setupTestDb } from './helpers/test-db.ts';

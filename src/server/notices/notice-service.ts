@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { listOpenDiscrepancies } from '../discrepancy/discrepancies.ts';
+import { listOpenDiscrepancies } from '../discrepancy/discrepancies.sqlite.ts';
 import { formatDayShort, formatPesos } from '../billing/money-text.ts';
 import type { BillingSummary } from '../../shared/credits-types.ts';
 import type { RegisterNoticeState } from '../../shared/register-types.ts';

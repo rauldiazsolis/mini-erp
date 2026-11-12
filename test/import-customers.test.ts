@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ImportService } from '../src/server/io/import-service.ts';
-import { applyToBalance } from '../src/server/customer/account-ledger.ts';
-import { recordDiscrepancy } from '../src/server/discrepancy/discrepancies.ts';
+import { applyToBalance } from '../src/server/customer/account-ledger.sqlite.ts';
+import { recordDiscrepancy } from '../src/server/discrepancy/discrepancies.sqlite.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
 const pgDb = setupTestDb();

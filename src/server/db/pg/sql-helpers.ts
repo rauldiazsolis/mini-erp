@@ -58,3 +58,11 @@ const UNIQUE_VIOLATION = '23505';
 export function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === UNIQUE_VIOLATION;
 }
+
+/** El código de PostgreSQL de una violación de clave foránea. */
+const FOREIGN_KEY_VIOLATION = '23503';
+
+/** Si el error es de clave foránea (borrar un cliente que tiene cuenta corriente): el servicio lo traduce. */
+export function isForeignKeyViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === FOREIGN_KEY_VIOLATION;
+}

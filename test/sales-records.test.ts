@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
+import { createTenantSchema } from '../src/server/db/pg/migrations/migrate.ts';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -99,19 +103,116 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
   });
 
   it('la cobranza del admin se guarda con la forma del contrato', async () => {
-    await push('l1', [{ id: 'e0', type: 'customer', createdAt: '2026-10-01T12:00:00.000Z', origin, customer: { id: 'c1', name: 'Ana' } }]);
+    await request(app).post(`/api/tenants/${tenantId}/customers`).set('Authorization', `Bearer ${token}`).send({ id: 'c1', name: 'Ana' });
     const res = await request(app)
       .post(`/api/tenants/${tenantId}/customers/c1/payments`)
       .set('Authorization', `Bearer ${token}`)
       .send({ amount: 300, method: 'transfer', reference: 'op-9' });
     expect(res.status).toBe(200);
-    const row = db().prepare('SELECT payload, day, device_id, branch, point_of_sale FROM customer_payments').get() as {
-      payload: string; day: string; device_id: string; branch: string; point_of_sale: string;
-    };
-    expect(row).toMatchObject({ day: argentinaToday(new Date()), device_id: 'admin_panel', branch: 'ADMIN', point_of_sale: 'Oficina' });
-    expect(JSON.parse(row.payload)).toMatchObject({
+    const row = await pgDb()
+      .forTenant(tenantId)
+      .selectFrom('customer_payments')
+      .select(['payload', 'day', 'device_id', 'branch', 'point_of_sale', 'customer_id'])
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ day: argentinaToday(new Date()), device_id: 'admin_panel', branch: 'ADMIN', point_of_sale: 'Oficina', customer_id: 'c1' });
+    expect(row.payload).toMatchObject({
       customerId: 'c1', total: 300, payments: [{ method: 'transfer', amount: 300, reference: 'op-9' }],
     });
+  });
+});
+
+describe('records.ts sobre PostgreSQL (fase 4)', () => {
+  let t: Kysely<TenantDatabase>;
+  const caja = { deviceId: 'dev-1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
+  const recibida = '2026-10-02T03:10:00.000Z'; // 00:10 argentinas del 2
+
+  beforeEach(async () => {
+    await createTenantSchema(pgDb().root, 'kiosco');
+    t = pgDb().forTenant('kiosco');
+  });
+
+  const ventas = async () =>
+    await t
+      .selectFrom('sales')
+      .select(['id', 'payload', 'total', 'day', 'customer_id', 'ticket_date', 'ticket_number', 'register_id', 'charge_device', 'created_at', 'voids_sale_id'])
+      .orderBy('id')
+      .execute();
+
+  it('saveSale guarda el payload intacto y las columnas derivadas; devuelve el día', async () => {
+    const sale = { id: 'v1', total: 0.1 + 0.2, customerId: 'c1', ticket: { date: '2026-10-01', number: 7 }, createdAt: recibida, lines: [{ sku: 'A', tags: ['x'] }] };
+    const day = await saveSale(t, sale, { ...caja, registerId: 'reg_1', chargeDevice: '' }, recibida);
+    expect(day).toBe('2026-10-01');
+    expect(await ventas()).toEqual([
+      {
+        id: 'v1', payload: sale, total: 0.3, day: '2026-10-01', customer_id: 'c1', ticket_date: '2026-10-01', ticket_number: 7,
+        register_id: 'reg_1', charge_device: '', created_at: recibida, voids_sale_id: null,
+      },
+    ]);
+  });
+
+  it('sin ticket, el día es el día argentino del instante; created_at se guarda normalizado', async () => {
+    const day = await saveSale(t, { id: 'v1', total: 100, createdAt: '2026-10-01T23:30:00-03:00' }, caja, '2026-10-01T23:30:00-03:00');
+    expect(day).toBe('2026-10-01');
+    expect(await ventas()).toMatchObject([{ day: '2026-10-01', ticket_date: null, ticket_number: null, created_at: '2026-10-02T02:30:00.000Z' }]);
+  });
+
+  it('una fecha de ticket que no existe no se guarda: el día sale del instante', async () => {
+    const day = await saveSale(t, { id: 'v1', total: 100, ticket: { date: '2026-02-31', number: 3 }, createdAt: recibida }, caja, recibida);
+    expect(day).toBe('2026-10-02');
+    expect(await ventas()).toMatchObject([{ day: '2026-10-02', ticket_date: null, ticket_number: 3 }]);
+
+    expect(await saveCustomerPayment(t, { id: 'p1', customerId: 'c1', total: 5, receipt: { date: 'ayer', number: 1 }, createdAt: recibida }, caja, recibida)).toBe(true);
+    expect(await t.selectFrom('customer_payments').select(['day', 'receipt_date', 'receipt_number']).execute()).toEqual([
+      { day: '2026-10-02', receipt_date: null, receipt_number: 1 },
+    ]);
+  });
+
+  it('reenviar una venta reescribe payload, día, cliente y ticket, y conserva la caja y el equipo cobrado', async () => {
+    await saveSale(t, { id: 'v1', total: 100, createdAt: recibida }, { ...caja, registerId: 'reg_1', chargeDevice: '' }, recibida);
+    await saveSale(
+      t,
+      { id: 'v1', total: 250, customerId: 'c2', ticket: { date: '2026-09-30', number: 9 }, createdAt: recibida },
+      { deviceId: 'dev-2', branch: 'OTRA', pointOfSale: 'Caja 9', registerId: 'reg_2', chargeDevice: 'dev-2' },
+      '2026-10-05T00:00:00.000Z',
+    );
+    const [row] = await ventas();
+    expect(row).toMatchObject({
+      day: '2026-09-30', customer_id: 'c2', ticket_date: '2026-09-30', ticket_number: 9,
+      register_id: 'reg_1', charge_device: '',
+      // Como en SQLite: el total y el instante de la primera vez no se tocan
+      total: 100, created_at: recibida,
+    });
+    expect(row?.payload).toMatchObject({ total: 250, customerId: 'c2' });
+  });
+
+  it('una venta sin caja la toma del reenvío', async () => {
+    await saveSale(t, { id: 'v1', total: 100, createdAt: recibida }, caja, recibida);
+    await saveSale(t, { id: 'v1', total: 100, createdAt: recibida }, { ...caja, registerId: 'reg_2', chargeDevice: 'dev-2' }, recibida);
+    expect(await ventas()).toMatchObject([{ register_id: 'reg_2', charge_device: 'dev-2' }]);
+  });
+
+  it('una cobranza nunca se reescribe: la segunda vez devuelve false', async () => {
+    const pago = { id: 'p1', customerId: 'c1', total: 50, voidsPaymentId: 'p0', receipt: { date: '2026-10-01', number: 2 }, createdAt: recibida };
+    expect(await saveCustomerPayment(t, pago, caja, recibida)).toBe(true);
+    expect(await saveCustomerPayment(t, { ...pago, customerId: 'c2', total: 999 }, caja, recibida)).toBe(false);
+    expect(
+      await t.selectFrom('customer_payments').select(['customer_id', 'payload', 'day', 'receipt_date', 'receipt_number', 'voids_payment_id', 'created_at']).execute(),
+    ).toEqual([
+      { customer_id: 'c1', payload: pago, day: '2026-10-01', receipt_date: '2026-10-01', receipt_number: 2, voids_payment_id: 'p0', created_at: recibida },
+    ]);
+  });
+
+  it('un movimiento de caja reenviado reescribe payload y día', async () => {
+    await saveCashMovement(t, { id: 'm1', concept: 'Fondo', createdAt: recibida }, caja, recibida);
+    await saveCashMovement(t, { id: 'm1', concept: 'Fondo corregido', createdAt: '2026-10-03T15:00:00.000Z' }, caja, '2026-10-03T15:00:00.000Z');
+    expect(await t.selectFrom('cash_movements').select(['payload', 'day', 'created_at', 'branch']).execute()).toEqual([
+      { payload: { id: 'm1', concept: 'Fondo corregido', createdAt: '2026-10-03T15:00:00.000Z' }, day: '2026-10-03', created_at: recibida, branch: 'CENTRAL' },
+    ]);
+  });
+
+  it('un carácter nulo en el payload se quita al guardar', async () => {
+    await saveSale(t, { id: 'v1', total: 1, createdAt: recibida, note: 'a\u0000b' }, caja, recibida);
+    expect((await ventas())[0]?.payload).toMatchObject({ note: 'ab' });
   });
 });
 

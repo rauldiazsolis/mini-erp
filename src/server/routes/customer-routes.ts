@@ -1,20 +1,30 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { CustomerService } from '../customer/customer-service.ts';
+import { fitsMoneyColumn } from '../../shared/money.ts';
+import type { CustomerService } from '../customer/customer-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { customerServiceDef } from '../di/container.ts';
+import { sendError } from '../errors.ts';
 import { routeParam } from '../http/route-param.ts';
+
+/**
+ * El dinero que carga el admin entra tal cual en `numeric(14,2)`: a lo sumo 2 decimales, nunca
+ * redondeado en silencio. Cada campo decide aparte si admite cero o negativos.
+ */
+const INVALID_AMOUNT = 'Importe inválido';
+const creditLimit = z.number().nonnegative('El límite de crédito no puede ser negativo').refine(fitsMoneyColumn, INVALID_AMOUNT);
+const creditMargin = z.number().nonnegative('El margen de crédito no puede ser negativo').refine(fitsMoneyColumn, INVALID_AMOUNT);
 
 const createCustomerSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, 'El nombre del cliente es requerido'),
   document: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
-  creditLimit: z.number().nonnegative('El límite de crédito no puede ser negativo').optional(),
-  margin: z.number().nonnegative('El margen de crédito no puede ser negativo').optional(),
+  creditLimit: creditLimit.optional(),
+  margin: creditMargin.optional(),
   unrestricted: z.boolean().optional(),
-  initialBalance: z.number().optional(),
+  initialBalance: z.number().refine(fitsMoneyColumn, INVALID_AMOUNT).optional(),
   blockedReason: z.string().nullable().optional(),
 });
 
@@ -22,14 +32,14 @@ const updateCustomerSchema = z.object({
   name: z.string().min(1).optional(),
   document: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
-  creditLimit: z.number().nonnegative('El límite de crédito no puede ser negativo').optional(),
-  margin: z.number().nonnegative('El margen de crédito no puede ser negativo').optional(),
+  creditLimit: creditLimit.optional(),
+  margin: creditMargin.optional(),
   unrestricted: z.boolean().optional(),
   blockedReason: z.string().nullable().optional(),
 });
 
 const registerPaymentSchema = z.object({
-  amount: z.number().positive('El monto del pago debe ser mayor a 0'),
+  amount: z.number().positive('El monto del pago debe ser mayor a 0').refine(fitsMoneyColumn, INVALID_AMOUNT),
   method: z.string().optional(),
   reference: z.string().optional(),
   description: z.string().optional(),
@@ -39,7 +49,7 @@ const adjustBalanceSchema = z.object({
   type: z.enum(['credit', 'debit', 'set'], {
     error: "El tipo de ajuste debe ser 'credit', 'debit' o 'set'",
   }),
-  amount: z.number().nonnegative('El monto debe ser mayor o igual a 0'),
+  amount: z.number().nonnegative('El monto debe ser mayor o igual a 0').refine(fitsMoneyColumn, INVALID_AMOUNT),
   reason: z.string().min(1, 'El motivo del ajuste es obligatorio para auditoría contable'),
 });
 
@@ -49,13 +59,10 @@ const deleteCustomerSchema = z.object({
 });
 
 function getCustomerService(req: AuthenticatedAdminRequest): CustomerService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(customerServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new CustomerService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(customerServiceDef);
 }
 
 export function createCustomerRoutes(): Router {
@@ -88,8 +95,7 @@ export function createCustomerRoutes(): Router {
 
       res.status(200).json(customers);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al listar clientes';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
@@ -106,8 +112,7 @@ export function createCustomerRoutes(): Router {
       const customer = await service.createCustomer(parseResult.data);
       res.status(201).json(customer);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al crear cliente';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
@@ -128,8 +133,7 @@ export function createCustomerRoutes(): Router {
       }
       res.status(200).json(customer);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener cliente';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
@@ -156,8 +160,7 @@ export function createCustomerRoutes(): Router {
       }
       res.status(200).json(updated);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al actualizar cliente';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
@@ -178,9 +181,7 @@ export function createCustomerRoutes(): Router {
       const result = await service.deleteCustomer(customerId, { hard, blockedReason: reason });
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al eliminar/bloquear cliente';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
@@ -203,9 +204,7 @@ export function createCustomerRoutes(): Router {
       const result = await service.registerPayment(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al registrar cobranza';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
@@ -228,9 +227,7 @@ export function createCustomerRoutes(): Router {
       const result = await service.adjustBalance(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al ajustar saldo';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
@@ -260,8 +257,7 @@ export function createCustomerRoutes(): Router {
 
       res.status(200).json(movements);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener extracto de cuenta corriente';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 

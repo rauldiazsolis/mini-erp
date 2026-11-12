@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { DashboardService } from '../src/server/dashboard/dashboard-service.ts';
-import { saveSale } from '../src/server/sales/records.ts';
+import { saveSale } from '../src/server/sales/records.sqlite.ts';
 
 const caja = { deviceId: 'dev', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 // 22:30 del 1/10 en Argentina; en UTC ya es el 2/10

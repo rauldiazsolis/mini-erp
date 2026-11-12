@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeDocument, normalizeHeader, parseAmount, parseBool } from './csv.ts';
-import { applyToBalance } from '../customer/account-ledger.ts';
-import { applyPendingFor } from '../discrepancy/discrepancies.ts';
+import { applyToBalance } from '../customer/account-ledger.sqlite.ts';
+import { applyPendingFor } from '../discrepancy/discrepancies.sqlite.ts';
 import type { RowContext } from './import-service.ts';
 import type { ImportRowResult } from '../../shared/import-fields.ts';
 

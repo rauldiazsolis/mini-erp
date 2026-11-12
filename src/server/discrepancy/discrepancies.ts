@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import { sql, type Kysely } from 'kysely';
 import { z } from '../../shared/zod.ts';
 import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { jsonValue } from '../db/pg/sql-helpers.ts';
 import { DomainError } from '../errors.ts';
 import { discrepancyMessage, type DiscrepancyKind, type DiscrepancyRefType } from './messages.ts';
 
@@ -21,10 +23,9 @@ export type Discrepancy = {
   message: string;
 };
 
-type Row = {
-  id: string; kind: DiscrepancyKind; device_id: string | null; origin_branch: string | null; origin_pos: string | null;
-  customer_id: string; ref_type: DiscrepancyRefType; ref_id: string; amount: number; pending: string | null; created_at: string;
-};
+/** `kind` y `ref_type` son `text` en la base: se estrechan al leer. */
+const kindSchema = z.enum(['unknown-customer', 'void-unknown-payment', 'void-customer-mismatch', 'void-duplicate']);
+const refTypeSchema = z.enum(['sale', 'customer-payment']);
 
 const ledgerSchema = z.object({
   type: z.enum(['sale', 'payment', 'payment-void', 'adjustment', 'interest']),
@@ -35,7 +36,7 @@ const ledgerSchema = z.object({
 
 /** Registra una discrepancia del push. Devuelve su id. */
 export async function recordDiscrepancy(
-  db: DatabaseSync,
+  db: Kysely<TenantDatabase>,
   input: {
     kind: DiscrepancyKind;
     deviceId: string | null;
@@ -53,30 +54,71 @@ export async function recordDiscrepancy(
   const id = `disc_${randomUUID()}`;
   const pending =
     input.pending !== undefined
-      ? JSON.stringify(input.pending)
+      ? jsonValue(input.pending)
       : input.voidsPaymentId !== undefined
-        ? JSON.stringify({ voidsPaymentId: input.voidsPaymentId })
+        ? jsonValue({ voidsPaymentId: input.voidsPaymentId })
         : null;
-  db.prepare(
-    `INSERT INTO discrepancies (id, kind, device_id, origin_branch, origin_pos, customer_id, ref_type, ref_id, amount, pending, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, input.kind, input.deviceId, input.originBranch, input.originPos, input.customerId, input.refType, input.refId, input.amount, pending, now);
+  await db
+    .insertInto('discrepancies')
+    .values({
+      id,
+      kind: input.kind,
+      device_id: input.deviceId,
+      origin_branch: input.originBranch,
+      origin_pos: input.originPos,
+      customer_id: input.customerId,
+      ref_type: input.refType,
+      ref_id: input.refId,
+      amount: input.amount,
+      pending,
+      created_at: now,
+    })
+    .execute();
   return id;
 }
 
-async function resolve(db: DatabaseSync, id: string, resolution: 'applied' | 'dismissed', by: string, note: string | null, now: string): Promise<void> {
-  db.prepare('UPDATE discrepancies SET resolved_at = ?, resolution = ?, resolved_by = ?, note = ? WHERE id = ?')
-    .run(now, resolution, by, note, id);
+/** Resuelve una discrepancia abierta. `false` si ya estaba resuelta (o no existe): no la pisa. */
+async function resolve(
+  db: Kysely<TenantDatabase>,
+  id: string,
+  resolution: 'applied' | 'dismissed',
+  by: string,
+  note: string | null,
+  now: string,
+): Promise<boolean> {
+  const updated = await db
+    .updateTable('discrepancies')
+    .set({ resolved_at: now, resolution, resolved_by: by, note })
+    .where('id', '=', id)
+    .where('resolved_at', 'is', null)
+    .returning('id')
+    .executeTakeFirst();
+  return updated !== undefined;
 }
 
-/** El cliente ya existe: aplica sus movimientos pendientes en orden de llegada. Devuelve cuántos. */
-export async function applyPendingFor(db: DatabaseSync, customerId: string, now: string): Promise<number> {
-  const rows = db
-    .prepare("SELECT id, pending FROM discrepancies WHERE customer_id = ? AND kind = 'unknown-customer' AND resolved_at IS NULL ORDER BY created_at, rowid")
-    .all(customerId) as { id: string; pending: string | null }[];
+/**
+ * El cliente ya existe: aplica sus movimientos pendientes en orden de llegada. Devuelve cuántos.
+ * Corre en la transacción de quien llama (el alta del admin, el evento `customer` del push, la
+ * importación) o, si no hay una, en la suya: el saldo y la discrepancia resuelta van juntos. Las
+ * filas quedan bloqueadas mientras tanto, así dos altas a la vez no aplican dos veces lo mismo.
+ */
+export async function applyPendingFor(db: Kysely<TenantDatabase>, customerId: string, now: string): Promise<number> {
+  if (!db.isTransaction) {
+    return await db.transaction().execute(async (trx) => await applyPendingFor(trx, customerId, now));
+  }
+  const rows = await db
+    .selectFrom('discrepancies')
+    .select(['id', 'pending'])
+    .where('customer_id', '=', customerId)
+    .where('kind', '=', 'unknown-customer')
+    .where('resolved_at', 'is', null)
+    .orderBy('created_at')
+    .orderBy('seq')
+    .forUpdate()
+    .execute();
   let applied = 0;
   for (const row of rows) {
-    const parsed = ledgerSchema.safeParse(row.pending === null ? undefined : JSON.parse(row.pending));
+    const parsed = ledgerSchema.safeParse(row.pending ?? undefined);
     if (!parsed.success || !(await applyToBalance(db, customerId, parsed.data, now))) {
       continue;
     }
@@ -87,42 +129,50 @@ export async function applyPendingFor(db: DatabaseSync, customerId: string, now:
 }
 
 /** Llegó la cobranza original: las anulaciones que la esperaban quedan resueltas. */
-export async function resolveVoidUnknown(db: DatabaseSync, paymentId: string, now: string): Promise<void> {
-  db.prepare(
-    `UPDATE discrepancies SET resolved_at = ?, resolution = 'applied', resolved_by = 'system'
-     WHERE kind = 'void-unknown-payment' AND resolved_at IS NULL AND json_extract(pending, '$.voidsPaymentId') = ?`,
-  ).run(now, paymentId);
+export async function resolveVoidUnknown(db: Kysely<TenantDatabase>, paymentId: string, now: string): Promise<void> {
+  await db
+    .updateTable('discrepancies')
+    .set({ resolved_at: now, resolution: 'applied', resolved_by: 'system' })
+    .where('kind', '=', 'void-unknown-payment')
+    .where('resolved_at', 'is', null)
+    .where((eb) => eb(sql<string | null>`${eb.ref('pending')}->>'voidsPaymentId'`, '=', paymentId))
+    .execute();
 }
 
-export async function listOpenDiscrepancies(db: DatabaseSync, filter?: { deviceId?: string | undefined }): Promise<Discrepancy[]> {
-  const rows = (
-    filter?.deviceId === undefined
-      ? db.prepare('SELECT * FROM discrepancies WHERE resolved_at IS NULL ORDER BY created_at, rowid').all()
-      : db.prepare('SELECT * FROM discrepancies WHERE resolved_at IS NULL AND device_id = ? ORDER BY created_at, rowid').all(filter.deviceId)
-  ) as Row[];
-  return rows.map((r) => ({
-    id: r.id,
-    kind: r.kind,
-    deviceId: r.device_id,
-    originBranch: r.origin_branch,
-    originPos: r.origin_pos,
-    customerId: r.customer_id,
-    refType: r.ref_type,
-    refId: r.ref_id,
-    amount: r.amount,
-    createdAt: r.created_at,
-    message: discrepancyMessage({ kind: r.kind, refType: r.ref_type, amount: r.amount }),
-  }));
+export async function listOpenDiscrepancies(db: Kysely<TenantDatabase>, filter?: { deviceId?: string | undefined }): Promise<Discrepancy[]> {
+  let query = db
+    .selectFrom('discrepancies')
+    .select(['id', 'kind', 'device_id', 'origin_branch', 'origin_pos', 'customer_id', 'ref_type', 'ref_id', 'amount', 'created_at'])
+    .where('resolved_at', 'is', null);
+  if (filter?.deviceId !== undefined) {
+    query = query.where('device_id', '=', filter.deviceId);
+  }
+  const rows = await query.orderBy('created_at').orderBy('seq').execute();
+  return rows.map((r) => {
+    const kind = kindSchema.parse(r.kind);
+    const refType = refTypeSchema.parse(r.ref_type);
+    return {
+      id: r.id,
+      kind,
+      deviceId: r.device_id,
+      originBranch: r.origin_branch,
+      originPos: r.origin_pos,
+      customerId: r.customer_id,
+      refType,
+      refId: r.ref_id,
+      amount: r.amount,
+      createdAt: r.created_at,
+      message: discrepancyMessage({ kind, refType, amount: r.amount }),
+    };
+  });
 }
 
 /** Owner o admin la descartan con un motivo: una `unknown-customer` descartada no se aplica nunca. */
-export async function dismissDiscrepancy(db: DatabaseSync, id: string, userId: string, note: string, now: string): Promise<void> {
-  const row = db.prepare('SELECT resolved_at FROM discrepancies WHERE id = ?').get(id) as { resolved_at: string | null } | undefined;
-  if (row === undefined) {
-    throw new DomainError(404, 'La discrepancia no existe');
+export async function dismissDiscrepancy(db: Kysely<TenantDatabase>, id: string, userId: string, note: string, now: string): Promise<void> {
+  if (await resolve(db, id, 'dismissed', userId, note, now)) {
+    return;
   }
-  if (row.resolved_at !== null) {
-    throw new DomainError(409, 'La discrepancia ya está resuelta');
-  }
-  await resolve(db, id, 'dismissed', userId, note, now);
+  // No actualizó nada: o no existe o alguien la resolvió antes
+  const row = await db.selectFrom('discrepancies').select('id').where('id', '=', id).executeTakeFirst();
+  throw row === undefined ? new DomainError(404, 'La discrepancia no existe') : new DomainError(409, 'La discrepancia ya está resuelta');
 }

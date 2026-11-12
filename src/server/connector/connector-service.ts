@@ -1,10 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts';
-import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
-import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.ts';
+import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.sqlite.ts';
+import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.sqlite.ts';
 import { noticesFor, type NoticeContext } from '../notices/notice-service.ts';
-import { saveCashMovement, saveCustomerPayment, saveSale } from '../sales/records.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale } from '../sales/records.sqlite.ts';
 
 export type { LotIssue };
 

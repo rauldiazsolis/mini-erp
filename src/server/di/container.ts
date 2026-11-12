@@ -196,14 +196,14 @@ export const passwordResetServiceDef = fn.singleton(
 
 export const catalogServiceDef = fn.scoped((c) => new CatalogService(c.use(tenantDbDef)));
 export const stockServiceDef = fn.scoped((c) => new StockService(c.use(tenantDbDef)));
-export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(legacyTenantSqliteDef)));
+export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(tenantDbDef)));
 export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(legacyTenantSqliteDef)));
 export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(legacyTenantSqliteDef)));
 export const importServiceDef = fn.scoped((c) => new ImportService(c.use(legacyTenantSqliteDef)));
 export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(legacyTenantSqliteDef), c.use(clockDef)));
 export const dashboardServiceDef = dashboardSummaryServiceDef;
 export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(legacyTenantSqliteDef)));
-export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(legacyTenantSqliteDef)));
+export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(tenantDbDef)));
 export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(legacyTenantSqliteDef)));
 
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
