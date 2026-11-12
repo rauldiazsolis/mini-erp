@@ -1,7 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
-import { E2E_DATA_DIR } from '../playwright.config.ts';
+import { productPrice } from './system-db.ts';
 
 /**
  * Criterio de aceptación de M8 (#24): dos visitantes en dos navegadores ven las ventas del otro en el
@@ -10,14 +8,8 @@ import { E2E_DATA_DIR } from '../playwright.config.ts';
  * Va con el Almacén: los e2e corren en paralelo y el del alta usa el Kiosco, cuyas cajas no hay que revocar.
  */
 
-function lechePrice(): number {
-  // timeout: si el servidor está escribiendo, espera en lugar de fallar con "database is locked"
-  const db = new DatabaseSync(join(E2E_DATA_DIR, 'tenants/demo-almacen.sqlite'), { readOnly: true, timeout: 5000 });
-  try {
-    return (db.prepare("SELECT price FROM products WHERE id = 'demo_ALM-001'").get() as { price: number }).price;
-  } finally {
-    db.close();
-  }
+function lechePrice(): Promise<number | null> {
+  return productPrice('demo-almacen', 'demo_ALM-001');
 }
 
 async function openDemo(browser: Browser): Promise<Page> {
@@ -94,7 +86,7 @@ test('dos visitantes comparten el comercio demo; parcial y total desde la plataf
   }, token);
   const plat = await rootCtx.newPage();
   await resetFromPlatform(plat, 'Reinicio parcial');
-  expect(lechePrice()).toBe(1400);
+  expect(await lechePrice()).toBe(1400);
   await sell(a, 'leche');
   await expect(a.getByText('La demo terminó')).toHaveCount(0);
 

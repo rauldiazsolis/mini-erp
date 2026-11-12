@@ -1,9 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { E2E_DATA_DIR } from '../playwright.config.ts';
-import { querySystem } from './system-db.ts';
+import { querySystem, salesOf } from './system-db.ts';
 import { FUNNEL_STAGES, type FunnelReport, type FunnelStage } from '../src/shared/funnel-types.ts';
 
 /**
@@ -11,25 +8,6 @@ import { FUNNEL_STAGES, type FunnelReport, type FunnelStage } from '../src/share
  * una sola historia en el panel, y el embudo cuenta cada etapa. Otros e2e crean demos y comercios en
  * paralelo: el embudo se compara antes y después (cada etapa sube al menos 1).
  */
-
-function query<T>(file: string, sql: string, ...params: string[]): T[] {
-  // timeout: si el servidor está escribiendo un lote, espera en lugar de fallar con "database is locked"
-  const db = new DatabaseSync(join(E2E_DATA_DIR, file), { readOnly: true, timeout: 5000 });
-  try {
-    return db.prepare(sql).all(...params) as T[];
-  } finally {
-    db.close();
-  }
-}
-
-function salesOf(tenantId: string, pointOfSale?: string): number {
-  const file = `tenants/${tenantId}.sqlite`;
-  const rows =
-    pointOfSale === undefined
-      ? query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales')
-      : query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales WHERE point_of_sale = ?', pointOfSale);
-  return rows[0]?.n ?? 0;
-}
 
 async function sellOneAndSync(page: Page, search: string): Promise<void> {
   const commandBar = page.getByLabel('Barra de comandos');
