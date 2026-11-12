@@ -35,7 +35,30 @@ export async function withAdmin<T>(work: (client: pg.Client) => Promise<T>): Pro
 
 /** Orden por bytes (`C`), como en producción, para que el orden de un listado no dependa de la máquina. */
 export async function createDb(client: pg.Client, dbName: string, template: string): Promise<void> {
-  await client.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+  await dropDb(client, dbName);
   const locale = template === 'template0' ? ` ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C.UTF-8'` : '';
   await client.query(`CREATE DATABASE "${dbName}" TEMPLATE "${template}"${locale}`);
+}
+
+const INSUFFICIENT_PRIVILEGE = '42501';
+const DROP_ATTEMPTS = 20;
+
+/**
+ * `DROP DATABASE … WITH (FORCE)`, con reintento: un rol que no es superusuario (el `minierp` local) no
+ * puede terminar un autovacuum que esté pasando por la base (`permission denied to terminate process`,
+ * PostgreSQL 16). El autovacuum termina solo en un momento; en el CI el rol es superusuario y no pasa.
+ */
+export async function dropDb(client: pg.Client, dbName: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await client.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+      return;
+    } catch (err: unknown) {
+      const code = err instanceof Error && 'code' in err ? err.code : undefined;
+      if (code !== INSUFFICIENT_PRIVILEGE || attempt >= DROP_ATTEMPTS) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 }
