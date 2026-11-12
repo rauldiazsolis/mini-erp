@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_DATA_DIR, E2E_PORT } from '../playwright.config.ts';
+import { querySystem } from './system-db.ts';
 
 /**
  * Demo y alta de punta a punta (#9), con el POS publicado (copia local, mismo JS) contra este
@@ -64,10 +65,9 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   // título del POS ("Demo XXXX - CENTRAL"), no por la más nueva: el e2e de demos crea otras en paralelo
   await expect(page).toHaveTitle(/^Demo [0-9A-F]{4} - /);
   const titlePos = (await page.title()).split(' - ')[0] ?? '';
-  const [demo] = query<{ tenant_id: string; template: string; pos: string }>(
-    'system.sqlite',
-    `SELECT s.tenant_id, s.template, r.point_of_sale AS pos FROM demo_sessions s JOIN registers r ON r.id = s.register_id
-     WHERE r.point_of_sale = ?`,
+  const [demo] = await querySystem<{ tenant_id: string; template: string; pos: string }>(
+    `SELECT s.tenant_id, s.template, r.point_of_sale AS pos FROM system.demo_sessions s JOIN system.registers r ON r.id = s.register_id
+     WHERE r.point_of_sale = $1`,
     titlePos,
   );
   expect(demo?.template).toBe('kiosco');
@@ -101,9 +101,8 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   await expect(page.getByText('DEMO', { exact: true })).toHaveCount(0);
   expect(page.url()).not.toContain('connect=');
 
-  const [alta] = query<{ tenant_id: string }>(
-    'system.sqlite',
-    'SELECT m.tenant_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = ?',
+  const [alta] = await querySystem<{ tenant_id: string }>(
+    'SELECT m.tenant_id FROM system.memberships m JOIN system.users u ON u.id = m.user_id WHERE u.email = $1',
     email,
   );
   const newTenant = alta?.tenant_id ?? '';

@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs';
 import pg from 'pg';
 import { dataDir } from '../src/server/db/data-dir.ts';
+import { e2eDatabaseUrl } from './system-db.ts';
 
 /**
  * Servidor del e2e: arranca siempre de bases vacías (la de `DATA_DIR` y la de PostgreSQL
@@ -13,8 +14,7 @@ if (dir === 'data') {
 }
 rmSync(dir, { recursive: true, force: true });
 
-/** La base del e2e: `E2E_DATABASE_URL` o la local de siempre. Nunca `DATABASE_URL`, que es la de desarrollo. */
-const dbUrl = new URL(process.env.E2E_DATABASE_URL ?? 'postgres://minierp:minierp@localhost:5432/minierp_e2e');
+const dbUrl = e2eDatabaseUrl();
 const dbName = decodeURIComponent(dbUrl.pathname.slice(1));
 if (!/^minierp_e2e\w*$/.test(dbName)) {
   throw new Error(`El e2e solo recrea una base minierp_e2e…, no "${dbName}"`);
