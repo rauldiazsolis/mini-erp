@@ -1,5 +1,8 @@
-import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { postToBalance, roundMoney } from '../customer/account-ledger.ts';
+import { DomainError } from '../errors.ts';
+import { MAX_MONEY_AMOUNT } from '../../shared/money.ts';
 
 export type RoundingStrategy = 'none' | '10' | '50' | '100';
 
@@ -51,24 +54,18 @@ export type BulkInterestResult = {
   items: BulkInterestPreviewItem[];
 };
 
-interface RawProductRow {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  price: number;
-}
+type ProductRow = { id: string; sku: string; name: string; category: string; price: number };
 
-interface RawCustomerRow {
-  id: string;
-  name: string;
-  balance: number;
-}
+const PRODUCT_COLUMNS = ['id', 'sku', 'name', 'category', 'price'] as const;
 
+/**
+ * Operaciones masivas del admin. Cada una corre en una transacción: o se aplica a todos o a
+ * ninguno. La vista previa (`dryRun`) calcula lo mismo sin escribir.
+ */
 export class BulkService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
@@ -78,77 +75,61 @@ export class BulkService {
     const rounding = input.rounding ?? 'none';
     const isDryRun = input.dryRun ?? false;
     const now = new Date().toISOString();
+    const { action, items, value } = input;
 
-    const previewItems: BulkPricePreviewItem[] = [];
-
-    if (input.action === 'items') {
-      if (!input.items || input.items.length === 0) {
-        throw new Error("Para la acción 'items' se debe proveer una lista de productos con su nuevo precio");
-      }
-
-      for (const item of input.items) {
-        const prod = this.db.prepare('SELECT id, sku, name, category, price FROM products WHERE id = ?').get(item.id) as unknown as RawProductRow | undefined;
-        if (!prod) continue;
-
-        const newPrice = this.applyRounding(item.price, rounding);
-        previewItems.push({
-          id: prod.id,
-          sku: prod.sku,
-          name: prod.name,
-          category: prod.category,
-          oldPrice: prod.price,
-          newPrice,
-          diff: Math.round((newPrice - prod.price) * 100) / 100,
-        });
-
-        if (!isDryRun) {
-          this.db
-            .prepare('UPDATE products SET price = ?, updated_at = ? WHERE id = ?')
-            .run(newPrice, now, prod.id);
-        }
-      }
-    } else {
-      // action === 'percentage' | 'fixed'
-      if (input.value === undefined) {
-        throw new Error("Se debe especificar un 'value' para la acción seleccionada");
-      }
-
-      let sql = 'SELECT id, sku, name, category, price FROM products WHERE 1=1';
-      const params: string[] = [];
-
-      if (input.category !== undefined && input.category.trim() !== '') {
-        sql += ' AND category = ?';
-        params.push(input.category.trim());
-      }
-
-      const products = this.db.prepare(sql).all(...params) as unknown as RawProductRow[];
-
-      for (const prod of products) {
-        let calcPrice: number;
-        if (input.action === 'percentage') {
-          calcPrice = prod.price * (1 + input.value / 100);
-        } else {
-          calcPrice = prod.price + input.value;
-        }
-
-        const newPrice = Math.max(0, this.applyRounding(calcPrice, rounding));
-        previewItems.push({
-          id: prod.id,
-          sku: prod.sku,
-          name: prod.name,
-          category: prod.category,
-          oldPrice: prod.price,
-          newPrice,
-          diff: Math.round((newPrice - prod.price) * 100) / 100,
-        });
-
-        if (!isDryRun) {
-          this.db
-            .prepare('UPDATE products SET price = ?, updated_at = ? WHERE id = ?')
-            .run(newPrice, now, prod.id);
-        }
-      }
+    if (action === 'items' && (items === undefined || items.length === 0)) {
+      throw new DomainError(400, "Para la acción 'items' se debe proveer una lista de productos con su nuevo precio");
     }
+    if (action !== 'items' && value === undefined) {
+      throw new DomainError(400, "Se debe especificar un 'value' para la acción seleccionada");
+    }
+    const category = input.category?.trim() ?? '';
+
+    const previewItems = await this.db.transaction().execute(async (trx) => {
+      const preview: BulkPricePreviewItem[] = [];
+      const change = async (prod: ProductRow, newPrice: number): Promise<void> => {
+        // `applyRounding` ya dejó el precio al centavo; lo que no entra en la columna no se guarda
+        if (newPrice > MAX_MONEY_AMOUNT) {
+          throw new DomainError(400, 'Importe inválido');
+        }
+        preview.push({
+          id: prod.id,
+          sku: prod.sku,
+          name: prod.name,
+          category: prod.category,
+          oldPrice: prod.price,
+          newPrice,
+          diff: roundMoney(newPrice - prod.price),
+        });
+        if (!isDryRun) {
+          await trx.updateTable('products').set({ price: newPrice, updated_at: now }).where('id', '=', prod.id).execute();
+        }
+      };
+
+      if (action === 'items') {
+        for (const item of items ?? []) {
+          let query = trx.selectFrom('products').select(PRODUCT_COLUMNS).where('id', '=', item.id);
+          if (!isDryRun) query = query.forUpdate();
+          const prod = await query.executeTakeFirst();
+          if (prod === undefined) continue;
+          await change(prod, this.applyRounding(item.price, rounding));
+        }
+        return preview;
+      }
+
+      // action === 'percentage' | 'fixed'
+      let query = trx.selectFrom('products').select(PRODUCT_COLUMNS);
+      if (category !== '') query = query.where('category', '=', category);
+      // Bloqueadas mientras se calcula: una edición a la vez no se pierde ni pisa el cálculo
+      if (!isDryRun) query = query.forUpdate();
+      const products = await query.orderBy('name').orderBy('id').execute();
+      const amount = value ?? 0;
+      for (const prod of products) {
+        const calcPrice = action === 'percentage' ? prod.price * (1 + amount / 100) : prod.price + amount;
+        await change(prod, Math.max(0, this.applyRounding(calcPrice, rounding)));
+      }
+      return preview;
+    });
 
     return {
       dryRun: isDryRun,
@@ -161,60 +142,43 @@ export class BulkService {
 
   async previewOrApplyInterests(input: BulkInterestInput): Promise<BulkInterestResult> {
     if (input.interestRatePercent <= 0) {
-      throw new Error('La tasa de interés debe ser mayor a cero');
+      throw new DomainError(400, 'La tasa de interés debe ser mayor a cero');
     }
 
     const minBalance = input.minimumBalance ?? 0;
     const isDryRun = input.dryRun ?? false;
     const now = new Date().toISOString();
+    const targetCustomerIds = input.customerIds ?? [];
 
-    const sql = 'SELECT id, name, balance FROM customers WHERE balance > ?';
-    const params: (number | string)[] = [minBalance];
+    const items = await this.db.transaction().execute(async (trx) => {
+      let query = trx.selectFrom('customers').select(['id', 'name', 'balance']).where('balance', '>', minBalance);
+      if (targetCustomerIds.length > 0) query = query.where('id', 'in', targetCustomerIds);
+      // Bloqueados mientras se calcula: el interés sale del saldo que queda guardado
+      if (!isDryRun) query = query.forUpdate();
+      const rows = await query.orderBy('name').orderBy('id').execute();
 
-    const rows = this.db.prepare(sql).all(...params) as unknown as RawCustomerRow[];
-
-    const targetCustomerIds = input.customerIds;
-    const filteredRows = targetCustomerIds && targetCustomerIds.length > 0
-      ? rows.filter((c) => targetCustomerIds.includes(c.id))
-      : rows;
-
-    const items: BulkInterestPreviewItem[] = [];
-    let totalInterest = 0;
-
-    for (const c of filteredRows) {
-      const interestAmount = Math.round(c.balance * (input.interestRatePercent / 100) * 100) / 100;
-      const newBalance = Math.round((c.balance + interestAmount) * 100) / 100;
-      totalInterest += interestAmount;
-
-      items.push({
-        customerId: c.id,
-        customerName: c.name,
-        currentBalance: c.balance,
-        interestAmount,
-        newBalance,
-      });
-
-      if (!isDryRun) {
-        const movId = `mov_${randomUUID()}`;
-        // 1. Asiento en cuenta corriente
-        this.db
-          .prepare(
-            `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-             VALUES (?, ?, 'interest', ?, ?, ?, NULL, ?)`,
-          )
-          .run(movId, c.id, interestAmount, newBalance, input.description, now);
-
-        // 2. Actualizar saldo del cliente
-        this.db
-          .prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?')
-          .run(newBalance, now, c.id);
+      const preview: BulkInterestPreviewItem[] = [];
+      for (const c of rows) {
+        const currentBalance = c.balance ?? 0;
+        const interestAmount = roundMoney(currentBalance * (input.interestRatePercent / 100));
+        if (Math.abs(currentBalance + interestAmount) > MAX_MONEY_AMOUNT) {
+          throw new DomainError(400, 'Importe inválido');
+        }
+        let newBalance = roundMoney(currentBalance + interestAmount);
+        if (!isDryRun) {
+          // El interés pasa por el libro: el saldo se suma en SQL y el extracto cuadra
+          const posted = await postToBalance(trx, c.id, { type: 'interest', delta: interestAmount, description: input.description }, now);
+          newBalance = posted?.balanceAfter ?? newBalance;
+        }
+        preview.push({ customerId: c.id, customerName: c.name, currentBalance, interestAmount, newBalance });
       }
-    }
+      return preview;
+    });
 
     return {
       dryRun: isDryRun,
       affectedCount: items.length,
-      totalInterestAmount: Math.round(totalInterest * 100) / 100,
+      totalInterestAmount: roundMoney(items.reduce((sum, i) => sum + i.interestAmount, 0)),
       items,
     };
   }

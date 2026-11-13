@@ -49,8 +49,8 @@ describe('POST /import/:entity (#22)', () => {
 
     const done = await post(owner, 'customers', { csv: EXCEL, mapping: preview.mapping, dryRun: false });
     expect(done.status).toBe(200);
-    const db = tenants.getTenantDb('t1');
-    const juan = db.prepare("SELECT id, balance FROM customers WHERE document = '20.123.456'").get() as { id: string; balance: number };
+    const db = pgDb().forTenant('t1');
+    const juan = await db.selectFrom('customers').select(['id', 'balance']).where('document', '=', '20.123.456').executeTakeFirstOrThrow();
     expect(juan.balance).toBe(12345.5);
     const statement = await request(app).get(`/api/tenants/t1/customers/${juan.id}/movements`).set('Authorization', `Bearer ${owner}`);
     expect(statement.status).toBe(200);
@@ -58,8 +58,8 @@ describe('POST /import/:entity (#22)', () => {
 
     const again = (await post(owner, 'customers', { csv: EXCEL, dryRun: false })).body as ImportPreview;
     expect(again.totals).toEqual({ create: 0, update: 0, unchanged: 2, error: 0 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM customers').get()).toEqual({ n: 2 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM account_movements').get()).toEqual({ n: 2 });
+    expect(await db.selectFrom('customers').select('id').execute()).toHaveLength(2);
+    expect(await db.selectFrom('account_movements').select('id').execute()).toHaveLength(2);
   });
 
   it('el admin importa productos; el member recibe 403', async () => {

@@ -1,13 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import type { BusinessPreset, SeedProduct } from './types.ts';
-import { KIOSCO_PRODUCTS } from './kiosco.ts';
-import { FERRETERIA_PRODUCTS } from './ferreteria.ts';
-import { ALMACEN_PRODUCTS } from './almacen.ts';
+import type { BusinessPreset } from './types.ts';
+import { getPresetProducts } from './apply-preset.ts';
 import { insertDemoCustomers } from './demo-customers.ts';
 import { generateHistoricalDemoActivity } from './demo-activity-generator.ts';
 
 export * from './types.ts';
+export * from './apply-preset.ts';
 export * from './kiosco.ts';
 export * from './ferreteria.ts';
 export * from './almacen.ts';
@@ -15,18 +14,11 @@ export * from './demo-customers.ts';
 export * from './demo-activity-generator.ts';
 export * from './demo-commerce.ts';
 
-export function getPresetProducts(preset: BusinessPreset): SeedProduct[] {
-  switch (preset) {
-    case 'kiosco':
-      return KIOSCO_PRODUCTS;
-    case 'ferreteria':
-      return FERRETERIA_PRODUCTS;
-    case 'almacen':
-      return ALMACEN_PRODUCTS;
-  }
-}
-
-export async function applyPreset(
+/**
+ * El preset sobre la base SQLite de un comercio: transitorio, para las demos y semillas que todavía
+ * no migraron. La versión de PostgreSQL es `applyPreset` (`apply-preset.ts`).
+ */
+export async function applyPresetSqlite(
   db: DatabaseSync,
   preset: BusinessPreset,
 ): Promise<{ preset: BusinessPreset; productsCreated: number; stockEntries: number }> {
@@ -110,6 +102,6 @@ export function isDemoTemplate(value: string): value is DemoTemplate {
 
 /** Datos de una demo: el catálogo del preset y los clientes demo, sin historial (el POS no lo ve). */
 export async function seedDemoSession(db: DatabaseSync, template: DemoTemplate): Promise<void> {
-  await applyPreset(db, template);
+  await applyPresetSqlite(db, template);
   await insertDemoCustomers(db, new Date().toISOString());
 }

@@ -1,14 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { createTenantSchema } from '../src/server/db/pg/migrations/migrate.ts';
 import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
 import { recordDiscrepancy, listOpenDiscrepancies } from '../src/server/discrepancy/discrepancies.ts';
-import {
-  recordDiscrepancy as recordDiscrepancySqlite,
-  listOpenDiscrepancies as listOpenDiscrepanciesSqlite,
-} from '../src/server/discrepancy/discrepancies.sqlite.ts';
 import { CustomerService } from '../src/server/customer/customer-service.ts';
 import { ImportService } from '../src/server/io/import-service.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -52,26 +46,23 @@ describe('pendientes al crear un cliente (#2)', () => {
   });
 });
 
-// La importación todavía corre sobre SQLite (se migra con su dominio)
 describe('pendientes al importar clientes (#2)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
 
   beforeEach(async () => {
-    db = new DatabaseSync(':memory:');
-    initTenantDb(db);
-    await recordDiscrepancySqlite(db, pendiente, at);
+    await createTenantSchema(pg().root, 'kiosco');
+    db = pg().forTenant('kiosco');
+    await recordDiscrepancy(db, pendiente, at);
   });
-
-  const saldo = () => (db.prepare("SELECT balance FROM customers WHERE id = 'c9'").get() as { balance: number }).balance;
 
   it('la importación aplica la venta pendiente', async () => {
     await new ImportService(db).run('customers', { csv: CSV, dryRun: false }, at);
-    expect(saldo()).toBe(950);
-    expect(await listOpenDiscrepanciesSqlite(db)).toEqual([]);
+    expect((await db.selectFrom('customers').select('balance').where('id', '=', 'c9').executeTakeFirstOrThrow()).balance).toBe(950);
+    expect(await listOpenDiscrepancies(db)).toEqual([]);
   });
 
   it('una importación en dryRun no aplica nada', async () => {
     await new ImportService(db).run('customers', { csv: CSV, dryRun: true }, at);
-    expect(await listOpenDiscrepanciesSqlite(db)).toHaveLength(1);
+    expect(await listOpenDiscrepancies(db)).toHaveLength(1);
   });
 });
