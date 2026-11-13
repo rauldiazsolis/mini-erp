@@ -56,8 +56,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       ownerUserId: registerRes.user.id,
     });
 
-    // Catálogo y ventas de los últimos días en PostgreSQL (la semilla y su generador todavía escriben
-    // SQLite): fechas relativas a ahora, en la caja de CENTRAL
+    // Catálogo y ventas de los últimos días: fechas relativas a ahora, en la caja de CENTRAL
     const tenantDb = db().forTenant(tenantId);
     const nowIso = new Date().toISOString();
     await tenantDb

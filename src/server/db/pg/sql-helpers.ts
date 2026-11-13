@@ -71,10 +71,25 @@ export function isForeignKeyViolation(err: unknown): boolean {
 const TRANSIENT_ERRORS: ReadonlySet<unknown> = new Set(['40P01', '40001']);
 
 /**
- * Si el error es pasajero (la base eligió esta transacción para romper un deadlock): reintentar la
- * operación entera anda. No es un dato malo, así que nunca se guarda como un rechazo definitivo.
+ * Un error pasajero que detecta el propio código (no PostgreSQL): por ejemplo, el push que esperaba
+ * el candado de lote y, cuando lo recibe, la fila ya no está porque un reinicio total la borró.
+ */
+export class TransientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransientError';
+  }
+}
+
+/**
+ * Si el error es pasajero (la base eligió esta transacción para romper un deadlock, o un
+ * `TransientError`): reintentar la operación entera anda. No es un dato malo, así que nunca se guarda
+ * como un rechazo definitivo.
  */
 export function isTransientError(err: unknown): boolean {
+  if (err instanceof TransientError) {
+    return true;
+  }
   return typeof err === 'object' && err !== null && 'code' in err && TRANSIENT_ERRORS.has(err.code);
 }
 

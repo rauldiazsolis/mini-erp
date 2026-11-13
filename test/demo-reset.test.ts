@@ -4,7 +4,11 @@ import { TENANT_TABLES, type TenantDatabase } from '../src/server/db/pg/tenant-s
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
-import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
+import { DemoResetService, type DemoResetDeps } from '../src/server/demo/demo-reset-service.ts';
+import { ConnectorService } from '../src/server/connector/connector-service.ts';
+import { isTransientError } from '../src/server/db/pg/sql-helpers.ts';
+import { seedDemoCommerce } from '../src/server/seeds/index.ts';
+import { waitForLockWait } from './helpers/lock-wait.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
 const pgDb = setupTestDb();
@@ -101,14 +105,70 @@ describe('reinicios del comercio demo (#24)', () => {
     expect(await db.selectFrom('stock').select('branch_id').distinct().execute()).toEqual([{ branch_id: 'branch-central' }]);
   });
 
+  /** Un reinicio cuya siembra (después de vaciar) hace `seed`. */
+  const resetsWithSeed = (seed: NonNullable<DemoResetDeps['seed']>) =>
+    new DemoResetService({ db: pgDb().system, tenantManager, sessions: service, now: () => clock, seed });
+
   it('el total es atómico: si la siembra falla, el comercio queda como estaba', async () => {
     await db.insertInto('products').values(product('p_x', 'X-1', 'Vandalismo')).execute();
     const salesBefore = await countOf('sales');
-    // La hora del reinicio no es una fecha: la siembra falla después de vaciar
-    clock = new Date(Number.NaN);
-    await expect(resets.resetFull('kiosco')).rejects.toThrow();
+    const failing = resetsWithSeed(() => Promise.reject(new Error('siembra rota')));
+    await expect(failing.resetFull('kiosco')).rejects.toThrow('siembra rota');
     expect(await countOf('sales')).toBe(salesBefore);
     expect(await db.selectFrom('products').select('id').where('id', '=', 'p_x').execute()).toEqual([{ id: 'p_x' }]);
+  });
+
+  it('el total revoca las cajas antes de sembrar: si la siembra falla, las demos ya quedaron cortadas', async () => {
+    const a = await service.create('kiosco');
+    let activeWhileSeeding: boolean | undefined;
+    const failing = resetsWithSeed(async () => {
+      activeWhileSeeding = (await apiKeyService.validateApiKey(a.apiKey)) !== undefined;
+      throw new Error('siembra rota');
+    });
+    await expect(failing.resetFull('kiosco')).rejects.toThrow('siembra rota');
+    expect(activeWhileSeeding).toBe(false);
+    expect(await apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
+    expect(await pgDb().system.selectFrom('demo_sessions').select('revoke_reason as r').execute()).toEqual([{ r: 'reset' }]);
+  });
+
+  it('un push que esperaba el candado del reinicio falla como pasajero y no deja nada en el comercio sembrado', async () => {
+    let seeding!: () => void;
+    const seedingStarted = new Promise<void>((resolve) => {
+      seeding = resolve;
+    });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const paused = resetsWithSeed(async (trx, template, now) => {
+      seeding();
+      await released;
+      await seedDemoCommerce(trx, template, now);
+    });
+    const salesBefore = await countOf('sales');
+
+    const reset = paused.resetFull('kiosco');
+    await seedingStarted;
+    // El reinicio ya tiene el candado y vació el comercio: el push queda esperando la sucursal
+    const push = new ConnectorService(db)
+      .processPushLot({
+        lotId: 'lote-carrera',
+        deviceId: 'dev-visitante',
+        events: [{ id: 'e1', type: 'sale', createdAt: AT, origin: { branch: 'CENTRAL', pointOfSale: 'Demo X' }, sale: { id: 'v-carrera', total: 100, payments: [{ method: 'cash', amount: 100 }] } }],
+      })
+      .then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+    await waitForLockWait(pgDb().root);
+    release();
+    await reset;
+
+    const err = await push;
+    expect(isTransientError(err)).toBe(true);
+    expect(await db.selectFrom('sales').select('id').where('id', '=', 'v-carrera').execute()).toEqual([]);
+    expect(await countOf('push_lots')).toBe(0);
+    expect(await countOf('sales')).toBe(salesBefore);
   });
 
   it('el total de un rubro no toca a los otros', async () => {

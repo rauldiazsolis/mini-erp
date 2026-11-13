@@ -80,8 +80,7 @@ el contrato **4.6.0** con las capacidades `customer-payment-void`, `demo-session
 
 ## Levantarlo
 
-Requiere Node 24, pnpm 10 y PostgreSQL 16 (la persistencia migró de SQLite a PostgreSQL: el sistema
-y cada comercio están en PostgreSQL; quedan restos de SQLite que se van antes de publicar). El servidor no arranca sin
+Requiere Node 24, pnpm 10 y PostgreSQL 16 (el sistema y cada comercio, en su esquema). El servidor no arranca sin
 `DATABASE_URL`; los tests usan su propio servidor (ver "Verificación" en `AGENTS.md`).
 
 ```bash
@@ -98,8 +97,8 @@ DATABASE_URL=postgres://usuario:clave@localhost:5432/minierp pnpm dev
 
 El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el landing en `/`, el admin
 en `/admin`, el alta en `/alta`, la plataforma en `/plataforma`, la API del admin en `/api` y el
-Connector API en `/connector`. Lo de sistema va a la base de `DATABASE_URL` (el arranque la migra) y
-las bases de los comercios, a `data/` (o a `DATA_DIR`).
+Connector API en `/connector`. Todo va a la base de `DATABASE_URL`, que el arranque migra: el esquema
+`system` y uno por comercio.
 
 Fuera de producción, el arranque siembra datos de desarrollo si no existen y los lista en la consola:
 usuarios con la contraseña `admin123` (`root@local.test`, `soporte@local.test`, `dueno-a@local.test`
@@ -130,8 +129,7 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `DATA_DIR` | `data` | Carpeta de datos locales (hasta que se vaya SQLite, sus bases viejas de comercio) |
-| `BACKUP_DIR` | `backups` | Carpeta de los backups de los comercios de `node scripts/backup.ts` (se guardan 7 días) |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (hasta que pase a `pg_dump`, sale con error) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (404) y los comercios demo |

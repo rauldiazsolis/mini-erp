@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 4 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 5 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -204,6 +204,24 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
   - **Tests y e2e**: todos sobre PostgreSQL (`db().forTenant(id)`); el e2e lee las ventas y precios
     del comercio con `e2e/system-db.ts` (`salesOf`, `productPrice`).
 
+- **Fase 5, hecha** (2026-11-13): de SQLite no queda nada en el código. Lo decidido, en "Decidido en
+  la fase 5" (abajo).
+  - **Borrado**: `src/server/db/migrations/` (migraciones de SQLite, worker, `runMigrations`,
+    `pre-migracion` y `restoreRun`), `db/tenant-db.ts`, `db/data-dir.ts` y `DATA_DIR` (nada más los
+    usaba; `BACKUP_DIR` queda), `backup/backup.ts`, `test/helpers/db-at-version.ts` y los tests de
+    todo eso.
+  - **Arranque**: `startServer` recibe `migrateDatabase` (`migrateAll`, con el avance para `/health`)
+    y `createReadyHandler`; el modo mantenimiento no cambia.
+  - **`scripts/backup.ts`** sale con error hasta el `pg_dump` de la fase 6.
+  - **`require-await`** prendida otra vez en todo el código.
+  - **Reinicio total contra un push**: revoca primero, toma el candado de lote y un push que lo
+    esperaba falla con `TransientError` (`500`, el POS reintenta y recibe `401`).
+  - **Guardián**: `test/pg-guards.test.ts` falla si algo en `src/`, `scripts/`, `test/` o `e2e/`
+    importa `node:sqlite` o usa `DatabaseSync`.
+  - **Para la fase 6**: `deploy/README.md` todavía describe `pre-migracion/`, los `.sqlite` y su
+    restauración desde el backup; `provision.sh` crea `/var/lib/mini-erp` (hoy solo el home de
+    `minierp`). El issue #77 (`busy_timeout` de SQLite) queda sin objeto al llegar a `main`.
+
 ## Decidido en la fase 4 (2026-11-12)
 
 Lo que quedaba "para decidir", resuelto antes de migrar los comercios.
@@ -267,11 +285,32 @@ Además:
   salen de los mismos módulos que el push (`saveSales` y compañía en `records.ts`,
   `postSeriesToBalance` en `account-ledger.ts`, `setStockMany` en `write-stock.ts`).
 
+## Decidido en la fase 5 (2026-11-13)
+
+1. **Backup: se borra el de SQLite y el script falla a propósito hasta la fase 6.**
+   `src/server/backup/backup.ts` (`VACUUM INTO` de `.sqlite` que ya no existen) y `test/backup.test.ts`
+   se borran: no respaldan nada y son lo último que abre SQLite. `scripts/backup.ts` queda, porque lo
+   corre `mini-erp-backup.timer`, pero sale con error ("pendiente: pg_dump, fase 6"): un backup que no
+   copia nada no puede terminar en verde. La fase 6 lo reescribe con `pg_dump -Fc` (sin los esquemas de
+   demo, 7 días). Nada de esto se publica antes de la fase 6.
+2. **Reinicio total contra un push simultáneo: se cierra** (era el punto 2 de "Para decidir").
+   - El reinicio **revoca primero** las cajas de visitante (transacción de sistema) y recién después
+     vacía y siembra el comercio. Si la siembra falla, las demos ya quedaron cortadas: el barrido
+     reintenta a los 15 minutos, y es lo mismo que vería el visitante con el reinicio hecho.
+   - Dentro de su transacción, el reinicio **toma primero el candado de lote** del push (la fila de la
+     primera sucursal, `FOR UPDATE`): el push y el reinicio ya no se traban en otro orden.
+   - Un push que esperaba ese candado y lo recibe después del reinicio no encuentra la fila (el
+     reinicio la borró y sembró otra, que su sentencia no ve): lo toma como **error pasajero**, deshace
+     el lote y el POS lo reintenta, ya con la key revocada (`401`, "la demo terminó"). Nada del
+     visitante queda en el comercio recién sembrado.
+   - Las escrituras sueltas del admin anónimo durante el reinicio no se cubren: son de a una fila y la
+     ventana es de milisegundos.
+
 ## Para decidir en las fases que siguen
 
 1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.
-2. **Reinicio total de una demo contra un push simultáneo**: con SQLite era sincrónico. Ahora un
+2. ~~**Reinicio total de una demo contra un push simultáneo**~~ (cerrado en la fase 5, ver arriba): con SQLite era sincrónico. Ahora un
    push que confirma justo después del reinicio puede dejar filas en el comercio recién sembrado (la
    key del visitante se revoca después, fuera de la transacción), o un deadlock hace fallar el
    reinicio (el barrido lo reintenta a los 15 minutos; el manual da 500). La ventana es chica; se

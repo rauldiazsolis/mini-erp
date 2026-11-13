@@ -23,12 +23,17 @@ export type DemoResetDeps = {
   tenantManager: TenantManager;
   sessions: DemoSessionService;
   now: () => Date;
+  /** La siembra del reinicio total; los tests la reemplazan para hacerla fallar o pausarla. */
+  seed?: typeof seedDemoCommerce | undefined;
 };
 
 /**
  * Reinicios de los comercios demo (#24). El total vuelve a la foto inicial (vacía y vuelve a sembrar)
  * y revoca las cajas de visitante; el parcial deshace el vandalismo en catálogo, stock y clientes sin
- * cortarle la demo a nadie. Sincrónicos: ningún push queda en el medio.
+ * cortarle la demo a nadie. Sincrónicos: el total revoca primero las cajas (una transacción de
+ * sistema) y después, en la del comercio, toma el candado de lote del push antes de vaciar y sembrar.
+ * Un push que esperaba ese candado no encuentra la sucursal (la borró el reinicio), falla como
+ * pasajero y el POS lo reintenta, ya con la key revocada: nada del visitante queda en la semilla.
  */
 export class DemoResetService {
   private deps: DemoResetDeps;
@@ -40,15 +45,20 @@ export class DemoResetService {
   async resetFull(template: DemoTemplate): Promise<{ revoked: number }> {
     const tenantId = await this.deps.sessions.ensureDemoTenant(template);
     const now = this.deps.now();
+    const seed = this.deps.seed ?? seedDemoCommerce;
+    // Revocar primero y fuera de la transacción del comercio (dentro no se pide otra conexión): si la
+    // siembra falla, las demos ya quedaron cortadas y el barrido reintenta el reinicio
+    const revoked = await this.deps.sessions.revokeTenant(tenantId, 'reset');
     // Vaciar y volver a sembrar es una sola transacción del comercio: nadie ve la demo a medias
     await this.deps.tenantManager.forTenant(tenantId).transaction().execute(async (trx) => {
+      // Lo primero, el candado de lote del push (la fila de la primera sucursal): así el push y el
+      // reinicio nunca se traban en otro orden, y un push que lo esperaba se entera de que no hay sucursal
+      await trx.selectFrom('branches').select('id').orderBy('seq').limit(1).forUpdate().execute();
       for (const table of TABLES_TO_EMPTY) {
         await trx.deleteFrom(table).execute();
       }
-      await seedDemoCommerce(trx, template, now);
+      await seed(trx, template, now);
     });
-    // Lo de sistema, después y fuera de esa transacción
-    const revoked = await this.deps.sessions.revokeTenant(tenantId, 'reset');
     await this.deps.db.updateTable('demo_tenants').set({ last_full_reset_at: now.toISOString() }).where('tenant_id', '=', tenantId).execute();
     return { revoked };
   }

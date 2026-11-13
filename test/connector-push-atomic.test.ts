@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/server/app.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { setupTestDb } from './helpers/test-db.ts';
+import { waitForLockWait } from './helpers/lock-wait.ts';
 
 const db = setupTestDb();
 
@@ -128,5 +129,41 @@ describe('push transaccional (#2)', () => {
     expect(await count('sales')).toBe(1);
     const lots = await tenantDb().selectFrom('push_lots').select(['id', 'status']).execute();
     expect(lots).toEqual([{ id: 'lote-1', status: 'issues' }]);
+  });
+  it('un push que esperaba el candado de lote y la sucursal ya no está (un reinicio la borró) da 500 y no deja nada', async () => {
+    let locked!: () => void;
+    const lockTaken = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Como el reinicio total: toma el candado (`FOR UPDATE`), borra la sucursal y siembra otra
+    const resetLike = tenantDb()
+      .transaction()
+      .execute(async (trx) => {
+        await trx.selectFrom('branches').select('id').orderBy('seq').limit(1).forUpdate().execute();
+        const branches = await trx.selectFrom('branches').selectAll().execute();
+        await trx.deleteFrom('branches').execute();
+        locked();
+        await released;
+        await trx.insertInto('branches').values(branches.map(({ seq: _seq, ...b }) => b)).execute();
+      });
+    await lockTaken;
+
+    const pending = push('lote-carrera', [lote[0]]).then((res) => res);
+    await waitForLockWait(db().root);
+    release();
+    await resetLike;
+
+    const res = await pending;
+    expect(res.status).toBe(500);
+    expect(await count('push_lots')).toBe(0);
+    expect(await count('sales')).toBe(0);
+
+    // El POS reintenta y, con la sucursal sembrada de nuevo, el lote entra
+    expect((await push('lote-carrera', [lote[0]])).status).toBe(200);
+    expect(await count('sales', 'v1')).toBe(1);
   });
 });

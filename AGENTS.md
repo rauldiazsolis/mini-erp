@@ -124,27 +124,27 @@ Y `pnpm build` si se toca el cliente o la config de Vite. Todo en verde antes de
 Windows, pnpm se corre desde PowerShell.
 
 Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e (Playwright, en
-`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con `DATA_DIR=test-results/e2e-data`
-(base descartable; nunca la de desarrollo) y corre en el CI.
+`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con la base `minierp_e2e`, que
+`e2e/serve.ts` recrea (descartable; nunca la de desarrollo) y corre en el CI.
 
 ## Convenciones de TypeScript y Node
 
 - **TypeScript estricto**: `any` prohibido; `unknown` solo en fronteras externas (payloads HTTP) y
   validado con Zod en la línea siguiente.
 - **Node 24 sin compilar** (strip de tipos): `pnpm dev` y `pnpm start` corren `.ts` directo.
-  - Sin "parameter properties" en constructores (`constructor(private db: DatabaseSync)` no se puede
-    stripear); la propiedad se declara en el cuerpo de la clase:
+  - Sin "parameter properties" en constructores (`constructor(private db: Kysely<SystemDatabase>)` no
+    se puede stripear); la propiedad se declara en el cuerpo de la clase:
     ```typescript
     class MiServicio {
-      private db: DatabaseSync;
-      constructor(db: DatabaseSync) {
+      private db: Kysely<SystemDatabase>;
+      constructor(db: Kysely<SystemDatabase>) {
         this.db = db;
       }
     }
     ```
   - Imports relativos con extensión (`.ts`, `.tsx`): `allowImportingTsExtensions` + `noEmit`.
   - `--watch-path=src/server` en desarrollo: un `--watch` global reinicia en bucle con cada escritura
-    en SQLite (`data/`) o en `dist/`.
+    en `dist/`.
 - **UI (Preact)**: tipar con `JSX.IntrinsicElements['button']`, `JSX.TargetedEvent`, etc.; nada de
   tipos laxos.
 - **TypeScript 6** con `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
@@ -164,9 +164,8 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
 Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
-(aprobada el 2026-11-11; fases 1 a 4 hechas: el sistema y los comercios ya están en PostgreSQL; de
-SQLite quedan las migraciones viejas, su worker y el backup, que se van en las fases 5 y 6). Lo de
-SQLite que sigue más abajo describe ese código; al cerrar la última fase se reemplaza por esta sección.
+(aprobada el 2026-11-11; fases 1 a 5 hechas: el sistema y los comercios están en PostgreSQL y de
+SQLite no queda nada en el código; falta la fase 6, infraestructura y backup con `pg_dump`).
 Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
 PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
 
@@ -185,8 +184,8 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 - **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
   `no-misused-promises`). Un handler de Express (5) es `async` y deja que el error suba; un
   parámetro de ruta se lee con `routeParam(req, nombre)`. `res.json(promesa)` no lo atrapa ni el lint
-  ni `tsc`: cada llamada lleva su `await`. `require-await` está apagada hasta la fase 5 (firmas async
-  con cuerpo todavía síncrono).
+  ni `tsc`: cada llamada lleva su `await`. `require-await` está prendida: una función que no
+  espera nada no es `async`.
 - **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
   pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
   - El executor va al final y es opcional (`metodo(…, db = this.db)`). Una función compartida que
@@ -215,7 +214,8 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 - **Búsquedas de texto** sin distinguir mayúsculas ni tildes: `searchable(columna)` contra
   `searchPattern(texto)` (`db/pg/sql-helpers.ts`, con la extensión `unaccent`), nunca `LIKE` o
   `ILIKE` a mano.
-- **Migraciones** (`db/pg/migrations/`): `system.ts` y `tenant.ts` listan las de cada esquema; una
+- **Migraciones** (`db/pg/migrations/`): ninguna etapa cambia el esquema sin una migración y nunca
+  se borra ni se reinicia una base con datos. `system.ts` y `tenant.ts` listan las de cada esquema; una
   nueva es un archivo `<tipo>/v<N>-<nombre>.ts` con `{ version, name, up(db) }`, agregado al final.
   `schema_migrations` de cada esquema es el puntero. `up` corre con el `search_path` en su esquema:
   escribe las tablas sin calificar, no abre transacciones y no depende de datos de fuera de su
@@ -246,29 +246,10 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   - `tenant_<id>`: catálogo, stock por sucursal, clientes, cuentas corrientes, ventas y lotes de
     sincronización. Lo crea `TenantManager` al dar de alta el comercio (`createTenantSchema`, fuera
     de la transacción del alta; si el alta falla, `dropTenantSchema`).
-  - `test/pg-guards.test.ts` falla si alguien fuera de las migraciones viejas y el backup abre SQLite.
-- **Migraciones de esquema de SQLite** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`;
-  se borran en la fase 5 de la migración a PostgreSQL: ya no hay bases que migrar):
-  - **Ninguna etapa cambia el esquema sin una migración.** Producción tiene datos: nunca se borra ni
-    se reinicia una base.
-  - Por tipo de base, en `src/server/db/migrations/`: `system.ts` y `tenant.ts` tienen la línea de
-    base (sistema 4, comercio 1), que **no se toca nunca más**, y la lista de migraciones;
-    `PRAGMA user_version` es el puntero.
-  - Una migración nueva: un archivo `migrations/<tipo>/v<N>-<nombre>.ts` con
-    `{ version: N, name, up(db) }` (N = la última + 1), agregado al final de la lista. `up` no abre
-    transacciones (la abre `migrateDb`, una por migración) y no depende de datos de fuera de su base.
-  - Su test parte de una base de la versión anterior **con datos** (`createDbAtVersion` en
-    `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`). Migra
-    con el esquema cortado en su versión (`HASTA_VN`, como `test/system-migration-v9.test.ts`): así
-    una migración posterior no lo rompe.
-  - Solo el arranque migra bases con datos (`runMigrations`, en un worker, solo las de comercio: lo
-    de sistema lo migra `migrateSystem` en PostgreSQL): antes copia lo que va a migrar a
-    `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas. `openTenantDb`
-    crea bases nuevas y verifica las existentes (`checkDb`), nunca migra. `migrations/system.ts` y
-    sus migraciones de SQLite quedan solo para sus tests, hasta la fase 5.
-  - Una base anterior a la línea de base o más nueva que el código (un rollback) no arranca.
+  - `test/pg-guards.test.ts` falla si algo en `src/`, `scripts/`, `test/` o `e2e/` importa `node:sqlite`.
 - **Arranque en dos fases** (`src/server/startup.ts`): el servidor escucha enseguida con el app de
-  mantenimiento (`src/server/maintenance/`, sin bases), migra y recién ahí monta el app completo.
+  mantenimiento (`src/server/maintenance/`, sin bases), migra PostgreSQL (`migrateAll`: `system` y
+  el esquema de cada comercio, con el avance en `/health`) y recién ahí monta el app completo.
   - Mientras tanto, `/health` da `503 maintenance` (o `migration-failed`, y el proceso sigue vivo),
     `/connector/info` da `status: maintenance` sin key, el resto del Connector API y `/api` dan `503`
     con `Retry-After: 30`, y las páginas, la de actualización.
@@ -371,8 +352,11 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   - **Revocar** una caja es `active = 0` en la caja y su key (`401` a todo), con `revoked_at` y
     `revoke_reason` (`reset` o `idle`). Pasa con el reinicio total o a las `DEMO_TTL_HOURS` sin uso: la
     auth del POS y el admin anónimo corren `last_used_at` (`touchRegister`, a lo sumo por minuto).
-  - **Reinicios** (`DemoResetService`, sincrónicos): el **total** vacía todas las tablas del comercio
-    (salen del manifiesto, `TENANT_TABLES`) y vuelve a sembrar en una transacción, y revoca sus cajas; el **parcial** devuelve
+  - **Reinicios** (`DemoResetService`, sincrónicos): el **total** revoca primero sus cajas (transacción
+    de sistema) y después, en una transacción del comercio, toma el candado de lote del push (la
+    primera sucursal, `FOR UPDATE`), vacía todas las tablas (salen del manifiesto, `TENANT_TABLES`) y
+    vuelve a sembrar. Un push que esperaba ese candado no encuentra la sucursal y falla como pasajero
+    (`TransientError`, `500`): el POS lo reintenta con la key ya revocada. El **parcial** devuelve
     productos, stock (con `inventory_count`) y datos de clientes de la semilla, borra lo creado por
     visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
     cajas.
@@ -673,8 +657,8 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
   `/health` responda la versión subida.
 - Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
-  `scripts/backup.ts` (`VACUUM INTO` de las bases de comercio de SQLite, que desde la fase 4 de la
-  migración ya no existen). Todo PostgreSQL va con `pg_dump`, en la fase 6.
+  `scripts/backup.ts`, que hasta la fase 6 de la migración a PostgreSQL sale con error a propósito
+  (no respalda nada); ahí pasa a `pg_dump`.
 - Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen
   hashes de contraseñas.
 

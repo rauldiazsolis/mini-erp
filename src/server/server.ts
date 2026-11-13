@@ -2,10 +2,8 @@ import { createApp } from './app.ts';
 import { DEV_BRANCH } from './seeds/dev-fixtures.ts';
 import { setupClient } from './client-middleware.ts';
 import { bootstrap, type DevInfo } from './bootstrap.ts';
-import { dataDir } from './db/data-dir.ts';
 import { createDatabase, databaseUrl } from './db/pg/database.ts';
 import { migrateAll } from './db/pg/migrations/migrate.ts';
-import { runMigrationsInWorker } from './db/migrations/worker-runner.ts';
 import { readDemoConfig } from './demo/demo-config.ts';
 import { startServer } from './startup.ts';
 
@@ -21,15 +19,14 @@ const database = createDatabase({ connectionString: databaseUrl() });
 // Arranque en dos fases (#47): mantenimiento mientras migra, después el app completo
 const started = await startServer({
   port: PORT,
-  dataDir: dataDir(),
   demos: readDemoConfig(process.env).enabled,
-  migrateDatabase: async () => {
-    // `system` y el esquema de cada comercio
-    for (const result of await migrateAll(database.root)) {
+  migrateDatabase: async (onProgress) => {
+    // `system` y el esquema de cada comercio; `/health` muestra el avance
+    await migrateAll(database.root, (result, done, total) => {
+      onProgress({ done, total });
       if (result.applied.length > 0) console.log(`[migraciones] PostgreSQL ${result.schemaName}: ${result.applied.join(', ')}`);
-    }
+    });
   },
-  runner: runMigrationsInWorker,
   createReadyHandler: async () => {
     const bundle = createApp({ database });
     let sweepers: NodeJS.Timeout[] = [];

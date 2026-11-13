@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensurePosMirror, mountPosMirror } from '../src/server/pos-mirror/serve.ts';
 import type { FetchLike } from '../src/server/pos-mirror/mirror.ts';
-import { dataDir } from '../src/server/db/data-dir.ts';
 import { buildDemoUrl, posBaseUrl } from '../src/client/state/demo-link.ts';
 import { POS_CHANNEL } from '../src/shared/contract-version.ts';
 
@@ -77,18 +76,6 @@ describe('Copia local del POS en desarrollo (#9)', () => {
       ensurePosMirror({ dir, channel: 'v4', fetch: () => Promise.reject(new Error('sin red')), log }),
     ).resolves.toBeUndefined();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('pnpm pos:mirror'));
-  });
-});
-
-describe('DATA_DIR (#9)', () => {
-  it('por defecto es data/', () => {
-    vi.stubEnv('DATA_DIR', '');
-    expect(dataDir()).toBe('data');
-  });
-
-  it('se puede mover, para el e2e', () => {
-    vi.stubEnv('DATA_DIR', 'test-results/e2e-data');
-    expect(dataDir()).toBe('test-results/e2e-data');
   });
 });
 
