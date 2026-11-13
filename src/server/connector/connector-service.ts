@@ -4,7 +4,7 @@ import { z } from '../../shared/zod.ts';
 import { lotIssuesSchema, parseBatchEvent, type LotIssue, type PushEvent } from './push-events.ts';
 import { applyToBalance, type LedgerMovement } from '../customer/account-ledger.ts';
 import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
-import { inSavepoint, isTransientError, jsonValue, stripNul } from '../db/pg/sql-helpers.ts';
+import { inSavepoint, isTransientError, jsonValue, stripNul, TransientError } from '../db/pg/sql-helpers.ts';
 import { DEFAULT_BRANCH_ID } from '../db/tenant-manager.ts';
 import { applyPendingFor, recordDiscrepancy, resolveVoidUnknown } from '../discrepancy/discrepancies.ts';
 import { noticesFor, type NoticeContext } from '../notices/notice-service.ts';
@@ -95,7 +95,12 @@ export class ConnectorService {
       // Un lote a la vez por comercio, como cuando la base era un archivo: dos lotes simultáneos que
       // tocan los mismos clientes o el mismo stock en otro orden se trabarían entre sí. El candado es
       // la fila de la primera sucursal (`FOR NO KEY UPDATE`: no frena al admin, que solo la referencia).
-      await trx.selectFrom('branches').select('id').orderBy('seq').limit(1).forNoKeyUpdate().execute();
+      const lock = await trx.selectFrom('branches').select('id').orderBy('seq').limit(1).forNoKeyUpdate().execute();
+      if (lock.length === 0) {
+        // La borró un reinicio total de la demo mientras esperábamos (la sembrada de nuevo no se ve
+        // desde esta sentencia): el lote entero se deshace y el POS lo reintenta, ya con la key revocada
+        throw new TransientError('El comercio se reinició mientras llegaba el lote: reintentar');
+      }
 
       const issues: LotIssue[] = [];
       const saleDays = new Set<string>();

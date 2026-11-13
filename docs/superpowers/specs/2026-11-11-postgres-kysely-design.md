@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 4 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 5 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -203,6 +203,24 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
     `test/pg-guards.test.ts`: fuera de eso, nadie abre SQLite.
   - **Tests y e2e**: todos sobre PostgreSQL (`db().forTenant(id)`); el e2e lee las ventas y precios
     del comercio con `e2e/system-db.ts` (`salesOf`, `productPrice`).
+
+- **Fase 5, hecha** (2026-11-13): de SQLite no queda nada en el código. Lo decidido, en "Decidido en
+  la fase 5" (abajo).
+  - **Borrado**: `src/server/db/migrations/` (migraciones de SQLite, worker, `runMigrations`,
+    `pre-migracion` y `restoreRun`), `db/tenant-db.ts`, `db/data-dir.ts` y `DATA_DIR` (nada más los
+    usaba; `BACKUP_DIR` queda), `backup/backup.ts`, `test/helpers/db-at-version.ts` y los tests de
+    todo eso.
+  - **Arranque**: `startServer` recibe `migrateDatabase` (`migrateAll`, con el avance para `/health`)
+    y `createReadyHandler`; el modo mantenimiento no cambia.
+  - **`scripts/backup.ts`** sale con error hasta el `pg_dump` de la fase 6.
+  - **`require-await`** prendida otra vez en todo el código.
+  - **Reinicio total contra un push**: revoca primero, toma el candado de lote y un push que lo
+    esperaba falla con `TransientError` (`500`, el POS reintenta y recibe `401`).
+  - **Guardián**: `test/pg-guards.test.ts` falla si algo en `src/`, `scripts/`, `test/` o `e2e/`
+    importa `node:sqlite` o usa `DatabaseSync`.
+  - **Para la fase 6**: `deploy/README.md` todavía describe `pre-migracion/`, los `.sqlite` y su
+    restauración desde el backup; `provision.sh` crea `/var/lib/mini-erp` (hoy solo el home de
+    `minierp`). El issue #77 (`busy_timeout` de SQLite) queda sin objeto al llegar a `main`.
 
 ## Decidido en la fase 4 (2026-11-12)
 
