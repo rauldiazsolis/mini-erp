@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 3 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 4 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -165,6 +165,44 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
     rol local no es superusuario).
   - **Para la fase 4**: `gift_credits` no tiene FK a `tenants` en la línea de base (el alta la borra a
     mano al compensar); se puede agregar con `ON DELETE CASCADE` mientras la v1 no esté congelada.
+    (Hecho en la fase 4.)
+
+- **Fase 4, hecha** (2026-11-13): los datos de cada comercio están en su esquema `tenant_<id>`;
+  ningún servicio, semilla ni ruta lee o escribe un `.sqlite`. Lo decidido, en "Decidido en la fase
+  4" (abajo).
+  - **Comercio**: `tenantDbDef` es `unbound<Kysely<TenantDatabase>>`, enlazado solo por
+    `createTenantScope(root, tenantId)` con `Database.forTenant`. `TenantManager` recibe solo la
+    `Database` (sin caché, `getTenantDb` ni archivos) y da `forTenant(id)` a los servicios de sistema
+    (demos, reconciliación, semillas). Los middlewares ya no ponen una base en el pedido.
+  - **Funciones compartidas que escriben varias tablas** reciben `db` y, si no es una transacción
+    (`db.isTransaction`), abren la suya: `writeStock`, `postToBalance`, `applyPendingFor`,
+    `applyPreset`, los `save*` de `records.ts`. Así el push, la importación y las semillas les pasan
+    su `trx`.
+  - **Sumas en SQL**: el stock (fila bloqueada con `FOR UPDATE`, `quantity + delta`) y el saldo
+    (`coalesce(balance, 0) + round(delta, 2) RETURNING`), así el kardex y el extracto cuadran con
+    escrituras simultáneas. Estados que se pisan (reservas, discrepancias) con `UPDATE` condicional.
+  - **El push**: el lote se toma con `INSERT … ON CONFLICT DO NOTHING RETURNING` (un pedido repetido
+    o simultáneo devuelve el estado guardado sin repetir efectos), se aplica **de a un lote por
+    comercio** (la fila de la primera sucursal, `FOR NO KEY UPDATE`: dos lotes que tocan los mismos
+    clientes en otro orden no se traban) y cada evento va en `inSavepoint` (`sql-helpers.ts`; en
+    Kysely 0.29 `savepoint()` solo existe en `ControlledTransaction`). Un error pasajero
+    (`isTransientError`: deadlock, serialización) no queda como aviso del evento: tumba el lote y el
+    POS lo reintenta. Un `stock-movement` reenviado en otro lote ya no vuelve a sumar (bug de
+    SQLite). Las reservas bloquean al cliente: dos pedidos a la vez no aprueban más que el límite.
+  - **La importación** corre en una transacción; la vista previa la deshace con un error centinela y
+    cada fila que escribe va en su savepoint (un choque de unicidad es error de esa fila).
+  - **`seq`** también en `stock_movements` (el kardex se lista por inserción). `sales`,
+    `customer_payments` y `cash_movements` desempatan por `id` (el cursor es `[day, created_at, id]`).
+  - **Ojo con `sql.table()`/`sql.ref()`**: en una sentencia cruda **raíz** (`sql\`…\`.execute(db)`)
+    no reciben el esquema de `withSchema`; solo dentro de un query builder. Toda consulta de comercio
+    arranca de `selectFrom`/`insertInto`/`updateTable`/`deleteFrom`.
+  - **Lo de SQLite que queda** (se va en la fase 5): las migraciones de `db/migrations/`, el worker,
+    `db/tenant-db.ts` y sus tests (que arman sus `.sqlite` con `openTenantDb`), y `runMigrations` en
+    el arranque, que ya no encuentra bases. El **backup** sigue copiando `.sqlite` (ya no hay): hasta
+    el `pg_dump` de la fase 6 no respalda nada de los comercios; no se publica antes. Guardián en
+    `test/pg-guards.test.ts`: fuera de eso, nadie abre SQLite.
+  - **Tests y e2e**: todos sobre PostgreSQL (`db().forTenant(id)`); el e2e lee las ventas y precios
+    del comercio con `e2e/system-db.ts` (`salesOf`, `productPrice`).
 
 ## Decidido en la fase 4 (2026-11-12)
 
@@ -233,3 +271,8 @@ Además:
 
 1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.
+2. **Reinicio total de una demo contra un push simultáneo**: con SQLite era sincrónico. Ahora un
+   push que confirma justo después del reinicio puede dejar filas en el comercio recién sembrado (la
+   key del visitante se revoca después, fuera de la transacción), o un deadlock hace fallar el
+   reinicio (el barrido lo reintenta a los 15 minutos; el manual da 500). La ventana es chica; se
+   puede cerrar tomando en el reinicio el mismo candado de lote que el push.

@@ -6,7 +6,7 @@ en el mismo trabajo que la toma. La historia de las fases y etapas está en
 
 ## Qué es esto
 
-`mini-erp` es un backend multitenant (Express + SQLite) con un admin web (Preact) que implementa el
+`mini-erp` es un backend multitenant (Express + PostgreSQL) con un admin web (Preact) que implementa el
 **Connector API** de [offline-pos](https://github.com/rauldiazsolis/offline-pos), un POS web
 offline-first. Es **un backend más** de los que usan el POS: el POS no lo conoce ni tiene código para
 él. Hasta el 2026-09-29 vivía en `mini-erp/` dentro de offline-pos (epic
@@ -164,8 +164,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 ## Persistencia: de SQLite a PostgreSQL con Kysely (migración en curso)
 
 Spec, decisiones y plan por fases: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`
-(aprobada el 2026-11-11; fases 1 a 3 hechas: el sistema ya está en PostgreSQL, los comercios siguen en SQLite). Mientras dure la migración, lo de SQLite que sigue más abajo
-describe el código que todavía no se migró; al cerrar la última fase se reemplaza por esta sección.
+(aprobada el 2026-11-11; fases 1 a 4 hechas: el sistema y los comercios ya están en PostgreSQL; de
+SQLite quedan las migraciones viejas, su worker y el backup, que se van en las fases 5 y 6). Lo de
+SQLite que sigue más abajo describe ese código; al cerrar la última fase se reemplaza por esta sección.
 Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo código nuevo sobre
 PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
 
@@ -177,7 +178,9 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   del scope de Hardwired; nunca `Database.root`, un nombre de esquema ni un `tenant_id` para filtrar.
   `withSchema` y el pool están en un solo archivo, `db/pg/database.ts` (test).
 - **SQL crudo sin nombres de tabla**: dentro de `sql` una tabla va con `sql.table()` o `sql.ref()`,
-  porque `withSchema` no alcanza a un nombre escrito a mano (`test/pg-isolation.test.ts`). El
+  porque `withSchema` no alcanza a un nombre escrito a mano (`test/pg-isolation.test.ts`). Y ni así
+  en una sentencia cruda raíz (`sql\`…\`.execute(db)`): ahí `sql.table()` tampoco recibe el esquema.
+  Toda consulta de comercio arranca del query builder; `sql` es para expresiones adentro. El
   `search_path` solo lo toca el runner de migraciones (test).
 - **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
   `no-misused-promises`). Un handler de Express (5) es `async` y deja que el error suba; un
@@ -186,6 +189,14 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   con cuerpo todavía síncrono).
 - **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
   pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
+  - El executor va al final y es opcional (`metodo(…, db = this.db)`). Una función compartida que
+    escribe varias tablas (`writeStock`, `postToBalance`, `applyPendingFor`, `records.ts`) abre su
+    transacción solo si `db` no es una (`db.isTransaction`).
+  - Un savepoint, con `inSavepoint(trx, nombre, work)` (`sql-helpers.ts`): el push lo usa por evento
+    y la importación por fila.
+  - Sumas (stock, saldo) en SQL, nunca leer-sumar-escribir en JS; un estado que se pisa (un link de
+    un uso, una reserva, una discrepancia), con `UPDATE` condicional.
+  - Errores de PostgreSQL: `isUniqueViolation`, `isForeignKeyViolation`, `isTransientError`.
 - **Columnas explícitas**: sin `.selectAll()` ni `returningAll()` en `src/server` (test), ni
   `SELECT *` en SQL crudo.
 - **El esquema está en un manifiesto** (`db/pg/system-schema.ts`, `tenant-schema.ts`): de ahí salen
@@ -229,13 +240,15 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 
 ## Arquitectura
 
-- **DB por tenant** con `DatabaseSync` de `node:sqlite`:
-  - Lo de sistema (usuarios, tenants, membresías, roles globales `root`, `support`, `user`, cajas con
-    sus keys y todo el cobro) está en el esquema `system` de PostgreSQL (fase 3, ver "Persistencia"):
-    ya no hay `system.sqlite`, y `test/pg-guards.test.ts` falla si `src/server` o `scripts/` lo nombran.
-  - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
-    ventas y lotes de sincronización.
-- **Migraciones de esquema** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`):
+- **Un esquema por comercio** en PostgreSQL (ver "Persistencia"):
+  - `system`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`), cajas con
+    sus keys y todo el cobro.
+  - `tenant_<id>`: catálogo, stock por sucursal, clientes, cuentas corrientes, ventas y lotes de
+    sincronización. Lo crea `TenantManager` al dar de alta el comercio (`createTenantSchema`, fuera
+    de la transacción del alta; si el alta falla, `dropTenantSchema`).
+  - `test/pg-guards.test.ts` falla si alguien fuera de las migraciones viejas y el backup abre SQLite.
+- **Migraciones de esquema de SQLite** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`;
+  se borran en la fase 5 de la migración a PostgreSQL: ya no hay bases que migrar):
   - **Ninguna etapa cambia el esquema sin una migración.** Producción tiene datos: nunca se borra ni
     se reinicia una base.
   - Por tipo de base, en `src/server/db/migrations/`: `system.ts` y `tenant.ts` tienen la línea de
@@ -321,8 +334,13 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     tiene), sin tumbar el resto.
   - **El backend nunca rechaza de forma síncrona el contenido de un lote**: responde `200` y reporta
     las inconsistencias como `issues` en el pull.
-  - El push aplica cada lote en una transacción y cada evento en un `SAVEPOINT` (#2): un evento que
-    tira un error se deshace solo y queda como `issue` con su `eventId`.
+  - El push aplica cada lote en una transacción y cada evento en un `SAVEPOINT` (#2, `inSavepoint`):
+    un evento que tira un error se deshace solo y queda como `issue` con su `eventId`. Un lote a la
+    vez por comercio; un lote repetido o simultáneo devuelve su estado sin repetir efectos; un error
+    pasajero de la base (deadlock) tumba el lote y el POS lo reintenta.
+  - Fechas e instantes se validan en la frontera (`z.iso.date()` para `ticket.date` y
+    `receipt.date`, `z.iso.datetime({ offset: true })` para `createdAt`); el carácter nulo se quita al
+    entrar; un total con más de 2 decimales se guarda redondeado (el `payload`, intacto).
   - **Discrepancias** (`src/server/discrepancy/`, tabla `discrepancies`): lo que el push no puede
     aplicar o le parece raro, sin rechazar el lote. Un movimiento de un cliente desconocido queda
     pendiente y se aplica solo cuando el cliente aparece (evento `customer`, alta en el admin o
@@ -349,7 +367,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   - **Una caja por visitante**: `POST /connector/demo-sessions` (el único endpoint sin key) crea en
     el comercio del rubro una caja `Demo XXXX` con su key y su fila de `demo_sessions`. Los visitantes
     comparten el comercio. `demo_sessions` es el registro para M9: **nunca se borra** y vive en
-    `system.sqlite`, fuera del comercio. Tope `DEMO_MAX_ACTIVE` de cajas activas (`503 demo-capacity`).
+    el esquema `system`, fuera del comercio. Tope `DEMO_MAX_ACTIVE` de cajas activas (`503 demo-capacity`).
   - **Revocar** una caja es `active = 0` en la caja y su key (`401` a todo), con `revoked_at` y
     `revoke_reason` (`reset` o `idle`). Pasa con el reinicio total o a las `DEMO_TTL_HOURS` sin uso: la
     auth del POS y el admin anónimo corren `last_used_at` (`touchRegister`, a lo sumo por minuto).
@@ -426,7 +444,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     `funnel_contacts`).
 - **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
   - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
-    y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
+    y `argentinaDay(expr)` (`db/pg/sql-helpers.ts`) en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
     vienen, como el `/RESUMEN` del POS. Nunca la hora del servidor (en Lightsail es UTC).
   - **Escritura**: ventas, cobranzas y movimientos de caja se escriben solo con
     `src/server/sales/records.ts`, que guarda el payload y completa las columnas derivadas (`day`,
@@ -528,8 +546,9 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
-    resultado por fila y totales. La vista previa corre igual dentro de un `SAVEPOINT` y se deshace;
-    al confirmar, las filas con error se omiten y el resto se aplica en esa transacción.
+    resultado por fila y totales. Corre en una transacción y cada fila que escribe, en su savepoint
+    (un error de base es error de esa fila); la vista previa aplica igual y se deshace. Al confirmar,
+    las filas con error se omiten y el resto se aplica. Dinero con más de 2 decimales: error de fila.
   - Parser común en `src/server/io/csv.ts` (lo usa también la planilla de cobranzas): separador
     detectado, comillas, BOM y montos; en un archivo con `;` el punto es siempre de miles. Campos y
     tipos en `src/shared/import-fields.ts`; sinónimos y mapeo sugerido en `src/server/io/suggest-mapping.ts`.
@@ -654,8 +673,8 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
   `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
   `/health` responda la versión subida.
 - Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
-  `scripts/backup.ts` (`VACUUM INTO` de las bases de comercio reales, sin demos, 7 días; la lista
-  sale de PostgreSQL). Lo de sistema (PostgreSQL) va con `pg_dump`, en la fase 6 de la migración.
+  `scripts/backup.ts` (`VACUUM INTO` de las bases de comercio de SQLite, que desde la fase 4 de la
+  migración ya no existen). Todo PostgreSQL va con `pg_dump`, en la fase 6.
 - Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen
   hashes de contraseñas.
 
