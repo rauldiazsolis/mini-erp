@@ -168,8 +168,14 @@ fi
 if [ "$(pg_psql -c "SELECT 1 FROM pg_database WHERE datname = 'minierp'")" != "1" ]; then
   pg_psql -c "CREATE DATABASE minierp OWNER minierp TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C.UTF-8'"
 fi
-# unaccent: las migraciones también la piden (IF NOT EXISTS), pero queda creada desde acá
-pg_psql -d minierp -c "SET client_min_messages = warning" -c "CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public"
+# unaccent: las migraciones también la piden (IF NOT EXISTS), pero queda creada desde acá. La crea
+# minierp (es "trusted" y minierp es dueño de la base), no postgres: así es su dueño y un
+# pg_restore --clean como minierp la puede borrar y volver a crear (deploy/README.md)
+(cd / && runuser -u minierp -- psql --cluster "$PG_VERSION/$PG_CLUSTER" -X -q -v ON_ERROR_STOP=1 -d minierp \
+  -c "SET client_min_messages = warning" -c "CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public")
+if [ "$(pg_psql -d minierp -c "SELECT extowner::regrole FROM pg_extension WHERE extname = 'unaccent'")" != "minierp" ]; then
+  echo "unaccent es de otro rol (no de minierp): un pg_restore --clean va a fallar (deploy/README.md, \"Restaurar\")." >&2
+fi
 
 # deploy solo puede reiniciar el servicio y correr la copia previa al deploy (el backup)
 SUDOERS="$(mktemp)"

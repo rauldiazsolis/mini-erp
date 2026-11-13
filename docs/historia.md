@@ -393,3 +393,34 @@ Cada etapa tiene su spec en `docs/superpowers/specs/` y su detalle vigente en `A
 | M10 (#26) | Portal: "mi caja" de solo consulta desde el POS con `/MINI` | #84 | 0.15.0 |
 | M9 (#25) | Embudo de punta a punta: visitantes, contactos, secciones Embudo y Visitantes | #85 | 0.16.0 |
 | El admin en el teléfono (#86 a #91, #72) | Cursor y toque, cabecera, listas por tramos con scroll infinito, tarjetas, filtros plegables y diálogos a pantalla completa | #92 | 0.16.1 y 0.17.0 |
+| PostgreSQL | De SQLite a PostgreSQL 16 con Kysely: una base, un esquema por comercio, backup con `pg_dump` | PR del epic | 0.18.0 |
+
+## De SQLite a PostgreSQL con Kysely [COMPLETADA]
+
+Spec en `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md` (decisiones, reglas y el
+estado de cada fase). Seis fases en la rama `epic/postgres-kysely`, que entraron juntas a `main` en
+un solo PR; en el medio, el sistema estuvo en PostgreSQL y los comercios en SQLite, y eso no se
+publicó.
+
+- **Fase 1, cimientos**: `kysely` y `pg`, un pool, el manifiesto de columnas del que salen los tipos,
+  la línea de base de cada esquema, el runner de migraciones propio (con candado y migraciones no
+  transaccionales), `tenantSchemaName` y `Database.forTenant`, PostgreSQL en los tests y en el CI.
+- **Fase 2, asincronía**: Express 5 y todo el acceso a datos `async`, todavía sobre SQLite.
+- **Fase 3, sistema**: las tablas de sistema y sus servicios en el esquema `system`; transacciones
+  con el executor pasado hacia abajo, links de un uso con `UPDATE` condicional, el saldo del titular
+  con candado.
+- **Fase 4, comercios**: un esquema `tenant_<id>` por comercio; sumas de stock y saldo en SQL, el
+  push de a un lote por comercio con un savepoint por evento, la importación en una transacción,
+  semillas por lotes. Validaciones nuevas en la frontera (fechas del POS, decimales del admin) y FK
+  que ahora se aplican.
+- **Fase 5, adiós SQLite**: se borraron las migraciones viejas, el worker, `pre-migracion/`,
+  `DATA_DIR` y sus tests; el arranque migra PostgreSQL entero (`migrateAll`); un guardián falla si
+  vuelve `node:sqlite`.
+- **Fase 6, infraestructura**: `provision.sh` instala PostgreSQL 16 con el cluster en un disco
+  adicional de Lightsail (`/mnt/pgdata`), memoria ajustada a 512 MB y solo el socket local con
+  `peer`; `DATABASE_URL` sin contraseña; backup con `pg_dump -Fc` sin los esquemas de demo (7 días),
+  también como copia previa en `deploy.sh`; units que piden PostgreSQL y no escriben archivos;
+  `deploy/README.md` con el disco, la restauración y el paso de producción.
+- **Producción arranca vacía**: los datos de SQLite no se importan (no había comercios reales); las
+  `.sqlite` y su último backup quedan en el servidor. La línea de base v1 de cada esquema quedó
+  congelada al publicar la 0.18.0.
