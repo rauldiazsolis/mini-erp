@@ -1,32 +1,31 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('usuarios desde la plataforma (#23)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let tokens: { root: string; support: string; owner: string };
   let ids: { root: string; support: string; support2: string; owner: string };
 
-  beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
+  beforeEach(async () => {
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
-    const root = bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
-    const support2 = bundle.authService.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Soporte 2' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id IN (?, ?)").run(support.user.id, support2.user.id);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    const root = await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    const support2 = await bundle.authService.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Soporte 2' });
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', 'in', [support.user.id, support2.user.id]).execute();
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     ids = { root: root.user.id, support: support.user.id, support2: support2.user.id, owner: owner.user.id };
     tokens = {
-      root: bundle.authService.login({ email: 'root@x.com', password: 'password123' }).token,
-      support: bundle.authService.login({ email: 'soporte@x.com', password: 'password123' }).token,
+      root: (await bundle.authService.login({ email: 'root@x.com', password: 'password123' })).token,
+      support: (await bundle.authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
       owner: owner.token,
     };
   });
@@ -41,7 +40,7 @@ describe('usuarios desde la plataforma (#23)', () => {
     expect(rest.map((u) => u.id)).toEqual(all.slice(1).map((u) => u.id));
     expect((await request(app).get('/api/platform/users?offset=-1').set(as('root'))).status).toBe(400);
   });
-  const actions = () => (systemDb.prepare('SELECT action FROM audit_log ORDER BY at, rowid').all() as { action: string }[]).map((r) => r.action);
+  const actions = async () => (await db().system.selectFrom('audit_log').select('action').orderBy('at').orderBy('seq').execute()).map((r) => r.action);
 
   it('soporte desactiva a un usuario: no puede entrar, sus sesiones se cierran y reactivarlo lo deja entrar', async () => {
     expect((await post('support', `${ids.owner}/disable`)).status).toBe(200);
@@ -51,7 +50,7 @@ describe('usuarios desde la plataforma (#23)', () => {
     expect(login.body).toEqual({ error: 'Cuenta desactivada: escribile a soporte' });
     expect((await post('support', `${ids.owner}/enable`)).status).toBe(200);
     expect((await request(app).post('/api/auth/login').send({ email: 'owner@x.com', password: 'password123' })).status).toBe(200);
-    expect(actions().filter((a) => a.startsWith('user.'))).toEqual(['user.disabled', 'user.enabled']);
+    expect((await actions()).filter((a) => a.startsWith('user.'))).toEqual(['user.disabled', 'user.enabled']);
   });
 
   it('nadie desactiva a root ni a sí mismo; soporte no toca a soporte; root sí', async () => {
@@ -68,7 +67,7 @@ describe('usuarios desde la plataforma (#23)', () => {
     expect(res.status).toBe(201);
     const { token } = res.body as { token: string };
     expect((await request(app).post('/api/password-resets/complete').send({ token, password: 'nueva-clave-1' })).status).toBe(200);
-    expect(systemDb.prepare("SELECT tenant_id FROM audit_log WHERE action IN ('password.reset_link_created', 'password.reset')").all()).toEqual([
+    expect(await db().system.selectFrom('audit_log').select('tenant_id').where('action', 'in', ['password.reset_link_created', 'password.reset']).execute()).toEqual([
       { tenant_id: null },
       { tenant_id: null },
     ]);

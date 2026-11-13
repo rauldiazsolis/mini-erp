@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type {
   CashMovementItem, CashSummaryResult, CustomerPaymentItem, DaySummaryResult, ListResult, SaleDetail, SaleListItem,
 } from '../src/shared/sales-types.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
+import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('API de Ventas & Caja (#20)', () => {
   let app: ReturnType<typeof createApp>['app'];
@@ -15,16 +18,15 @@ describe('API de Ventas & Caja (#20)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
-    const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
-    await seedSalesFixture(app, token, tenantId, tenantManager.getTenantDb(tenantId));
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    await seedSalesFixture(app, token, tenantId, db().forTenant(tenantId));
   });
 
   const get = (path: string) => request(app).get(`/api/tenants/${tenantId}${path}`).set('Authorization', `Bearer ${token}`);
@@ -92,6 +94,8 @@ describe('API de Ventas & Caja (#20)', () => {
       [`/sales?from=${D2}&to=${D1}`],
       ['/sales?from=2025-01-01&to=2026-10-02'],
       ['/sales?from=ayer&to=2026-10-02'],
+      // Un día que no existe: 400, no un error de PostgreSQL
+      ['/sales?from=2026-02-31&to=2026-03-02'],
       [`/sales?from=${D1}&to=${D2}&pageSize=500`],
       [`/sales?from=${D1}&to=${D2}&status=raro`],
     ])('%s da 400', async (path) => {
@@ -143,6 +147,44 @@ describe('API de Ventas & Caja (#20)', () => {
     });
   });
 
+  describe('payloads raros (jsonb)', () => {
+    it('un payload que no es una venta no rompe las listas, los filtros ni los resúmenes', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const at = `${D2}T18:00:00.000Z`;
+      const origin = { device_id: 'dev-x', branch: null, point_of_sale: null, created_at: at, day: D2 };
+      await tenantDb
+        .insertInto('sales')
+        .values([
+          { ...origin, id: 'x1', payload: jsonValue('texto suelto'), total: 0 },
+          { ...origin, id: 'x2', payload: jsonValue({ payments: 'efectivo', lines: { kind: 'product' } }), total: 0 },
+          { ...origin, id: 'x3', payload: jsonValue({ payments: [7, null, { method: 5 }], lines: [null, 'x'] }), total: 0 },
+        ])
+        .execute();
+      await tenantDb
+        .insertInto('customer_payments')
+        .values({ ...origin, id: 'xp', customer_id: 'c1', payload: jsonValue({ total: 'mucho', payments: {} }) })
+        .execute();
+      await tenantDb
+        .insertInto('cash_movements')
+        .values({ ...origin, id: 'xm', payload: jsonValue({ direction: 'in', amount: 'mucho' }) })
+        .execute();
+
+      // Un medio que no es texto cuenta como desconocido, igual que antes
+      expect(ids(await sales('&method=other'))).toEqual(['x3', 's3']);
+      expect(ids(await sales('&method=cash'))).toEqual(['s5', 's4', 's1']);
+      expect(ids(await sales('&productId=p1'))).toEqual(['s4', 's2', 's1']);
+      expect(await sales('')).toMatchObject({ count: 8, netTotal: 550 });
+      expect((await get(`/customer-payments?from=${D1}&to=${D2}`)).body).toMatchObject({ count: 3, netTotal: 0 });
+      expect((await get(`/customer-payments?from=${D1}&to=${D2}&method=cash`)).body).toMatchObject({ count: 2 });
+      expect((await get(`/cash-movements?from=${D1}&to=${D2}`)).body).toMatchObject({ count: 4, netTotal: 1350 });
+      expect((await get(`/cash-summary?from=${D1}&to=${D2}`)).status).toBe(200);
+      expect((await get(`/cash-summary/day?day=${D2}`)).status).toBe(200);
+      expect((await get('/sales/x1')).status).toBe(200);
+      // Las cajas sin dato van primero
+      expect(((await get('/registers')).body as unknown[])[0]).toEqual({ branch: null, pointOfSale: null });
+    });
+  });
+
   describe('resumen por caja y día', () => {
     it('una fila por día y caja, con totales', async () => {
       const res = (await get(`/cash-summary?from=${D1}&to=${D2}`)).body as CashSummaryResult;
@@ -174,6 +216,7 @@ describe('API de Ventas & Caja (#20)', () => {
         'movement:m3', 'movement:m2', 'collection:cp1', 'sale:s2', 'sale:s1', 'movement:m1',
       ]);
       expect((await get('/cash-summary/day?day=ayer')).status).toBe(400);
+      expect((await get('/cash-summary/day?day=2026-02-31')).status).toBe(400);
     });
   });
 });

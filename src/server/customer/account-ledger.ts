@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import { sql, type Kysely } from 'kysely';
+import { inChunks } from '../db/pg/sql-helpers.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 
 export type LedgerMovement = {
   type: 'sale' | 'payment' | 'payment-void' | 'adjustment' | 'interest' | 'opening';
@@ -9,20 +11,118 @@ export type LedgerMovement = {
   saleId?: string | undefined;
 };
 
+export type PostedMovement = {
+  movementId: string;
+  /** El importe como quedó guardado: redondeado al centavo. */
+  amount: number;
+  previousBalance: number;
+  balanceAfter: number;
+};
+
+/** Redondea al centavo, para restar dos importes que ya tienen 2 decimales sin ruido de coma flotante. */
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 /**
- * Mueve el saldo de un cliente y escribe el extracto (cuenta corriente). Devuelve `false` si el
- * cliente no existe, sin tocar nada: el que llama decide qué hacer (#2, discrepancias).
+ * Mueve el saldo de un cliente y escribe el extracto (cuenta corriente). Devuelve `undefined` si el
+ * cliente no existe, sin tocar nada.
+ *
+ * La suma se hace en SQL, sobre `numeric` (nunca leer, sumar y escribir en JS): el importe se
+ * redondea al centavo, igual que en la columna, y `balance_after` es el saldo que devuelve la base,
+ * así el extracto cuadra con la suma de los importes guardados. Todo en una transacción: la de quien
+ * llama si `db` ya es una (el push, la importación, el alta de un cliente) o una nueva.
  */
-export function applyToBalance(db: DatabaseSync, customerId: string, movement: LedgerMovement, now: string): boolean {
-  const row = db.prepare('SELECT balance FROM customers WHERE id = ?').get(customerId) as { balance: number | null } | undefined;
-  if (row === undefined) {
+export async function postToBalance(
+  db: Kysely<TenantDatabase>,
+  customerId: string,
+  movement: LedgerMovement,
+  now: string,
+): Promise<PostedMovement | undefined> {
+  if (!db.isTransaction) {
+    return await db.transaction().execute(async (trx) => await postToBalance(trx, customerId, movement, now));
+  }
+
+  const amount = sql<number>`round(${movement.delta}::numeric, 2)`;
+  const updated = await db
+    .updateTable('customers')
+    .set((eb) => ({
+      balance: sql<number>`coalesce(${eb.ref('customers.balance')}, 0) + ${amount}`,
+      updated_at: now,
+    }))
+    .where('id', '=', customerId)
+    .returning(['balance', amount.as('amount')])
+    .executeTakeFirst();
+  if (updated === undefined) {
+    return undefined;
+  }
+
+  const balanceAfter = updated.balance ?? 0;
+  const movementId = `mov_${randomUUID()}`;
+  await db
+    .insertInto('account_movements')
+    .values({
+      id: movementId,
+      customer_id: customerId,
+      type: movement.type,
+      amount: updated.amount,
+      balance_after: balanceAfter,
+      description: movement.description,
+      sale_id: movement.saleId ?? null,
+      created_at: now,
+    })
+    .execute();
+
+  return { movementId, amount: updated.amount, previousBalance: roundMoney(balanceAfter - updated.amount), balanceAfter };
+}
+
+/**
+ * Una serie de movimientos de un cliente, de una vez (las semillas): bloquea al cliente, encadena
+ * los saldos en orden y escribe el extracto en un insert y el saldo final en un `UPDATE`. El
+ * resultado es el de llamar a `postToBalance` por cada uno. `false` si el cliente no existe.
+ */
+export async function postSeriesToBalance(
+  db: Kysely<TenantDatabase>,
+  customerId: string,
+  series: { movement: LedgerMovement; now: string }[],
+): Promise<boolean> {
+  if (!db.isTransaction) {
+    return await db.transaction().execute(async (trx) => await postSeriesToBalance(trx, customerId, series));
+  }
+  const customer = await db.selectFrom('customers').select('balance').where('id', '=', customerId).forUpdate().executeTakeFirst();
+  if (customer === undefined) {
     return false;
   }
-  const balance = Math.round(((row.balance ?? 0) + movement.delta) * 100) / 100;
-  db.prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?').run(balance, now, customerId);
-  db.prepare(
-    `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(`mov_${randomUUID()}`, customerId, movement.type, movement.delta, balance, movement.description, movement.saleId ?? null, now);
+  const last = series.at(-1);
+  if (last === undefined) {
+    return true;
+  }
+  let balance = customer.balance ?? 0;
+  const rows = series.map(({ movement, now }) => {
+    const amount = roundMoney(movement.delta);
+    balance = roundMoney(balance + amount);
+    return {
+      id: `mov_${randomUUID()}`,
+      customer_id: customerId,
+      type: movement.type,
+      amount,
+      balance_after: balance,
+      description: movement.description,
+      sale_id: movement.saleId ?? null,
+      created_at: now,
+    };
+  });
+  for (const chunk of inChunks(rows)) {
+    await db.insertInto('account_movements').values(chunk).execute();
+  }
+  await db.updateTable('customers').set({ balance, updated_at: last.now }).where('id', '=', customerId).execute();
   return true;
+}
+
+/**
+ * Lo mismo, para quien solo necesita saber si se aplicó: `false` si el cliente no existe, y el que
+ * llama decide qué hacer (#2, discrepancias).
+ */
+export async function applyToBalance(db: Kysely<TenantDatabase>, customerId: string, movement: LedgerMovement, now: string): Promise<boolean> {
+  return (await postToBalance(db, customerId, movement, now)) !== undefined;
 }

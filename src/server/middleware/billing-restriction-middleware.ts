@@ -9,12 +9,12 @@ import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
  * el POS sigue vendiendo y sincronizando. Va después de `requireTenantContext`.
  */
 export function createBillingRestriction(billing: BillingService) {
-  return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
     if (req.impersonator !== undefined || OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       next();
       return;
     }
-    const summary = billing.summary(req.activeTenantId ?? '');
+    const summary = await billing.summary(req.activeTenantId ?? '');
     if (summary.state === 'restricted') {
       res.status(402).json({
         code: 'billing-restricted',

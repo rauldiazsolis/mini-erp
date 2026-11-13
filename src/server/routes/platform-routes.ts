@@ -9,11 +9,12 @@ import { DomainError, sendError } from '../errors.ts';
 import { parsePaymentSheet } from '../billing/payment-sheet.ts';
 import type { SheetResultRow } from '../../shared/credits-types.ts';
 import { DAY_PATTERN } from '../../shared/argentina-day.ts';
+import { routeParam } from '../http/route-param.ts';
+import { moneyAmount } from '../../shared/money.ts';
 
 const day = z.string().regex(DAY_PATTERN, 'Fecha inválida');
-const amount = z
-  .number({ error: (iss) => (iss.input === undefined ? undefined : 'Importe inválido') })
-  .positive('El importe tiene que ser mayor que 0');
+// Pago, bono y devolución: positivos y con a lo sumo 2 decimales, nunca redondeados (spec de PostgreSQL, punto 2)
+const amount = moneyAmount;
 const note = z.string().trim().max(200).optional();
 
 const paymentSchema = z.object({ day, amount, info: note });
@@ -40,19 +41,19 @@ export function createPlatformRoutes(deps: Deps): Router {
     schema: z.ZodType<T>,
     action: AuditAction,
     status: number,
-    run: (body: T, req: AuthenticatedAdminRequest) => { result: Record<string, unknown>; details: Record<string, unknown>; targetUserId?: string },
+    run: (body: T, req: AuthenticatedAdminRequest) => Promise<{ result: Record<string, unknown>; details: Record<string, unknown>; targetUserId?: string }>,
   ) {
-    return (req: AuthenticatedAdminRequest, res: Response): void => {
+    return async (req: AuthenticatedAdminRequest, res: Response): Promise<void> => {
       const parsed = schema.safeParse(req.body ?? {});
       if (!parsed.success) {
         res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
         return;
       }
       try {
-        const { result, details, targetUserId } = run(parsed.data, req);
-        deps.audit.record({
+        const { result, details, targetUserId } = await run(parsed.data, req);
+        await deps.audit.record({
           actorUserId: req.user?.id ?? '',
-          tenantId: req.params['tenantId'] ?? null,
+          tenantId: routeParam(req, 'tenantId') ?? null,
           action,
           ...(targetUserId === undefined ? {} : { targetUserId }),
           details,
@@ -64,14 +65,14 @@ export function createPlatformRoutes(deps: Deps): Router {
     };
   }
 
-  const tenantOf = (req: Request): string => req.params['tenantId'] ?? '';
+  const tenantOf = (req: Request): string => routeParam(req, 'tenantId') ?? '';
   const actorOf = (req: AuthenticatedAdminRequest): string => req.user?.id ?? '';
 
   router.post(
     '/tenants/:tenantId/payments',
     staff,
-    handle(paymentSchema, 'billing.payment_registered', 201, (body, req) => {
-      const res = deps.billing.registerPayment({ tenantId: tenantOf(req), day: body.day, amount: body.amount, info: body.info, actorUserId: actorOf(req) });
+    handle(paymentSchema, 'billing.payment_registered', 201, async (body, req) => {
+      const res = await deps.billing.registerPayment({ tenantId: tenantOf(req), day: body.day, amount: body.amount, info: body.info, actorUserId: actorOf(req) });
       return { result: res, details: { amount: body.amount, day: body.day, ...(body.info === undefined ? {} : { info: body.info }), settled: res.settled } };
     }),
   );
@@ -79,8 +80,8 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.post(
     '/tenants/:tenantId/gift-credits',
     staff,
-    handle(grantSchema, 'billing.credits_granted', 201, (body, req) => {
-      const id = deps.billing.grantCredits({ tenantId: tenantOf(req), amount: body.amount, expiresOn: body.expiresOn, reason: body.reason, actorUserId: actorOf(req) });
+    handle(grantSchema, 'billing.credits_granted', 201, async (body, req) => {
+      const id = await deps.billing.grantCredits({ tenantId: tenantOf(req), amount: body.amount, expiresOn: body.expiresOn, reason: body.reason, actorUserId: actorOf(req) });
       return { result: { id }, details: { creditId: id, amount: body.amount, expiresOn: body.expiresOn, ...(body.reason === undefined ? {} : { reason: body.reason }) } };
     }),
   );
@@ -88,9 +89,9 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.delete(
     '/tenants/:tenantId/gift-credits/:creditId',
     staff,
-    handle(voidSchema, 'billing.credit_voided', 200, (body, req) => {
-      const creditId = req.params['creditId'] ?? '';
-      deps.billing.voidCredit({ tenantId: tenantOf(req), creditId, reason: body.reason, actorUserId: actorOf(req) });
+    handle(voidSchema, 'billing.credit_voided', 200, async (body, req) => {
+      const creditId = routeParam(req, 'creditId') ?? '';
+      await deps.billing.voidCredit({ tenantId: tenantOf(req), creditId, reason: body.reason, actorUserId: actorOf(req) });
       return { result: { success: true }, details: { creditId, reason: body.reason } };
     }),
   );
@@ -98,8 +99,8 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.post(
     '/tenants/:tenantId/grace',
     staff,
-    handle(graceSchema, 'billing.grace_extended', 200, (body, req) => {
-      deps.billing.setGrace({ tenantId: tenantOf(req), until: body.until });
+    handle(graceSchema, 'billing.grace_extended', 200, async (body, req) => {
+      await deps.billing.setGrace({ tenantId: tenantOf(req), until: body.until });
       return { result: { success: true }, details: { until: body.until } };
     }),
   );
@@ -107,8 +108,8 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.post(
     '/tenants/:tenantId/refunds',
     rootOnly,
-    handle(refundSchema, 'billing.refund', 201, (body, req) => {
-      const id = deps.billing.refund({ tenantId: tenantOf(req), amount: body.amount, info: body.info, actorUserId: actorOf(req) });
+    handle(refundSchema, 'billing.refund', 201, async (body, req) => {
+      const id = await deps.billing.refund({ tenantId: tenantOf(req), amount: body.amount, info: body.info, actorUserId: actorOf(req) });
       return { result: { id }, details: { amount: body.amount, ...(body.info === undefined ? {} : { info: body.info }) } };
     }),
   );
@@ -116,14 +117,14 @@ export function createPlatformRoutes(deps: Deps): Router {
   router.put(
     '/tenants/:tenantId/holder',
     staff,
-    handle(holderSchema, 'billing.holder_changed', 200, (body, req) => {
-      deps.billing.setHolder({ tenantId: tenantOf(req), userId: body.userId });
+    handle(holderSchema, 'billing.holder_changed', 200, async (body, req) => {
+      await deps.billing.setHolder({ tenantId: tenantOf(req), userId: body.userId });
       return { result: { success: true }, details: {}, targetUserId: body.userId };
     }),
   );
 
   // La planilla de cobranzas: `?dryRun=1` muestra qué pasaría con cada fila sin registrar nada
-  router.post('/payments/import', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/payments/import', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = sheetSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -131,21 +132,21 @@ export function createPlatformRoutes(deps: Deps): Router {
     }
     const dryRun = req.query['dryRun'] === '1';
     const seen = new Set<string>();
-    const rows = parsePaymentSheet(parsed.data.csv).map((row): SheetResultRow => {
+    const toResult = async (row: ReturnType<typeof parsePaymentSheet>[number]): Promise<SheetResultRow> => {
       const base = { line: row.line, ...(row.info === '' ? {} : { info: row.info }) };
       if (row.error !== undefined || row.slug === undefined || row.day === undefined || row.amount === undefined || row.ref === undefined) {
         return { ...base, status: 'error', message: row.error ?? 'Fila inválida' };
       }
-      const tenant = deps.billing.findTenantBySlug(row.slug);
+      const tenant = await deps.billing.findTenantBySlug(row.slug);
       if (tenant === undefined) return { ...base, status: 'error', message: 'Comercio no encontrado' };
       if (tenant.demo) return { ...base, status: 'error', message: 'Las demos no se cobran' };
       const found = { ...base, tenantId: tenant.id, tenantName: tenant.name, day: row.day, amount: row.amount };
       if (seen.has(row.ref)) return { ...found, status: 'duplicate', message: 'Repetido en la planilla' };
       seen.add(row.ref);
-      if (deps.billing.paymentRefExists(row.ref)) return { ...found, status: 'duplicate', message: 'Ya registrado' };
+      if (await deps.billing.paymentRefExists(row.ref)) return { ...found, status: 'duplicate', message: 'Ya registrado' };
       if (dryRun) return { ...found, status: 'ok' };
       try {
-        const done = deps.billing.registerPayment({
+        const done = await deps.billing.registerPayment({
           tenantId: tenant.id,
           day: row.day,
           amount: row.amount,
@@ -153,7 +154,7 @@ export function createPlatformRoutes(deps: Deps): Router {
           actorUserId: actorOf(req),
           paymentRef: row.ref,
         });
-        deps.audit.record({
+        await deps.audit.record({
           actorUserId: actorOf(req),
           tenantId: tenant.id,
           action: 'billing.payment_registered',
@@ -164,23 +165,26 @@ export function createPlatformRoutes(deps: Deps): Router {
         if (err instanceof DomainError) return { ...found, status: 'error', message: err.message };
         throw err;
       }
-    });
+    };
+    // En orden, una fila después de la otra: el registro de pagos depende de las anteriores
+    const rows: SheetResultRow[] = [];
+    for (const row of parsePaymentSheet(parsed.data.csv)) rows.push(await toResult(row));
     res.status(200).json({ rows, applied: !dryRun });
   });
 
-  router.get('/payments', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(deps.billing.listPayments());
+  router.get('/payments', staff, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await deps.billing.listPayments());
   });
 
-  router.get('/settings', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(deps.billing.settings());
+  router.get('/settings', staff, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await deps.billing.settings());
   });
 
   router.put(
     '/settings',
     rootOnly,
-    handle(billingSettingsPatchSchema, 'billing.settings_updated', 200, (body, req) => {
-      const settings = deps.billing.updateSettings(body, actorOf(req));
+    handle(billingSettingsPatchSchema, 'billing.settings_updated', 200, async (body, req) => {
+      const settings = await deps.billing.updateSettings(body, actorOf(req));
       return { result: settings, details: { keys: Object.keys(body) } };
     }),
   );

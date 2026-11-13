@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 /**
  * Los textos propios de los esquemas de `/api` (#6): Zod 4 cambia cómo se declaran
@@ -13,20 +14,18 @@ import { WHATSAPP_MESSAGE } from '../src/shared/whatsapp.ts';
  */
 describe('textos de validación de /api (#6)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let owner: string;
   let root: string;
 
-  beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+  beforeEach(async () => {
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
-    const o = bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
+    const o = await bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
     owner = o.token;
-    tenantManager.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id });
-    bundle.authService.ensureRoot({ email: 'root@x.com', password: 'clave-segura', name: 'Root' });
-    root = bundle.authService.login({ email: 'root@x.com', password: 'clave-segura' }).token;
+    await tenantManager.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id });
+    await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'clave-segura', name: 'Root' });
+    root = (await bundle.authService.login({ email: 'root@x.com', password: 'clave-segura' })).token;
   });
 
   const errorOf = (res: { body: unknown }): string => (res.body as { error: string }).error;
@@ -68,7 +67,7 @@ describe('textos de validación de /api (#6)', () => {
     it('un email con espacios alrededor se recorta y se acepta', async () => {
       const res = await request(app).post('/api/alta').send({ ...alta, email: '  marta@kiosco.com  ' });
       expect(res.status).toBe(201);
-      expect(systemDb.prepare('SELECT COUNT(*) AS n FROM users WHERE email = ?').get('marta@kiosco.com')).toEqual({ n: 1 });
+      expect(await db().system.selectFrom('users').select('id').where('email', '=', 'marta@kiosco.com').execute()).toHaveLength(1);
     });
   });
 

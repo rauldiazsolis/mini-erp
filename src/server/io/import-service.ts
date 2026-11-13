@@ -1,4 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { stripNul } from '../db/pg/sql-helpers.ts';
 import { parseCsv, type DecimalMode } from './csv.ts';
 import { suggestMapping } from './suggest-mapping.ts';
 import { importCustomers } from './import-customers.ts';
@@ -34,21 +36,32 @@ const IDENTIFIERS: Record<ImportEntity, readonly ImportField[]> = {
 
 const SAMPLES = 3;
 
+/** Lo que tira la vista previa para que la transacción se deshaga: lleva el resultado de las filas. */
+class PreviewRollback extends Error {
+  rows: ImportRowResult[];
+
+  constructor(rows: ImportRowResult[]) {
+    super('Vista previa de la importación');
+    this.rows = rows;
+  }
+}
+
 /**
  * Importación con mapeo de columnas (#22), sin estado: cada vista previa y la confirmación reciben
- * el CSV entero. La vista previa corre igual dentro de un `SAVEPOINT` y se deshace; la confirmación
- * aplica las filas válidas en esa misma transacción (un error inesperado deshace todo).
+ * el CSV entero. Todo corre en una transacción: la vista previa aplica igual y la deshace; la
+ * confirmación omite las filas con error y aplica el resto (cada fila escribe en su `SAVEPOINT`,
+ * `writeRow`; un error inesperado fuera de una fila deshace todo).
  */
 export class ImportService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
-  run(entity: ImportEntity, req: ImportRequest, now: string = new Date().toISOString()): ImportPreview {
+  async run(entity: ImportEntity, req: ImportRequest, now: string = new Date().toISOString()): Promise<ImportPreview> {
     const table = parseCsv(req.csv);
-    const branches = this.db.prepare('SELECT id, name, code FROM branches ORDER BY created_at, code').all() as ImportBranch[];
+    const branches: ImportBranch[] = await this.db.selectFrom('branches').select(['id', 'name', 'code']).orderBy('created_at').orderBy('code').execute();
     const mapping = req.mapping ?? suggestMapping(entity, table.headers, branches);
     this.checkMapping(entity, mapping, table.headers.length, branches);
 
@@ -67,20 +80,21 @@ export class ImportService {
       decimal,
       get: (field) => {
         const column = columnOf.get(field);
-        return column === undefined ? undefined : (cells[column] ?? '');
+        // PostgreSQL no admite el carácter nulo en un texto, y nunca es un dato
+        return column === undefined ? undefined : stripNul(cells[column] ?? '');
       },
     }));
 
     let rows: ImportRowResult[];
-    this.db.exec('SAVEPOINT import_csv');
     try {
-      rows = entity === 'customers' ? importCustomers(this.db, contexts, now) : importProducts(this.db, contexts, branches, now);
-      if (req.dryRun) this.db.exec('ROLLBACK TO import_csv');
-      this.db.exec('RELEASE import_csv');
+      rows = await this.db.transaction().execute(async (trx) => {
+        const applied = entity === 'customers' ? await importCustomers(trx, contexts, now) : await importProducts(trx, contexts, branches, now);
+        if (req.dryRun) throw new PreviewRollback(applied);
+        return applied;
+      });
     } catch (err: unknown) {
-      this.db.exec('ROLLBACK TO import_csv');
-      this.db.exec('RELEASE import_csv');
-      throw err;
+      if (!(err instanceof PreviewRollback)) throw err;
+      rows = err.rows;
     }
 
     const totals: Record<ImportRowAction, number> = { create: 0, update: 0, unchanged: 0, error: 0 };

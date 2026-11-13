@@ -2,12 +2,13 @@
  * Root inicial del mini-erp (#3). Se corre una vez en el servidor, con el entorno del servicio:
  *   sudo -u minierp bash -c 'set -a; . /etc/mini-erp/env; cd /opt/mini-erp/current && node scripts/create-root.ts'
  * Pide email, nombre y contraseña (sin eco, dos veces). Si el email existe, lo promueve a root.
+ * Usa la base de `DATABASE_URL` y, si el esquema `system` no está al día (una base recién creada),
+ * lo migra antes, como el arranque.
  */
 import { createInterface } from 'node:readline/promises';
-import { join } from 'node:path';
 import { z } from '../src/shared/zod.ts';
-import { openSystemDb } from '../src/server/db/system-db.ts';
-import { dataDir } from '../src/server/db/data-dir.ts';
+import { createDatabase, databaseUrl } from '../src/server/db/pg/database.ts';
+import { migrateSystem } from '../src/server/db/pg/migrations/migrate.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { PASSWORD_MIN_LENGTH, passwordSchema } from '../src/shared/password.ts';
 
@@ -56,6 +57,15 @@ if (!process.stdin.isTTY) {
   process.exit(1);
 }
 
+// Antes de preguntar nada: sin DATABASE_URL no hay dónde guardar el root
+let connectionString: string;
+try {
+  connectionString = databaseUrl();
+} catch (err: unknown) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const email = await rl.question('Email del root: ');
 const name = await rl.question('Nombre: ');
@@ -73,7 +83,17 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-const db = openSystemDb(join(dataDir(), 'system.sqlite'));
-const { user, created } = new AuthService(db).ensureRoot(parsed.data);
-db.close();
-console.log(`${created ? 'Root creado' : 'Usuario promovido a root'}: ${user.email}`);
+const database = createDatabase({ connectionString, max: 1 });
+try {
+  const migration = await migrateSystem(database.root);
+  if (migration.applied.length > 0) {
+    console.log(`Esquema system migrado a la versión ${String(migration.to)}: ${migration.applied.join(', ')}`);
+  }
+  const { user, created } = await new AuthService(database.system).ensureRoot(parsed.data);
+  console.log(`${created ? 'Root creado' : 'Usuario promovido a root'}: ${user.email}`);
+} catch (err: unknown) {
+  console.error(`No se pudo crear el root: ${err instanceof Error ? err.message : String(err)}`);
+  process.exitCode = 1;
+} finally {
+  await database.destroy();
+}

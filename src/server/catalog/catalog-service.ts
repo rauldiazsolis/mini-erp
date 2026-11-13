@@ -1,5 +1,9 @@
-import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import type { Kysely } from 'kysely';
+import { z } from '../../shared/zod.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { isUniqueViolation, jsonValue } from '../db/pg/sql-helpers.ts';
+import { productMatchesSearch } from './product-search.ts';
 
 export type BranchRecord = {
   id: string;
@@ -64,324 +68,289 @@ export type ProductFilter = {
   offset?: number | undefined;
 };
 
-interface RawProductRow {
-  id: string;
-  sku: string;
-  barcodes: string;
-  name: string;
-  price: number;
-  tax_rate: number;
-  category: string;
-  tracks_stock: number;
-  blocked_reason: string | null;
-  created_at: string;
-  updated_at: string;
-}
+const BRANCH_COLUMNS = ['id', 'name', 'code', 'created_at'] as const;
 
-interface RawBranchRow {
+const PRODUCT_COLUMNS = [
+  'id',
+  'sku',
+  'barcodes',
+  'name',
+  'price',
+  'tax_rate',
+  'category',
+  'tracks_stock',
+  'blocked_reason',
+  'created_at',
+  'updated_at',
+] as const;
+
+type BranchRow = {
   id: string;
   name: string;
   code: string;
   created_at: string;
+};
+
+type ProductRow = {
+  id: string;
+  sku: string;
+  barcodes: unknown;
+  name: string;
+  price: number;
+  tax_rate: number;
+  category: string;
+  tracks_stock: boolean;
+  blocked_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const barcodesSchema = z.array(z.string());
+
+function toBranch(r: BranchRow): BranchRecord {
+  return { id: r.id, name: r.name, code: r.code, createdAt: r.created_at };
 }
 
-export class CatalogService {
-  private db: DatabaseSync;
+function toProduct(r: ProductRow): ProductRecord {
+  // `barcodes` es jsonb: llega ya parseado. Lo que no sea una lista de textos se lee como vacío.
+  const barcodes = barcodesSchema.safeParse(r.barcodes);
+  return {
+    id: r.id,
+    sku: r.sku,
+    barcodes: barcodes.success ? barcodes.data : [],
+    name: r.name,
+    price: r.price,
+    taxRate: r.tax_rate,
+    category: r.category,
+    tracksStock: r.tracks_stock,
+    blockedReason: r.blocked_reason,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
 
-  constructor(db: DatabaseSync) {
+/** Catálogo y sucursales del comercio. Servicio de tenant: recibe el Kysely ya acotado a su esquema. */
+export class CatalogService {
+  private db: Kysely<TenantDatabase>;
+
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
   // --- SUCURSALES (BRANCHES) ---
 
-  listBranches(): BranchRecord[] {
-    const rows = this.db.prepare('SELECT id, name, code, created_at FROM branches ORDER BY created_at ASC').all() as unknown as RawBranchRow[];
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      code: r.code,
-      createdAt: r.created_at,
-    }));
+  async listBranches(): Promise<BranchRecord[]> {
+    // `seq` desempata dos sucursales del mismo instante por orden de alta
+    const rows = await this.db.selectFrom('branches').select(BRANCH_COLUMNS).orderBy('created_at').orderBy('seq').execute();
+    return rows.map(toBranch);
   }
 
-  getBranch(id: string): BranchRecord | undefined {
-    const row = this.db.prepare('SELECT id, name, code, created_at FROM branches WHERE id = ?').get(id) as unknown as RawBranchRow | undefined;
-    if (!row) return undefined;
-    return {
-      id: row.id,
-      name: row.name,
-      code: row.code,
-      createdAt: row.created_at,
-    };
+  async getBranch(id: string): Promise<BranchRecord | undefined> {
+    const row = await this.db.selectFrom('branches').select(BRANCH_COLUMNS).where('id', '=', id).executeTakeFirst();
+    return row === undefined ? undefined : toBranch(row);
   }
 
-  createBranch(data: CreateBranchInput): BranchRecord {
-    const existing = this.db.prepare('SELECT id FROM branches WHERE code = ?').get(data.code);
-    if (existing !== undefined) {
-      throw new Error(`Ya existe una sucursal con el código '${data.code}'`);
-    }
-
+  async createBranch(data: CreateBranchInput): Promise<BranchRecord> {
     const id = data.id ?? `branch_${randomUUID()}`;
     const now = new Date().toISOString();
 
-    this.db
-      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
-      .run(id, data.name, data.code, now);
+    return await this.db.transaction().execute(async (trx) => {
+      const created = await trx
+        .insertInto('branches')
+        .values({ id, name: data.name, code: data.code, created_at: now })
+        .onConflict((oc) => oc.doNothing())
+        .returning(BRANCH_COLUMNS)
+        .executeTakeFirst();
+      if (created === undefined) {
+        const sameCode = await trx.selectFrom('branches').select('id').where('code', '=', data.code).executeTakeFirst();
+        throw new Error(
+          sameCode === undefined ? `Ya existe una sucursal con el id '${id}'` : `Ya existe una sucursal con el código '${data.code}'`,
+        );
+      }
 
-    // Inicializar stock en 0 para todos los productos existentes que controlan stock
-    const products = this.db.prepare('SELECT id FROM products WHERE tracks_stock = 1').all() as unknown as { id: string }[];
-    const insertStock = this.db.prepare(
-      'INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, 0, ?) ON CONFLICT DO NOTHING',
-    );
-    for (const p of products) {
-      insertStock.run(p.id, id, now);
-    }
+      // Inicializar stock en 0 para todos los productos existentes que controlan stock
+      const products = await trx.selectFrom('products').select('id').where('tracks_stock', '=', true).execute();
+      if (products.length > 0) {
+        await trx
+          .insertInto('stock')
+          .values(products.map((p) => ({ product_id: p.id, branch_id: id, quantity: 0, updated_at: now })))
+          .onConflict((oc) => oc.doNothing())
+          .execute();
+      }
 
-    return {
-      id,
-      name: data.name,
-      code: data.code,
-      createdAt: now,
-    };
+      return toBranch(created);
+    });
   }
 
-  updateBranch(id: string, data: UpdateBranchInput): BranchRecord | undefined {
-    const current = this.getBranch(id);
-    if (!current) return undefined;
-
-    if (data.code !== undefined && data.code !== current.code) {
-      const existing = this.db.prepare('SELECT id FROM branches WHERE code = ? AND id != ?').get(data.code, id);
-      if (existing !== undefined) {
-        throw new Error(`Ya existe una sucursal con el código '${data.code}'`);
-      }
+  async updateBranch(id: string, data: UpdateBranchInput): Promise<BranchRecord | undefined> {
+    if (data.name === undefined && data.code === undefined) {
+      return await this.getBranch(id);
     }
-
-    const name = data.name ?? current.name;
-    const code = data.code ?? current.code;
-
-    this.db.prepare('UPDATE branches SET name = ?, code = ? WHERE id = ?').run(name, code, id);
-
-    return {
-      id,
-      name,
-      code,
-      createdAt: current.createdAt,
-    };
+    try {
+      const row = await this.db
+        .updateTable('branches')
+        .set({
+          ...(data.name === undefined ? {} : { name: data.name }),
+          ...(data.code === undefined ? {} : { code: data.code }),
+        })
+        .where('id', '=', id)
+        .returning(BRANCH_COLUMNS)
+        .executeTakeFirst();
+      return row === undefined ? undefined : toBranch(row);
+    } catch (err: unknown) {
+      if (isUniqueViolation(err) && data.code !== undefined) {
+        throw new Error(`Ya existe una sucursal con el código '${data.code}'`, { cause: err });
+      }
+      throw err;
+    }
   }
 
   // --- PRODUCTOS (PRODUCTS) ---
 
-  listProducts(filter?: ProductFilter): ProductRecord[] {
-    let sql = 'SELECT * FROM products WHERE 1=1';
-    const params: (string | number)[] = [];
+  async listProducts(filter?: ProductFilter): Promise<ProductRecord[]> {
+    // Por nombre; con el mismo nombre, en orden de alta (`id` desempata dos del mismo instante)
+    let query = this.db.selectFrom('products').select(PRODUCT_COLUMNS).orderBy('name').orderBy('created_at').orderBy('id');
 
-    if (filter?.category !== undefined && filter.category.trim() !== '') {
-      sql += ' AND category = ?';
-      params.push(filter.category.trim());
+    const category = filter?.category?.trim();
+    if (category !== undefined && category !== '') {
+      query = query.where('category', '=', category);
     }
 
     if (filter?.blocked !== undefined) {
-      if (filter.blocked) {
-        sql += ' AND blocked_reason IS NOT NULL';
-      } else {
-        sql += ' AND blocked_reason IS NULL';
-      }
+      query = query.where('blocked_reason', filter.blocked ? 'is not' : 'is', null);
     }
 
-    if (filter?.search !== undefined && filter.search.trim() !== '') {
-      const term = `%${filter.search.trim()}%`;
-      sql += ' AND (name LIKE ? OR sku LIKE ? OR barcodes LIKE ?)';
-      params.push(term, term, term);
+    const search = filter?.search?.trim();
+    if (search !== undefined && search !== '') {
+      query = query.where((eb) => productMatchesSearch(eb, search));
     }
-
-    sql += ' ORDER BY name ASC';
 
     if (filter?.limit !== undefined && filter.limit > 0) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
+      query = query.limit(filter.limit);
       if (filter.offset !== undefined && filter.offset > 0) {
-        sql += ' OFFSET ?';
-        params.push(filter.offset);
+        query = query.offset(filter.offset);
       }
     }
 
-    const rows = this.db.prepare(sql).all(...params) as unknown as RawProductRow[];
-    return rows.map((r) => this.mapProductRow(r));
+    const rows = await query.execute();
+    return rows.map(toProduct);
   }
 
-  getProduct(id: string): ProductRecord | undefined {
-    const row = this.db.prepare('SELECT * FROM products WHERE id = ?').get(id) as unknown as RawProductRow | undefined;
-    if (!row) return undefined;
-    return this.mapProductRow(row);
+  async getProduct(id: string): Promise<ProductRecord | undefined> {
+    const row = await this.db.selectFrom('products').select(PRODUCT_COLUMNS).where('id', '=', id).executeTakeFirst();
+    return row === undefined ? undefined : toProduct(row);
   }
 
-  getProductBySku(sku: string): ProductRecord | undefined {
-    const row = this.db.prepare('SELECT * FROM products WHERE sku = ?').get(sku) as unknown as RawProductRow | undefined;
-    if (!row) return undefined;
-    return this.mapProductRow(row);
+  async getProductBySku(sku: string): Promise<ProductRecord | undefined> {
+    const row = await this.db.selectFrom('products').select(PRODUCT_COLUMNS).where('sku', '=', sku).executeTakeFirst();
+    return row === undefined ? undefined : toProduct(row);
   }
 
-  createProduct(data: CreateProductInput): ProductRecord {
-    const existingSku = this.db.prepare('SELECT id FROM products WHERE sku = ?').get(data.sku);
-    if (existingSku !== undefined) {
-      throw new Error(`Ya existe un producto con el SKU '${data.sku}'`);
-    }
-
+  async createProduct(data: CreateProductInput): Promise<ProductRecord> {
     const id = data.id ?? `prod_${randomUUID()}`;
-    const barcodes = data.barcodes ?? [];
-    const taxRate = data.taxRate ?? 0.21;
-    const category = data.category ?? 'General';
     const tracksStock = data.tracksStock ?? true;
-    const blockedReason = data.blockedReason ?? null;
     const now = new Date().toISOString();
 
-    this.db
-      .prepare(
-        `INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, blocked_reason, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        data.sku,
-        JSON.stringify(barcodes),
-        data.name,
-        data.price,
-        taxRate,
-        category,
-        tracksStock ? 1 : 0,
-        blockedReason,
-        now,
-        now,
-      );
-
-    // Inicializar stock en 0 para todas las sucursales existentes si tracksStock es true
-    if (tracksStock) {
-      const branches = this.db.prepare('SELECT id FROM branches').all() as unknown as { id: string }[];
-      const insertStock = this.db.prepare(
-        'INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, 0, ?) ON CONFLICT DO NOTHING',
-      );
-      for (const b of branches) {
-        insertStock.run(id, b.id, now);
+    return await this.db.transaction().execute(async (trx) => {
+      const created = await trx
+        .insertInto('products')
+        .values({
+          id,
+          sku: data.sku,
+          barcodes: jsonValue(data.barcodes ?? []),
+          name: data.name,
+          price: data.price,
+          tax_rate: data.taxRate ?? 0.21,
+          category: data.category ?? 'General',
+          tracks_stock: tracksStock,
+          blocked_reason: data.blockedReason ?? null,
+          created_at: now,
+          updated_at: now,
+        })
+        .onConflict((oc) => oc.doNothing())
+        .returning(PRODUCT_COLUMNS)
+        .executeTakeFirst();
+      if (created === undefined) {
+        const sameSku = await trx.selectFrom('products').select('id').where('sku', '=', data.sku).executeTakeFirst();
+        throw new Error(
+          sameSku === undefined ? `Ya existe un producto con el id '${id}'` : `Ya existe un producto con el SKU '${data.sku}'`,
+        );
       }
-    }
 
-    return {
-      id,
-      sku: data.sku,
-      barcodes,
-      name: data.name,
-      price: data.price,
-      taxRate,
-      category,
-      tracksStock,
-      blockedReason,
-      createdAt: now,
-      updatedAt: now,
-    };
+      // Inicializar stock en 0 para todas las sucursales existentes si tracksStock es true
+      if (tracksStock) {
+        const branches = await trx.selectFrom('branches').select('id').execute();
+        if (branches.length > 0) {
+          await trx
+            .insertInto('stock')
+            .values(branches.map((b) => ({ product_id: id, branch_id: b.id, quantity: 0, updated_at: now })))
+            .onConflict((oc) => oc.doNothing())
+            .execute();
+        }
+      }
+
+      return toProduct(created);
+    });
   }
 
-  updateProduct(id: string, data: UpdateProductInput): ProductRecord | undefined {
-    const current = this.getProduct(id);
-    if (!current) return undefined;
-
-    if (data.sku !== undefined && data.sku !== current.sku) {
-      const existingSku = this.db.prepare('SELECT id FROM products WHERE sku = ? AND id != ?').get(data.sku, id);
-      if (existingSku !== undefined) {
-        throw new Error(`Ya existe un producto con el SKU '${data.sku}'`);
+  /** Cambia solo los campos que vienen, en un único `UPDATE`: dos ediciones a la vez no se pisan campos. */
+  async updateProduct(id: string, data: UpdateProductInput): Promise<ProductRecord | undefined> {
+    try {
+      const row = await this.db
+        .updateTable('products')
+        .set({
+          ...(data.sku === undefined ? {} : { sku: data.sku }),
+          ...(data.barcodes === undefined ? {} : { barcodes: jsonValue(data.barcodes) }),
+          ...(data.name === undefined ? {} : { name: data.name }),
+          ...(data.price === undefined ? {} : { price: data.price }),
+          ...(data.taxRate === undefined ? {} : { tax_rate: data.taxRate }),
+          ...(data.category === undefined ? {} : { category: data.category }),
+          ...(data.tracksStock === undefined ? {} : { tracks_stock: data.tracksStock }),
+          ...(data.blockedReason === undefined ? {} : { blocked_reason: data.blockedReason }),
+          updated_at: new Date().toISOString(),
+        })
+        .where('id', '=', id)
+        .returning(PRODUCT_COLUMNS)
+        .executeTakeFirst();
+      return row === undefined ? undefined : toProduct(row);
+    } catch (err: unknown) {
+      if (isUniqueViolation(err) && data.sku !== undefined) {
+        throw new Error(`Ya existe un producto con el SKU '${data.sku}'`, { cause: err });
       }
+      throw err;
     }
-
-    const now = new Date().toISOString();
-    const sku = data.sku ?? current.sku;
-    const barcodes = data.barcodes ?? current.barcodes;
-    const name = data.name ?? current.name;
-    const price = data.price ?? current.price;
-    const taxRate = data.taxRate ?? current.taxRate;
-    const category = data.category ?? current.category;
-    const tracksStock = data.tracksStock ?? current.tracksStock;
-    const blockedReason = data.blockedReason !== undefined ? data.blockedReason : current.blockedReason;
-
-    this.db
-      .prepare(
-        `UPDATE products
-         SET sku = ?, barcodes = ?, name = ?, price = ?, tax_rate = ?, category = ?, tracks_stock = ?, blocked_reason = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .run(
-        sku,
-        JSON.stringify(barcodes),
-        name,
-        price,
-        taxRate,
-        category,
-        tracksStock ? 1 : 0,
-        blockedReason,
-        now,
-        id,
-      );
-
-    return {
-      id,
-      sku,
-      barcodes,
-      name,
-      price,
-      taxRate,
-      category,
-      tracksStock,
-      blockedReason,
-      createdAt: current.createdAt,
-      updatedAt: now,
-    };
   }
 
-  deleteProduct(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): ProductRecord | { deleted: boolean } {
-    const current = this.getProduct(id);
-    if (!current) {
-      throw new Error(`Producto '${id}' no encontrado`);
-    }
-
+  async deleteProduct(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): Promise<ProductRecord | { deleted: boolean }> {
     if (options?.hard === true) {
-      this.db.prepare('DELETE FROM products WHERE id = ?').run(id);
+      // `stock.product_id` no tiene FK: el stock se borra acá, con el producto. El kardex queda.
+      await this.db.transaction().execute(async (trx) => {
+        const deleted = await trx.deleteFrom('products').where('id', '=', id).returning('id').executeTakeFirst();
+        if (deleted === undefined) {
+          throw new Error(`Producto '${id}' no encontrado`);
+        }
+        await trx.deleteFrom('stock').where('product_id', '=', id).execute();
+      });
       return { deleted: true };
     }
 
     // Por defecto, soft delete / bloqueo
     const reason = options?.blockedReason ?? 'Archivado por administración';
-    const updated = this.updateProduct(id, { blockedReason: reason });
+    const updated = await this.updateProduct(id, { blockedReason: reason });
     if (!updated) {
-      throw new Error(`No se pudo actualizar el producto '${id}'`);
+      throw new Error(`Producto '${id}' no encontrado`);
     }
     return updated;
   }
 
-  listCategories(): string[] {
-    const rows = this.db
-      .prepare("SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND category != '' ORDER BY category ASC")
-      .all() as unknown as { category: string }[];
+  async listCategories(): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('products')
+      .select('category')
+      .distinct()
+      .where('category', '!=', '')
+      .orderBy('category')
+      .execute();
     return rows.map((r) => r.category);
-  }
-
-  private mapProductRow(r: RawProductRow): ProductRecord {
-    let parsedBarcodes: string[];
-    try {
-      parsedBarcodes = JSON.parse(r.barcodes) as string[];
-    } catch {
-      parsedBarcodes = [];
-    }
-
-    return {
-      id: r.id,
-      sku: r.sku,
-      barcodes: parsedBarcodes,
-      name: r.name,
-      price: r.price,
-      taxRate: r.tax_rate,
-      category: r.category,
-      tracksStock: r.tracks_stock === 1,
-      blockedReason: r.blocked_reason,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    };
   }
 }

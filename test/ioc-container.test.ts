@@ -1,9 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import {
   createRootContainer,
   createTenantScope,
@@ -29,26 +26,23 @@ import { ConnectorService } from '../src/server/connector/connector-service.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multitenant (Fase 5)', () => {
-  let systemDb: DatabaseSync;
-  let tenant1Db: DatabaseSync;
-  let tenant2Db: DatabaseSync;
-
-  beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-
-    tenant1Db = new DatabaseSync(':memory:');
-    initTenantDb(tenant1Db);
-
-    tenant2Db = new DatabaseSync(':memory:');
-    initTenantDb(tenant2Db);
-  });
+  /** Un contenedor con dos comercios ya creados (`t1` y `t2`), cada uno con su esquema. */
+  async function rootWithTenants() {
+    const root = createRootContainer({ database: db(), tenantManager: new TenantManager(db()) });
+    const tenants = root.use(tenantManagerDef);
+    await tenants.createTenant({ id: 't1', slug: 't1', name: 'Uno' });
+    await tenants.createTenant({ id: 't2', slug: 't2', name: 'Dos' });
+    return root;
+  }
 
   describe('Contenedor Raíz y Dependencias de Infraestructura', () => {
     it('crea el contenedor raíz y resuelve los singletons de infraestructura', () => {
-      const root = createRootContainer({ systemDb });
+      const root = createRootContainer({ database: db() });
 
       const authService = root.use(authServiceDef);
       const tenantManager = root.use(tenantManagerDef);
@@ -64,7 +58,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('falla inmediatamente con error descriptivo si se intenta resolver tenantDbDef en el contenedor raíz', () => {
-      const root = createRootContainer({ systemDb });
+      const root = createRootContainer({ database: db() });
 
       expect(() => {
         root.use(tenantDbDef);
@@ -72,22 +66,22 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
     });
 
     it('falla inmediatamente si se intenta resolver cualquier servicio dependiente de tenantDb en el contenedor raíz (prevención de fugas)', () => {
-      const root = createRootContainer({ systemDb });
+      const root = createRootContainer({ database: db() });
 
-      expect(() => root.use(catalogServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(stockServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(customerServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(bulkServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(importExportServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(dashboardSummaryServiceDef)).toThrow(/tenantDb/);
-      expect(() => root.use(connectorServiceDef)).toThrow(/tenantDb/);
+      expect(() => root.use(catalogServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(stockServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(customerServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(bulkServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(importExportServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(dashboardSummaryServiceDef)).toThrow(/unbound definition/);
+      expect(() => root.use(connectorServiceDef)).toThrow(/unbound definition/);
     });
   });
 
   describe('Scopes por Request / Tenant y Resolución de Servicios', () => {
-    it('crea un scope con tenantDb vinculado y resuelve todos los servicios scoped con su DB', () => {
-      const root = createRootContainer({ systemDb });
-      const scope1 = createTenantScope(root, tenant1Db);
+    it('crea un scope con tenantDb vinculado y resuelve todos los servicios scoped con su DB', async () => {
+      const root = await rootWithTenants();
+      const scope1 = createTenantScope(root, 't1');
 
       const catalogSvc = scope1.use(catalogServiceDef);
       const stockSvc = scope1.use(stockServiceDef);
@@ -106,9 +100,9 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(connSvc).toBeInstanceOf(ConnectorService);
     });
 
-    it('cachea la instancia dentro del mismo scope (ciclo de vida scoped)', () => {
-      const root = createRootContainer({ systemDb });
-      const scope1 = createTenantScope(root, tenant1Db);
+    it('cachea la instancia dentro del mismo scope (ciclo de vida scoped)', async () => {
+      const root = await rootWithTenants();
+      const scope1 = createTenantScope(root, 't1');
 
       const catalogSvcA = scope1.use(catalogServiceDef);
       const catalogSvcB = scope1.use(catalogServiceDef);
@@ -116,10 +110,10 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(catalogSvcA).toBe(catalogSvcB);
     });
 
-    it('garantiza aislamiento total entre tenants: dos scopes tienen instancias y bases de datos diferentes', () => {
-      const root = createRootContainer({ systemDb });
-      const scopeTenant1 = createTenantScope(root, tenant1Db);
-      const scopeTenant2 = createTenantScope(root, tenant2Db);
+    it('garantiza aislamiento total entre tenants: dos scopes tienen instancias y bases de datos diferentes', async () => {
+      const root = await rootWithTenants();
+      const scopeTenant1 = createTenantScope(root, 't1');
+      const scopeTenant2 = createTenantScope(root, 't2');
 
       const catalog1 = scopeTenant1.use(catalogServiceDef);
       const catalog2 = scopeTenant2.use(catalogServiceDef);
@@ -127,7 +121,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       expect(catalog1).not.toBe(catalog2);
 
       // Crear un producto en tenant 1 a través de su servicio resuelto
-      catalog1.createProduct({
+      await catalog1.createProduct({
         name: 'Yerba Mate 1Kg',
         sku: 'YM-1KG',
         price: 2500,
@@ -135,20 +129,20 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
       });
 
       // El producto debe existir en tenant 1
-      const prodsTenant1 = catalog1.listProducts();
+      const prodsTenant1 = await catalog1.listProducts();
       expect(prodsTenant1).toHaveLength(1);
       expect(prodsTenant1[0]?.name).toBe('Yerba Mate 1Kg');
 
       // En tenant 2, el catálogo debe permanecer completamente vacío (cero leakage)
-      const prodsTenant2 = catalog2.listProducts();
+      const prodsTenant2 = await catalog2.listProducts();
       expect(prodsTenant2).toHaveLength(0);
     });
   });
 
   describe('Integración HTTP con Express y Scopes de Request IoC', () => {
     it('aisla las peticiones HTTP entre tenants a través del middleware y req.tenantScope', async () => {
-      const tenantManager = new TenantManager(systemDb, { inMemory: true });
-      const { app, rootContainer } = createApp({ systemDb, tenantManager });
+      const tenantManager = new TenantManager(db());
+      const { app, rootContainer } = createApp({ database: db(), tenantManager });
 
       expect(rootContainer).toBeDefined();
 

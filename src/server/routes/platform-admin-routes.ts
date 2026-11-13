@@ -10,6 +10,7 @@ import type { PlatformQueryService } from '../platform/platform-query-service.ts
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { HelpRequestService } from '../help/help-request-service.ts';
 import { DomainError, sendError } from '../errors.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const reasonSchema = z.object({ reason: z.string().trim().min(1, 'Falta el motivo').max(200) });
 const searchSchema = z.object({ q: z.string().trim().max(100).optional() });
@@ -34,38 +35,38 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
   const rootOnly = requirePlatformRole('root');
   const actorOf = (req: AuthenticatedAdminRequest): string => req.user?.id ?? '';
 
-  router.get('/tenants', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = searchSchema.safeParse(req.query);
-    res.status(200).json(deps.queries.listTenants(parsed.success ? parsed.data.q : undefined));
+    res.status(200).json(await deps.queries.listTenants(parsed.success ? parsed.data.q : undefined));
   });
 
   // Va antes de /tenants/:tenantId: el detalle que se abre desde la URL del panel
-  router.get('/tenants/by-slug/:slug', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants/by-slug/:slug', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(deps.queries.tenantIdBySlug(req.params['slug'] ?? '')));
+      res.status(200).json(await deps.queries.tenantDetail(await deps.queries.tenantIdBySlug(routeParam(req, 'slug') ?? '')));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.get('/tenants/:tenantId', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/tenants/:tenantId', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(200).json(deps.queries.tenantDetail(req.params['tenantId'] ?? ''));
+      res.status(200).json(await deps.queries.tenantDetail(routeParam(req, 'tenantId') ?? ''));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.get('/users', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/users', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = usersQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
-    res.status(200).json(deps.queries.listUsers(parsed.data.q, parsed.data.offset));
+    res.status(200).json(await deps.queries.listUsers(parsed.data.q, parsed.data.offset));
   });
 
-  router.get('/audit', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/audit', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = auditQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: 'Filtro inválido' });
@@ -73,30 +74,30 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     }
     try {
       const { tenantId, tenantSlug } = parsed.data;
-      const id = tenantSlug !== undefined && tenantSlug !== '' ? deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
-      res.status(200).json(deps.audit.listPlatform({ tenantId: id }));
+      const id = tenantSlug !== undefined && tenantSlug !== '' ? await deps.queries.tenantIdBySlug(tenantSlug) : tenantId === '' ? undefined : tenantId;
+      res.status(200).json(await deps.audit.listPlatform({ tenantId: id }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/tenants/:tenantId/suspend', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/tenants/:tenantId/suspend', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = reasonSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      deps.suspensions.suspend({ tenantId: req.params['tenantId'] ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
+      await deps.suspensions.suspend({ tenantId: routeParam(req, 'tenantId') ?? '', reason: parsed.data.reason, actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/tenants/:tenantId/reactivate', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/tenants/:tenantId/reactivate', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.suspensions.reactivate({ tenantId: req.params['tenantId'] ?? '', actorUserId: actorOf(req) });
+      await deps.suspensions.reactivate({ tenantId: routeParam(req, 'tenantId') ?? '', actorUserId: actorOf(req) });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -105,10 +106,10 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
 
   // Desactivar y reactivar cuentas: las reglas de quién a quién están en el servicio
   for (const [path, status] of [['disable', 'disabled'], ['enable', 'active']] as const) {
-    router.post(`/users/:userId/${path}`, staff, (req: AuthenticatedAdminRequest, res: Response) => {
+    router.post(`/users/:userId/${path}`, staff, async (req: AuthenticatedAdminRequest, res: Response) => {
       try {
         if (req.user === undefined) throw new DomainError(401, 'No autorizado');
-        deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: req.params['userId'] ?? '', status });
+        await deps.userStatus.setStatus({ actor: { id: req.user.id, globalRole: req.user.globalRole }, targetUserId: routeParam(req, 'userId') ?? '', status });
         res.status(200).json({ success: true });
       } catch (err: unknown) {
         sendError(res, err, 500);
@@ -116,40 +117,40 @@ export function createPlatformAdminRoutes(deps: PlatformAdminDeps): Router {
     });
   }
 
-  router.post('/users/:userId/password-reset', staff, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/users/:userId/password-reset', staff, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      res.status(201).json(deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: req.params['userId'] ?? '' }));
+      res.status(201).json(await deps.resets.createFromPlatform({ actorUserId: actorOf(req), targetUserId: routeParam(req, 'userId') ?? '' }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
   // Pedidos de ayuda de las últimas 48 h (#23)
-  router.get('/help-requests', staff, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(deps.help.listForPanel());
+  router.get('/help-requests', staff, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await deps.help.listForPanel());
   });
 
   // El equipo de soporte (#23): solo root lo ve, lo invita y revoca invitaciones
-  router.get('/staff', rootOnly, (_req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json({ members: deps.queries.listStaff(), invitations: deps.staffInvitations.listPending() });
+  router.get('/staff', rootOnly, async (_req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json({ members: await deps.queries.listStaff(), invitations: await deps.staffInvitations.listPending() });
   });
 
-  router.post('/staff/invitations', rootOnly, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/staff/invitations', rootOnly, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = staffInviteSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' });
       return;
     }
     try {
-      res.status(201).json(deps.staffInvitations.create({ actorUserId: actorOf(req), email: parsed.data.email }));
+      res.status(201).json(await deps.staffInvitations.create({ actorUserId: actorOf(req), email: parsed.data.email }));
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.delete('/staff/invitations/:invitationId', rootOnly, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.delete('/staff/invitations/:invitationId', rootOnly, async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: req.params['invitationId'] ?? '' });
+      await deps.staffInvitations.revoke({ actorUserId: actorOf(req), invitationId: routeParam(req, 'invitationId') ?? '' });
       res.status(200).json({ success: true });
     } catch (err: unknown) {
       sendError(res, err, 500);

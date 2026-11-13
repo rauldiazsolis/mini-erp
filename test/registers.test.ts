@@ -1,28 +1,27 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { RegisterService } from '../src/server/registers/register-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('cajas con equipo ligado (#21)', () => {
-  let db: DatabaseSync;
   let now: Date;
   let registers: RegisterService;
   let keys: ApiKeyService;
 
-  beforeEach(() => {
-    db = openSystemDb(':memory:');
-    db.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('t1', 't1', 'T1', '2026-10-01T00:00:00.000Z')").run();
+  beforeEach(async () => {
+    await db().system.insertInto('tenants').values({ id: 't1', slug: 't1', name: 'T1', created_at: '2026-10-01T00:00:00.000Z' }).execute();
     now = new Date('2026-10-03T12:00:00.000Z');
-    keys = new ApiKeyService(db);
-    registers = new RegisterService(db, () => now);
+    keys = new ApiKeyService(db().system);
+    registers = new RegisterService(db().system, () => now);
   });
 
-  const nueva = () => registers.create({ tenantId: 't1', name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
+  const nueva = async () => await registers.create({ tenantId: 't1', name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
 
-  it('crear una caja genera su key, que valida con la caja', () => {
-    const created = nueva();
-    expect(keys.validateApiKey(created.rawKey)).toEqual({
+  it('crear una caja genera su key, que valida con la caja', async () => {
+    const created = await nueva();
+    expect(await keys.validateApiKey(created.rawKey)).toEqual({
       tenantId: 't1',
       branch: 'CENTRAL',
       pointOfSale: 'Caja 1',
@@ -31,72 +30,72 @@ describe('cajas con equipo ligado (#21)', () => {
     });
   });
 
-  it('createApiKey (alta, demos) también crea la caja', () => {
-    const key = keys.createApiKey({ tenantId: 't1', name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
-    expect(keys.validateApiKey(key.rawKey)?.registerId).toBe(key.registerId);
-    expect(registers.list('t1').map((r) => r.id)).toEqual([key.registerId]);
+  it('createApiKey (alta, demos) también crea la caja', async () => {
+    const key = await keys.createApiKey({ tenantId: 't1', name: 'Caja 1', branch: 'CENTRAL', pointOfSale: 'Caja 1' });
+    expect((await keys.validateApiKey(key.rawKey))?.registerId).toBe(key.registerId);
+    expect((await registers.list('t1')).map((r) => r.id)).toEqual([key.registerId]);
   });
 
-  it('el primer equipo se liga; otro queda como ajeno', () => {
-    const { id } = nueva();
-    expect(registers.seen(id, 'dev-a')).toBe('bound');
-    expect(registers.seen(id, 'dev-a')).toBe('bound');
-    expect(registers.seen(id, 'dev-b')).toBe('foreign');
-    expect(registers.seen(id, '')).toBe('bound');
-    const [caja] = registers.list('t1');
+  it('el primer equipo se liga; otro queda como ajeno', async () => {
+    const { id } = await nueva();
+    expect(await registers.seen(id, 'dev-a')).toBe('bound');
+    expect(await registers.seen(id, 'dev-a')).toBe('bound');
+    expect(await registers.seen(id, 'dev-b')).toBe('foreign');
+    expect(await registers.seen(id, '')).toBe('bound');
+    const [caja] = await registers.list('t1');
     expect(caja?.deviceId).toBe('dev-a');
     expect(caja?.otherDevices.map((d) => d.deviceId)).toEqual(['dev-b']);
   });
 
-  it('rotar la key mantiene la caja y su equipo; la vieja deja de validar', () => {
-    const created = nueva();
-    registers.seen(created.id, 'dev-a');
-    const rotated = registers.rotateKey('t1', created.id);
-    expect(keys.validateApiKey(created.rawKey)).toBeUndefined();
-    expect(keys.validateApiKey(rotated.rawKey)?.registerId).toBe(created.id);
-    expect(registers.list('t1')[0]?.deviceId).toBe('dev-a');
-    expect(registers.list('t1')[0]?.keyPrefix).toBe(rotated.keyPrefix);
+  it('rotar la key mantiene la caja y su equipo; la vieja deja de validar', async () => {
+    const created = await nueva();
+    await registers.seen(created.id, 'dev-a');
+    const rotated = await registers.rotateKey('t1', created.id);
+    expect(await keys.validateApiKey(created.rawKey)).toBeUndefined();
+    expect((await keys.validateApiKey(rotated.rawKey))?.registerId).toBe(created.id);
+    expect((await registers.list('t1'))[0]?.deviceId).toBe('dev-a');
+    expect((await registers.list('t1'))[0]?.keyPrefix).toBe(rotated.keyPrefix);
   });
 
-  it('pasar la caja liga al otro equipo y el anterior deja de avisar como compartido', () => {
-    const { id } = nueva();
-    registers.seen(id, 'dev-a');
-    registers.seen(id, 'dev-b');
-    expect(registers.noticeState(id, 'dev-a')).toEqual({ registerId: id, binding: 'bound', sharedRecently: true });
-    expect(registers.noticeState(id, 'dev-b')).toEqual({ registerId: id, binding: 'foreign', sharedRecently: false });
+  it('pasar la caja liga al otro equipo y el anterior deja de avisar como compartido', async () => {
+    const { id } = await nueva();
+    await registers.seen(id, 'dev-a');
+    await registers.seen(id, 'dev-b');
+    expect(await registers.noticeState(id, 'dev-a')).toEqual({ registerId: id, binding: 'bound', sharedRecently: true });
+    expect(await registers.noticeState(id, 'dev-b')).toEqual({ registerId: id, binding: 'foreign', sharedRecently: false });
     now = new Date('2026-10-03T13:00:00.000Z');
-    registers.transferTo('t1', id, 'dev-b');
-    expect(registers.list('t1')[0]?.deviceId).toBe('dev-b');
-    expect(registers.list('t1')[0]?.otherDevices).toEqual([]);
-    expect(registers.noticeState(id, 'dev-b')).toEqual({ registerId: id, binding: 'bound', sharedRecently: false });
-    expect(registers.noticeState(id, 'dev-a').binding).toBe('foreign');
+    await registers.transferTo('t1', id, 'dev-b');
+    expect((await registers.list('t1'))[0]?.deviceId).toBe('dev-b');
+    expect((await registers.list('t1'))[0]?.otherDevices).toEqual([]);
+    expect(await registers.noticeState(id, 'dev-b')).toEqual({ registerId: id, binding: 'bound', sharedRecently: false });
+    expect((await registers.noticeState(id, 'dev-a')).binding).toBe('foreign');
   });
 
-  it('pasar la caja a un equipo que nunca la usó da 400', () => {
-    const { id } = nueva();
-    expect(() => { registers.transferTo('t1', id, 'dev-x'); }).toThrow('Ese equipo no usó esta caja');
+  it('pasar la caja a un equipo que nunca la usó da 400', async () => {
+    const { id } = await nueva();
+    await expect(registers.transferTo('t1', id, 'dev-x')).rejects.toThrow('Ese equipo no usó esta caja');
   });
 
-  it('el aviso de key compartida se va a los 7 días sin ver al otro equipo', () => {
-    const { id } = nueva();
-    registers.seen(id, 'dev-a');
-    registers.seen(id, 'dev-b');
+  it('el aviso de key compartida se va a los 7 días sin ver al otro equipo', async () => {
+    const { id } = await nueva();
+    await registers.seen(id, 'dev-a');
+    await registers.seen(id, 'dev-b');
     now = new Date('2026-10-10T12:00:01.000Z');
-    expect(registers.noticeState(id, 'dev-a').sharedRecently).toBe(false);
+    expect((await registers.noticeState(id, 'dev-a')).sharedRecently).toBe(false);
   });
 
-  it('desligar deja la caja libre; desactivar revoca sus keys', () => {
-    const created = nueva();
-    registers.seen(created.id, 'dev-a');
-    registers.unbind('t1', created.id);
-    expect(registers.seen(created.id, 'dev-b')).toBe('bound');
-    registers.deactivate('t1', created.id);
-    expect(keys.validateApiKey(created.rawKey)).toBeUndefined();
-    expect(registers.list('t1')[0]?.active).toBe(false);
+  it('desligar deja la caja libre; desactivar revoca sus keys', async () => {
+    const created = await nueva();
+    await registers.seen(created.id, 'dev-a');
+    await registers.unbind('t1', created.id);
+    expect(await registers.seen(created.id, 'dev-b')).toBe('bound');
+    await registers.deactivate('t1', created.id);
+    expect(await keys.validateApiKey(created.rawKey)).toBeUndefined();
+    expect((await registers.list('t1'))[0]?.active).toBe(false);
   });
 
-  it('una caja de otro comercio da 404', () => {
-    const { id } = nueva();
-    expect(() => { registers.unbind('otro', id); }).toThrow('Caja no encontrada');
+  it('una caja de otro comercio da 404', async () => {
+    const { id } = await nueva();
+    await expect(registers.unbind('otro', id)).rejects.toThrow('Caja no encontrada');
   });
 });

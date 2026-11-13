@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { ImportPreview } from '../src/shared/import-fields.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 // Un CSV "de Excel": punto y coma, coma decimal, encabezados propios y una columna que no se importa
 const EXCEL =
@@ -20,21 +22,20 @@ describe('POST /import/:entity (#22)', () => {
   let admin: string;
   let member: string;
 
-  beforeEach(() => {
-    const systemDb = openSystemDb(':memory:');
-    tenants = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager: tenants });
+  beforeEach(async () => {
+    tenants = new TenantManager(pgDb());
+    const created = createApp({ database: pgDb(), tenantManager: tenants });
     app = created.app;
-    const o = created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
-    const a = created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });
-    const m = created.authService.createUser({ email: 'm@x.com', password: 'clave-segura', name: 'Member' });
+    const o = await created.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });
+    const a = await created.authService.createUser({ email: 'a@x.com', password: 'clave-segura', name: 'Admin' });
+    const m = await created.authService.createUser({ email: 'm@x.com', password: 'clave-segura', name: 'Member' });
     owner = o.token;
     admin = a.token;
     member = m.token;
-    tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
-    const members = new MembershipService(systemDb);
-    members.addMembership('t1', a.user.id, 'admin');
-    members.addMembership('t1', m.user.id, 'member');
+    await tenants.createTenant({ id: 't1', slug: 't1', name: 'T1', ownerUserId: o.user.id, seedDemoData: false });
+    const members = new MembershipService(pgDb().system);
+    await members.addMembership('t1', a.user.id, 'admin');
+    await members.addMembership('t1', m.user.id, 'member');
   });
 
   const post = (token: string, entity: string, body: object) =>
@@ -48,8 +49,8 @@ describe('POST /import/:entity (#22)', () => {
 
     const done = await post(owner, 'customers', { csv: EXCEL, mapping: preview.mapping, dryRun: false });
     expect(done.status).toBe(200);
-    const db = tenants.getTenantDb('t1');
-    const juan = db.prepare("SELECT id, balance FROM customers WHERE document = '20.123.456'").get() as { id: string; balance: number };
+    const db = pgDb().forTenant('t1');
+    const juan = await db.selectFrom('customers').select(['id', 'balance']).where('document', '=', '20.123.456').executeTakeFirstOrThrow();
     expect(juan.balance).toBe(12345.5);
     const statement = await request(app).get(`/api/tenants/t1/customers/${juan.id}/movements`).set('Authorization', `Bearer ${owner}`);
     expect(statement.status).toBe(200);
@@ -57,8 +58,8 @@ describe('POST /import/:entity (#22)', () => {
 
     const again = (await post(owner, 'customers', { csv: EXCEL, dryRun: false })).body as ImportPreview;
     expect(again.totals).toEqual({ create: 0, update: 0, unchanged: 2, error: 0 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM customers').get()).toEqual({ n: 2 });
-    expect(db.prepare('SELECT COUNT(*) AS n FROM account_movements').get()).toEqual({ n: 2 });
+    expect(await db.selectFrom('customers').select('id').execute()).toHaveLength(2);
+    expect(await db.selectFrom('account_movements').select('id').execute()).toHaveLength(2);
   });
 
   it('el admin importa productos; el member recibe 403', async () => {

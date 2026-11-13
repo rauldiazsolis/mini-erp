@@ -6,8 +6,8 @@ import type { HelpRequestService } from '../help/help-request-service.ts';
 export function createMeRoutes(help: HelpRequestService): Router {
   const router = Router();
 
-  router.get('/support-access', (req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(help.supportAccess(req.user?.id ?? ''));
+  router.get('/support-access', async (req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await help.supportAccess(req.user?.id ?? ''));
   });
 
   return router;

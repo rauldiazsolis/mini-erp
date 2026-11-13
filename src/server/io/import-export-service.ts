@@ -1,5 +1,7 @@
-import { DatabaseSync } from 'node:sqlite';
-import { applyPreset } from '../seeds/index.ts';
+import type { Kysely } from 'kysely';
+import { z } from '../../shared/zod.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { applyPreset } from '../seeds/apply-preset.ts';
 
 export type EntityType = 'products' | 'customers' | 'stock';
 
@@ -9,58 +11,27 @@ export type BusinessPresetResult = {
   stockEntries: number;
 };
 
-interface RawProductRecord {
-  id: string;
-  sku: string;
-  barcodes: string;
-  name: string;
-  price: number;
-  tax_rate: number;
-  category: string;
-  tracks_stock: number;
-  blocked_reason: string | null;
-}
-
-interface RawCustomerRecord {
-  id: string;
-  name: string;
-  document: string | null;
-  phone: string | null;
-  credit_limit: number | null;
-  margin: number | null;
-  balance: number | null;
-  unrestricted: number;
-  blocked_reason: string | null;
-}
-
-interface RawStockRecord {
-  product_id: string;
-  sku: string;
-  product_name: string;
-  branch_id: string;
-  branch_code: string;
-  branch_name: string;
-  quantity: number;
-}
+const barcodesSchema = z.array(z.string());
 
 export class ImportExportService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
   // --- EXPORTACIÓN ---
 
-  exportProducts(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
-    const rows = this.db.prepare('SELECT * FROM products ORDER BY name ASC').all() as unknown as RawProductRecord[];
+  async exportProducts(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
+    const rows = await this.db
+      .selectFrom('products')
+      .select(['id', 'sku', 'barcodes', 'name', 'price', 'tax_rate', 'category', 'tracks_stock', 'blocked_reason'])
+      .orderBy('name')
+      .orderBy('id')
+      .execute();
     const items = rows.map((r) => {
-      let barcodes: string[];
-      try {
-        barcodes = JSON.parse(r.barcodes) as string[];
-      } catch {
-        barcodes = [];
-      }
+      // `barcodes` es jsonb: llega ya parseado. Lo que no sea una lista de textos se exporta vacío.
+      const barcodes = barcodesSchema.safeParse(r.barcodes);
       return {
         id: r.id,
         sku: r.sku,
@@ -68,8 +39,8 @@ export class ImportExportService {
         price: r.price,
         taxRate: r.tax_rate,
         category: r.category,
-        barcodes,
-        tracksStock: r.tracks_stock === 1,
+        barcodes: barcodes.success ? barcodes.data : [],
+        tracksStock: r.tracks_stock,
         blockedReason: r.blocked_reason,
       };
     });
@@ -93,8 +64,13 @@ export class ImportExportService {
     return { content: items, isCsv: false };
   }
 
-  exportCustomers(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
-    const rows = this.db.prepare('SELECT * FROM customers ORDER BY name ASC').all() as unknown as RawCustomerRecord[];
+  async exportCustomers(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
+    const rows = await this.db
+      .selectFrom('customers')
+      .select(['id', 'name', 'document', 'phone', 'credit_limit', 'margin', 'balance', 'unrestricted', 'blocked_reason'])
+      .orderBy('name')
+      .orderBy('id')
+      .execute();
     const items = rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -103,7 +79,7 @@ export class ImportExportService {
       creditLimit: r.credit_limit ?? 0,
       margin: r.margin ?? 0,
       balance: r.balance ?? 0,
-      unrestricted: r.unrestricted === 1,
+      unrestricted: r.unrestricted,
       blockedReason: r.blocked_reason,
     }));
 
@@ -126,16 +102,17 @@ export class ImportExportService {
     return { content: items, isCsv: false };
   }
 
-  exportStock(format: 'json' | 'csv'): { content: string | unknown[]; isCsv: boolean } {
-    const rows = this.db
-      .prepare(
-        `SELECT s.product_id, p.sku, p.name as product_name, s.branch_id, b.code as branch_code, b.name as branch_name, s.quantity
-         FROM stock s
-         JOIN products p ON s.product_id = p.id
-         JOIN branches b ON s.branch_id = b.id
-         ORDER BY p.name ASC, b.name ASC`,
-      )
-      .all() as unknown as RawStockRecord[];
+  async exportStock(format: 'json' | 'csv'): Promise<{ content: string | unknown[]; isCsv: boolean }> {
+    const rows = await this.db
+      .selectFrom('stock as s')
+      .innerJoin('products as p', 'p.id', 's.product_id')
+      .innerJoin('branches as b', 'b.id', 's.branch_id')
+      .select(['s.product_id', 'p.sku', 'p.name as product_name', 's.branch_id', 'b.code as branch_code', 'b.name as branch_name', 's.quantity'])
+      .orderBy('p.name')
+      .orderBy('b.name')
+      .orderBy('p.id')
+      .orderBy('b.id')
+      .execute();
 
     const items = rows.map((r) => ({
       productId: r.product_id,
@@ -157,13 +134,16 @@ export class ImportExportService {
 
   // --- SEMILLAS DE NEGOCIO ---
 
-  countProducts(): number {
-    const row = this.db.prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
+  async countProducts(): Promise<number> {
+    const row = await this.db
+      .selectFrom('products')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .executeTakeFirstOrThrow();
     return row.n;
   }
 
-  applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): BusinessPresetResult {
-    return applyPreset(this.db, preset);
+  async applyBusinessPreset(preset: 'kiosco' | 'ferreteria' | 'almacen'): Promise<BusinessPresetResult> {
+    return await applyPreset(this.db, preset);
   }
 
   // --- HELPERS CSV RFC 4180 ---

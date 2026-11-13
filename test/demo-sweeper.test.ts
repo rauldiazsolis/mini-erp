@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
@@ -8,6 +6,9 @@ import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
 import { startDemoSweeper } from '../src/server/demo/demo-sweeper.ts';
 import { lastResetBoundary } from '../src/server/demo/reset-schedule.ts';
 import { readDemoConfig } from '../src/server/demo/demo-config.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 describe('hora del reinicio automático (#24)', () => {
   it('las 4:00 argentinas son las 7:00 UTC', () => {
@@ -32,58 +33,76 @@ describe('hora del reinicio automático (#24)', () => {
 });
 
 describe('barrido de demos (#24)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let apiKeyService: ApiKeyService;
   let service: DemoSessionService;
   let resets: DemoResetService;
   let clock: Date;
 
-  beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    apiKeyService = new ApiKeyService(systemDb);
+  beforeEach(async () => {
+    tenantManager = new TenantManager(pgDb());
+    apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T06:00:00.000Z'); // 3:00 AR
     service = new DemoSessionService({
-      systemDb,
+      db: pgDb().system,
       tenantManager,
       apiKeyService,
       config: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
       now: () => clock,
     });
-    resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock });
-    service.ensureDemoTenants();
+    resets = new DemoResetService({ db: pgDb().system, tenantManager, sessions: service, now: () => clock });
+    await service.ensureDemoTenants();
   });
 
-  it('runDue reinicia los rubros que no se reiniciaron desde las 4:00 AR, una vez', () => {
-    const a = service.create('kiosco');
-    expect(resets.runDue()).toEqual([]);
+  it('runDue reinicia los rubros que no se reiniciaron desde las 4:00 AR, una vez', async () => {
+    const a = await service.create('kiosco');
+    expect(await resets.runDue()).toEqual([]);
     clock = new Date('2026-10-05T07:05:00.000Z'); // 4:05 AR
-    expect(resets.runDue()).toEqual(['kiosco', 'almacen', 'ferreteria']);
-    expect(apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
-    expect(resets.runDue()).toEqual([]);
+    expect(await resets.runDue()).toEqual(['kiosco', 'almacen', 'ferreteria']);
+    expect(await apiKeyService.validateApiKey(a.apiKey)).toBeUndefined();
+    expect(await resets.runDue()).toEqual([]);
   });
 
-  it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', () => {
-    const db = tenantManager.getTenantDb('demo-kiosco');
-    resets.restock(); // lo que el historial sembrado ya haya bajado
-    db.prepare("UPDATE stock SET quantity = 11 WHERE product_id = 'demo_KIO-001'").run(); // 48 / 4 = 12
-    db.prepare("UPDATE stock SET quantity = 14 WHERE product_id = 'demo_KIO-002'").run(); // 60 / 4 = 15
-    db.prepare("UPDATE stock SET quantity = 30 WHERE product_id = 'demo_KIO-004'").run(); // 72 / 4 = 18: no
-    expect(resets.restock()).toBe(2);
-    expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-001'").get()).toEqual({ quantity: 48 });
+  it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', async () => {
+    const db = tenantManager.forTenant('demo-kiosco');
+    const setQuantity = async (productId: string, quantity: number): Promise<void> => {
+      await db.updateTable('stock').set({ quantity }).where('product_id', '=', productId).execute();
+    };
+    const quantityOf = async (productId: string): Promise<number | undefined> =>
+      (await db.selectFrom('stock').select('quantity').where('product_id', '=', productId).executeTakeFirst())?.quantity;
+    await resets.restock(); // lo que el historial sembrado ya haya bajado
+    await setQuantity('demo_KIO-001', 11); // 48 / 4 = 12
+    await setQuantity('demo_KIO-002', 14); // 60 / 4 = 15
+    await setQuantity('demo_KIO-004', 30); // 72 / 4 = 18: no
+    expect(await resets.restock()).toBe(2);
+    expect(await quantityOf('demo_KIO-001')).toBe(48);
     expect(
-      db.prepare("SELECT reason, notes FROM stock_movements WHERE product_id = 'demo_KIO-001' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(),
-    ).toEqual({ reason: 'restock', notes: 'Reposición automática' });
-    expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-004'").get()).toEqual({ quantity: 30 });
-    expect(resets.restock()).toBe(0);
+      await db
+        .selectFrom('stock_movements')
+        .select(['reason', 'notes', 'delta'])
+        .where('product_id', '=', 'demo_KIO-001')
+        .orderBy('seq', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    ).toEqual({ reason: 'restock', notes: 'Reposición automática', delta: 37 });
+    expect(await quantityOf('demo_KIO-004')).toBe(30);
+    expect(await resets.restock()).toBe(0);
   });
 
-  it('el barrido al arrancar hace todo y loguea', () => {
+  it('restock no repone un producto de la semilla que alguien borró', async () => {
+    const db = tenantManager.forTenant('demo-kiosco');
+    await resets.restock();
+    await db.updateTable('stock').set({ quantity: 1 }).where('product_id', '=', 'demo_KIO-001').execute();
+    await db.deleteFrom('products').where('id', '=', 'demo_KIO-001').execute();
+    expect(await resets.restock()).toBe(0);
+    expect(await db.selectFrom('stock').select('quantity').where('product_id', '=', 'demo_KIO-001').executeTakeFirst()).toEqual({ quantity: 1 });
+  });
+
+  it('el barrido al arrancar hace todo y loguea', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const runDue = vi.spyOn(resets, 'runDue');
     const restock = vi.spyOn(resets, 'restock');
-    const timer = startDemoSweeper({ sessions: service, resets }, 60_000);
+    const timer = await startDemoSweeper({ sessions: service, resets }, 60_000);
     clearInterval(timer);
     expect(runDue).toHaveBeenCalledTimes(1);
     expect(restock).toHaveBeenCalledTimes(1);

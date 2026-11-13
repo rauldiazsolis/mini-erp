@@ -1,26 +1,28 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { MembershipService } from '../src/server/users/membership-service.ts';
 import type { Capability } from '../src/shared/permissions.ts';
 import { RUTAS } from './helpers/tenant-routes.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Layer = {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: { capability?: Capability } }[] };
   name: string;
-  regexp: RegExp;
+  match: (path: string) => boolean;
   handle: { stack?: Layer[] };
 };
 
 /** Rutas declaradas en los routers montados en /api/tenants/:tenantId, con la capacidad que exigen. */
 function rutasDelComercio(app: Express): Record<string, Capability | undefined> {
-  const raiz = (app as unknown as { _router: { stack: Layer[] } })._router.stack;
+  const raiz = (app as unknown as { router: { stack: Layer[] } }).router.stack;
   const found: Record<string, Capability | undefined> = {};
   for (const layer of raiz) {
-    if (layer.name !== 'router' || !layer.regexp.test('/api/tenants/t1/products')) continue;
+    if (layer.name !== 'router' || !layer.match('/api/tenants/t1/products')) continue;
     for (const inner of layer.handle.stack ?? []) {
       if (inner.route === undefined) continue;
       for (const method of Object.keys(inner.route.methods)) {
@@ -37,18 +39,17 @@ describe('permisos del comercio en la API (#19)', () => {
   let tokens: { owner: string; admin: string; member: string };
   const tenantId = 'kiosco-roles';
 
-  beforeEach(() => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+  beforeEach(async () => {
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
-    const members = new MembershipService(systemDb);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    const admin = bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
-    const member = bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Roles', ownerUserId: owner.user.id });
-    members.addMembership(tenantId, admin.user.id, 'admin');
-    members.addMembership(tenantId, member.user.id, 'member');
+    const members = new MembershipService(db().system);
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    const admin = await bundle.authService.createUser({ email: 'admin@x.com', password: 'password123', name: 'Admin' });
+    const member = await bundle.authService.createUser({ email: 'member@x.com', password: 'password123', name: 'Member' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Roles', ownerUserId: owner.user.id });
+    await members.addMembership(tenantId, admin.user.id, 'admin');
+    await members.addMembership(tenantId, member.user.id, 'member');
     tokens = { owner: owner.token, admin: admin.token, member: member.token };
   });
 

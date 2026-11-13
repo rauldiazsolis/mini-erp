@@ -1,34 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import type { AuthService } from '../src/server/auth/auth-service.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('invitaciones de soporte (#23)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let authService: AuthService;
   let now: Date;
   let tokens: { root: string; support: string };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => now });
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager, now: () => now });
     app = bundle.app;
     authService = bundle.authService;
-    authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
-    const support = authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    await authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });
+    const support = await authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
+    const owner = await authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = {
-      root: authService.login({ email: 'root@x.com', password: 'password123' }).token,
-      support: authService.login({ email: 'soporte@x.com', password: 'password123' }).token,
+      root: (await authService.login({ email: 'root@x.com', password: 'password123' })).token,
+      support: (await authService.login({ email: 'soporte@x.com', password: 'password123' })).token,
     };
   });
 
@@ -38,8 +37,8 @@ describe('invitaciones de soporte (#23)', () => {
     return res.body as { id: string; token: string; expiresAt: string };
   };
   const accept = (body: Record<string, unknown>) => request(app).post('/api/staff-invitations/accept').send(body);
-  const actions = () =>
-    (systemDb.prepare("SELECT action FROM audit_log WHERE action LIKE 'staff.%' ORDER BY at, rowid").all() as { action: string }[]).map((r) => r.action);
+  const actions = async () =>
+    (await db().system.selectFrom('audit_log').select('action').where('action', 'like', 'staff.%').orderBy('at').orderBy('seq').execute()).map((r) => r.action);
 
   it('root invita a soporte; con un mail nuevo nace una cuenta de soporte con sesión', async () => {
     const res = await request(app).post('/api/platform/staff/invitations').set(as('root')).send({ email: 'Nueva@X.com' });
@@ -54,16 +53,16 @@ describe('invitaciones de soporte (#23)', () => {
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${(acc.body as { token: string }).token}`);
     expect((me.body as { user: { globalRole: string } }).user.globalRole).toBe('support');
     expect((await accept({ token, password: 'clave-nueva-1', name: 'Ana' })).status).toBe(410);
-    expect(actions()).toEqual(['staff.invited', 'staff.joined']);
+    expect(await actions()).toEqual(['staff.invited', 'staff.joined']);
   });
 
   it('una cuenta existente sin comercios se promueve con su contraseña; con comercios, 409', async () => {
-    const libre = authService.createUser({ email: 'libre@x.com', password: 'password123', name: 'Libre' });
+    const libre = await authService.createUser({ email: 'libre@x.com', password: 'password123', name: 'Libre' });
     const t1 = (await invite('libre@x.com')).token;
     expect((await request(app).post('/api/staff-invitations/lookup').send({ token: t1 })).body).toMatchObject({ accountExists: true });
     expect((await accept({ token: t1, password: 'mala' })).status).toBe(401);
     expect((await accept({ token: t1, password: 'password123' })).status).toBe(200);
-    expect(systemDb.prepare('SELECT global_role FROM users WHERE id = ?').get(libre.user.id)).toEqual({ global_role: 'support' });
+    expect(await db().system.selectFrom('users').select('global_role').where('id', '=', libre.user.id).executeTakeFirst()).toEqual({ global_role: 'support' });
 
     const t2 = (await invite('owner@x.com')).token;
     const conComercio = await accept({ token: t2, password: 'password123' });
@@ -93,7 +92,7 @@ describe('invitaciones de soporte (#23)', () => {
     expect((await request(app).delete(`/api/platform/staff/invitations/${second.id}`).set(as('root'))).status).toBe(200);
     expect((await request(app).post('/api/staff-invitations/lookup').send({ token: second.token })).status).toBe(410);
     expect((await request(app).delete(`/api/platform/staff/invitations/${second.id}`).set(as('root'))).status).toBe(404);
-    expect(actions()).toEqual(['staff.invited', 'staff.invited', 'staff.invitation_revoked']);
+    expect(await actions()).toEqual(['staff.invited', 'staff.invited', 'staff.invitation_revoked']);
   });
 
   it('vence a las 48 h', async () => {

@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
 import type { ListResult } from '../src/shared/sales-types.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 /**
  * Scroll infinito (#87): las listas sin límite se piden por tramos con un cursor ("después de esta
@@ -15,20 +18,19 @@ import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
 describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let token: string;
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
   const tenantId = 'kiosco';
   const origin = { deviceId: 'dev-1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+    const tenantManager = new TenantManager(pgDb());
+    const bundle = createApp({ database: pgDb(), tenantManager });
     app = bundle.app;
-    const owner = bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
+    const owner = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
     token = owner.token;
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
-    bundle.billing.grantSignupBonus(tenantId, owner.user.id);
-    db = tenantManager.getTenantDb(tenantId);
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
+    await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
+    db = pgDb().forTenant(tenantId);
     await seedSalesFixture(app, token, tenantId, db);
   });
 
@@ -55,7 +57,7 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
 
   it('una venta nueva mientras se scrollea no corre el tramo siguiente', async () => {
     const first = await list('sales', '&pageSize=2');
-    saveSale(db, { id: 's6', total: 10, ticket: { date: D2, number: 3 }, createdAt: `${D2}T20:00:00.000Z` }, origin, `${D2}T20:00:00.000Z`);
+    await saveSale(db, { id: 's6', total: 10, ticket: { date: D2, number: 3 }, createdAt: `${D2}T20:00:00.000Z` }, origin, `${D2}T20:00:00.000Z`);
     const second = await list('sales', `&pageSize=2&after=${encodeURIComponent(first.nextCursor ?? '')}`);
     expect(ids(second)).toEqual(['s2', 's3']);
   });
@@ -63,16 +65,28 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   it('cobranzas y movimientos van igual', async () => {
     const payments = await list('customer-payments', '&pageSize=1');
     expect(ids(payments)).toEqual(['cp2']);
-    saveCustomerPayment(db, { id: 'cp3', customerId: 'c1', total: 5, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
+    await saveCustomerPayment(db, { id: 'cp3', customerId: 'c1', total: 5, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
     const rest = await list('customer-payments', `&pageSize=5&after=${encodeURIComponent(payments.nextCursor ?? '')}`);
     expect(ids(rest)).toEqual(['cp1']);
     expect(rest.nextCursor).toBeNull();
 
     const movements = await list('cash-movements', '&pageSize=2');
     expect(ids(movements)).toEqual(['m3', 'm2']);
-    saveCashMovement(db, { id: 'm4', direction: 'in', amount: 1, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
+    await saveCashMovement(db, { id: 'm4', direction: 'in', amount: 1, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
     const next = await list('cash-movements', `&pageSize=2&after=${encodeURIComponent(movements.nextCursor ?? '')}`);
     expect(ids(next)).toEqual(['m1']);
+  });
+
+  it.each([
+    ['un día que no existe', ['2026-02-31', `${D1}T10:00:00.000Z`, 's1']],
+    ['un instante ilegible', [D1, 'ayer', 's1']],
+    ['algo que no es texto', [D1, `${D1}T10:00:00.000Z`, 5]],
+  ])('un cursor con %s da 400, no un error de la base', async (_caso, parts) => {
+    const after = Buffer.from(JSON.stringify(parts)).toString('base64url');
+    const res = await request(app)
+      .get(`/api/tenants/${tenantId}/sales?from=${D1}&to=${D2}&after=${after}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
   });
 
   it('un cursor que no se entiende da 400', async () => {

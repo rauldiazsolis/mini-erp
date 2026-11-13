@@ -1,9 +1,10 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { StockService } from '../stock/stock-service.ts';
+import type { StockService } from '../stock/stock-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { stockServiceDef } from '../di/container.ts';
+import { sendError } from '../errors.ts';
 
 const adjustStockSchema = z.object({
   productId: z.string().min(1, 'El ID de producto es requerido'),
@@ -11,26 +12,26 @@ const adjustStockSchema = z.object({
   type: z.enum(['set', 'delta'], {
     error: "El tipo de ajuste debe ser 'set' o 'delta'",
   }),
-  quantity: z.number({ error: (iss) => (iss.input === undefined ? undefined : 'La cantidad debe ser numérica') }),
+  // Las cantidades son `numeric(14,4)`: hasta 10 dígitos enteros (los decimales de más se redondean)
+  quantity: z
+    .number({ error: (iss) => (iss.input === undefined ? undefined : 'La cantidad debe ser numérica') })
+    .refine((n) => Math.abs(n) < 1e10, 'Cantidad inválida'),
   reason: z.string().min(1, 'El motivo del ajuste es requerido para auditoría'),
   notes: z.string().optional(),
 });
 
 function getStockService(req: AuthenticatedAdminRequest): StockService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(stockServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new StockService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(stockServiceDef);
 }
 
 export function createStockRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /stock - Matriz de stock consolidada y por sucursal
-  router.get('/stock', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const search =
@@ -43,7 +44,7 @@ export function createStockRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const matrix = service.getStockMatrix({
+      const matrix = await service.getStockMatrix({
         search,
         category,
         limit: Number.isNaN(limit) ? undefined : limit,
@@ -52,13 +53,12 @@ export function createStockRoutes(): Router {
 
       res.status(200).json(matrix);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener matriz de stock';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
   // POST /stock/adjust - Ajuste manual auditado de stock (Kardex)
-  router.post('/stock/adjust', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/stock/adjust', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = adjustStockSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de ajuste inválidos' });
@@ -67,17 +67,15 @@ export function createStockRoutes(): Router {
 
     try {
       const service = getStockService(req);
-      const result = service.adjustStock(parseResult.data);
+      const result = await service.adjustStock(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al ajustar stock';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // GET /stock/kardex - Historial de movimientos de stock con filtros
-  router.get('/stock/kardex', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/stock/kardex', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getStockService(req);
       const productId = typeof req.query['productId'] === 'string' ? req.query['productId'] : undefined;
@@ -88,7 +86,7 @@ export function createStockRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const movements = service.getKardex({
+      const movements = await service.getKardex({
         productId,
         branchId,
         reason,
@@ -100,8 +98,7 @@ export function createStockRoutes(): Router {
 
       res.status(200).json(movements);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener historial Kardex';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 

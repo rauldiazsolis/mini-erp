@@ -1,19 +1,30 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { CustomerService } from '../customer/customer-service.ts';
+import { fitsMoneyColumn } from '../../shared/money.ts';
+import type { CustomerService } from '../customer/customer-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { customerServiceDef } from '../di/container.ts';
+import { sendError } from '../errors.ts';
+import { routeParam } from '../http/route-param.ts';
+
+/**
+ * El dinero que carga el admin entra tal cual en `numeric(14,2)`: a lo sumo 2 decimales, nunca
+ * redondeado en silencio. Cada campo decide aparte si admite cero o negativos.
+ */
+const INVALID_AMOUNT = 'Importe inválido';
+const creditLimit = z.number().nonnegative('El límite de crédito no puede ser negativo').refine(fitsMoneyColumn, INVALID_AMOUNT);
+const creditMargin = z.number().nonnegative('El margen de crédito no puede ser negativo').refine(fitsMoneyColumn, INVALID_AMOUNT);
 
 const createCustomerSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, 'El nombre del cliente es requerido'),
   document: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
-  creditLimit: z.number().nonnegative('El límite de crédito no puede ser negativo').optional(),
-  margin: z.number().nonnegative('El margen de crédito no puede ser negativo').optional(),
+  creditLimit: creditLimit.optional(),
+  margin: creditMargin.optional(),
   unrestricted: z.boolean().optional(),
-  initialBalance: z.number().optional(),
+  initialBalance: z.number().refine(fitsMoneyColumn, INVALID_AMOUNT).optional(),
   blockedReason: z.string().nullable().optional(),
 });
 
@@ -21,14 +32,14 @@ const updateCustomerSchema = z.object({
   name: z.string().min(1).optional(),
   document: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
-  creditLimit: z.number().nonnegative('El límite de crédito no puede ser negativo').optional(),
-  margin: z.number().nonnegative('El margen de crédito no puede ser negativo').optional(),
+  creditLimit: creditLimit.optional(),
+  margin: creditMargin.optional(),
   unrestricted: z.boolean().optional(),
   blockedReason: z.string().nullable().optional(),
 });
 
 const registerPaymentSchema = z.object({
-  amount: z.number().positive('El monto del pago debe ser mayor a 0'),
+  amount: z.number().positive('El monto del pago debe ser mayor a 0').refine(fitsMoneyColumn, INVALID_AMOUNT),
   method: z.string().optional(),
   reference: z.string().optional(),
   description: z.string().optional(),
@@ -38,7 +49,7 @@ const adjustBalanceSchema = z.object({
   type: z.enum(['credit', 'debit', 'set'], {
     error: "El tipo de ajuste debe ser 'credit', 'debit' o 'set'",
   }),
-  amount: z.number().nonnegative('El monto debe ser mayor o igual a 0'),
+  amount: z.number().nonnegative('El monto debe ser mayor o igual a 0').refine(fitsMoneyColumn, INVALID_AMOUNT),
   reason: z.string().min(1, 'El motivo del ajuste es obligatorio para auditoría contable'),
 });
 
@@ -48,20 +59,17 @@ const deleteCustomerSchema = z.object({
 });
 
 function getCustomerService(req: AuthenticatedAdminRequest): CustomerService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(customerServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new CustomerService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(customerServiceDef);
 }
 
 export function createCustomerRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // GET /customers - Listar clientes con filtros
-  router.get('/customers', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/customers', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
       const service = getCustomerService(req);
       const search =
@@ -77,7 +85,7 @@ export function createCustomerRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const customers = service.listCustomers({
+      const customers = await service.listCustomers({
         search,
         debtorsOnly,
         blocked,
@@ -87,13 +95,12 @@ export function createCustomerRoutes(): Router {
 
       res.status(200).json(customers);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al listar clientes';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
   // POST /customers - Crear nuevo cliente
-  router.post('/customers', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/customers', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = createCustomerSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos de cliente inválidos' });
@@ -102,17 +109,16 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const customer = service.createCustomer(parseResult.data);
+      const customer = await service.createCustomer(parseResult.data);
       res.status(201).json(customer);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al crear cliente';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // GET /customers/:customerId - Detalle de cliente
-  router.get('/customers/:customerId', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.get('/customers/:customerId', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -120,21 +126,20 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const customer = service.getCustomer(customerId);
+      const customer = await service.getCustomer(customerId);
       if (!customer) {
         res.status(404).json({ error: 'Cliente no encontrado' });
         return;
       }
       res.status(200).json(customer);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener cliente';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
   // PUT /customers/:customerId - Actualizar cliente
-  router.put('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.put('/customers/:customerId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -148,21 +153,20 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const updated = service.updateCustomer(customerId, parseResult.data);
+      const updated = await service.updateCustomer(customerId, parseResult.data);
       if (!updated) {
         res.status(404).json({ error: 'Cliente no encontrado' });
         return;
       }
       res.status(200).json(updated);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al actualizar cliente';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // DELETE /customers/:customerId - Bloquear o eliminar cliente
-  router.delete('/customers/:customerId', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.delete('/customers/:customerId', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -174,18 +178,16 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.deleteCustomer(customerId, { hard, blockedReason: reason });
+      const result = await service.deleteCustomer(customerId, { hard, blockedReason: reason });
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al eliminar/bloquear cliente';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // POST /customers/:customerId/payments - Cobranza manual de cuenta corriente
-  router.post('/customers/:customerId/payments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.post('/customers/:customerId/payments', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -199,18 +201,16 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.registerPayment(customerId, parseResult.data);
+      const result = await service.registerPayment(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al registrar cobranza';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // POST /customers/:customerId/adjustments - Ajuste manual transparente de saldo
-  router.post('/customers/:customerId/adjustments', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.post('/customers/:customerId/adjustments', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -224,18 +224,16 @@ export function createCustomerRoutes(): Router {
 
     try {
       const service = getCustomerService(req);
-      const result = service.adjustBalance(customerId, parseResult.data);
+      const result = await service.adjustBalance(customerId, parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
-      const msg = err instanceof Error ? err.message : 'Error al ajustar saldo';
-      res.status(statusCode).json({ error: msg });
+      sendError(res, err, 400);
     }
   });
 
   // GET /customers/:customerId/movements - Extracto de cuenta corriente
-  router.get('/customers/:customerId/movements', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const customerId = req.params['customerId'];
+  router.get('/customers/:customerId/movements', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const customerId = routeParam(req, 'customerId');
     if (customerId === undefined) {
       res.status(400).json({ error: 'ID de cliente requerido' });
       return;
@@ -249,7 +247,7 @@ export function createCustomerRoutes(): Router {
       const limit = typeof req.query['limit'] === 'string' ? parseInt(req.query['limit'], 10) : undefined;
       const offset = typeof req.query['offset'] === 'string' ? parseInt(req.query['offset'], 10) : undefined;
 
-      const movements = service.listMovements(customerId, {
+      const movements = await service.listMovements(customerId, {
         type,
         from,
         to,
@@ -259,8 +257,7 @@ export function createCustomerRoutes(): Router {
 
       res.status(200).json(movements);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al obtener extracto de cuenta corriente';
-      res.status(500).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 

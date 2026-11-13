@@ -1,18 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('catálogo de ejemplo del rubro (#22)', () => {
   let app: Express;
   let token: string;
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    const tenants = new TenantManager(systemDb, { inMemory: true });
-    app = createApp({ systemDb, tenantManager: tenants }).app;
+    const tenants = new TenantManager(db());
+    app = createApp({ database: db(), tenantManager: tenants }).app;
     const res = await request(app).post('/api/alta').send({
       name: 'Marta',
       email: 'm@x.com',

@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 type Need = 'root' | 'staff';
 
@@ -47,16 +49,16 @@ const RUTAS: Record<string, Need> = {
 type Layer = {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: { platformRoles?: readonly string[] } }[] };
   name: string;
-  regexp: RegExp;
+  match: (path: string) => boolean;
   handle: { stack?: Layer[] };
 };
 
 /** Rutas de los routers montados en /api/platform, con los roles que exigen. */
 function rutasDePlataforma(app: Express): Record<string, Need | 'ninguno'> {
-  const raiz = (app as unknown as { _router: { stack: Layer[] } })._router.stack;
+  const raiz = (app as unknown as { router: { stack: Layer[] } }).router.stack;
   const found: Record<string, Need | 'ninguno'> = {};
   for (const layer of raiz) {
-    if (layer.name !== 'router' || !layer.regexp.test('/api/platform/x')) continue;
+    if (layer.name !== 'router' || !layer.match('/api/platform/x')) continue;
     for (const inner of layer.handle.stack ?? []) {
       if (inner.route === undefined) continue;
       const roles = inner.route.stack.find((s) => s.handle.platformRoles !== undefined)?.handle.platformRoles;
@@ -74,15 +76,14 @@ describe('permisos de la plataforma (#23)', () => {
   let app: Express;
   let tokens: { support: string; owner: string };
 
-  beforeEach(() => {
-    const systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager });
+  beforeEach(async () => {
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
-    const support = bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id = ?").run(support.user.id);
-    const owner = bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
+    const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', '=', support.user.id).execute();
+    const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco', ownerUserId: owner.user.id });
     tokens = { support: support.token, owner: owner.token };
   });
 

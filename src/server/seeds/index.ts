@@ -1,13 +1,13 @@
-import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
-import type { BusinessPreset, SeedProduct } from './types.ts';
-import { KIOSCO_PRODUCTS } from './kiosco.ts';
-import { FERRETERIA_PRODUCTS } from './ferreteria.ts';
-import { ALMACEN_PRODUCTS } from './almacen.ts';
+import type { Kysely } from 'kysely';
+import { jsonValue } from '../db/pg/sql-helpers.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import type { BusinessPreset } from './types.ts';
+import { applyPreset } from './apply-preset.ts';
 import { insertDemoCustomers } from './demo-customers.ts';
 import { generateHistoricalDemoActivity } from './demo-activity-generator.ts';
 
 export * from './types.ts';
+export * from './apply-preset.ts';
 export * from './kiosco.ts';
 export * from './ferreteria.ts';
 export * from './almacen.ts';
@@ -15,87 +15,60 @@ export * from './demo-customers.ts';
 export * from './demo-activity-generator.ts';
 export * from './demo-commerce.ts';
 
-export function getPresetProducts(preset: BusinessPreset): SeedProduct[] {
-  switch (preset) {
-    case 'kiosco':
-      return KIOSCO_PRODUCTS;
-    case 'ferreteria':
-      return FERRETERIA_PRODUCTS;
-    case 'almacen':
-      return ALMACEN_PRODUCTS;
-  }
-}
+const DEMO_TENANT_PRODUCTS = [
+  { id: 'prod-coca-500', sku: 'BEB-001', barcodes: ['779123456001'], name: 'Coca Cola 500ml', price: 1500, taxRate: 0.21, category: 'Bebidas', stock: 50 },
+  { id: 'prod-agua-500', sku: 'BEB-002', barcodes: ['779123456002'], name: 'Agua Mineral 500ml', price: 1000, taxRate: 0.21, category: 'Bebidas', stock: 80 },
+  { id: 'prod-yerba-1k', sku: 'ALM-001', barcodes: ['779123456003'], name: 'Yerba Mate 1kg', price: 3200, taxRate: 0.21, category: 'Almacén', stock: 25 },
+  { id: 'prod-galletitas', sku: 'ALM-002', barcodes: ['779123456004'], name: 'Galletitas de Chocolate', price: 1200, taxRate: 0.21, category: 'Almacén', stock: 40 },
+];
 
-export function applyPreset(
-  db: DatabaseSync,
-  preset: BusinessPreset,
-): { preset: BusinessPreset; productsCreated: number; stockEntries: number } {
-  const items = getPresetProducts(preset);
-  const now = new Date().toISOString();
-  const branches = db.prepare('SELECT id FROM branches').all() as unknown as { id: string }[];
-  const defaultBranchId = branches[0]?.id;
-
-  let productsCreated = 0;
-  let stockEntries = 0;
-
-  for (const item of items) {
-    const existing = db.prepare('SELECT id FROM products WHERE sku = ?').get(item.sku);
-    if (existing !== undefined) continue;
-
-    const prodId = `prod_${randomUUID()}`;
-    db.prepare(
-      `INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, blocked_reason, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0.21, ?, 1, NULL, ?, ?)`,
-    ).run(prodId, item.sku, JSON.stringify(item.barcodes), item.name, item.price, item.category, now, now);
-
-    productsCreated++;
-
-    if (defaultBranchId !== undefined) {
-      db.prepare(
-        `INSERT INTO stock (product_id, branch_id, quantity, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(product_id, branch_id) DO UPDATE SET quantity = excluded.quantity, updated_at = excluded.updated_at`,
-      ).run(prodId, defaultBranchId, item.stock, now);
-      stockEntries++;
-    }
-  }
-
-  return { preset, productsCreated, stockEntries };
-}
-
-export function seedDemoTenant(
-  db: DatabaseSync,
+/**
+ * Los datos de ejemplo de un comercio (`seedDemoData`): cuatro productos con su stock, los clientes
+ * demo y, salvo que se pida que no, 7 días de historial. En una transacción: la de quien llama si
+ * `db` ya es una, o una nueva.
+ */
+export async function seedDemoTenant(
+  db: Kysely<TenantDatabase>,
   defaultBranchId: string,
   options?: { withHistory?: boolean },
-): void {
+): Promise<void> {
+  if (!db.isTransaction) {
+    await db.transaction().execute(async (trx) => {
+      await seedDemoTenant(trx, defaultBranchId, options);
+    });
+    return;
+  }
   const now = new Date().toISOString();
 
   // 1. Productos iniciales (Preset Kiosco)
-  const insertProd = db.prepare(
-    'INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  );
-  const insertStock = db.prepare(
-    'INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)',
-  );
-
-  const initialProducts = [
-    { id: 'prod-coca-500', sku: 'BEB-001', barcodes: ['779123456001'], name: 'Coca Cola 500ml', price: 1500, taxRate: 0.21, category: 'Bebidas', stock: 50 },
-    { id: 'prod-agua-500', sku: 'BEB-002', barcodes: ['779123456002'], name: 'Agua Mineral 500ml', price: 1000, taxRate: 0.21, category: 'Bebidas', stock: 80 },
-    { id: 'prod-yerba-1k', sku: 'ALM-001', barcodes: ['779123456003'], name: 'Yerba Mate 1kg', price: 3200, taxRate: 0.21, category: 'Almacén', stock: 25 },
-    { id: 'prod-galletitas', sku: 'ALM-002', barcodes: ['779123456004'], name: 'Galletitas de Chocolate', price: 1200, taxRate: 0.21, category: 'Almacén', stock: 40 },
-  ];
-
-  for (const p of initialProducts) {
-    insertProd.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate, p.category, 1, now, now);
-    insertStock.run(p.id, defaultBranchId, p.stock, now);
-  }
+  await db
+    .insertInto('products')
+    .values(
+      DEMO_TENANT_PRODUCTS.map((p) => ({
+        id: p.id,
+        sku: p.sku,
+        barcodes: jsonValue(p.barcodes),
+        name: p.name,
+        price: p.price,
+        tax_rate: p.taxRate,
+        category: p.category,
+        tracks_stock: true,
+        created_at: now,
+        updated_at: now,
+      })),
+    )
+    .execute();
+  await db
+    .insertInto('stock')
+    .values(DEMO_TENANT_PRODUCTS.map((p) => ({ product_id: p.id, branch_id: defaultBranchId, quantity: p.stock, updated_at: now })))
+    .execute();
 
   // 2. Clientes iniciales
-  insertDemoCustomers(db, now);
+  await insertDemoCustomers(db, now);
 
   // 3. Generar historial de ventas y movimientos si está habilitado
   if (options?.withHistory ?? true) {
-    generateHistoricalDemoActivity(db, defaultBranchId);
+    await generateHistoricalDemoActivity(db, defaultBranchId);
   }
 }
 
@@ -109,7 +82,13 @@ export function isDemoTemplate(value: string): value is DemoTemplate {
 }
 
 /** Datos de una demo: el catálogo del preset y los clientes demo, sin historial (el POS no lo ve). */
-export function seedDemoSession(db: DatabaseSync, template: DemoTemplate): void {
-  applyPreset(db, template);
-  insertDemoCustomers(db, new Date().toISOString());
+export async function seedDemoSession(db: Kysely<TenantDatabase>, template: DemoTemplate): Promise<void> {
+  if (!db.isTransaction) {
+    await db.transaction().execute(async (trx) => {
+      await seedDemoSession(trx, template);
+    });
+    return;
+  }
+  await applyPreset(db, template);
+  await insertDemoCustomers(db, new Date().toISOString());
 }

@@ -1,18 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { readRateLimitConfig } from '../src/server/middleware/rate-limit.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 function makeApp() {
-  const systemDb = new DatabaseSync(':memory:');
-  initSystemDb(systemDb);
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
-  const { app } = createApp({
-    systemDb,
-    tenantManager: new TenantManager(systemDb, { inMemory: true }),
+  const { app } = createApp({ database: db(),
+    tenantManager: new TenantManager(db()),
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
     rateLimits: { demoPerHour: 10, authPer15Min: 20, contactPerHour: 5, beaconPerHour: 60 },
     now: () => clock.now,

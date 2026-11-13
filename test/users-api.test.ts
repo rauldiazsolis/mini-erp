@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { createOwnerAccount } from './helpers/owner-account.ts';
+
+const db = setupTestDb();
 
 type Users = {
   members: { userId: string; email: string; role: string; status: string; canReset: boolean }[];
@@ -17,15 +20,9 @@ describe('usuarios del comercio (#19)', () => {
   const ids: Record<'owner' | 'admin' | 'member', string> = { owner: '', admin: '', member: '' };
 
   beforeEach(async () => {
-    const systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) }).app;
-    const alta = (await request(app)
-      .post('/api/alta')
-      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' })).body as {
-      token: string;
-      user: { id: string };
-      tenant: { id: string };
-    };
+    const bundle = createApp({ database: db(), tenantManager: new TenantManager(db()) });
+    app = bundle.app;
+    const alta = await createOwnerAccount(bundle, { name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana' });
     t.owner = alta.token;
     ids.owner = alta.user.id;
     tenantId = alta.tenant.id;

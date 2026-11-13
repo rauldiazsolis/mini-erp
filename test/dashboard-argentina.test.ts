@@ -1,36 +1,45 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { DashboardService } from '../src/server/dashboard/dashboard-service.ts';
 import { saveSale } from '../src/server/sales/records.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const caja = { deviceId: 'dev', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 // 22:30 del 1/10 en Argentina; en UTC ya es el 2/10
 const now = new Date('2026-10-02T01:30:00.000Z');
 
-function sale(db: DatabaseSync, id: string, createdAt: string, total: number, lines: unknown[], extra: Record<string, unknown> = {}): void {
-  saveSale(db, { id, status: 'closed', createdAt, total, lines, payments: [{ method: 'cash', amount: total }], ...extra }, caja, createdAt);
+async function sale(db: Kysely<TenantDatabase>, id: string, createdAt: string, total: number, lines: unknown[], extra: Record<string, unknown> = {}): Promise<void> {
+  await saveSale(db, { id, status: 'closed', createdAt, total, lines, payments: [{ method: 'cash', amount: total }], ...extra }, caja, createdAt);
 }
 
 describe('dashboard con día argentino y anulaciones como el POS (#20)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
 
-  beforeEach(() => {
-    db = new DatabaseSync(':memory:');
-    initTenantDb(db);
+  beforeEach(async () => {
+    await new TenantManager(pgDb()).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
+    db = pgDb().forTenant('kiosco');
     const at = now.toISOString();
-    db.prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p1', 'S1', 'Alfajor', 1000, ?, ?)").run(at, at);
-    db.prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p2', 'S2', 'Gaseosa', 500, ?, ?)").run(at, at);
+    await db
+      .insertInto('products')
+      .values([
+        { id: 'p1', sku: 'S1', name: 'Alfajor', price: 1000, created_at: at, updated_at: at },
+        { id: 'p2', sku: 'S2', name: 'Gaseosa', price: 500, created_at: at, updated_at: at },
+      ])
+      .execute();
     // Ayer: c, anulada hoy por d
-    sale(db, 'c', '2026-09-30T15:00:00.000Z', 2000, [{ kind: 'product', productId: 'p1', qty: 2, unitPrice: 1000 }]);
+    await sale(db, 'c', '2026-09-30T15:00:00.000Z', 2000, [{ kind: 'product', productId: 'p1', qty: 2, unitPrice: 1000 }]);
     // Hoy (argentino): d anula c a las 19:00; a a las 20:00; b a las 21:30 (en UTC, 2/10)
-    sale(db, 'd', '2026-10-01T22:00:00.000Z', -2000, [{ kind: 'product', productId: 'p1', qty: -2, unitPrice: 1000 }], { voidsSaleId: 'c' });
-    sale(db, 'a', '2026-10-01T23:00:00.000Z', 1000, [{ kind: 'product', productId: 'p2', qty: 2, unitPrice: 500 }]);
-    sale(db, 'b', '2026-10-02T00:30:00.000Z', 500, [{ kind: 'product', productId: 'p2', qty: 1, unitPrice: 500 }]);
+    await sale(db, 'd', '2026-10-01T22:00:00.000Z', -2000, [{ kind: 'product', productId: 'p1', qty: -2, unitPrice: 1000 }], { voidsSaleId: 'c' });
+    await sale(db, 'a', '2026-10-01T23:00:00.000Z', 1000, [{ kind: 'product', productId: 'p2', qty: 2, unitPrice: 500 }]);
+    await sale(db, 'b', '2026-10-02T00:30:00.000Z', 500, [{ kind: 'product', productId: 'p2', qty: 1, unitPrice: 500 }]);
   });
 
-  it('hoy: neto de todos los tickets, vigentes para cantidad y promedio, ayer completo para comparar', () => {
-    const res = new DashboardService(db, () => now).getSummary({ period: 'today' });
+  it('hoy: neto de todos los tickets, vigentes para cantidad y promedio, ayer completo para comparar', async () => {
+    const res = await new DashboardService(db, () => now).getSummary({ period: 'today' });
     expect(res.summary).toMatchObject({
       totalSales: -500,
       salesCount: 2,
@@ -44,13 +53,13 @@ describe('dashboard con día argentino y anulaciones como el POS (#20)', () => {
     expect(res.timeline.find((p) => p.label === '21:00')).toMatchObject({ total: 500, count: 1 });
   });
 
-  it('el ranking netea las anulaciones y muestra solo unidades positivas', () => {
-    const res = new DashboardService(db, () => now).getSummary({ period: 'today' });
+  it('el ranking netea las anulaciones y muestra solo unidades positivas', async () => {
+    const res = await new DashboardService(db, () => now).getSummary({ period: 'today' });
     expect(res.topProducts.map((p) => [p.productId, p.unitsSold])).toEqual([['p2', 3]]);
   });
 
-  it('7 días: un punto por día argentino, el último es hoy', () => {
-    const res = new DashboardService(db, () => now).getSummary({ period: 'week' });
+  it('7 días: un punto por día argentino, el último es hoy', async () => {
+    const res = await new DashboardService(db, () => now).getSummary({ period: 'week' });
     expect(res.timeline.map((p) => p.date)).toEqual([
       '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01',
     ]);

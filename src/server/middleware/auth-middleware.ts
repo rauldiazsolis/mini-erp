@@ -1,9 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
 import type { IContainer, Container } from 'hardwired';
 import type { AuthService, Impersonator, UserSession } from '../auth/auth-service.ts';
 import type { ApiKeyService, ValidatedPosKey } from '../tenant/api-key-service.ts';
-import type { TenantManager } from '../db/tenant-manager.ts';
 import { createTenantScope } from '../di/container.ts';
 import type { TenantRole } from '../../shared/permissions.ts';
 import type { AnonymousContext, PortalService } from '../portal/portal-service.ts';
@@ -15,7 +13,6 @@ export interface AuthenticatedAdminRequest extends Request {
   /** El token Bearer del pedido. */
   sessionToken?: string;
   activeTenantId?: string;
-  activeTenantDb?: DatabaseSync;
   tenantScope?: IContainer;
   /** El rol con el que opera el comercio activo (#19); lo pone requireTenantContext. */
   tenantRole?: TenantRole;
@@ -24,9 +21,7 @@ export interface AuthenticatedAdminRequest extends Request {
 }
 
 export interface AuthenticatedPosRequest extends Request {
-  posContext?: ValidatedPosKey & {
-    tenantDb: DatabaseSync;
-  };
+  posContext?: ValidatedPosKey;
   tenantScope?: IContainer;
 }
 
@@ -40,18 +35,17 @@ export function bearerToken(req: Request): string | undefined {
 
 export function createAdminAuthMiddleware(
   authService: AuthService,
-  tenantManager: TenantManager,
   /** Con el portal, un token de sesión anónima (#24, M10) vale por su demo o su caja. */
   portal?: PortalService,
 ) {
-  return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
     const token = bearerToken(req);
     if (token === undefined) {
       res.status(401).json({ error: 'Falta cabecera Authorization: Bearer <token>' });
       return;
     }
 
-    const anonymous = portal?.resolveAnonymous(token);
+    const anonymous = await portal?.resolveAnonymous(token);
     if (anonymous !== undefined) {
       req.anonymous = anonymous;
       req.sessionToken = token;
@@ -59,7 +53,7 @@ export function createAdminAuthMiddleware(
       return;
     }
 
-    const session = authService.resolveSession(token);
+    const session = await authService.resolveSession(token);
     if (session === undefined) {
       res.status(401).json({ error: 'Sesión expirada o token inválido' });
       return;
@@ -74,7 +68,7 @@ export function createAdminAuthMiddleware(
     const tenantHeader = req.headers['x-tenant-id'];
     if (typeof tenantHeader === 'string' && tenantHeader.trim() !== '') {
       const requestedTenantId = tenantHeader.trim();
-      const accessibleTenants = authService.listUserTenants(user.id);
+      const accessibleTenants = await authService.listUserTenants(user.id);
       const isAllowed = accessibleTenants.some((t) => t.tenantId === requestedTenantId);
 
       if (!isAllowed) {
@@ -83,7 +77,6 @@ export function createAdminAuthMiddleware(
       }
 
       req.activeTenantId = requestedTenantId;
-      req.activeTenantDb = tenantManager.getTenantDb(requestedTenantId);
     }
 
     next();
@@ -92,12 +85,11 @@ export function createAdminAuthMiddleware(
 
 export function createPosAuthMiddleware(
   apiKeyService: ApiKeyService,
-  tenantManager: TenantManager,
   rootContainer?: Container,
   /** Se llama con cada key válida: así una caja de demo en uso no se revoca (#24). */
-  onAuthenticated?: (key: ValidatedPosKey) => void,
+  onAuthenticated?: (key: ValidatedPosKey) => Promise<void>,
 ) {
-  return (req: AuthenticatedPosRequest, res: Response, next: NextFunction): void => {
+  return async (req: AuthenticatedPosRequest, res: Response, next: NextFunction): Promise<void> => {
     const authHeader = req.headers.authorization;
     if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({ error: 'Falta cabecera Authorization: Bearer <api_key>' });
@@ -105,23 +97,18 @@ export function createPosAuthMiddleware(
     }
 
     const rawKey = authHeader.slice(7).trim();
-    const validated = apiKeyService.validateApiKey(rawKey);
+    const validated = await apiKeyService.validateApiKey(rawKey);
     if (validated === undefined) {
       res.status(401).json({ error: 'API key de terminal POS inválida o inactiva' });
       return;
     }
 
-    onAuthenticated?.(validated);
+    await onAuthenticated?.(validated);
 
-    const tenantDb = tenantManager.getTenantDb(validated.tenantId);
-
-    req.posContext = {
-      ...validated,
-      tenantDb,
-    };
+    req.posContext = validated;
 
     if (rootContainer !== undefined) {
-      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      req.tenantScope = createTenantScope(rootContainer, validated.tenantId);
     }
 
     next();

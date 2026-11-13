@@ -1,25 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { createOwnerAccount, type OwnerAccount } from './helpers/owner-account.ts';
 
-type Alta = { token: string; user: { id: string }; tenant: { id: string } };
+const db = setupTestDb();
 
 describe('contraseñas (#19)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
+  let bundle: ReturnType<typeof createApp>;
   let clock: Date;
   let owner: { token: string; id: string };
   let emp: { token: string; id: string };
   let tenantId: string;
 
-  async function altaDe(email: string, business: string): Promise<Alta> {
-    return (await request(app)
-      .post('/api/alta')
-      .send({ name: email, email, password: 'clave-inicial', businessName: business, businessType: 'otro', whatsapp: '1155550000' })).body as Alta;
+  async function altaDe(email: string, business: string): Promise<OwnerAccount> {
+    return await createOwnerAccount(bundle, { name: email, email, password: 'clave-inicial', businessName: business });
   }
 
   async function sumar(tenant: string, ownerToken: string, email: string): Promise<{ token: string; user: { id: string } }> {
@@ -41,8 +39,8 @@ describe('contraseñas (#19)', () => {
 
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
-    systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }), now: () => clock }).app;
+    bundle = createApp({ database: db(), tenantManager: new TenantManager(db()), now: () => clock });
+    app = bundle.app;
     const a = await altaDe('ana@k.com', 'Kiosco Ana');
     owner = { token: a.token, id: a.user.id };
     tenantId = a.tenant.id;
@@ -59,8 +57,8 @@ describe('contraseñas (#19)', () => {
     expect(res.status).toBe(200);
     expect((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${emp.token}`)).status).toBe(200);
     expect((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${otra}`)).status).toBe(401);
-    const audit = systemDb.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'password.changed'").get() as { n: number };
-    expect(audit.n).toBe(1);
+    const audit = await db().system.selectFrom('audit_log').select('id').where('action', '=', 'password.changed').execute();
+    expect(audit).toHaveLength(1);
   });
 
   it('cambiar la contraseña exige la actual y el mínimo', async () => {
@@ -93,7 +91,9 @@ describe('contraseñas (#19)', () => {
     expect((await request(app).post('/api/auth/login').send({ email: 'emp@k.com', password: 'restablecida-1' })).status).toBe(200);
     expect((await request(app).post('/api/password-resets/complete').send({ token: link.token, password: 'otra-clave-1' })).status).toBe(410);
 
-    const actions = (systemDb.prepare("SELECT action FROM audit_log WHERE action LIKE 'password.%' ORDER BY rowid").all() as { action: string }[]).map((r) => r.action);
+    const actions = (await db().system.selectFrom('audit_log').select('action').where('action', 'like', 'password.%').orderBy('seq').execute()).map(
+      (r) => r.action,
+    );
     expect(actions).toEqual(['password.reset_link_created', 'password.reset']);
   });
 

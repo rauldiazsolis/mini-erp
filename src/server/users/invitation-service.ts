@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { AuthService, UserSession } from '../auth/auth-service.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
 import type { MembershipService } from './membership-service.ts';
@@ -41,13 +42,13 @@ type ValidInvitation = {
 
 /** Invitaciones por link (#19): un solo uso, 48 h, sin mail. Aceptar crea la cuenta o suma la membresía. */
 export class InvitationService {
-  private db: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private auth: AuthService;
   private members: MembershipService;
   private audit: AuditLog;
   private now: () => Date;
 
-  constructor(deps: { db: DatabaseSync; auth: AuthService; members: MembershipService; audit: AuditLog; now: () => Date }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; auth: AuthService; members: MembershipService; audit: AuditLog; now: () => Date }) {
     this.db = deps.db;
     this.auth = deps.auth;
     this.members = deps.members;
@@ -55,82 +56,105 @@ export class InvitationService {
     this.now = deps.now;
   }
 
-  create(params: {
+  async create(params: {
     tenantId: string;
     actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     email: string;
     role: TenantRole;
-  }): { id: string; token: string; expiresAt: string } {
+  }): Promise<{ id: string; token: string; expiresAt: string }> {
     if (!assignableRoles(params.actor.role).includes(params.role)) {
       throw new DomainError(403, 'No podés invitar con ese rol');
     }
     const email = params.email.trim().toLowerCase();
-    const existing = this.auth.findUserByEmail(email);
-    if (existing !== undefined && this.members.getMembership(params.tenantId, existing.id) !== undefined) {
+    const existing = await this.auth.findUserByEmail(email);
+    if (existing !== undefined && (await this.members.getMembership(params.tenantId, existing.id)) !== undefined) {
       throw new DomainError(409, 'Ese correo ya es parte del comercio');
     }
 
     const now = this.now();
-    // Una invitación nueva al mismo mail reemplaza a la pendiente
-    this.db
-      .prepare('UPDATE invitations SET revoked_at = ? WHERE tenant_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL')
-      .run(now.toISOString(), params.tenantId, email);
     const id = `inv_${randomUUID()}`;
     const { raw, hash } = generateLinkToken();
     const expiresAt = new Date(now.getTime() + LINK_TTL_MS).toISOString();
-    this.db
-      .prepare(
-        'INSERT INTO invitations (id, tenant_id, email, role, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, params.tenantId, email, params.role, hash, params.actor.userId, now.toISOString(), expiresAt);
-    this.audit.record({
-      actorUserId: params.actor.userId,
-      impersonatorUserId: params.actor.impersonatorUserId,
-      tenantId: params.tenantId,
-      action: 'invitation.created',
-      details: { email, role: params.role },
+    await this.db.transaction().execute(async (trx) => {
+      // Una invitación nueva al mismo mail reemplaza a la pendiente
+      await trx
+        .updateTable('invitations')
+        .set({ revoked_at: now.toISOString() })
+        .where('tenant_id', '=', params.tenantId)
+        .where('email', '=', email)
+        .where('accepted_at', 'is', null)
+        .where('revoked_at', 'is', null)
+        .execute();
+      await trx
+        .insertInto('invitations')
+        .values({
+          id,
+          tenant_id: params.tenantId,
+          email,
+          role: params.role,
+          token_hash: hash,
+          created_by: params.actor.userId,
+          created_at: now.toISOString(),
+          expires_at: expiresAt,
+        })
+        .execute();
+      await this.audit.record(
+        {
+          actorUserId: params.actor.userId,
+          impersonatorUserId: params.actor.impersonatorUserId,
+          tenantId: params.tenantId,
+          action: 'invitation.created',
+          details: { email, role: params.role },
+        },
+        trx,
+      );
     });
     return { id, token: raw, expiresAt };
   }
 
-  revoke(params: {
+  async revoke(params: {
     tenantId: string;
     actor: { userId: string; role: TenantRole; impersonatorUserId?: string | undefined };
     invitationId: string;
-  }): void {
-    const row = this.db
-      .prepare('SELECT email, role FROM invitations WHERE id = ? AND tenant_id = ? AND accepted_at IS NULL AND revoked_at IS NULL')
-      .get(params.invitationId, params.tenantId) as { email: string; role: string } | undefined;
+  }): Promise<void> {
+    const row = await this.db
+      .selectFrom('invitations')
+      .select(['email', 'role'])
+      .where('id', '=', params.invitationId)
+      .where('tenant_id', '=', params.tenantId)
+      .where('accepted_at', 'is', null)
+      .where('revoked_at', 'is', null)
+      .executeTakeFirst();
     if (row === undefined) throw new DomainError(404, 'La invitación no existe o ya no está pendiente');
     if (!isTenantRole(row.role) || !assignableRoles(params.actor.role).includes(row.role)) {
       throw new DomainError(403, 'No podés revocar esta invitación');
     }
-    this.db.prepare('UPDATE invitations SET revoked_at = ? WHERE id = ?').run(this.now().toISOString(), params.invitationId);
-    this.audit.record({
-      actorUserId: params.actor.userId,
-      impersonatorUserId: params.actor.impersonatorUserId,
-      tenantId: params.tenantId,
-      action: 'invitation.revoked',
-      details: { email: row.email, role: row.role },
+    await this.db.transaction().execute(async (trx) => {
+      await trx.updateTable('invitations').set({ revoked_at: this.now().toISOString() }).where('id', '=', params.invitationId).execute();
+      await this.audit.record(
+        {
+          actorUserId: params.actor.userId,
+          impersonatorUserId: params.actor.impersonatorUserId,
+          tenantId: params.tenantId,
+          action: 'invitation.revoked',
+          details: { email: row.email, role: row.role },
+        },
+        trx,
+      );
     });
   }
 
-  listPending(tenantId: string): PendingInvitation[] {
-    const rows = this.db
-      .prepare(
-        `SELECT i.id, i.email, i.role, i.created_at, i.expires_at, u.name AS invited_by_name
-         FROM invitations i LEFT JOIN users u ON u.id = i.created_by
-         WHERE i.tenant_id = ? AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
-         ORDER BY i.created_at DESC`,
-      )
-      .all(tenantId, this.now().toISOString()) as {
-      id: string;
-      email: string;
-      role: string;
-      created_at: string;
-      expires_at: string;
-      invited_by_name: string | null;
-    }[];
+  async listPending(tenantId: string): Promise<PendingInvitation[]> {
+    const rows = await this.db
+      .selectFrom('invitations as i')
+      .leftJoin('users as u', 'u.id', 'i.created_by')
+      .select(['i.id', 'i.email', 'i.role', 'i.created_at', 'i.expires_at', 'u.name as invited_by_name'])
+      .where('i.tenant_id', '=', tenantId)
+      .where('i.accepted_at', 'is', null)
+      .where('i.revoked_at', 'is', null)
+      .where('i.expires_at', '>', this.now().toISOString())
+      .orderBy('i.created_at', 'desc')
+      .execute();
     return rows.flatMap((r) =>
       isTenantRole(r.role)
         ? [{ id: r.id, email: r.email, role: r.role, createdAt: r.created_at, expiresAt: r.expires_at, invitedByName: r.invited_by_name ?? '' }]
@@ -138,62 +162,72 @@ export class InvitationService {
     );
   }
 
-  lookup(token: string): InvitationInfo {
-    const inv = this.findValid(token);
+  async lookup(token: string): Promise<InvitationInfo> {
+    const inv = await this.findValid(token);
     return {
       tenantName: inv.tenantName,
       role: inv.role,
       email: inv.email,
       invitedByName: inv.invitedByName,
-      accountExists: this.auth.findUserByEmail(inv.email) !== undefined,
+      accountExists: (await this.auth.findUserByEmail(inv.email)) !== undefined,
       expiresAt: inv.expiresAt,
     };
   }
 
-  accept(params: { token: string; password: string; name?: string | undefined }): {
+  async accept(params: { token: string; password: string; name?: string | undefined }): Promise<{
     token: string;
     user: UserSession;
     tenantId: string;
-  } {
-    const inv = this.findValid(params.token);
-    const existing = this.auth.findUserByEmail(inv.email);
-    let user: UserSession;
-    let sessionToken: string;
-    if (existing !== undefined) {
-      if (!this.auth.verifyUserPassword(existing.id, params.password)) throw new DomainError(401, 'Contraseña incorrecta');
-      if (this.members.getMembership(inv.tenantId, existing.id) !== undefined) {
-        throw new DomainError(409, 'Ya sos parte de este comercio');
+  }> {
+    // Todo o nada: la cuenta, su sesión, la membresía, la invitación usada y la auditoría
+    return await this.db.transaction().execute(async (trx) => {
+      const inv = await this.findValid(params.token, trx);
+      const existing = await this.auth.findUserByEmail(inv.email, trx);
+      let user: UserSession;
+      let sessionToken: string;
+      if (existing !== undefined) {
+        if (!(await this.auth.verifyUserPassword(existing.id, params.password, trx))) throw new DomainError(401, 'Contraseña incorrecta');
+        if ((await this.members.getMembership(inv.tenantId, existing.id, trx)) !== undefined) {
+          throw new DomainError(409, 'Ya sos parte de este comercio');
+        }
+        sessionToken = await this.auth.createSession(existing.id, trx);
+        const session = await this.auth.validateSession(sessionToken, trx);
+        if (session === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
+        user = session;
+      } else {
+        const name = params.name?.trim() ?? '';
+        if (name.length < 2) throw new DomainError(400, 'El nombre debe tener al menos 2 caracteres');
+        const created = await this.auth.createUser({ email: inv.email, password: params.password, name }, trx);
+        user = created.user;
+        sessionToken = created.token;
       }
-      sessionToken = this.auth.createSession(existing.id);
-      const session = this.auth.validateSession(sessionToken);
-      if (session === undefined) throw new DomainError(401, 'No se pudo iniciar la sesión');
-      user = session;
-    } else {
-      const name = params.name?.trim() ?? '';
-      if (name.length < 2) throw new DomainError(400, 'El nombre debe tener al menos 2 caracteres');
-      const created = this.auth.createUser({ email: inv.email, password: params.password, name });
-      user = created.user;
-      sessionToken = created.token;
-    }
 
-    this.members.addMembership(inv.tenantId, user.id, inv.role);
-    this.db.prepare('UPDATE invitations SET accepted_at = ?, accepted_by = ? WHERE id = ?').run(this.now().toISOString(), user.id, inv.id);
-    this.audit.record({ actorUserId: user.id, tenantId: inv.tenantId, action: 'invitation.accepted', details: { role: inv.role } });
-    return { token: sessionToken, user, tenantId: inv.tenantId };
+      await this.members.addMembership(inv.tenantId, user.id, inv.role, trx);
+      // Si otro pedido la usó mientras tanto, esta aceptación se deshace entera
+      const used = await trx
+        .updateTable('invitations')
+        .set({ accepted_at: this.now().toISOString(), accepted_by: user.id })
+        .where('id', '=', inv.id)
+        .where('accepted_at', 'is', null)
+        .where('revoked_at', 'is', null)
+        .executeTakeFirst();
+      if (Number(used.numUpdatedRows) === 0) throw new DomainError(410, LINK_GONE_MESSAGE);
+      await this.audit.record({ actorUserId: user.id, tenantId: inv.tenantId, action: 'invitation.accepted', details: { role: inv.role } }, trx);
+      return { token: sessionToken, user, tenantId: inv.tenantId };
+    });
   }
 
-  private findValid(token: string): ValidInvitation {
-    const row = this.db
-      .prepare(
-        `SELECT i.id, i.tenant_id, i.email, i.role, i.expires_at, t.name AS tenant_name, COALESCE(u.name, '') AS invited_by_name
-         FROM invitations i
-         JOIN tenants t ON t.id = i.tenant_id
-         LEFT JOIN users u ON u.id = i.created_by
-         WHERE i.token_hash = ? AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?`,
-      )
-      .get(hashLinkToken(token), this.now().toISOString()) as
-      | { id: string; tenant_id: string; email: string; role: string; expires_at: string; tenant_name: string; invited_by_name: string }
-      | undefined;
+  private async findValid(token: string, db: Kysely<SystemDatabase> = this.db): Promise<ValidInvitation> {
+    const row = await db
+      .selectFrom('invitations as i')
+      .innerJoin('tenants as t', 't.id', 'i.tenant_id')
+      .leftJoin('users as u', 'u.id', 'i.created_by')
+      .select(['i.id', 'i.tenant_id', 'i.email', 'i.role', 'i.expires_at', 't.name as tenant_name', 'u.name as invited_by_name'])
+      .where('i.token_hash', '=', hashLinkToken(token))
+      .where('i.accepted_at', 'is', null)
+      .where('i.revoked_at', 'is', null)
+      .where('i.expires_at', '>', this.now().toISOString())
+      .executeTakeFirst();
     if (row === undefined || !isTenantRole(row.role)) throw new DomainError(410, LINK_GONE_MESSAGE);
     return {
       id: row.id,
@@ -202,7 +236,7 @@ export class InvitationService {
       role: row.role,
       expiresAt: row.expires_at,
       tenantName: row.tenant_name,
-      invitedByName: row.invited_by_name,
+      invitedByName: row.invited_by_name ?? '',
     };
   }
 }

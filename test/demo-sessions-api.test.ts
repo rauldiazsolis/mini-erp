@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import type { DemoConfig } from '../src/server/demo/demo-config.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const HOUR = 60 * 60 * 1000;
 
@@ -18,12 +19,9 @@ type DemoBody = {
 };
 
 function makeApp(overrides: Partial<DemoConfig> = {}) {
-  const systemDb = new DatabaseSync(':memory:');
-  initSystemDb(systemDb);
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
-  const tenantManager = new TenantManager(systemDb, { inMemory: true });
-  const bundle = createApp({
-    systemDb,
+  const tenantManager = new TenantManager(db());
+  const bundle = createApp({ database: db(),
     tenantManager,
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },
     now: () => clock.now,
@@ -112,8 +110,8 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     const { app, apiKeyService } = makeApp();
     const a = (await startDemo(app)).body as DemoBody;
     const b = (await startDemo(app)).body as DemoBody;
-    expect(apiKeyService.validateApiKey(a.apiKey)?.tenantId).toBe('demo-kiosco');
-    expect(apiKeyService.validateApiKey(b.apiKey)?.tenantId).toBe('demo-kiosco');
+    expect((await apiKeyService.validateApiKey(a.apiKey))?.tenantId).toBe('demo-kiosco');
+    expect((await apiKeyService.validateApiKey(b.apiKey))?.tenantId).toBe('demo-kiosco');
     expect(a.pointOfSale).not.toBe(b.pointOfSale);
   });
 
@@ -125,11 +123,11 @@ describe('POST /connector/demo-sessions (#9, #24)', () => {
     advance(23 * HOUR);
     expect((await info()).status).toBe(200); // el request la toca
     advance(23 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
     expect((await info()).status).toBe(200);
 
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
     expect((await info()).status).toBe(401);
   });
 
@@ -156,7 +154,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     const { app, advance, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
 
     const headers = { Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.5.0' };
     expect((await request(app).get('/connector/info').set(headers)).status).toBe(401);
@@ -176,7 +174,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
   it('el reinicio total revoca las cajas: su key da 401', async () => {
     const { app, demoSessions } = makeApp();
     const { apiKey } = (await startDemo(app)).body as DemoBody;
-    demoSessions.revokeTenant('demo-kiosco', 'reset');
+    await demoSessions.revokeTenant('demo-kiosco', 'reset');
     const res = await request(app)
       .post('/connector/sync/pull')
       .set({ Authorization: `Bearer ${apiKey}`, 'X-POS-Contract-Version': '4.6.0' })
@@ -188,7 +186,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     const { app, advance, demoSessions, tenantManager } = makeApp();
     expect((await startDemo(app, { template: 'almacen' })).status).toBe(201);
     advance(25 * HOUR);
-    demoSessions.revokeIdle();
+    await demoSessions.revokeIdle();
 
     // Lo que hace /alta?template=almacen&return_url=…&wipe_key=…: nunca usa la key de la demo
     const res = await request(app).post('/api/alta').send({
@@ -201,7 +199,7 @@ describe('demo revocada (contrato 4.5.0, #58, #24)', () => {
     });
     expect(res.status).toBe(201);
     const body = res.body as { tenant: { id: string }; posKey: { key: string } };
-    expect(tenantManager.getBusinessType(body.tenant.id)).toBe('almacen');
+    expect(await tenantManager.getBusinessType(body.tenant.id)).toBe('almacen');
 
     const info = await request(app).get('/connector/info').set('Authorization', `Bearer ${body.posKey.key}`);
     expect(info.status).toBe(200);

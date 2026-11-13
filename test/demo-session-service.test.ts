@@ -1,23 +1,22 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { ApiKeyService } from '../src/server/tenant/api-key-service.ts';
 import { readDemoConfig, type DemoConfig } from '../src/server/demo/demo-config.ts';
 import { DemoSessionService } from '../src/server/demo/demo-session-service.ts';
 import { DemoResetService } from '../src/server/demo/demo-reset-service.ts';
 import { startDemoSweeper } from '../src/server/demo/demo-sweeper.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const HOUR = 60 * 60 * 1000;
 
 function setup(overrides: Partial<DemoConfig> = {}) {
-  const systemDb = new DatabaseSync(':memory:');
-  initSystemDb(systemDb);
-  const tenantManager = new TenantManager(systemDb, { inMemory: true });
-  const apiKeyService = new ApiKeyService(systemDb);
+  const tenantManager = new TenantManager(db());
+  const apiKeyService = new ApiKeyService(db().system);
   const clock = { now: new Date('2026-10-05T15:00:00.000Z') };
   const service = new DemoSessionService({
-    systemDb,
+    db: db().system,
     tenantManager,
     apiKeyService,
     config: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4, ...overrides },
@@ -26,9 +25,9 @@ function setup(overrides: Partial<DemoConfig> = {}) {
   const advance = (ms: number): void => {
     clock.now = new Date(clock.now.getTime() + ms);
   };
-  const registerOf = (rawKey: string): string => apiKeyService.validateApiKey(rawKey)?.registerId ?? '';
-  const resets = new DemoResetService({ systemDb, tenantManager, sessions: service, now: () => clock.now });
-  return { service, resets, tenantManager, apiKeyService, advance, systemDb, clock, registerOf };
+  const registerOf = async (rawKey: string): Promise<string> => (await apiKeyService.validateApiKey(rawKey))?.registerId ?? '';
+  const resets = new DemoResetService({ db: db().system, tenantManager, sessions: service, now: () => clock.now });
+  return { service, resets, tenantManager, apiKeyService, advance, clock, registerOf };
 }
 
 describe('readDemoConfig (#9, #24)', () => {
@@ -56,34 +55,34 @@ describe('readDemoConfig (#9, #24)', () => {
 });
 
 describe('DemoSessionService (#24)', () => {
-  it('ensureDemoTenants crea los tres comercios sembrados, una vez', () => {
-    const { service, systemDb, tenantManager, clock } = setup();
-    expect(service.ensureDemoTenants()).toEqual(['kiosco', 'almacen', 'ferreteria']);
-    expect(service.ensureDemoTenants()).toEqual([]);
-    const rows = systemDb.prepare('SELECT tenant_id, template, last_full_reset_at FROM demo_tenants ORDER BY tenant_id').all();
+  it('ensureDemoTenants crea los tres comercios sembrados, una vez', async () => {
+    const { service, tenantManager, clock } = setup();
+    expect(await service.ensureDemoTenants()).toEqual(['kiosco', 'almacen', 'ferreteria']);
+    expect(await service.ensureDemoTenants()).toEqual([]);
+    const rows = await db().system.selectFrom('demo_tenants').select(['tenant_id', 'template', 'last_full_reset_at']).orderBy('tenant_id').execute();
     expect(rows).toEqual([
       { tenant_id: 'demo-almacen', template: 'almacen', last_full_reset_at: clock.now.toISOString() },
       { tenant_id: 'demo-ferreteria', template: 'ferreteria', last_full_reset_at: clock.now.toISOString() },
       { tenant_id: 'demo-kiosco', template: 'kiosco', last_full_reset_at: clock.now.toISOString() },
     ]);
-    expect(tenantManager.getTenantName('demo-kiosco')).toBe('Kiosco Demo');
-    const sales = tenantManager.getTenantDb('demo-kiosco').prepare('SELECT COUNT(*) AS n FROM sales').get() as { n: number };
+    expect(await tenantManager.getTenantName('demo-kiosco')).toBe('Kiosco Demo');
+    const sales = await tenantManager.forTenant('demo-kiosco').selectFrom('sales').select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow();
     expect(sales.n).toBeGreaterThan(0);
-    expect(service.isDemoTenant('demo-kiosco')).toBe(true);
-    expect(service.templateOf('demo-kiosco')).toBe('kiosco');
-    expect(service.isDemoTenant('tienda')).toBe(false);
+    expect(await service.isDemoTenant('demo-kiosco')).toBe(true);
+    expect(await service.templateOf('demo-kiosco')).toBe('kiosco');
+    expect(await service.isDemoTenant('tienda')).toBe(false);
   });
 
-  it('create da una caja de visitante en el comercio del rubro, con su sesión', () => {
-    const { service, apiKeyService, systemDb } = setup();
-    const s = service.create('almacen');
+  it('create da una caja de visitante en el comercio del rubro, con su sesión', async () => {
+    const { service, apiKeyService } = setup();
+    const s = await service.create('almacen');
     expect(s).toMatchObject({ tenantId: 'demo-almacen', branch: 'CENTRAL', template: 'almacen' });
     expect(s.pointOfSale).toMatch(/^Demo [0-9A-F]{4}$/);
-    const key = apiKeyService.validateApiKey(s.apiKey);
+    const key = await apiKeyService.validateApiKey(s.apiKey);
     expect(key).toMatchObject({ tenantId: 'demo-almacen', pointOfSale: s.pointOfSale });
-    const row = systemDb.prepare('SELECT id, template, tenant_id, register_id, revoked_at FROM demo_sessions').get();
+    const row = await db().system.selectFrom('demo_sessions').select(['id', 'template', 'tenant_id', 'register_id', 'revoked_at']).executeTakeFirst();
     expect(row).toEqual({ id: s.sessionId, template: 'almacen', tenant_id: 'demo-almacen', register_id: key?.registerId, revoked_at: null });
-    expect(service.activeSessionOfRegister(key?.registerId ?? '')).toEqual({
+    expect(await service.activeSessionOfRegister(key?.registerId ?? '')).toEqual({
       id: s.sessionId,
       tenantId: 'demo-almacen',
       template: 'almacen',
@@ -91,71 +90,61 @@ describe('DemoSessionService (#24)', () => {
     });
   });
 
-  it('dos visitantes del mismo rubro comparten el comercio y tienen cajas distintas', () => {
+  it('dos visitantes del mismo rubro comparten el comercio y tienen cajas distintas', async () => {
     const { service } = setup();
-    const a = service.create('kiosco');
-    const b = service.create('kiosco');
+    const a = await service.create('kiosco');
+    const b = await service.create('kiosco');
     expect(a.tenantId).toBe(b.tenantId);
     expect(a.pointOfSale).not.toBe(b.pointOfSale);
-    expect(service.countActive()).toBe(2);
+    expect(await service.countActive()).toBe(2);
   });
 
-  it('touchRegister corre el último uso a lo sumo una vez por minuto', () => {
-    const { service, systemDb, advance, clock, registerOf } = setup();
-    const reg = registerOf(service.create('kiosco').apiKey);
+  it('touchRegister corre el último uso a lo sumo una vez por minuto', async () => {
+    const { service, advance, clock, registerOf } = setup();
+    const lastUsed = async () => await db().system.selectFrom('demo_sessions').select('last_used_at as at').executeTakeFirst();
+    const reg = await registerOf((await service.create('kiosco')).apiKey);
     const t0 = clock.now.toISOString();
     advance(30_000);
-    service.touchRegister(reg);
-    expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: t0 });
+    await service.touchRegister(reg);
+    expect(await lastUsed()).toEqual({ at: t0 });
     advance(60_000);
-    service.touchRegister(reg);
-    expect(systemDb.prepare('SELECT last_used_at AS at FROM demo_sessions').get()).toEqual({ at: clock.now.toISOString() });
+    await service.touchRegister(reg);
+    expect(await lastUsed()).toEqual({ at: clock.now.toISOString() });
   });
 
-  it('revokeIdle revoca las cajas sin uso por ttlHours: su key deja de valer', () => {
-    const { service, apiKeyService, systemDb, advance } = setup();
-    const old = service.create('kiosco');
+  it('revokeIdle revoca las cajas sin uso por ttlHours: su key deja de valer', async () => {
+    const { service, apiKeyService, advance } = setup();
+    const old = await service.create('kiosco');
     advance(23 * HOUR);
-    const fresh = service.create('kiosco');
+    const fresh = await service.create('kiosco');
     advance(2 * HOUR);
-    expect(service.revokeIdle()).toBe(1);
-    expect(apiKeyService.validateApiKey(old.apiKey)).toBeUndefined();
-    expect(apiKeyService.validateApiKey(fresh.apiKey)).toBeDefined();
-    expect(systemDb.prepare('SELECT revoke_reason AS r FROM demo_sessions WHERE revoked_at IS NOT NULL').all()).toEqual([{ r: 'idle' }]);
-    expect(service.countActive()).toBe(1);
+    expect(await service.revokeIdle()).toBe(1);
+    expect(await apiKeyService.validateApiKey(old.apiKey)).toBeUndefined();
+    expect(await apiKeyService.validateApiKey(fresh.apiKey)).toBeDefined();
+    expect(await db().system.selectFrom('demo_sessions').select('revoke_reason as r').where('revoked_at', 'is not', null).execute()).toEqual([{ r: 'idle' }]);
+    expect(await service.countActive()).toBe(1);
   });
 
-  it('revokeTenant revoca todas las cajas del comercio y nunca borra el registro', () => {
-    const { service, systemDb, registerOf } = setup();
-    const a = service.create('kiosco');
-    service.create('kiosco');
-    service.create('almacen');
-    expect(service.revokeTenant('demo-kiosco', 'reset')).toBe(2);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM demo_sessions').get()).toEqual({ n: 3 });
-    expect(service.countActive()).toBe(1);
-    expect(service.activeSessionOfRegister(registerOf(a.apiKey))).toBeUndefined();
+  it('revokeTenant revoca todas las cajas del comercio y nunca borra el registro', async () => {
+    const { service, registerOf } = setup();
+    const a = await service.create('kiosco');
+    await service.create('kiosco');
+    await service.create('almacen');
+    expect(await service.revokeTenant('demo-kiosco', 'reset')).toBe(2);
+    expect(await db().system.selectFrom('demo_sessions').select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirst()).toEqual({ n: 3 });
+    expect(await service.countActive()).toBe(1);
+    expect(await service.activeSessionOfRegister(await registerOf(a.apiKey))).toBeUndefined();
   });
 
-  it('isFull cuenta las cajas de visitante activas', () => {
+  it('isFull cuenta las cajas de visitante activas', async () => {
     const { service } = setup({ maxActive: 3 });
-    service.create('kiosco');
-    service.create('kiosco');
-    expect(service.isFull()).toBe(false);
-    service.create('almacen');
-    expect(service.isFull()).toBe(true);
-    service.revokeTenant('demo-almacen', 'reset');
-    expect(service.isFull()).toBe(false);
-  });
-
-  it('sweepLegacy borra los tenants por visitante de antes de M8', () => {
-    const { service, tenantManager, systemDb } = setup();
-    tenantManager.createTenant({ id: 'demo-ab12', slug: 'demo-ab12', name: 'Demo' });
-    systemDb
-      .prepare('INSERT INTO legacy_demo_sessions (tenant_id, template, created_at, last_used_at) VALUES (?, ?, ?, ?)')
-      .run('demo-ab12', 'kiosco', 'x', 'x');
-    expect(service.sweepLegacy()).toBe(1);
-    expect(tenantManager.tenantExists('demo-ab12')).toBe(false);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM legacy_demo_sessions').get()).toEqual({ n: 0 });
+    await service.create('kiosco');
+    await service.create('kiosco');
+    expect(await service.isFull()).toBe(false);
+    await service.create('almacen');
+    expect(await service.isFull()).toBe(true);
+    await service.revokeTenant('demo-almacen', 'reset');
+    expect(await service.isFull()).toBe(false);
   });
 });
 
@@ -164,21 +153,24 @@ describe('startDemoSweeper (#24)', () => {
     vi.useRealTimers();
   });
 
-  it('barre al arrancar y en cada intervalo', () => {
-    vi.useFakeTimers();
+  it('barre al arrancar y en cada intervalo', async () => {
+    // Solo el intervalo es falso: el barrido espera a PostgreSQL, que necesita los timers de verdad
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const { service, resets } = setup();
     const sweep = vi.spyOn(service, 'revokeIdle');
-    const timer = startDemoSweeper({ sessions: service, resets }, 1000);
+    const timer = await startDemoSweeper({ sessions: service, resets }, 1000);
     expect(sweep).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(2000);
-    expect(sweep).toHaveBeenCalledTimes(3);
+    await vi.waitFor(() => {
+      expect(sweep).toHaveBeenCalledTimes(3);
+    });
     clearInterval(timer);
   });
 
-  it('loguea lo que hizo al arrancar (#3)', () => {
+  it('loguea lo que hizo al arrancar (#3)', async () => {
     const { service, resets } = setup();
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const timer = startDemoSweeper({ sessions: service, resets }, 1000);
+    const timer = await startDemoSweeper({ sessions: service, resets }, 1000);
     expect(log.mock.calls.some(([line]) => typeof line === 'string' && line.startsWith('[demos] barrido'))).toBe(true);
     clearInterval(timer);
     log.mockRestore();

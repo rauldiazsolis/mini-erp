@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface BulkPricesResponse {
   dryRun: boolean;
@@ -50,20 +51,18 @@ interface MovementItem {
 }
 
 describe('Operaciones Masivas (Etapa 2.4)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
   const tenantId = 'kiosco-bulk-test';
 
-  beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager });
+  beforeEach(async () => {
+    tenantManager = new TenantManager(db());
+    const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@bulk.test',
       password: 'password123',
       name: 'Admin Bulk',
@@ -71,7 +70,7 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para controlar exactamente los datos
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-bulk-test',
       name: 'Kiosco Bulk Test',
@@ -193,6 +192,62 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
       expect(updatedProducts.find((p) => p.id === idCola)?.price).toBe(1450);
       expect(updatedProducts.find((p) => p.id === idAlfajor)?.price).toBe(1600);
     });
+
+    it('un precio cargado a mano con más de 2 decimales da 400 y no cambia nada', async () => {
+      const prodRes = await request(app).get(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`);
+      const cola = (prodRes.body as unknown as ProductItem[]).find((p) => p.sku === 'BEB-01');
+
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/bulk/prices`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ action: 'items', items: [{ id: cola?.id ?? '', price: 1450.555 }], dryRun: false });
+
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain('Importe inválido');
+      const after = await request(app).get(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`);
+      expect((after.body as unknown as ProductItem[]).find((p) => p.sku === 'BEB-01')?.price).toBe(cola?.price);
+    });
+
+    it('un porcentaje que da fracciones de centavo guarda el precio redondeado al centavo, igual al de la respuesta', async () => {
+      // 1000 × 1,0333 = 1033,3; 800 × 1,0333 = 826,64; 1200 × 1,0333 = 1239,96
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/bulk/prices`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ action: 'percentage', value: 3.33, dryRun: false });
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as BulkPricesResponse;
+      expect(body.items?.map((i) => [i.sku, i.newPrice, i.diff]).sort()).toEqual([
+        ['BEB-01', 1033.3, 33.3],
+        ['BEB-02', 826.64, 26.64],
+        ['GOL-01', 1239.96, 39.96],
+      ]);
+      const saved = await db().forTenant(tenantId).selectFrom('products').select(['sku', 'price']).orderBy('sku').execute();
+      expect(saved).toEqual([
+        { sku: 'BEB-01', price: 1033.3 },
+        { sku: 'BEB-02', price: 826.64 },
+        { sku: 'GOL-01', price: 1239.96 },
+      ]);
+    });
+
+    it('un precio que no entra en la columna da 400 "Importe inválido" y no cambia ninguno', async () => {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/bulk/prices`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ action: 'fixed', value: 1e12, category: 'Bebidas', dryRun: false });
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toBe('Importe inválido');
+      const saved = await db().forTenant(tenantId).selectFrom('products').select('price').orderBy('sku').execute();
+      expect(saved.map((p) => p.price)).toEqual([1000, 800, 1200]);
+    });
+
+    it('sin "value" o sin "items" da 400 con su texto', async () => {
+      const post = (body: object) =>
+        request(app).post(`/api/tenants/${tenantId}/bulk/prices`).set('Authorization', `Bearer ${adminToken}`).send(body);
+      const sinValor = await post({ action: 'percentage' });
+      expect(sinValor.status).toBe(400);
+      expect((sinValor.body as { error: string }).error).toBe("Se debe especificar un 'value' para la acción seleccionada");
+      expect((await post({ action: 'items', items: [] })).status).toBe(400);
+    });
   });
 
   describe('Cálculo Masivo de Intereses en Cuentas Corrientes (/bulk/interests)', () => {
@@ -295,6 +350,26 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
       expect(movements[0]?.amount).toBe(1000);
       expect(movements[0]?.balanceAfter).toBe(11000);
       expect(movements[0]?.description).toBe('Recargo 10% mora fin de mes');
+    });
+
+    it('el interés pasa por el libro: se filtra por cliente, se redondea al centavo y el extracto cuadra con el saldo', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      // 3,33 % de 1000 = 33,3; de 10000 serían 333, pero ese cliente no está en la lista
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/bulk/interests`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ interestRatePercent: 3.333, description: 'Mora', customerIds: [cust2Id], dryRun: false });
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as BulkInterestsResponse;
+      expect(body.items).toMatchObject([{ customerId: cust2Id, currentBalance: 1000, interestAmount: 33.33, newBalance: 1033.33 }]);
+      expect(body.totalInterestAmount).toBe(33.33);
+      const saved = await tenantDb.selectFrom('customers').select(['id', 'balance']).where('id', 'in', [cust1Id, cust2Id]).orderBy('balance').execute();
+      expect(saved).toEqual([
+        { id: cust2Id, balance: 1033.33 },
+        { id: cust1Id, balance: 10000 },
+      ]);
+      const interest = await tenantDb.selectFrom('account_movements').select(['customer_id', 'amount', 'balance_after']).where('type', '=', 'interest').execute();
+      expect(interest).toEqual([{ customer_id: cust2Id, amount: 33.33, balance_after: 1033.33 }]);
     });
   });
 });

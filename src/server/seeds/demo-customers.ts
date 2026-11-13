@@ -1,5 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import type { SeedCustomer } from './types.ts';
 
 export const DEMO_CUSTOMERS: SeedCustomer[] = [
@@ -45,32 +46,46 @@ export const DEMO_CUSTOMERS: SeedCustomer[] = [
   },
 ];
 
-/** Los clientes demo, con su saldo inicial en el libro. Los usan la semilla de las demos y la de desarrollo. */
-export function insertDemoCustomers(db: DatabaseSync, now: string): void {
-  const insertCust = db.prepare(
-    'INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  );
+/**
+ * Los clientes demo, con su saldo inicial en el libro, en un insert por tabla. Los usan la semilla
+ * de las demos y la de desarrollo.
+ */
+export async function insertDemoCustomers(db: Kysely<TenantDatabase>, now: string): Promise<void> {
+  const customers = DEMO_CUSTOMERS.map((c) => ({ ...c, id: c.id ?? `cust_${randomUUID()}` }));
+  await db
+    .insertInto('customers')
+    .values(
+      customers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        document: c.document ?? null,
+        phone: c.phone ?? null,
+        credit_limit: c.creditLimit,
+        margin: c.margin,
+        balance: c.balance,
+        unrestricted: c.unrestricted === true,
+        created_at: now,
+        updated_at: now,
+      })),
+    )
+    .execute();
 
-  for (const c of DEMO_CUSTOMERS) {
-    const custId = c.id ?? `cust_${randomUUID()}`;
-    insertCust.run(
-      custId,
-      c.name,
-      c.document ?? null,
-      c.phone ?? null,
-      c.creditLimit,
-      c.margin,
-      c.balance,
-      c.unrestricted ? 1 : 0,
-      now,
-      now,
-    );
-
-    if (c.balance > 0) {
-      db.prepare(
-        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-         VALUES (?, ?, 'adjustment', ?, ?, 'Saldo inicial cuenta corriente', NULL, ?)`,
-      ).run(`mov_init_${custId}`, custId, c.balance, c.balance, now);
-    }
+  const openings = customers.filter((c) => c.balance > 0);
+  if (openings.length > 0) {
+    await db
+      .insertInto('account_movements')
+      .values(
+        openings.map((c) => ({
+          id: `mov_init_${c.id}`,
+          customer_id: c.id,
+          type: 'adjustment',
+          amount: c.balance,
+          balance_after: c.balance,
+          description: 'Saldo inicial cuenta corriente',
+          sale_id: null,
+          created_at: now,
+        })),
+      )
+      .execute();
   }
 }

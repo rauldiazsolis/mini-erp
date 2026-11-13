@@ -1,10 +1,11 @@
 import { Router, type Request, type RequestHandler, type Response, type NextFunction } from 'express';
 import { z } from '../../shared/zod.ts';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
-import { ConnectorService } from '../connector/connector-service.ts';
+import type { ConnectorService } from '../connector/connector-service.ts';
 import { summarizeForLog } from '../connector/push-events.ts';
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
+import { stripNul } from '../db/pg/sql-helpers.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import type { PortalService } from '../portal/portal-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
@@ -25,13 +26,10 @@ export type ConnectorDeps = {
 };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(connectorServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Falta el scope del comercio en el pedido del POS');
   }
-  if (req.posContext?.tenantDb !== undefined) {
-    return new ConnectorService(req.posContext.tenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado para POS');
+  return req.tenantScope.use(connectorServiceDef);
 }
 
 function checkContractVersion(req: Request, res: Response, next: NextFunction): void {
@@ -65,7 +63,7 @@ const accountHoldSchema = z.object({
 });
 
 export function createConnectorRoutes(
-  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => void,
+  requirePosAuth: (req: AuthenticatedPosRequest, res: Response, next: NextFunction) => Promise<void>,
   demoSessions: DemoSessionService,
   demoLimit: RequestHandler,
   deps: ConnectorDeps,
@@ -73,7 +71,7 @@ export function createConnectorRoutes(
   const router = Router();
 
   // POST /demo-sessions (4.4.0, #9): el único endpoint sin key; sí valida la versión del contrato
-  router.post('/demo-sessions', checkContractVersion, demoLimit, (req: Request, res: Response) => {
+  router.post('/demo-sessions', checkContractVersion, demoLimit, async (req: Request, res: Response) => {
     if (!demoSessions.enabled()) {
       res.status(404).json({ error: 'Este backend no ofrece demos' });
       return;
@@ -89,11 +87,11 @@ export function createConnectorRoutes(
       res.status(422).json({ code: 'unknown-template', templates: [...DEMO_TEMPLATES] });
       return;
     }
-    if (demoSessions.isFull()) {
+    if (await demoSessions.isFull()) {
       res.status(503).json({ code: 'demo-capacity', message: 'No hay lugar para más demos; probá más tarde' });
       return;
     }
-    const session = demoSessions.create(template);
+    const session = await demoSessions.create(template);
     const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
     res.status(201).json({
       apiKey: session.apiKey,
@@ -111,9 +109,9 @@ export function createConnectorRoutes(
   router.use(requirePosAuth);
 
   // GET /info (nunca responde 409, informa versión y estado; 4.5.0: el comercio de la key)
-  router.get('/info', (req: AuthenticatedPosRequest, res: Response) => {
+  router.get('/info', async (req: AuthenticatedPosRequest, res: Response) => {
     const tenantId = req.posContext?.tenantId;
-    const companyName = tenantId === undefined ? undefined : (deps.tenants.getTenantName(tenantId) ?? undefined);
+    const companyName = tenantId === undefined ? undefined : ((await deps.tenants.getTenantName(tenantId)) ?? undefined);
     res.status(200).json(backendInfo({ status: 'ok', demos: demoSessions.enabled(), portal: true, companyName }));
   });
 
@@ -121,25 +119,27 @@ export function createConnectorRoutes(
   router.use(checkContractVersion);
 
   // POST /portal-links (4.6.0, capacidad portal; #24 y M10): el link de un uso para abrir mini en la caja de la key
-  router.post('/portal-links', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/portal-links', async (req: AuthenticatedPosRequest, res: Response) => {
     const ctx = req.posContext;
     if (ctx === undefined) {
       res.status(401).json({ error: 'No autorizado' });
       return;
     }
     const origin = demoSessions.publicUrl() ?? `${req.protocol}://${req.get('host') ?? 'localhost'}`;
-    res.status(201).json(deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, keyId: ctx.keyId, origin }));
+    res.status(201).json(await deps.portal.createLink({ tenantId: ctx.tenantId, registerId: ctx.registerId, keyId: ctx.keyId, origin }));
   });
 
   // POST /sync/push (con Idempotency-Key)
-  router.post('/sync/push', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/sync/push', async (req: AuthenticatedPosRequest, res: Response) => {
     const idempotencyKey = req.headers['idempotency-key'];
     if (typeof idempotencyKey !== 'string' || idempotencyKey.trim() === '') {
       res.status(400).json({ error: 'Falta cabecera Idempotency-Key' });
       return;
     }
 
-    const parseResult = pushBatchSchema.safeParse(req.body);
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = pushBatchSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
@@ -152,10 +152,10 @@ export function createConnectorRoutes(
     const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
     // La caja se liga al primer equipo; otro equipo con la misma key cobra aparte (#21)
-    const binding = deps.registers.seen(registerId, parseResult.data.deviceId);
+    const binding = await deps.registers.seen(registerId, parseResult.data.deviceId);
     const chargeDevice = binding === 'foreign' ? parseResult.data.deviceId : '';
 
-    const result = connector.processPushLot({
+    const result = await connector.processPushLot({
       lotId: idempotencyKey.trim(),
       deviceId: parseResult.data.deviceId,
       events: parseResult.data.events,
@@ -167,13 +167,13 @@ export function createConnectorRoutes(
     // El cargo por caja y día, después del commit del lote: nunca tumba el push; el barrido lo recupera (#21)
     if (result.saleDays.length > 0) {
       try {
-        deps.billing.charge({ tenantId: req.posContext.tenantId, registerId, chargeDevice, days: result.saleDays });
+        await deps.billing.charge({ tenantId: req.posContext.tenantId, registerId, chargeDevice, days: result.saleDays });
       } catch (err: unknown) {
         console.error('[cobro] no se pudo generar el cargo:', err);
       }
       // La primera venta de una caja de visitante (#25): el reinicio de la demo la borra, así que se registra
-      const demo = demoSessions.activeSessionOfRegister(registerId);
-      if (demo !== undefined) deps.funnel.tryRecord('demo-sale', { demoSessionId: demo.id });
+      const demo = await demoSessions.activeSessionOfRegister(registerId);
+      if (demo !== undefined) await deps.funnel.tryRecord('demo-sale', { demoSessionId: demo.id });
     }
 
     // Logging detallado del lote recibido
@@ -193,8 +193,10 @@ export function createConnectorRoutes(
   });
 
   // POST /sync/pull
-  router.post('/sync/pull', (req: AuthenticatedPosRequest, res: Response) => {
-    const parseResult = pullBatchSchema.safeParse(req.body);
+  router.post('/sync/pull', async (req: AuthenticatedPosRequest, res: Response) => {
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = pullBatchSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
@@ -207,17 +209,17 @@ export function createConnectorRoutes(
     const { branch, pointOfSale, registerId } = req.posContext;
     const connector = getConnectorService(req);
     if (parseResult.data.deviceId !== undefined) {
-      deps.registers.seen(registerId, parseResult.data.deviceId);
+      await deps.registers.seen(registerId, parseResult.data.deviceId);
     }
 
-    const pullResult = connector.pullCatalog({
+    const pullResult = await connector.pullCatalog({
       cursors: parseResult.data.cursors,
       pendingLotIds: parseResult.data.pendingLotIds,
       branchId: branch,
       deviceId: parseResult.data.deviceId,
       notices: {
-        billing: deps.billing.summary(req.posContext.tenantId),
-        register: parseResult.data.deviceId === undefined ? undefined : deps.registers.noticeState(registerId, parseResult.data.deviceId),
+        billing: await deps.billing.summary(req.posContext.tenantId),
+        register: parseResult.data.deviceId === undefined ? undefined : await deps.registers.noticeState(registerId, parseResult.data.deviceId),
       },
     });
 
@@ -236,14 +238,16 @@ export function createConnectorRoutes(
   });
 
   // POST /account-holds
-  router.post('/account-holds', (req: AuthenticatedPosRequest, res: Response) => {
+  router.post('/account-holds', async (req: AuthenticatedPosRequest, res: Response) => {
     const idempotencyKey = req.headers['idempotency-key'];
     if (typeof idempotencyKey !== 'string' || idempotencyKey.trim() === '') {
       res.status(400).json({ error: 'Falta cabecera Idempotency-Key' });
       return;
     }
 
-    const parseResult = accountHoldSchema.safeParse(req.body);
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = accountHoldSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
@@ -251,7 +255,7 @@ export function createConnectorRoutes(
 
     const connector = getConnectorService(req);
 
-    const holdResult = connector.requestAccountHold({
+    const holdResult = await connector.requestAccountHold({
       customerId: parseResult.data.customerId,
       amount: parseResult.data.amount,
     });

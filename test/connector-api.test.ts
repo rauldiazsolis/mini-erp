@@ -1,30 +1,41 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let tenantManager: TenantManager;
   let rawApiKey: string;
   const tenantId = 'kiosco-demo';
+  const tenantDb = () => db().forTenant(tenantId);
 
   beforeEach(async () => {
-    const systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db());
 
-    const bundle = createApp({ systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
 
-    // Dueño y comercio con la semilla de demo (sin pasar por el alta, #19)
-    const { token, user } = bundle.authService.createUser({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
-    tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', ownerUserId: user.id, seedDemoData: true });
+    // Dueño y comercio (sin pasar por el alta, #19), con un producto con stock y un cliente con cuenta
+    const { token, user } = await bundle.authService.createUser({ email: 'owner@kiosco.com', password: 'password123', name: 'Owner' });
+    await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco Demo', ownerUserId: user.id });
+    const seededAt = '2026-09-01T12:00:00.000Z';
+    await tenantDb()
+      .insertInto('products')
+      .values({ id: 'prod-coca-500', sku: 'COCA-500', barcodes: jsonValue(['7790895000997']), name: 'Coca Cola 500ml', price: 1500, created_at: seededAt, updated_at: seededAt })
+      .execute();
+    await tenantDb().insertInto('stock').values({ product_id: 'prod-coca-500', branch_id: 'branch-central', quantity: 48, updated_at: seededAt }).execute();
+    await tenantDb()
+      .insertInto('customers')
+      .values({ id: 'cust-juan', name: 'Juan Pérez', credit_limit: 50000, margin: 10000, balance: 12500, created_at: seededAt, updated_at: seededAt })
+      .execute();
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    bundle.billing.grantSignupBonus(tenantId, user.id);
+    await bundle.billing.grantSignupBonus(tenantId, user.id);
 
     // Crear API Key para la terminal POS
     const keyRes = await request(app)
@@ -53,12 +64,9 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
     }).lots?.[lotId];
   }
 
-  function storedSale(id: string): Record<string, unknown> | undefined {
-    const row = tenantManager
-      .getTenantDb(tenantId)
-      .prepare('SELECT payload FROM sales WHERE id = ?')
-      .get(id) as { payload: string } | undefined;
-    return row === undefined ? undefined : (JSON.parse(row.payload) as Record<string, unknown>);
+  async function storedSale(id: string): Promise<unknown> {
+    const row = await tenantDb().selectFrom('sales').select('payload').where('id', '=', id).executeTakeFirst();
+    return row?.payload;
   }
 
   describe('GET /connector/info', () => {
@@ -251,7 +259,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       ]);
 
       expect(lot?.status).toBe('ok');
-      expect(storedSale('sale-t1')).toMatchObject({
+      expect(await storedSale('sale-t1')).toMatchObject({
         ticket: { date: '2026-09-24', number: 12 },
         lines: [{ kind: 'freeform', description: 'x', qty: 1, unitPrice: 100 }],
       });
@@ -261,7 +269,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       const lot = await pushAndPull('lot-ticket-2', [saleEvent('sale-t2', {})]);
 
       expect(lot?.status).toBe('ok');
-      expect(storedSale('sale-t2')).toBeDefined();
+      expect(await storedSale('sale-t2')).toBeDefined();
     });
 
     it('un ticket inválido es un aviso del lote para ese evento; el resto se aplica', async () => {
@@ -272,8 +280,8 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
 
       expect(lot?.status).toBe('issues');
       expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['sale-bad']);
-      expect(storedSale('sale-bad')).toBeUndefined();
-      expect(storedSale('sale-good')).toBeDefined();
+      expect(await storedSale('sale-bad')).toBeUndefined();
+      expect(await storedSale('sale-good')).toBeDefined();
     });
   });
 
@@ -294,7 +302,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       expect(lot?.status).toBe('issues');
       expect(lot?.issues).toHaveLength(1);
       expect(lot?.issues?.[0]?.eventId).toBeUndefined();
-      expect(storedSale('sale-ok')).toBeDefined();
+      expect(await storedSale('sale-ok')).toBeDefined();
     });
 
     it('una liberación de bloqueo sin holdId es un aviso del lote', async () => {
@@ -307,12 +315,16 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
     });
 
     it('un movimiento de stock sin delta es un aviso y no toca el stock', async () => {
-      const stockOf = () =>
-        (tenantManager
-          .getTenantDb(tenantId)
-          .prepare("SELECT SUM(quantity) AS total FROM stock WHERE product_id = 'prod-coca-500'")
-          .get() as { total: number | null }).total;
-      const before = stockOf();
+      const stockOf = async () =>
+        (
+          await tenantDb()
+            .selectFrom('stock')
+            .select((eb) => eb.fn.sum<number | null>('quantity').as('total'))
+            .where('product_id', '=', 'prod-coca-500')
+            .executeTakeFirstOrThrow()
+        ).total;
+      const before = await stockOf();
+      expect(before).toBe(48);
 
       const lot = await pushAndPull('lot-mov-sin-delta', [
         {
@@ -325,7 +337,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
       ]);
 
       expect(lot?.issues?.map((issue) => issue.eventId)).toEqual(['e-mov']);
-      expect(stockOf()).toBe(before);
+      expect(await stockOf()).toBe(before);
     });
   });
 
@@ -399,11 +411,8 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
         });
       expect(pushRes.status).toBe(200);
 
-      const row = tenantManager
-        .getTenantDb(tenantId)
-        .prepare('SELECT payload FROM customer_payments WHERE id = ?')
-        .get('cp-1') as { payload: string } | undefined;
-      expect(JSON.parse(row?.payload ?? '{}')).toMatchObject({
+      const row = await tenantDb().selectFrom('customer_payments').select('payload').where('id', '=', 'cp-1').executeTakeFirst();
+      expect(row?.payload).toMatchObject({
         receipt: { date: '2026-09-27', number: 3 },
       });
 

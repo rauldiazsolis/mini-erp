@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { applyPreset } from '../src/server/seeds/index.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface ProductItem {
   id?: string;
@@ -29,20 +30,18 @@ interface PresetResult {
 }
 
 describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
   const tenantId = 'kiosco-io-test';
 
-  beforeEach(() => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager });
+  beforeEach(async () => {
+    tenantManager = new TenantManager(db());
+    const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'admin@io.test',
       password: 'password123',
       name: 'Admin IO',
@@ -50,7 +49,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed para pruebas controladas
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-io-test',
       name: 'Kiosco IO Test',
@@ -124,12 +123,51 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
       expect(csvRes.text).toContain('id,name,document,phone,creditLimit');
       expect(csvRes.text).toContain('Juana Manso,27-11223344-5,');
     });
+
+    it('el CSV sale entero y en orden estable: por nombre y, con el mismo nombre, por id', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const at = '2026-10-03T12:00:00.000Z';
+      await tenantDb
+        .insertInto('products')
+        .values([
+          { id: 'p-b', sku: 'Z-2', name: 'Arroz Blanco 1kg', price: 10.5, tax_rate: 0.105, barcodes: '["1","2"]', tracks_stock: false, blocked_reason: 'Sin "stock", vuelve', created_at: at, updated_at: at },
+          { id: 'p-a', sku: 'Z-1', name: 'Arroz Blanco 1kg', price: 0, created_at: at, updated_at: at },
+        ])
+        .execute();
+      await tenantDb.insertInto('stock').values({ product_id: 'p-b', branch_id: 'branch-central', quantity: 1.5, updated_at: at }).execute();
+      await tenantDb
+        .insertInto('customers')
+        .values({ id: 'c-a', name: 'Ana, la de enfrente', credit_limit: 100.5, balance: -20.25, unrestricted: true, created_at: at, updated_at: at })
+        .execute();
+
+      const get = async (entity: string) =>
+        (await request(app).get(`/api/tenants/${tenantId}/export/${entity}?format=csv`).set('Authorization', `Bearer ${adminToken}`)).text;
+
+      const products = (await get('products')).split('\n');
+      expect(products[0]).toBe('id,sku,name,price,taxRate,category,barcodes,tracksStock,blockedReason');
+      // Los dos primeros productos (creados por la API) tienen ids al azar: se miran los de id fijo
+      expect(products.filter((line) => line.startsWith('p-'))).toEqual([
+        'p-a,Z-1,Arroz Blanco 1kg,0,0,General,,true,',
+        'p-b,Z-2,Arroz Blanco 1kg,10.5,0.105,General,1;2,false,"Sin ""stock"", vuelve"',
+      ]);
+      expect(products).toHaveLength(5);
+      expect(products.at(-1)).toContain('ALM-200,Fideos Guiseros 500g,1100,0.21,Almacén,,true,');
+
+      const customers = (await get('customers')).split('\n');
+      expect(customers[0]).toBe('id,name,document,phone,creditLimit,margin,balance,unrestricted,blockedReason');
+      expect(customers[1]).toBe('c-a,"Ana, la de enfrente",,,100.5,0,-20.25,true,');
+      expect(customers).toHaveLength(3);
+
+      const stock = (await get('stock')).split('\n');
+      expect(stock[0]).toBe('productId,sku,productName,branchId,branchCode,branchName,quantity');
+      expect(stock).toContain('p-b,Z-2,Arroz Blanco 1kg,branch-central,CENTRAL,Sucursal Central,1.5');
+    });
   });
 
   // El alta aplica el preset del rubro (#19): ya no hay endpoint /seed-preset
   describe('Semillas de Negocio Preconfiguradas (applyPreset)', () => {
     it('aplica el preset de "kiosco" poblando productos y categorías representativas', async () => {
-      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'kiosco');
+      const body: PresetResult = await applyPreset(db().forTenant(tenantId), 'kiosco');
       expect(body.preset).toBe('kiosco');
       expect(body.productsCreated).toBeGreaterThanOrEqual(6);
 
@@ -155,7 +193,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
     });
 
     it('aplica el preset de "ferreteria" con productos y stock inicial correspondientes', async () => {
-      const body: PresetResult = applyPreset(tenantManager.getTenantDb(tenantId), 'ferreteria');
+      const body: PresetResult = await applyPreset(db().forTenant(tenantId), 'ferreteria');
       expect(body.preset).toBe('ferreteria');
 
       const prodRes = await request(app)
@@ -165,6 +203,16 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
       const products = prodRes.body as unknown as ProductItem[];
       const names = products.map((p) => p.name.toLowerCase());
       expect(names.some((n) => n.includes('martillo') || n.includes('destornillador') || n.includes('cinta'))).toBe(true);
+    });
+
+    it('es idempotente: aplicarlo dos veces no duplica productos ni pisa el stock', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const first = await applyPreset(tenantDb, 'almacen');
+      expect(first.stockEntries).toBe(first.productsCreated);
+      await tenantDb.updateTable('stock').set({ quantity: 1 }).execute();
+      expect(await applyPreset(tenantDb, 'almacen')).toEqual({ preset: 'almacen', productsCreated: 0, stockEntries: 0 });
+      expect(await tenantDb.selectFrom('products').select('id').execute()).toHaveLength(first.productsCreated);
+      expect((await tenantDb.selectFrom('stock').select('quantity').execute()).every((s) => s.quantity === 1)).toBe(true);
     });
   });
 });

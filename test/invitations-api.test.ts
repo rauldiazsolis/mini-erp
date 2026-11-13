@@ -1,26 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+import { createOwnerAccount } from './helpers/owner-account.ts';
+
+const db = setupTestDb();
 
 describe('invitaciones por link (#19)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
+  let bundle: ReturnType<typeof createApp>;
   let clock: Date;
   let owner: string;
   let tenantId: string;
 
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
-    systemDb = openSystemDb(':memory:');
-    app = createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }), now: () => clock }).app;
-    const res = await request(app)
-      .post('/api/alta')
-      .send({ name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana', businessType: 'otro', whatsapp: '1155550000' });
-    const body = res.body as { token: string; tenant: { id: string } };
+    bundle = createApp({ database: db(), tenantManager: new TenantManager(db()), now: () => clock });
+    app = bundle.app;
+    const body = await createOwnerAccount(bundle, { name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana' });
     owner = body.token;
     tenantId = body.tenant.id;
   });
@@ -34,7 +33,7 @@ describe('invitaciones por link (#19)', () => {
     expect(created.status).toBe(201);
     const inv = created.body as { token: string; expiresAt: string };
     expect(inv.expiresAt).toBe('2026-10-03T10:00:00.000Z');
-    const stored = systemDb.prepare('SELECT token_hash FROM invitations').get() as { token_hash: string };
+    const stored = await db().system.selectFrom('invitations').select('token_hash').executeTakeFirstOrThrow();
     expect(stored.token_hash).not.toBe(inv.token);
 
     const info = await request(app).post('/api/invitations/lookup').send({ token: inv.token });
@@ -60,7 +59,7 @@ describe('invitaciones por link (#19)', () => {
   });
 
   it('con cuenta existente pide su contraseña y suma la membresía', async () => {
-    await request(app).post('/api/alta').send({ name: 'Bea', email: 'bea@k.com', password: 'clave-bea-1', businessName: 'Otro', businessType: 'otro', whatsapp: '1155550000' });
+    await createOwnerAccount(bundle, { name: 'Bea', email: 'bea@k.com', password: 'clave-bea-1', businessName: 'Otro' });
     const inv = (await invitar('bea@k.com', 'admin')).body as { token: string };
     expect(((await request(app).post('/api/invitations/lookup').send({ token: inv.token })).body as { accountExists: boolean }).accountExists).toBe(true);
     expect((await request(app).post('/api/invitations/accept').send({ token: inv.token, password: 'equivocada' })).status).toBe(401);
@@ -99,7 +98,7 @@ describe('invitaciones por link (#19)', () => {
     await request(app).delete(`/api/tenants/${tenantId}/invitations/${a.id}`).set('Authorization', `Bearer ${owner}`);
     const b = (await invitar('juan@k.com', 'member')).body as { token: string };
     await request(app).post('/api/invitations/accept').send({ token: b.token, name: 'Juan', password: 'clave-juan-1' });
-    const actions = (systemDb.prepare('SELECT action FROM audit_log ORDER BY at, rowid').all() as { action: string }[]).map((r) => r.action);
+    const actions = (await db().system.selectFrom('audit_log').select('action').orderBy('at').orderBy('seq').execute()).map((r) => r.action);
     expect(actions).toEqual(['tenant.created', 'invitation.created', 'invitation.revoked', 'invitation.created', 'invitation.accepted']);
   });
 });

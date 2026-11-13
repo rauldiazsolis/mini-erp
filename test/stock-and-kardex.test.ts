@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
+import { StockService } from '../src/server/stock/stock-service.ts';
+import { writeStock } from '../src/server/stock/write-stock.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 interface StockMatrixItem {
   productId: string;
@@ -33,7 +36,6 @@ interface KardexMovementItem {
 }
 
 describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let adminToken: string;
@@ -43,13 +45,12 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
   let testProductId: string;
 
   beforeEach(async () => {
-    systemDb = openSystemDb(':memory:');
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const created = createApp({ systemDb, tenantManager });
+    tenantManager = new TenantManager(db());
+    const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
     // 1. Registrar usuario administrador
-    const registerRes = created.authService.createUser({
+    const registerRes = await created.authService.createUser({
       email: 'owner@stock.test',
       password: 'password123',
       name: 'Dueño Stock',
@@ -57,7 +58,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
     adminToken = registerRes.token;
 
     // 2. Crear tenant sin seed
-    tenantManager.createTenant({
+    await tenantManager.createTenant({
       id: tenantId,
       slug: 'kiosco-stock-test',
       name: 'Kiosco Stock Test',
@@ -65,7 +66,7 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       seedDemoData: false,
     });
     // Con bono: las ventas con fechas fijas no dejan al comercio restringido cuando pase la gracia (#21)
-    created.billing.grantSignupBonus(tenantId, registerRes.user.id);
+    await created.billing.grantSignupBonus(tenantId, registerRes.user.id);
 
     // 3. Obtener sucursal central por defecto
     const branchesRes = await request(app)
@@ -337,6 +338,141 @@ describe('Stock Multi-Sucursal y Kardex Auditado (Etapa 2.2)', () => {
       const filterMovements = filterRes.body as unknown as KardexMovementItem[];
       expect(filterMovements.length).toBe(1);
       expect(filterMovements[0]?.delta).toBe(-2);
+    });
+  });
+
+  describe('Stock sobre PostgreSQL (fase 4)', () => {
+    const adjust = (body: Record<string, unknown>) =>
+      request(app).post(`/api/tenants/${tenantId}/stock/adjust`).set('Authorization', `Bearer ${adminToken}`).send(body);
+
+    it('varios ajustes relativos a la vez no se pisan: la suma se hace en la base', async () => {
+      const service = new StockService(db().forTenant(tenantId));
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          service.adjustStock({ productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity: 1, reason: 'purchase' }),
+        ),
+      );
+
+      const matrix = await service.getStockMatrix();
+      expect(matrix[0]?.branches[defaultBranchId]).toBe(5);
+      // Cada ajuste vio el stock que dejó el anterior: el kardex cuadra con el stock
+      expect(results.map((r) => r.newQuantity).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+      expect(results.every((r) => r.delta === 1 && r.newQuantity - r.previousQuantity === 1)).toBe(true);
+    });
+
+    it('un "set" a la vez que otros ajustes deja un kardex que suma el stock final', async () => {
+      const service = new StockService(db().forTenant(tenantId));
+      await Promise.all([
+        service.adjustStock({ productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity: 7, reason: 'purchase' }),
+        service.adjustStock({ productId: testProductId, branchId: defaultBranchId, type: 'set', quantity: 20, reason: 'inventory_count' }),
+        service.adjustStock({ productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity: -2, reason: 'damage' }),
+      ]);
+
+      const matrix = await service.getStockMatrix();
+      const kardex = await service.getKardex({ productId: testProductId });
+      expect(kardex).toHaveLength(3);
+      expect(kardex.reduce((sum, m) => sum + m.delta, 0)).toBe(matrix[0]?.totalStock);
+    });
+
+    it('las cantidades se guardan con 4 decimales, sin ruido de coma flotante', async () => {
+      const first = await adjust({ productId: testProductId, branchId: defaultBranchId, type: 'set', quantity: 0.1, reason: 'purchase' });
+      expect(first.status).toBe(200);
+      const second = await adjust({ productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity: 0.2, reason: 'purchase' });
+      expect(second.body).toMatchObject({ previousQuantity: 0.1, delta: 0.2, newQuantity: 0.3 });
+
+      // Más de 4 decimales: redondea la columna, y el kardex guarda lo que de verdad cambió
+      const third = await adjust({ productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity: 1.23456, reason: 'purchase' });
+      expect(third.body).toMatchObject({ previousQuantity: 0.3, delta: 1.2346, newQuantity: 1.5346 });
+
+      const tenantDb = db().forTenant(tenantId);
+      const stock = await tenantDb
+        .selectFrom('stock')
+        .select('quantity')
+        .where('product_id', '=', testProductId)
+        .where('branch_id', '=', defaultBranchId)
+        .executeTakeFirstOrThrow();
+      expect(stock.quantity).toBe(1.5346);
+    });
+
+    it('una cantidad que no entra en la columna da 400 y no cambia nada', async () => {
+      const res = await adjust({ productId: testProductId, branchId: defaultBranchId, type: 'set', quantity: 1e12, reason: 'purchase' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: 'Cantidad inválida' });
+
+      const service = new StockService(db().forTenant(tenantId));
+      expect(await service.getKardex()).toEqual([]);
+      expect((await service.getStockMatrix())[0]?.totalStock).toBe(0);
+    });
+
+    it('el ajuste dentro de una transacción ajena se deshace con ella', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const service = new StockService(tenantDb);
+
+      await expect(
+        tenantDb.transaction().execute(async (trx) => {
+          await service.adjustStock({ productId: testProductId, branchId: defaultBranchId, type: 'set', quantity: 9, reason: 'purchase' }, trx);
+          throw new Error('se deshace');
+        }),
+      ).rejects.toThrow('se deshace');
+
+      expect(await service.getKardex()).toEqual([]);
+      expect((await service.getStockMatrix())[0]?.totalStock).toBe(0);
+    });
+
+    it('el kardex desempata dos movimientos del mismo instante por orden de llegada, también por tramos', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const now = new Date().toISOString();
+      for (const quantity of [1, 2, 3, 4]) {
+        await writeStock(tenantDb, { productId: testProductId, branchId: defaultBranchId, type: 'delta', quantity, reason: 'purchase', now });
+      }
+
+      const service = new StockService(tenantDb);
+      expect((await service.getKardex()).map((m) => m.delta)).toEqual([4, 3, 2, 1]);
+      const firstPage = await service.getKardex({ limit: 2 });
+      const secondPage = await service.getKardex({ limit: 2, offset: 2 });
+      expect([...firstPage, ...secondPage].map((m) => m.delta)).toEqual([4, 3, 2, 1]);
+    });
+
+    it('guarda y lista el stock de un producto que el comercio no tiene (sin FK)', async () => {
+      const tenantDb = db().forTenant(tenantId);
+      const written = await writeStock(tenantDb, {
+        productId: 'prod-de-otro-lado',
+        branchId: defaultBranchId,
+        type: 'delta',
+        quantity: -2,
+        reason: 'sale',
+        now: new Date().toISOString(),
+      });
+      expect(written).toMatchObject({ previousQuantity: 0, delta: -2, newQuantity: -2 });
+
+      const kardex = await new StockService(tenantDb).getKardex({ productId: 'prod-de-otro-lado' });
+      expect(kardex).toHaveLength(1);
+      expect(kardex[0]).toMatchObject({ productName: 'Producto Desconocido', sku: '', branchName: 'Sucursal Central', delta: -2 });
+    });
+
+    it('filtra el kardex por instante y rechaza una fecha ilegible con 400', async () => {
+      await adjust({ productId: testProductId, branchId: defaultBranchId, type: 'set', quantity: 3, reason: 'purchase' });
+      const kardexUrl = `/api/tenants/${tenantId}/stock/kardex`;
+
+      const past = await request(app).get(`${kardexUrl}?to=2000-01-01T00:00:00Z`).set('Authorization', `Bearer ${adminToken}`);
+      expect(past.body).toEqual([]);
+      const since = await request(app).get(`${kardexUrl}?from=2000-01-01T00:00:00Z`).set('Authorization', `Bearer ${adminToken}`);
+      expect(since.body).toHaveLength(1);
+
+      const invalid = await request(app).get(`${kardexUrl}?from=ayer`).set('Authorization', `Bearer ${adminToken}`);
+      expect(invalid.status).toBe(400);
+    });
+
+    it('la búsqueda de la matriz no distingue tildes y encuentra por código de barras', async () => {
+      await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'JUICE-01', name: 'Jugo de Naranja 1L', price: 1200, barcodes: ['7790001112223'] });
+
+      const byAccent = await request(app).get(`/api/tenants/${tenantId}/stock?search=mani`).set('Authorization', `Bearer ${adminToken}`);
+      expect((byAccent.body as StockMatrixItem[]).map((p) => p.sku)).toEqual(['CHOCO-01']);
+      const byBarcode = await request(app).get(`/api/tenants/${tenantId}/stock?search=1112223`).set('Authorization', `Bearer ${adminToken}`);
+      expect((byBarcode.body as StockMatrixItem[]).map((p) => p.sku)).toEqual(['JUICE-01']);
     });
   });
 

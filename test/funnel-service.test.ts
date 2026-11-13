@@ -1,123 +1,141 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FunnelService } from '../src/server/funnel/funnel-service.ts';
+import { AuditLog } from '../src/server/audit/audit-log.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
+const db = setupTestDb();
 
 describe('FunnelService (#25)', () => {
-  let db: DatabaseSync;
   let clock: Date;
   let funnel: FunnelService;
 
-  beforeEach(() => {
-    db = openSystemDb(':memory:');
+  const demoSession = (id: string, at: string) =>
+    db()
+      .system.insertInto('demo_sessions')
+      .values({ id, template: 'kiosco', tenant_id: 'demo-kiosco', register_id: `reg_${id}`, created_at: at, last_used_at: at })
+      .execute();
+
+  beforeEach(async () => {
     clock = new Date('2026-10-05T15:00:00.000Z');
-    funnel = new FunnelService({ db, now: () => clock });
-    db.prepare(
-      "INSERT INTO demo_sessions (id, template, tenant_id, register_id, created_at, last_used_at) VALUES ('demo_a', 'kiosco', 'demo-kiosco', 'reg_a', ?, ?)",
-    ).run(clock.toISOString(), clock.toISOString());
-    db.prepare("INSERT INTO demo_tenants (tenant_id, template, last_full_reset_at) VALUES ('demo-kiosco', 'kiosco', ?)").run(clock.toISOString());
-    db.prepare("INSERT INTO tenants (id, slug, name, created_at) VALUES ('kiosco-ana', 'kiosco-ana', 'Kiosco Ana', ?)").run(clock.toISOString());
+    const now = () => clock;
+    funnel = new FunnelService({ db: db().system, now, audit: new AuditLog(db().system, now) });
+    await demoSession('demo_a', clock.toISOString());
+    await db().system.insertInto('demo_tenants').values({ tenant_id: 'demo-kiosco', template: 'kiosco', last_full_reset_at: clock.toISOString() }).execute();
+    await db().system.insertInto('tenants').values({ id: 'kiosco-ana', slug: 'kiosco-ana', name: 'Kiosco Ana', created_at: clock.toISOString() }).execute();
   });
 
-  const events = () => db.prepare('SELECT type, demo_session_id AS demo, tenant_id AS tenant, data FROM funnel_events ORDER BY at, type').all();
+  const events = () =>
+    db()
+      .system.selectFrom('funnel_events')
+      .select(['type', 'demo_session_id as demo', 'tenant_id as tenant', 'data'])
+      .orderBy('at')
+      .orderBy('type')
+      .execute();
+  const contacts = () => db().system.selectFrom('funnel_contacts');
 
-  it('registra cada tipo una sola vez por demo o por comercio', () => {
-    expect(funnel.record('demo-sale', { demoSessionId: 'demo_a' })).toBe(true);
-    expect(funnel.record('demo-sale', { demoSessionId: 'demo_a' })).toBe(false);
-    expect(funnel.record('catalog-loaded', { tenantId: 'kiosco-ana', data: { source: 'example' } })).toBe(true);
-    expect(funnel.record('catalog-loaded', { tenantId: 'kiosco-ana', data: { source: 'import-products' } })).toBe(false);
-    expect(events()).toEqual([
-      { type: 'catalog-loaded', demo: null, tenant: 'kiosco-ana', data: '{"source":"example"}' },
+  it('registra cada tipo una sola vez por demo o por comercio', async () => {
+    expect(await funnel.record('demo-sale', { demoSessionId: 'demo_a' })).toBe(true);
+    expect(await funnel.record('demo-sale', { demoSessionId: 'demo_a' })).toBe(false);
+    expect(await funnel.record('catalog-loaded', { tenantId: 'kiosco-ana', data: { source: 'example' } })).toBe(true);
+    expect(await funnel.record('catalog-loaded', { tenantId: 'kiosco-ana', data: { source: 'import-products' } })).toBe(false);
+    expect(await events()).toEqual([
+      { type: 'catalog-loaded', demo: null, tenant: 'kiosco-ana', data: { source: 'example' } },
       { type: 'demo-sale', demo: 'demo_a', tenant: null, data: null },
     ]);
   });
 
-  it('ignora una demo desconocida', () => {
-    expect(funnel.record('portal-opened', { demoSessionId: 'otra' })).toBe(false);
-    expect(events()).toEqual([]);
+  it('ignora una demo desconocida', async () => {
+    expect(await funnel.record('portal-opened', { demoSessionId: 'otra' })).toBe(false);
+    expect(await events()).toEqual([]);
   });
 
-  it('tryRecord no tira aunque la base falle', () => {
-    db.exec('DROP TABLE funnel_events');
-    expect(() => {
-      funnel.tryRecord('demo-sale', { demoSessionId: 'demo_a' });
-    }).not.toThrow();
+  it('tryRecord no tira aunque la base falle', async () => {
+    vi.spyOn(funnel, 'record').mockRejectedValueOnce(new Error('se cayó la base'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await expect(funnel.tryRecord('demo-sale', { demoSessionId: 'demo_a' })).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalledOnce();
+    log.mockRestore();
   });
 
-  it('suma los totales del día argentino', () => {
-    funnel.bump('landing');
-    funnel.bump('landing');
+  it('suma los totales del día argentino', async () => {
+    await funnel.bump('landing');
+    await funnel.bump('landing');
     clock = new Date('2026-10-06T02:59:00.000Z'); // sigue siendo el 5 en Argentina
-    funnel.bump('landing');
+    await funnel.bump('landing');
     clock = new Date('2026-10-06T03:00:00.000Z');
-    funnel.bump('demo-click');
-    expect(db.prepare('SELECT day, kind, count FROM funnel_daily ORDER BY day, kind').all()).toEqual([
+    await funnel.bump('demo-click');
+    expect(await db().system.selectFrom('funnel_daily').select(['day', 'kind', 'count']).orderBy('day').orderBy('kind').execute()).toEqual([
       { day: '2026-10-05', kind: 'landing', count: 3 },
       { day: '2026-10-06', kind: 'demo-click', count: 1 },
     ]);
   });
 
-  it('liga un comercio a una demo conocida, aunque esté revocada', () => {
-    db.prepare("UPDATE demo_sessions SET revoked_at = ?, revoke_reason = 'idle' WHERE id = 'demo_a'").run(clock.toISOString());
-    expect(funnel.linkTenant('kiosco-ana', 'demo_a')).toBe(true);
-    expect(funnel.linkTenant('kiosco-ana', 'otra')).toBe(false);
-    expect(db.prepare("SELECT demo_session_id FROM tenants WHERE id = 'kiosco-ana'").get()).toEqual({ demo_session_id: 'demo_a' });
+  it('liga un comercio a una demo conocida, aunque esté revocada', async () => {
+    await db().system.updateTable('demo_sessions').set({ revoked_at: clock.toISOString(), revoke_reason: 'idle' }).where('id', '=', 'demo_a').execute();
+    expect(await funnel.linkTenant('kiosco-ana', 'demo_a')).toBe(true);
+    expect(await funnel.linkTenant('kiosco-ana', 'otra')).toBe(false);
+    expect(await db().system.selectFrom('tenants').select('demo_session_id').where('id', '=', 'kiosco-ana').executeTakeFirst()).toEqual({
+      demo_session_id: 'demo_a',
+    });
   });
 
-  it('un contacto por demo: el segundo actualiza y vuelve a sin atender', () => {
-    const first = funnel.saveContact({ name: 'Ana', whatsapp: '1155550000', source: 'demo', demoSessionId: 'demo_a' });
-    funnel.markHandled(first.id, 'u_soporte');
+  it('un contacto por demo: el segundo actualiza y vuelve a sin atender', async () => {
+    const first = await funnel.saveContact({ name: 'Ana', whatsapp: '1155550000', source: 'demo', demoSessionId: 'demo_a' });
+    await funnel.markHandled(first.id, { actorUserId: 'u_soporte' });
     clock = new Date(clock.getTime() + 60_000);
-    const second = funnel.saveContact({ name: 'Ana P.', whatsapp: '1155551111', source: 'demo-ended', demoSessionId: 'demo_a' });
+    const second = await funnel.saveContact({ name: 'Ana P.', whatsapp: '1155551111', source: 'demo-ended', demoSessionId: 'demo_a' });
     expect(second.id).toBe(first.id);
-    expect(db.prepare('SELECT name, whatsapp, source, handled_at, handled_by FROM funnel_contacts').all()).toEqual([
+    expect(await contacts().select(['name', 'whatsapp', 'source', 'handled_at', 'handled_by']).execute()).toEqual([
       { name: 'Ana P.', whatsapp: '1155551111', source: 'demo-ended', handled_at: null, handled_by: null },
     ]);
-    expect(funnel.pendingCount()).toBe(1);
+    expect(await funnel.pendingCount()).toBe(1);
   });
 
-  it('sin demo (o con una desconocida) cada contacto es una fila nueva sin demo', () => {
-    funnel.saveContact({ name: 'Beto', whatsapp: '1144440000', source: 'landing' });
-    funnel.saveContact({ name: 'Caro', whatsapp: '1133330000', source: 'landing', demoSessionId: 'inventada' });
-    expect(db.prepare('SELECT name, demo_session_id AS demo FROM funnel_contacts ORDER BY name').all()).toEqual([
+  it('sin demo (o con una desconocida) cada contacto es una fila nueva sin demo', async () => {
+    await funnel.saveContact({ name: 'Beto', whatsapp: '1144440000', source: 'landing' });
+    await funnel.saveContact({ name: 'Caro', whatsapp: '1133330000', source: 'landing', demoSessionId: 'inventada' });
+    expect(await contacts().select(['name', 'demo_session_id as demo']).orderBy('name').execute()).toEqual([
       { name: 'Beto', demo: null },
       { name: 'Caro', demo: null },
     ]);
   });
 
-  it('marcar atendido guarda quién y cuándo; uno desconocido da 404', () => {
-    const { id } = funnel.saveContact({ name: 'Ana', whatsapp: '1155550000', source: 'landing' });
-    funnel.markHandled(id, 'u_soporte');
-    expect(db.prepare('SELECT handled_at, handled_by FROM funnel_contacts').get()).toEqual({ handled_at: clock.toISOString(), handled_by: 'u_soporte' });
-    expect(funnel.pendingCount()).toBe(0);
-    expect(() => {
-      funnel.markHandled('nada', 'u_soporte');
-    }).toThrow('No existe ese contacto');
+  it('marcar atendido guarda quién y cuándo, y lo audita; uno desconocido da 404', async () => {
+    const { id } = await funnel.saveContact({ name: 'Ana', whatsapp: '1155550000', source: 'landing' });
+    await funnel.markHandled(id, { actorUserId: 'u_soporte' });
+    expect(await contacts().select(['handled_at', 'handled_by']).executeTakeFirst()).toEqual({ handled_at: clock.toISOString(), handled_by: 'u_soporte' });
+    expect(await funnel.pendingCount()).toBe(0);
+    expect(
+      await db().system.selectFrom('audit_log').select(['actor_user_id', 'details']).where('action', '=', 'funnel.contact-handled').execute(),
+    ).toEqual([{ actor_user_id: 'u_soporte', details: { contactId: id } }]);
+    await expect(funnel.markHandled('nada', { actorUserId: 'u_soporte' })).rejects.toThrow('No existe ese contacto');
+    expect(await db().system.selectFrom('audit_log').select('id').execute()).toHaveLength(1);
   });
 
-  it('el barrido borra eventos viejos y los datos de contactos viejos sin comercio', () => {
+  it('el barrido borra eventos viejos y los datos de contactos viejos sin comercio', async () => {
     const old = new Date(clock.getTime() - 731 * DAY).toISOString();
-    db.prepare("INSERT INTO funnel_events (id, type, demo_session_id, at) VALUES ('viejo', 'demo-sale', 'demo_a', ?)").run(old);
-    db.prepare(
-      "INSERT INTO demo_sessions (id, template, tenant_id, register_id, created_at, last_used_at) VALUES ('demo_b', 'kiosco', 'demo-kiosco', 'reg_b', ?, ?)",
-    ).run(old, old);
-    const contact = db.prepare('INSERT INTO funnel_contacts (id, demo_session_id, source, name, whatsapp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    await db().system.insertInto('funnel_events').values({ id: 'viejo', type: 'demo-sale', demo_session_id: 'demo_a', at: old }).execute();
+    await demoSession('demo_b', old);
     const year = new Date(clock.getTime() - 366 * DAY).toISOString();
-    contact.run('c_sin', null, 'landing', 'Viejo', '1100000000', year, year);
-    contact.run('c_con', 'demo_b', 'demo', 'Cliente', '1100000001', year, year);
-    db.prepare("UPDATE tenants SET demo_session_id = 'demo_b' WHERE id = 'kiosco-ana'").run();
-    expect(funnel.sweep()).toEqual({ events: 1, contacts: 1 });
-    expect(db.prepare('SELECT id, name, whatsapp, erased_at FROM funnel_contacts ORDER BY id').all()).toEqual([
+    await db()
+      .system.insertInto('funnel_contacts')
+      .values([
+        { id: 'c_sin', demo_session_id: null, source: 'landing', name: 'Viejo', whatsapp: '1100000000', created_at: year, updated_at: year },
+        { id: 'c_con', demo_session_id: 'demo_b', source: 'demo', name: 'Cliente', whatsapp: '1100000001', created_at: year, updated_at: year },
+      ])
+      .execute();
+    await db().system.updateTable('tenants').set({ demo_session_id: 'demo_b' }).where('id', '=', 'kiosco-ana').execute();
+    expect(await funnel.sweep()).toEqual({ events: 1, contacts: 1 });
+    expect(await contacts().select(['id', 'name', 'whatsapp', 'erased_at']).orderBy('id').execute()).toEqual([
       { id: 'c_con', name: 'Cliente', whatsapp: '1100000001', erased_at: null },
       { id: 'c_sin', name: null, whatsapp: null, erased_at: clock.toISOString() },
     ]);
-    expect(funnel.sweep()).toEqual({ events: 0, contacts: 0 });
+    expect(await funnel.sweep()).toEqual({ events: 0, contacts: 0 });
   });
 
-  it('reconoce los comercios demo', () => {
-    expect(funnel.isDemoTenant('demo-kiosco')).toBe(true);
-    expect(funnel.isDemoTenant('kiosco-ana')).toBe(false);
+  it('reconoce los comercios demo', async () => {
+    expect(await funnel.isDemoTenant('demo-kiosco')).toBe(true);
+    expect(await funnel.isDemoTenant('kiosco-ana')).toBe(false);
   });
 });

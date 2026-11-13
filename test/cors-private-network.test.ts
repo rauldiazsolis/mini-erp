@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 function makeApp() {
-  const systemDb = new DatabaseSync(':memory:');
-  initSystemDb(systemDb);
-  return createApp({ systemDb, tenantManager: new TenantManager(systemDb, { inMemory: true }) }).app;
+  return createApp({ database: db(), tenantManager: new TenantManager(db()) }).app;
 }
 
 function preflight(app: ReturnType<typeof makeApp>) {

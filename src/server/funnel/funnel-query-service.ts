@@ -1,4 +1,4 @@
-import type { DatabaseSync } from 'node:sqlite';
+import { sql, type Kysely, type RawBuilder } from 'kysely';
 import { z } from '../../shared/zod.ts';
 import { shiftDay } from '../../shared/argentina-day.ts';
 import {
@@ -15,7 +15,8 @@ import {
   type FunnelVisitorFilter,
   type FunnelVisitorItem,
 } from '../../shared/funnel-types.ts';
-import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import { demoTenantIds } from '../demo/demo-tenant-ids.ts';
 
 const MAX_ITEMS = 500;
 
@@ -33,6 +34,14 @@ type ContactRow = {
   handled_by_name: string | null;
   erased_at: string | null;
 };
+type Visitor = { id: string; startedAt: string; demo: DemoRow | null; contact: ContactRow | null; tenant: TenantRow | null };
+type EventRow = { type: string; demo_session_id: string | null; tenant_id: string | null; at: string; data: unknown };
+type Related = {
+  /** Por `eventKey`: a lo sumo uno por tipo y por demo o comercio (índices únicos). */
+  events: Map<string, EventRow>;
+  realSale: Map<string, string>;
+  payment: Map<string, string>;
+};
 type Built = { item: FunnelVisitorItem; stages: Stages; demo: DemoRow | null; tenant: TenantRow | null; loadSource: string | null };
 
 export type VisitorQuery = {
@@ -44,11 +53,6 @@ export type VisitorQuery = {
   q?: string | undefined;
 };
 
-const TENANT_COLS = 'id, slug, name, created_at, holder_user_id, business_type';
-const DEMO_SQL = `SELECT s.id, s.template, s.created_at, s.revoked_at, s.revoke_reason, r.point_of_sale
-  FROM demo_sessions s LEFT JOIN registers r ON r.id = s.register_id`;
-const CONTACT_SQL = `SELECT c.id, c.demo_session_id, c.source, c.name, c.whatsapp, c.created_at, c.handled_at, c.erased_at, u.name AS handled_by_name
-  FROM funnel_contacts c LEFT JOIN users u ON u.id = c.handled_by`;
 const loadDataSchema = z.object({ source: z.string() });
 
 /** Medianoche argentina de un día, en ISO (UTC−3 fijo). */
@@ -56,18 +60,22 @@ function startOf(day: string): string {
   return `${day}T03:00:00.000Z`;
 }
 
+/** `= any($1)`: una lista de ids en un solo parámetro (un `IN` con miles de demos no entra). */
+function anyOf(ids: readonly string[]): RawBuilder<string> {
+  return sql<string>`any(${ids}::text[])`;
+}
+
+function eventKey(type: string, owner: 'demo' | 'tenant', id: string): string {
+  return `${type}|${owner}|${id}`;
+}
+
 function toRubro(value: string | null): FunnelRubro {
   return isFunnelRubro(value) ? value : 'otro';
 }
 
-function loadSourceOf(data: string | null | undefined): string | null {
-  if (data === null || data === undefined) return null;
-  try {
-    const parsed = loadDataSchema.safeParse(JSON.parse(data));
-    return parsed.success ? parsed.data.source : null;
-  } catch {
-    return null;
-  }
+function loadSourceOf(data: unknown): string | null {
+  const parsed = loadDataSchema.safeParse(data);
+  return parsed.success ? parsed.data.source : null;
 }
 
 function countBy<T>(items: readonly T[], pick: (item: T) => FunnelRubro): Record<FunnelRubro, number> {
@@ -83,31 +91,35 @@ function countBy<T>(items: readonly T[], pick: (item: T) => FunnelRubro): Record
  * ya existe (la demo, el comercio, el primer cargo y el primer pago del titular).
  */
 export class FunnelQueryService {
-  private db: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
 
-  constructor(deps: { db: DatabaseSync }) {
+  constructor(deps: { db: Kysely<SystemDatabase> }) {
     this.db = deps.db;
   }
 
-  report(f: { from: string; to: string; rubro?: FunnelRubro | undefined }): FunnelReport {
-    const built = this.build(f.from, f.to).filter((b) => f.rubro === undefined || b.item.rubro === f.rubro);
+  async report(f: { from: string; to: string; rubro?: FunnelRubro | undefined }): Promise<FunnelReport> {
+    const built = (await this.build(f.from, f.to)).filter((b) => f.rubro === undefined || b.item.rubro === f.rubro);
     const stages = FUNNEL_STAGES.map((stage) => {
       const reached = built.filter((b) => b.stages[stage] !== null);
       return { stage, total: reached.length, byRubro: countBy(reached, (b) => b.item.rubro) };
     });
     const landing: Record<FunnelDailyKind, number> = { landing: 0, 'demo-click': 0, 'alta-open': 0 };
-    const rows = this.db
-      .prepare('SELECT kind, SUM(count) AS n FROM funnel_daily WHERE day BETWEEN ? AND ? GROUP BY kind')
-      .all(f.from, f.to) as { kind: string; n: number }[];
+    const rows = await this.db
+      .selectFrom('funnel_daily')
+      .select((eb) => ['kind', eb.fn.sum<number>('count').as('n')])
+      .where('day', '>=', f.from)
+      .where('day', '<=', f.to)
+      .groupBy('kind')
+      .execute();
     for (const row of rows) if (isFunnelDailyKind(row.kind)) landing[row.kind] = row.n;
     return { from: f.from, to: f.to, landing, visitors: { total: built.length, byRubro: countBy(built, (b) => b.item.rubro) }, stages };
   }
 
-  visitors(f: VisitorQuery): FunnelVisitorItem[] {
+  async visitors(f: VisitorQuery): Promise<FunnelVisitorItem[]> {
     // "Sin atender" muestra todos los pendientes, sin rango de fechas
     const pending = f.filter === 'pending';
     const text = f.q?.trim().toLowerCase() ?? '';
-    return this.build(pending ? undefined : f.from, pending ? undefined : f.to)
+    return (await this.build(pending ? undefined : f.from, pending ? undefined : f.to))
       .filter((b) => f.rubro === undefined || b.item.rubro === f.rubro)
       .filter((b) => f.stage === undefined || b.stages[f.stage] !== null)
       .filter((b) => {
@@ -126,12 +138,12 @@ export class FunnelQueryService {
       .slice(0, MAX_ITEMS);
   }
 
-  visitor(id: string): FunnelVisitorDetail | undefined {
-    const b = this.buildOne(id);
+  async visitor(id: string): Promise<FunnelVisitorDetail | undefined> {
+    const b = await this.buildOne(id);
     if (b === undefined) return undefined;
     const holderId = b.tenant?.holder_user_id ?? null;
     const holder =
-      holderId === null ? undefined : (this.db.prepare('SELECT name, created_at FROM users WHERE id = ?').get(holderId) as { name: string; created_at: string } | undefined);
+      holderId === null ? undefined : await this.db.selectFrom('users').select(['name', 'created_at']).where('id', '=', holderId).executeTakeFirst();
     return {
       ...b.item,
       stages: FUNNEL_STAGES.map((stage) => ({ stage, at: b.stages[stage] })),
@@ -150,64 +162,142 @@ export class FunnelQueryService {
     };
   }
 
+  private demoQuery() {
+    return this.db
+      .selectFrom('demo_sessions as s')
+      .leftJoin('registers as r', 'r.id', 's.register_id')
+      .select(['s.id', 's.template', 's.created_at', 's.revoked_at', 's.revoke_reason', 'r.point_of_sale']);
+  }
+
+  private contactQuery() {
+    return this.db
+      .selectFrom('funnel_contacts as c')
+      .leftJoin('users as u', 'u.id', 'c.handled_by')
+      .select(['c.id', 'c.demo_session_id', 'c.source', 'c.name', 'c.whatsapp', 'c.created_at', 'c.handled_at', 'c.erased_at', 'u.name as handled_by_name']);
+  }
+
+  private tenantQuery() {
+    return this.db.selectFrom('tenants as t').select(['t.id', 't.slug', 't.name', 't.created_at', 't.holder_user_id', 't.business_type']);
+  }
+
   /** Los visitantes que empezaron en el rango (o todos), del más nuevo al más viejo. */
-  private build(from: string | undefined, to: string | undefined): Built[] {
-    const lo = from === undefined ? '' : startOf(from);
-    const hi = to === undefined ? '9999' : startOf(shiftDay(to, 1));
-    const demos = this.db.prepare(`${DEMO_SQL} WHERE s.created_at >= ? AND s.created_at < ?`).all(lo, hi) as DemoRow[];
-    const contacts = this.db.prepare(`${CONTACT_SQL} WHERE c.demo_session_id IS NULL AND c.created_at >= ? AND c.created_at < ?`).all(lo, hi) as ContactRow[];
-    const tenants = this.db
-      .prepare(`SELECT ${TENANT_COLS} FROM tenants WHERE demo_session_id IS NULL AND id NOT IN ${DEMO_TENANT_IDS_SQL} AND created_at >= ? AND created_at < ?`)
-      .all(lo, hi) as TenantRow[];
-    return [
-      ...demos.map((d) => this.fromDemo(d)),
-      ...contacts.map((c) => this.assemble({ id: `c-${c.id}`, startedAt: c.created_at, demo: null, contact: c, tenant: null })),
-      ...tenants.map((t) => this.assemble({ id: `t-${t.id}`, startedAt: t.created_at, demo: null, contact: null, tenant: t })),
-    ].sort((a, b) => b.item.startedAt.localeCompare(a.item.startedAt));
+  private async build(from: string | undefined, to: string | undefined): Promise<Built[]> {
+    const lo = from === undefined ? undefined : startOf(from);
+    const hi = to === undefined ? undefined : startOf(shiftDay(to, 1));
+    let demos = this.demoQuery();
+    let contacts = this.contactQuery().where('c.demo_session_id', 'is', null);
+    let tenants = this.tenantQuery().where('t.demo_session_id', 'is', null).where('t.id', 'not in', demoTenantIds(this.db));
+    if (lo !== undefined) {
+      demos = demos.where('s.created_at', '>=', lo);
+      contacts = contacts.where('c.created_at', '>=', lo);
+      tenants = tenants.where('t.created_at', '>=', lo);
+    }
+    if (hi !== undefined) {
+      demos = demos.where('s.created_at', '<', hi);
+      contacts = contacts.where('c.created_at', '<', hi);
+      tenants = tenants.where('t.created_at', '<', hi);
+    }
+    const visitors: Visitor[] = [
+      ...(await demos.execute()).map((d) => ({ id: d.id, startedAt: d.created_at, demo: d, contact: null, tenant: null })),
+      ...(await contacts.execute()).map((c) => ({ id: `c-${c.id}`, startedAt: c.created_at, demo: null, contact: c, tenant: null })),
+      ...(await tenants.execute()).map((t) => ({ id: `t-${t.id}`, startedAt: t.created_at, demo: null, contact: null, tenant: t })),
+    ];
+    return (await this.assembleAll(visitors)).sort((a, b) => b.item.startedAt.localeCompare(a.item.startedAt));
   }
 
-  private buildOne(id: string): Built | undefined {
+  private async buildOne(id: string): Promise<Built | undefined> {
+    let visitor: Visitor | undefined;
     if (id.startsWith('c-')) {
-      const c = this.db.prepare(`${CONTACT_SQL} WHERE c.id = ? AND c.demo_session_id IS NULL`).get(id.slice(2)) as ContactRow | undefined;
-      return c === undefined ? undefined : this.assemble({ id, startedAt: c.created_at, demo: null, contact: c, tenant: null });
+      const c = await this.contactQuery().where('c.id', '=', id.slice(2)).where('c.demo_session_id', 'is', null).executeTakeFirst();
+      visitor = c === undefined ? undefined : { id, startedAt: c.created_at, demo: null, contact: c, tenant: null };
+    } else if (id.startsWith('t-')) {
+      const t = await this.tenantQuery()
+        .where('t.id', '=', id.slice(2))
+        .where('t.demo_session_id', 'is', null)
+        .where('t.id', 'not in', demoTenantIds(this.db))
+        .executeTakeFirst();
+      visitor = t === undefined ? undefined : { id, startedAt: t.created_at, demo: null, contact: null, tenant: t };
+    } else {
+      const d = await this.demoQuery().where('s.id', '=', id).executeTakeFirst();
+      visitor = d === undefined ? undefined : { id: d.id, startedAt: d.created_at, demo: d, contact: null, tenant: null };
     }
-    if (id.startsWith('t-')) {
-      const t = this.db
-        .prepare(`SELECT ${TENANT_COLS} FROM tenants WHERE id = ? AND demo_session_id IS NULL AND id NOT IN ${DEMO_TENANT_IDS_SQL}`)
-        .get(id.slice(2)) as TenantRow | undefined;
-      return t === undefined ? undefined : this.assemble({ id, startedAt: t.created_at, demo: null, contact: null, tenant: t });
+    return visitor === undefined ? undefined : (await this.assembleAll([visitor]))[0];
+  }
+
+  /**
+   * Completa los visitantes con lo de cada uno (el contacto y el comercio de una demo, los eventos, el
+   * primer cargo y el primer pago del titular) en una consulta por tipo, no una por visitante.
+   */
+  private async assembleAll(visitors: Visitor[]): Promise<Built[]> {
+    const demoIds = visitors.flatMap((v) => (v.demo === null ? [] : [v.demo.id]));
+    if (demoIds.length > 0) {
+      const contacts = new Map<string, ContactRow>();
+      for (const c of await this.contactQuery().where('c.demo_session_id', '=', anyOf(demoIds)).execute()) {
+        if (c.demo_session_id !== null) contacts.set(c.demo_session_id, c);
+      }
+      // El comercio de una demo: el primero que nació de ella
+      const tenants = new Map<string, TenantRow>();
+      const linked = await this.tenantQuery()
+        .select('t.demo_session_id')
+        .where('t.demo_session_id', '=', anyOf(demoIds))
+        .orderBy('t.created_at')
+        .execute();
+      for (const { demo_session_id: demoId, ...t } of linked) {
+        if (demoId !== null && !tenants.has(demoId)) tenants.set(demoId, t);
+      }
+      for (const v of visitors) {
+        if (v.demo === null) continue;
+        v.contact = contacts.get(v.demo.id) ?? null;
+        v.tenant = tenants.get(v.demo.id) ?? null;
+      }
     }
-    const d = this.db.prepare(`${DEMO_SQL} WHERE s.id = ?`).get(id) as DemoRow | undefined;
-    return d === undefined ? undefined : this.fromDemo(d);
+    const related = await this.related(
+      demoIds,
+      visitors.flatMap((v) => (v.tenant === null ? [] : [v.tenant.id])),
+    );
+    return visitors.map((v) => this.assemble(v, related));
   }
 
-  private fromDemo(d: DemoRow): Built {
-    const contact = this.db.prepare(`${CONTACT_SQL} WHERE c.demo_session_id = ?`).get(d.id) as ContactRow | undefined;
-    const tenant = this.db.prepare(`SELECT ${TENANT_COLS} FROM tenants WHERE demo_session_id = ? ORDER BY created_at LIMIT 1`).get(d.id) as
-      | TenantRow
-      | undefined;
-    return this.assemble({ id: d.id, startedAt: d.created_at, demo: d, contact: contact ?? null, tenant: tenant ?? null });
+  private async related(demoIds: string[], tenantIds: string[]): Promise<Related> {
+    const out: Related = { events: new Map(), realSale: new Map(), payment: new Map() };
+    if (demoIds.length > 0 || tenantIds.length > 0) {
+      const events = await this.db
+        .selectFrom('funnel_events')
+        .select(['type', 'demo_session_id', 'tenant_id', 'at', 'data'])
+        .where((eb) =>
+          eb.or([eb('demo_session_id', '=', anyOf(demoIds)), eb.and([eb('type', '=', 'catalog-loaded'), eb('tenant_id', '=', anyOf(tenantIds))])]),
+        )
+        .execute();
+      for (const e of events) {
+        if (e.demo_session_id !== null) out.events.set(eventKey(e.type, 'demo', e.demo_session_id), e);
+        if (e.tenant_id !== null) out.events.set(eventKey(e.type, 'tenant', e.tenant_id), e);
+      }
+    }
+    if (tenantIds.length === 0) return out;
+    const sales = await this.db
+      .selectFrom('charges')
+      .select((eb) => ['tenant_id', eb.fn.min<string>('created_at').as('at')])
+      .where('tenant_id', '=', anyOf(tenantIds))
+      .groupBy('tenant_id')
+      .execute();
+    for (const row of sales) out.realSale.set(row.tenant_id, row.at);
+    // El primer pago del titular desde que nace el comercio
+    const payments = await this.db
+      .selectFrom('tenants as t')
+      .innerJoin('paid_movements as pm', (join) => join.onRef('pm.user_id', '=', 't.holder_user_id').onRef('pm.created_at', '>=', 't.created_at'))
+      .select((eb) => ['t.id', eb.fn.min<string>('pm.created_at').as('at')])
+      .where('pm.kind', '=', 'payment')
+      .where('t.id', '=', anyOf(tenantIds))
+      .groupBy('t.id')
+      .execute();
+    for (const row of payments) out.payment.set(row.id, row.at);
+    return out;
   }
 
-  private event(type: string, column: 'demo_session_id' | 'tenant_id', id: string): { at: string; data: string | null } | undefined {
-    return this.db.prepare(`SELECT at, data FROM funnel_events WHERE type = ? AND ${column} = ?`).get(type, id) as
-      | { at: string; data: string | null }
-      | undefined;
-  }
-
-  private assemble(v: { id: string; startedAt: string; demo: DemoRow | null; contact: ContactRow | null; tenant: TenantRow | null }): Built {
+  private assemble(v: Visitor, related: Related): Built {
     const { demo, contact, tenant } = v;
-    const ev = (type: string) => (demo === null ? undefined : this.event(type, 'demo_session_id', demo.id));
-    const load = tenant === null ? undefined : this.event('catalog-loaded', 'tenant_id', tenant.id);
-    const realSale =
-      tenant === null ? undefined : (this.db.prepare('SELECT MIN(created_at) AS at FROM charges WHERE tenant_id = ?').get(tenant.id) as { at: string | null });
-    const holderId = tenant?.holder_user_id ?? null;
-    const payment =
-      tenant === null || holderId === null
-        ? undefined
-        : (this.db
-            .prepare("SELECT MIN(created_at) AS at FROM paid_movements WHERE user_id = ? AND kind = 'payment' AND created_at >= ?")
-            .get(holderId, tenant.created_at) as { at: string | null });
+    const ev = (type: string) => (demo === null ? undefined : related.events.get(eventKey(type, 'demo', demo.id)));
+    const load = tenant === null ? undefined : related.events.get(eventKey('catalog-loaded', 'tenant', tenant.id));
     const stages: Stages = {
       demo: demo?.created_at ?? null,
       'demo-sale': ev('demo-sale')?.at ?? null,
@@ -217,8 +307,8 @@ export class FunnelQueryService {
       alta: ev('alta-opened')?.at ?? tenant?.created_at ?? null,
       commerce: tenant?.created_at ?? null,
       load: load?.at ?? null,
-      'real-sale': realSale?.at ?? null,
-      payment: payment?.at ?? null,
+      'real-sale': tenant === null ? null : (related.realSale.get(tenant.id) ?? null),
+      payment: tenant === null ? null : (related.payment.get(tenant.id) ?? null),
     };
     const furthest = [...FUNNEL_STAGES].reverse().find((s) => stages[s] !== null) ?? 'demo';
     return {

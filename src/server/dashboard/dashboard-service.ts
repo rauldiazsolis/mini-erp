@@ -1,4 +1,5 @@
-import { DatabaseSync } from 'node:sqlite';
+import { sql, type Kysely } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import { lineTotal, parseSaleLines, roundAmount } from './sale-lines.ts';
 import { argentinaHour, argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
 import { readSale } from '../sales/stored-documents.ts';
@@ -53,12 +54,12 @@ export type DashboardSummaryResponse = {
 
 type SaleRow = {
   id: string;
-  payload: string;
+  payload: unknown;
   total: number;
   created_at: string;
-  day: string;
+  day: string | null;
   voids_sale_id: string | null;
-  voided: number;
+  voided: boolean;
 };
 
 const PERIOD_DAYS: Record<DashboardPeriod, number> = { today: 1, week: 7, month: 30 };
@@ -66,7 +67,7 @@ const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 /** Vigente: ni anulación ni anulada (#20). La cantidad de tickets y el promedio cuentan solo estos. */
 function isValid(sale: SaleRow): boolean {
-  return sale.voids_sale_id === null && sale.voided === 0;
+  return sale.voids_sale_id === null && !sale.voided;
 }
 
 function dayLabel(day: string, withWeekday: boolean): string {
@@ -76,15 +77,15 @@ function dayLabel(day: string, withWeekday: boolean): string {
 }
 
 export class DashboardService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
   private now: () => Date;
 
-  constructor(db: DatabaseSync, now: () => Date = () => new Date()) {
+  constructor(db: Kysely<TenantDatabase>, now: () => Date = () => new Date()) {
     this.db = db;
     this.now = now;
   }
 
-  public getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): DashboardSummaryResponse {
+  public async getSummary(options?: { period?: DashboardPeriod | undefined; branchId?: string | undefined }): Promise<DashboardSummaryResponse> {
     const period: DashboardPeriod = options?.period ?? 'today';
     const branchId = options?.branchId;
 
@@ -92,8 +93,8 @@ export class DashboardService {
     const days = PERIOD_DAYS[period];
     const today = argentinaToday(this.now());
     const from = shiftDay(today, -(days - 1));
-    const sales = this.fetchSales(from, today, branchId);
-    const prevSales = this.fetchSales(shiftDay(from, -days), shiftDay(from, -1), branchId);
+    const sales = await this.fetchSales(from, today, branchId);
+    const prevSales = await this.fetchSales(shiftDay(from, -days), shiftDay(from, -1), branchId);
 
     // Como el POS: el total es el neto de todos los tickets; cantidad y promedio, de los vigentes
     const valid = sales.filter(isValid);
@@ -107,9 +108,9 @@ export class DashboardService {
         : 0;
 
     const timeline = period === 'today' ? this.hourlyTimeline(sales, today) : this.dailyTimeline(sales, from, days, period === 'week');
-    const topProducts = this.calculateTopProducts(sales);
-    const customerMetrics = this.calculateCustomerMetrics();
-    const stockAlerts = this.calculateStockAlerts(this.branchIdByCode(branchId));
+    const topProducts = await this.calculateTopProducts(sales);
+    const customerMetrics = await this.calculateCustomerMetrics();
+    const stockAlerts = await this.calculateStockAlerts(await this.branchIdByCode(branchId));
 
     return {
       period,
@@ -130,18 +131,17 @@ export class DashboardService {
     };
   }
 
-  private fetchSales(from: string, to: string, branchId?: string): SaleRow[] {
-    let sql = `
-      SELECT s.id, s.payload, s.total, s.created_at, s.day, s.voids_sale_id,
-        EXISTS (SELECT 1 FROM sales v WHERE v.voids_sale_id = s.id) AS voided
-      FROM sales s
-      WHERE s.day BETWEEN ? AND ?`;
-    const params: string[] = [from, to];
+  private async fetchSales(from: string, to: string, branchId?: string): Promise<SaleRow[]> {
+    let query = this.db
+      .selectFrom('sales as s')
+      .select(['s.id', 's.payload', 's.total', 's.created_at', 's.day', 's.voids_sale_id'])
+      .select((eb) => eb.exists(eb.selectFrom('sales as v').select(sql.lit(1).as('one')).whereRef('v.voids_sale_id', '=', 's.id')).$castTo<boolean>().as('voided'))
+      .where('s.day', '>=', from)
+      .where('s.day', '<=', to);
     if (branchId !== undefined && branchId !== '') {
-      sql += ' AND s.branch = ?';
-      params.push(branchId);
+      query = query.where('s.branch', '=', branchId);
     }
-    return this.db.prepare(`${sql} ORDER BY s.created_at ASC`).all(...params) as unknown as SaleRow[];
+    return query.orderBy('s.created_at', 'asc').orderBy('s.id', 'asc').execute();
   }
 
   /** "Hoy": tramos de 3 horas argentinas, sobre el `createdAt` de cada venta. */
@@ -179,7 +179,7 @@ export class DashboardService {
    * Top 5 por unidades (#15): productos por `productId`, con el nombre del catálogo; líneas
    * `freeform` agrupadas por descripción normalizada. Importes con la fórmula del POS.
    */
-  private calculateTopProducts(sales: SaleRow[]): TopProductItem[] {
+  private async calculateTopProducts(sales: SaleRow[]): Promise<TopProductItem[]> {
     type Entry = {
       key: string;
       kind: 'product' | 'freeform';
@@ -212,7 +212,7 @@ export class DashboardService {
       .filter((e) => e.units > 0)
       .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
       .slice(0, 5);
-    const names = this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));
+    const names = await this.productNames(top.flatMap((e) => (e.productId === undefined ? [] : [e.productId])));
 
     return top.map((e) => ({
       key: e.key,
@@ -224,25 +224,27 @@ export class DashboardService {
     }));
   }
 
-  private productNames(ids: string[]): Map<string, string> {
+  private async productNames(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
-    const rows = this.db
-      .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(', ')})`)
-      .all(...ids) as unknown as Array<{ id: string; name: string }>;
+    const rows = await this.db.selectFrom('products').select(['id', 'name']).where('id', 'in', ids).execute();
     return new Map(rows.map((r) => [r.id, r.name]));
   }
 
-  private calculateCustomerMetrics(): { totalReceivables: number; debtorCount: number; totalCustomers: number } {
-    const receivablesRow = this.db
-      .prepare('SELECT COALESCE(SUM(balance), 0) as total, COUNT(*) as count FROM customers WHERE balance > 0')
-      .get() as { total: number; count: number };
-
-    const totalCustomersRow = this.db.prepare('SELECT COUNT(*) as count FROM customers').get() as { count: number };
+  private async calculateCustomerMetrics(): Promise<{ totalReceivables: number; debtorCount: number; totalCustomers: number }> {
+    const receivables = await this.db
+      .selectFrom('customers')
+      .select((eb) => [eb.fn.coalesce(eb.fn.sum<number>('balance'), sql.lit(0)).as('total'), eb.fn.countAll<number>().as('count')])
+      .where('balance', '>', 0)
+      .executeTakeFirstOrThrow();
+    const customers = await this.db
+      .selectFrom('customers')
+      .select((eb) => eb.fn.countAll<number>().as('count'))
+      .executeTakeFirstOrThrow();
 
     return {
-      totalReceivables: receivablesRow.total,
-      debtorCount: receivablesRow.count,
-      totalCustomers: totalCustomersRow.count,
+      totalReceivables: receivables.total,
+      debtorCount: receivables.count,
+      totalCustomers: customers.count,
     };
   }
 
@@ -250,58 +252,40 @@ export class DashboardService {
    * El filtro de sucursal es su código, como `sales.branch` (lo que manda el POS); el stock va por
    * el id de la sucursal. Un código desconocido no encuentra stock: no cae en "todas".
    */
-  private branchIdByCode(code: string | undefined): string | undefined {
+  private async branchIdByCode(code: string | undefined): Promise<string | undefined> {
     if (code === undefined || code === '') return undefined;
-    const row = this.db.prepare('SELECT id FROM branches WHERE code = ?').get(code) as { id: string } | undefined;
+    const row = await this.db.selectFrom('branches').select('id').where('code', '=', code).orderBy('seq').executeTakeFirst();
     return row?.id ?? `sin-sucursal:${code}`;
   }
 
-  private calculateStockAlerts(branchId?: string): { criticalCount: number; lowStockProducts: LowStockItem[] } {
-    let sql = `
-      SELECT p.id, p.sku, p.name, COALESCE(SUM(s.quantity), 0) as stock
-      FROM products p
-      LEFT JOIN stock s ON p.id = s.product_id
-    `;
-    const params: string[] = [];
+  /** El stock de cada producto que lo controla (de una sucursal, o la suma de todas); sin filas de stock, 0. */
+  private stockByProduct(branchId: string | undefined) {
+    return this.db
+      .selectFrom('products as p')
+      .leftJoin('stock as s', (join) => {
+        const on = join.onRef('s.product_id', '=', 'p.id');
+        return branchId !== undefined && branchId !== '' ? on.on('s.branch_id', '=', branchId) : on;
+      })
+      .where('p.tracks_stock', '=', true)
+      .groupBy('p.id')
+      .select((eb) => ['p.id', 'p.sku', 'p.name', eb.fn.coalesce(eb.fn.sum<number>('s.quantity'), sql.lit(0)).as('stock')]);
+  }
 
-    if (branchId !== undefined && branchId !== '') {
-      sql += ` AND s.branch_id = ?`;
-      params.push(branchId);
-    }
+  private async calculateStockAlerts(branchId?: string): Promise<{ criticalCount: number; lowStockProducts: LowStockItem[] }> {
+    const lowStockProducts = await this.db
+      .selectFrom(this.stockByProduct(branchId).as('totals'))
+      .select(['totals.id', 'totals.sku', 'totals.name', 'totals.stock'])
+      .where('totals.stock', '<=', 5)
+      .orderBy('totals.stock', 'asc')
+      .orderBy('totals.id', 'asc')
+      .limit(10)
+      .execute();
+    const critical = await this.db
+      .selectFrom(this.stockByProduct(branchId).as('totals'))
+      .select((eb) => eb.fn.countAll<number>().as('count'))
+      .where('totals.stock', '<=', 0)
+      .executeTakeFirstOrThrow();
 
-    sql += `
-      WHERE p.tracks_stock = 1
-      GROUP BY p.id
-      HAVING stock <= 5
-      ORDER BY stock ASC
-      LIMIT 10
-    `;
-
-    const rows = this.db.prepare(sql).all(...params) as unknown as LowStockItem[];
-
-    let criticalSql = `
-      SELECT COUNT(*) as count FROM (
-        SELECT p.id, COALESCE(SUM(s.quantity), 0) as stock
-        FROM products p
-        LEFT JOIN stock s ON p.id = s.product_id
-    `;
-    const critParams: string[] = [];
-    if (branchId !== undefined && branchId !== '') {
-      criticalSql += ` AND s.branch_id = ?`;
-      critParams.push(branchId);
-    }
-    criticalSql += `
-        WHERE p.tracks_stock = 1
-        GROUP BY p.id
-        HAVING stock <= 0
-      )
-    `;
-
-    const criticalRow = this.db.prepare(criticalSql).get(...critParams) as { count: number };
-
-    return {
-      criticalCount: criticalRow.count,
-      lowStockProducts: rows,
-    };
+    return { criticalCount: critical.count, lowStockProducts };
   }
 }

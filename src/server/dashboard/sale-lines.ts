@@ -45,15 +45,9 @@ export function lineTotal(line: SaleLine): number {
 
 const storedSaleSchema = z.object({ lines: z.array(z.unknown()) });
 
-/** Las líneas válidas de una venta guardada; un payload roto o una línea que no valida se saltean. */
-export function parseSaleLines(payload: string): SaleLine[] {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(payload);
-  } catch {
-    return [];
-  }
-  const sale = storedSaleSchema.safeParse(raw);
+/** Las líneas válidas de una venta guardada (el `payload`, ya parseado); un payload roto o una línea que no valida se saltean. */
+export function parseSaleLines(payload: unknown): SaleLine[] {
+  const sale = storedSaleSchema.safeParse(payload);
   if (!sale.success) return [];
   return sale.data.lines.flatMap((line) => {
     const parsed = saleLineSchema.safeParse(line);

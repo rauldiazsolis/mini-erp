@@ -1,57 +1,53 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { AuditLog } from '../audit/audit-log.ts';
+import { isDemoTenant } from '../demo/demo-tenant-ids.ts';
 import { DomainError } from '../errors.ts';
 import { isSuspended } from './suspensions.ts';
-import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 
 /** Suspender y reactivar comercios (#23): corta el admin, el POS sigue y no se cobran esos días. */
 export class SuspensionService {
-  private db: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private audit: AuditLog;
   private now: () => Date;
 
-  constructor(deps: { db: DatabaseSync; audit: AuditLog; now: () => Date }) {
+  constructor(deps: { db: Kysely<SystemDatabase>; audit: AuditLog; now: () => Date }) {
     this.db = deps.db;
     this.audit = deps.audit;
     this.now = deps.now;
   }
 
-  suspend(p: { tenantId: string; reason: string; actorUserId: string }): void {
-    this.requireRealTenant(p.tenantId);
-    if (isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
-    this.inTransaction(() => {
-      this.db
-        .prepare('INSERT INTO tenant_suspensions (id, tenant_id, from_at, to_at, reason, created_by) VALUES (?, ?, ?, NULL, ?, ?)')
-        .run(`sus_${randomUUID()}`, p.tenantId, this.now().toISOString(), p.reason, p.actorUserId);
-      this.db.prepare("UPDATE tenants SET status = 'suspended' WHERE id = ?").run(p.tenantId);
-      this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.suspended', details: { reason: p.reason } });
+  async suspend(p: { tenantId: string; reason: string; actorUserId: string }): Promise<void> {
+    await this.requireRealTenant(p.tenantId);
+    await this.db.transaction().execute(async (trx) => {
+      if (await isSuspended(trx, p.tenantId)) throw new DomainError(409, 'El comercio ya está suspendido');
+      await trx
+        .insertInto('tenant_suspensions')
+        .values({ id: `sus_${randomUUID()}`, tenant_id: p.tenantId, from_at: this.now().toISOString(), to_at: null, reason: p.reason, created_by: p.actorUserId })
+        .execute();
+      await trx.updateTable('tenants').set({ status: 'suspended' }).where('id', '=', p.tenantId).execute();
+      await this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.suspended', details: { reason: p.reason } }, trx);
     });
   }
 
-  reactivate(p: { tenantId: string; actorUserId: string }): void {
-    this.requireRealTenant(p.tenantId);
-    if (!isSuspended(this.db, p.tenantId)) throw new DomainError(409, 'El comercio no está suspendido');
-    this.inTransaction(() => {
-      this.db.prepare('UPDATE tenant_suspensions SET to_at = ? WHERE tenant_id = ? AND to_at IS NULL').run(this.now().toISOString(), p.tenantId);
-      this.db.prepare("UPDATE tenants SET status = 'active' WHERE id = ?").run(p.tenantId);
-      this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.reactivated' });
+  async reactivate(p: { tenantId: string; actorUserId: string }): Promise<void> {
+    await this.requireRealTenant(p.tenantId);
+    await this.db.transaction().execute(async (trx) => {
+      const closed = await trx
+        .updateTable('tenant_suspensions')
+        .set({ to_at: this.now().toISOString() })
+        .where('tenant_id', '=', p.tenantId)
+        .where('to_at', 'is', null)
+        .executeTakeFirst();
+      if (Number(closed.numUpdatedRows) === 0) throw new DomainError(409, 'El comercio no está suspendido');
+      await trx.updateTable('tenants').set({ status: 'active' }).where('id', '=', p.tenantId).execute();
+      await this.audit.record({ actorUserId: p.actorUserId, tenantId: p.tenantId, action: 'tenant.reactivated' }, trx);
     });
   }
 
-  private requireRealTenant(tenantId: string): void {
-    const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
-    if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
-  }
-
-  private inTransaction(run: () => void): void {
-    this.db.exec('BEGIN');
-    try {
-      run();
-      this.db.exec('COMMIT');
-    } catch (err: unknown) {
-      this.db.exec('ROLLBACK');
-      throw err;
-    }
+  private async requireRealTenant(tenantId: string): Promise<void> {
+    const row = await this.db.selectFrom('tenants').select('id').where('id', '=', tenantId).executeTakeFirst();
+    if (row === undefined || (await isDemoTenant(this.db, tenantId))) throw new DomainError(404, 'Comercio no encontrado');
   }
 }

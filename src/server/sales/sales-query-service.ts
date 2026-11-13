@@ -1,11 +1,12 @@
-import type { DatabaseSync } from 'node:sqlite';
-import { argentinaDay, daysBetween } from '../../shared/argentina-day.ts';
+import { sql, type Expression, type Kysely, type RawBuilder, type SelectQueryBuilder, type SqlBool } from 'kysely';
+import { argentinaDay, daysBetween, isRealDay } from '../../shared/argentina-day.ts';
 import { PAYMENT_METHODS } from '../../shared/payment-methods.ts';
 import type {
   CashMovementItem, CashSummaryResult, CashSummaryRow, CashSummaryTotals, CustomerPaymentItem, DayEntry, DaySummary,
   DaySummaryResult, DocStatus, ListResult, RegisterItem, SaleDetail, SaleDetailLine, SaleKind, SaleListItem,
 } from '../../shared/sales-types.ts';
 import { lineTotal, roundAmount } from '../dashboard/sale-lines.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import { DomainError } from '../errors.ts';
 import { calculateDaySummary, type SummaryCollection, type SummaryMovement, type SummarySale } from './day-summary.ts';
 import { readCashMovement, readCustomerPayment, readSale } from './stored-documents.ts';
@@ -31,12 +32,11 @@ export type MovementsFilter = DayRange & RegisterFilter & {
   source?: 'manual' | 'count-adjustment' | undefined;
 };
 
-type Params = Array<string | number>;
-type Where = { clauses: string[]; params: Params };
+type Cond = Expression<SqlBool>;
 
 type SaleRow = {
   id: string;
-  payload: string;
+  payload: unknown;
   branch: string | null;
   point_of_sale: string | null;
   total: number;
@@ -50,7 +50,7 @@ type SaleRow = {
 
 type PaymentRow = {
   id: string;
-  payload: string;
+  payload: unknown;
   branch: string | null;
   point_of_sale: string | null;
   customer_id: string;
@@ -62,21 +62,22 @@ type PaymentRow = {
   voided_by: string | null;
 };
 
-type MovementRow = { id: string; payload: string; branch: string | null; point_of_sale: string | null; created_at: string; day: string | null };
+type MovementRow = { id: string; payload: unknown; branch: string | null; point_of_sale: string | null; created_at: string; day: string | null };
 
-/** El payload, o `{}` si no es JSON: así `json_each` nunca tira "malformed JSON". */
-export const safePayload = (alias: string): string => `CASE WHEN json_valid(${alias}.payload) THEN ${alias}.payload ELSE '{}' END`;
+/** Una columna de la tabla con ese alias (`s.day`). */
+const col = (alias: string, column: string): RawBuilder<unknown> => sql.ref(`${alias}.${column}`);
 
-const PAYMENT_COLUMNS = `cp.id, cp.payload, cp.branch, cp.point_of_sale, cp.customer_id, c.name AS customer_name, cp.voids_payment_id,
-  cp.created_at, cp.day, COALESCE(json_extract(${safePayload('cp')}, '$.total'), 0) AS total,
-  (SELECT v.id FROM customer_payments v WHERE v.voids_payment_id = cp.id ORDER BY v.created_at LIMIT 1) AS voided_by`;
+/** Un número del payload; si falta o no es un número, 0: un payload raro nunca tira un error de conversión. */
+function payloadNumber(alias: string, key: string): RawBuilder<number> {
+  const value = sql`${col(alias, 'payload')} -> ${sql.lit(key)}`;
+  return sql<number>`CASE WHEN jsonb_typeof(${value}) = 'number' THEN (${value})::numeric ELSE 0 END`;
+}
 
 /** El importe con signo de un movimiento de caja: ingreso suma, egreso resta. */
-const signedAmount = (alias: string): string =>
-  `CASE json_extract(${safePayload(alias)}, '$.direction')
-     WHEN 'in' THEN json_extract(${safePayload(alias)}, '$.amount')
-     WHEN 'out' THEN -json_extract(${safePayload(alias)}, '$.amount')
-     ELSE 0 END`;
+function signedAmount(alias: string): RawBuilder<number> {
+  const amount = payloadNumber(alias, 'amount');
+  return sql<number>`CASE ${col(alias, 'payload')} ->> 'direction' WHEN 'in' THEN ${amount} WHEN 'out' THEN -${amount} ELSE 0 END`;
+}
 
 type Documents = { sales: SaleRow[]; payments: PaymentRow[]; movements: MovementRow[] };
 
@@ -107,7 +108,6 @@ function compareRows(a: CashSummaryRow, b: CashSummaryRow): number {
 }
 
 type CursorRow = { day: string | null; created_at: string; id: string };
-type Page = { where: string; limit: string; params: Params };
 
 /** El cursor de una fila: su lugar en el orden de las listas (día, `created_at` e id, de mayor a menor). */
 function encodeCursor(row: CursorRow): string {
@@ -117,8 +117,13 @@ function encodeCursor(row: CursorRow): string {
 function decodeCursor(cursor: string): [string, string, string] {
   try {
     const value: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === 'string')) {
-      return [String(value[0]), String(value[1]), String(value[2])];
+    const parts: unknown[] = Array.isArray(value) ? value : [];
+    if (parts.length === 3) {
+      const [day, createdAt, id] = parts;
+      // Un día que existe y un instante legible: lo que PostgreSQL puede comparar con `date` y `timestamptz`
+      if (isRealDay(day) && typeof createdAt === 'string' && !Number.isNaN(Date.parse(createdAt)) && typeof id === 'string') {
+        return [day, new Date(createdAt).toISOString(), id];
+      }
     }
   } catch {
     // cae al error de abajo
@@ -127,20 +132,20 @@ function decodeCursor(cursor: string): [string, string, string] {
 }
 
 /**
- * Un tramo de la lista: con cursor, las filas que siguen a esa (no se corre si entra una venta nueva,
- * #87); sin él, la página. Pide una fila de más para saber si hay otro tramo. Sin `paging`, todas.
+ * El orden de las listas (día, `created_at` e id, de mayor a menor: total y estable) y un tramo: con
+ * cursor, las filas que siguen a esa (no se corre si entra una venta nueva, #87); sin él, la página.
+ * Pide una fila de más para saber si hay otro tramo. Sin `paging`, todas.
  */
-function paged(alias: string, paging: Paging | undefined, where: Where): Page {
-  const sql = where.clauses.join(' AND ');
-  if (paging === undefined) return { where: sql, limit: '', params: where.params };
+function paged<DB, TB extends keyof DB, O>(query: SelectQueryBuilder<DB, TB, O>, alias: string, paging: Paging | undefined): SelectQueryBuilder<DB, TB, O> {
+  const ordered = query.orderBy(col(alias, 'day'), 'desc').orderBy(col(alias, 'created_at'), 'desc').orderBy(col(alias, 'id'), 'desc');
+  if (paging === undefined) return ordered;
   if (paging.after !== undefined) {
-    return {
-      where: `${sql} AND (${alias}.day, ${alias}.created_at, ${alias}.id) < (?, ?, ?)`,
-      limit: ' LIMIT ?',
-      params: [...where.params, ...decodeCursor(paging.after), paging.pageSize + 1],
-    };
+    const [day, createdAt, id] = decodeCursor(paging.after);
+    return ordered
+      .where(sql<SqlBool>`(${col(alias, 'day')}, ${col(alias, 'created_at')}, ${col(alias, 'id')}) < (${day}::date, ${createdAt}::timestamptz, ${id}::text)`)
+      .limit(paging.pageSize + 1);
   }
-  return { where: sql, limit: ' LIMIT ? OFFSET ?', params: [...where.params, paging.pageSize + 1, (paging.page - 1) * paging.pageSize] };
+  return ordered.limit(paging.pageSize + 1).offset((paging.page - 1) * paging.pageSize);
 }
 
 /** Separa la fila de más que pidió `paged` y arma el cursor del tramo siguiente. */
@@ -149,35 +154,42 @@ function cut<T extends CursorRow>(rows: T[], pageSize: number): { rows: T[]; nex
   return rows.length > pageSize && last !== undefined ? { rows: rows.slice(0, pageSize), nextCursor: encodeCursor(last) } : { rows, nextCursor: null };
 }
 
-const KNOWN_METHODS = PAYMENT_METHODS.map((method) => `'${method}'`).join(', ');
-
 /** Rango de días y caja. Un `branch` o `pointOfSale` vacío filtra los que no tienen. */
-export function rangeAndRegister(alias: string, filter: DayRange & RegisterFilter): Where {
-  const where: Where = { clauses: [`${alias}.day BETWEEN ? AND ?`], params: [filter.from, filter.to] };
+function rangeAndRegister(alias: string, filter: DayRange & RegisterFilter): Cond[] {
+  const conds: Cond[] = [sql<SqlBool>`${col(alias, 'day')} BETWEEN ${filter.from}::date AND ${filter.to}::date`];
   const columns: Array<[string, string | undefined]> = [['branch', filter.branch], ['point_of_sale', filter.pointOfSale]];
   for (const [column, value] of columns) {
     if (value === undefined) continue;
-    if (value === '') {
-      where.clauses.push(`(${alias}.${column} IS NULL OR ${alias}.${column} = '')`);
-    } else {
-      where.clauses.push(`${alias}.${column} = ?`);
-      where.params.push(value);
-    }
+    const ref = col(alias, column);
+    conds.push(value === '' ? sql<SqlBool>`(${ref} IS NULL OR ${ref} = '')` : sql<SqlBool>`${ref} = ${value}::text`);
   }
-  return where;
+  return conds;
 }
 
 /** Algún pago con ese medio; `other` es cualquiera fuera del contrato. */
-export function addMethod(where: Where, alias: string, method: string): void {
+function hasMethod(alias: string, method: string): Cond {
+  const payments = sql`${col(alias, 'payload')} -> 'payments'`;
+  // `jsonb_array_elements` tira un error con lo que no es un array: un payload raro no tiene pagos
+  const list = sql`CASE WHEN jsonb_typeof(${payments}) = 'array' THEN ${payments} ELSE '[]'::jsonb END`;
   const condition = method === 'other'
-    ? `json_extract(p.value, '$.method') NOT IN (${KNOWN_METHODS})`
-    : `json_extract(p.value, '$.method') = ?`;
-  where.clauses.push(`EXISTS (SELECT 1 FROM json_each(${safePayload(alias)}, '$.payments') p WHERE ${condition})`);
-  if (method !== 'other') where.params.push(method);
+    ? sql`p.value ->> 'method' NOT IN (${sql.join(PAYMENT_METHODS.map((known) => sql.lit(known)))})`
+    : sql`p.value -> 'method' = to_jsonb(${method}::text)`;
+  return sql<SqlBool>`EXISTS (SELECT 1 FROM jsonb_array_elements(${list}) AS p(value) WHERE ${condition})`;
+}
+
+/** Alguna línea de ese producto. */
+function hasProduct(alias: string, productId: string): Cond {
+  const lines = sql`${col(alias, 'payload')} -> 'lines'`;
+  const list = sql`CASE WHEN jsonb_typeof(${lines}) = 'array' THEN ${lines} ELSE '[]'::jsonb END`;
+  return sql<SqlBool>`EXISTS (SELECT 1 FROM jsonb_array_elements(${list}) AS l(value)
+    WHERE l.value ->> 'kind' = 'product' AND l.value -> 'productId' = to_jsonb(${productId}::text))`;
 }
 
 /** Valida el rango: hasta 366 días, `from` no posterior a `to`. */
-export function assertRange(range: DayRange): void {
+function assertRange(range: DayRange): void {
+  if (!isRealDay(range.from) || !isRealDay(range.to)) {
+    throw new DomainError(400, 'La fecha tiene que ser AAAA-MM-DD');
+  }
   const days = daysBetween(range.from, range.to);
   if (Number.isNaN(days) || days < 0) {
     throw new DomainError(400, 'La fecha "desde" no puede ser posterior a "hasta"');
@@ -192,41 +204,38 @@ function saleKind(row: { voids_sale_id: string | null; total: number }): SaleKin
   return row.total < 0 ? 'return' : 'sale';
 }
 
-const SALE_COLUMNS = `s.id, s.payload, s.branch, s.point_of_sale, s.total, s.voids_sale_id, s.created_at, s.day, s.customer_id,
-  c.name AS customer_name,
-  (SELECT v.id FROM sales v WHERE v.voids_sale_id = s.id ORDER BY v.created_at LIMIT 1) AS voided_by`;
-
 /**
  * Consultas de Ventas & Caja (#20), de un comercio. Los tres roles las ven. La caja es siempre un
  * filtro, así la vista "mi caja" del portal (M10) llama a los mismos métodos con la caja fija.
  */
 export class SalesQueryService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
-  registers(): RegisterItem[] {
-    const rows = this.db
-      .prepare(
-        `SELECT branch, point_of_sale FROM sales
-         UNION SELECT branch, point_of_sale FROM customer_payments
-         UNION SELECT branch, point_of_sale FROM cash_movements
-         ORDER BY 1, 2`,
-      )
-      .all() as { branch: string | null; point_of_sale: string | null }[];
+  async registers(): Promise<RegisterItem[]> {
+    // Sin dato primero, como las ordenaba SQLite (PostgreSQL pone los NULL al final)
+    const rows = await this.db
+      .selectFrom('sales')
+      .select(['branch', 'point_of_sale'])
+      .union(this.db.selectFrom('customer_payments').select(['branch', 'point_of_sale']))
+      .union(this.db.selectFrom('cash_movements').select(['branch', 'point_of_sale']))
+      .orderBy('branch', (ob) => ob.asc().nullsFirst())
+      .orderBy('point_of_sale', (ob) => ob.asc().nullsFirst())
+      .execute();
     return rows.map((r) => ({ branch: r.branch, pointOfSale: r.point_of_sale }));
   }
 
-  listSales(filter: SalesFilter, paging: Paging): ListResult<SaleListItem> {
+  async listSales(filter: SalesFilter, paging: Paging): Promise<ListResult<SaleListItem>> {
     assertRange(filter);
-    const where = this.salesWhere(filter);
-    const sql = where.clauses.join(' AND ');
-    const totals = this.db
-      .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(s.total), 0) AS net FROM sales s WHERE ${sql}`)
-      .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.saleRows(filter, paging), paging.pageSize);
+    const totals = await this.db
+      .selectFrom('sales as s')
+      .where((eb) => eb.and(this.salesWhere(filter)))
+      .select((eb) => [eb.fn.countAll<number>().as('count'), eb.fn.coalesce(eb.fn.sum<number>('s.total'), sql.lit(0)).as('net')])
+      .executeTakeFirstOrThrow();
+    const { rows, nextCursor } = cut(await this.saleRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toSaleItem(row)),
       nextCursor,
@@ -237,15 +246,13 @@ export class SalesQueryService {
     };
   }
 
-  getSale(id: string): SaleDetail {
-    const row = this.db
-      .prepare(`SELECT ${SALE_COLUMNS} FROM sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?`)
-      .get(id) as SaleRow | undefined;
+  async getSale(id: string): Promise<SaleDetail> {
+    const row = await this.salesQuery([sql<SqlBool>`${col('s', 'id')} = ${id}::text`]).executeTakeFirst();
     if (row === undefined) {
       throw new DomainError(404, 'Venta no encontrada');
     }
     const stored = readSale(row.payload);
-    const names = this.productNames(stored.lines.flatMap((l) => (l.kind === 'product' ? [l.productId] : [])));
+    const names = await this.productNames(stored.lines.flatMap((l) => (l.kind === 'product' ? [l.productId] : [])));
     const lines: SaleDetailLine[] = stored.lines.map((line) => ({
       kind: line.kind,
       ...(line.kind === 'product' ? { productId: line.productId } : {}),
@@ -266,16 +273,28 @@ export class SalesQueryService {
     };
   }
 
-  /** Las filas del filtro; sin `paging`, todas (para los resúmenes). */
-  protected saleRows(filter: SalesFilter, paging?: Paging): SaleRow[] {
-    const page = paged('s', paging, this.salesWhere(filter));
+  /** Las ventas que cumplen `conds`, con el cliente y la anulación que las anuló (la primera, si hay más de una). */
+  private salesQuery(conds: Cond[]) {
     return this.db
-      .prepare(
-        `SELECT ${SALE_COLUMNS} FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
-         WHERE ${page.where}
-         ORDER BY s.day DESC, s.created_at DESC, s.id DESC${page.limit}`,
-      )
-      .all(...page.params) as unknown as SaleRow[];
+      .selectFrom('sales as s')
+      .leftJoin('customers as c', 'c.id', 's.customer_id')
+      .where((eb) => eb.and(conds))
+      .select(['s.id', 's.payload', 's.branch', 's.point_of_sale', 's.total', 's.voids_sale_id', 's.created_at', 's.day', 's.customer_id', 'c.name as customer_name'])
+      .select((eb) =>
+        eb
+          .selectFrom('sales as v')
+          .select('v.id')
+          .whereRef('v.voids_sale_id', '=', 's.id')
+          .orderBy('v.created_at')
+          .orderBy('v.id')
+          .limit(1)
+          .as('voided_by'),
+      );
+  }
+
+  /** Las filas del filtro; sin `paging`, todas (para los resúmenes). */
+  protected async saleRows(filter: SalesFilter, paging?: Paging): Promise<SaleRow[]> {
+    return paged(this.salesQuery(this.salesWhere(filter)), 's', paging).execute();
   }
 
   protected toSaleItem(row: SaleRow): SaleListItem {
@@ -300,16 +319,14 @@ export class SalesQueryService {
     };
   }
 
-  listCustomerPayments(filter: PaymentsFilter, paging: Paging): ListResult<CustomerPaymentItem> {
+  async listCustomerPayments(filter: PaymentsFilter, paging: Paging): Promise<ListResult<CustomerPaymentItem>> {
     assertRange(filter);
-    const where = this.paymentsWhere(filter);
-    const totals = this.db
-      .prepare(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(json_extract(${safePayload('cp')}, '$.total')), 0) AS net
-         FROM customer_payments cp WHERE ${where.clauses.join(' AND ')}`,
-      )
-      .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.paymentRows(filter, paging), paging.pageSize);
+    const totals = await this.db
+      .selectFrom('customer_payments as cp')
+      .where((eb) => eb.and(this.paymentsWhere(filter)))
+      .select((eb) => [eb.fn.countAll<number>().as('count'), eb.fn.coalesce(eb.fn.sum<number>(payloadNumber('cp', 'total')), sql.lit(0)).as('net')])
+      .executeTakeFirstOrThrow();
+    const { rows, nextCursor } = cut(await this.paymentRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toPaymentItem(row)),
       nextCursor,
@@ -320,13 +337,14 @@ export class SalesQueryService {
     };
   }
 
-  listCashMovements(filter: MovementsFilter, paging: Paging): ListResult<CashMovementItem> {
+  async listCashMovements(filter: MovementsFilter, paging: Paging): Promise<ListResult<CashMovementItem>> {
     assertRange(filter);
-    const where = this.movementsWhere(filter);
-    const totals = this.db
-      .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(${signedAmount('m')}), 0) AS net FROM cash_movements m WHERE ${where.clauses.join(' AND ')}`)
-      .get(...where.params) as { count: number; net: number };
-    const { rows, nextCursor } = cut(this.movementRows(filter, paging), paging.pageSize);
+    const totals = await this.db
+      .selectFrom('cash_movements as m')
+      .where((eb) => eb.and(this.movementsWhere(filter)))
+      .select((eb) => [eb.fn.countAll<number>().as('count'), eb.fn.coalesce(eb.fn.sum<number>(signedAmount('m')), sql.lit(0)).as('net')])
+      .executeTakeFirstOrThrow();
+    const { rows, nextCursor } = cut(await this.movementRows(filter, paging), paging.pageSize);
     return {
       items: rows.map((row) => this.toMovementItem(row)),
       nextCursor,
@@ -338,9 +356,9 @@ export class SalesQueryService {
   }
 
   /** Una fila por día y caja, con los números del `/RESUMEN` de esa caja ese día, y los totales. */
-  cashSummary(filter: DayRange & RegisterFilter): CashSummaryResult {
+  async cashSummary(filter: DayRange & RegisterFilter): Promise<CashSummaryResult> {
     assertRange(filter);
-    const docs = this.documents(filter);
+    const docs = await this.documents(filter);
     type Group = { day: string; branch: string | null; pointOfSale: string | null } & Documents;
     const groups = new Map<string, Group>();
     const groupOf = (day: string | null, branch: string | null, pointOfSale: string | null): Group => {
@@ -363,8 +381,10 @@ export class SalesQueryService {
   }
 
   /** El `/RESUMEN` de un día (de una caja, si se filtra) y sus movimientos, lo más nuevo primero. */
-  daySummary(filter: { day: string } & RegisterFilter): DaySummaryResult {
-    const docs = this.documents({ from: filter.day, to: filter.day, branch: filter.branch, pointOfSale: filter.pointOfSale });
+  async daySummary(filter: { day: string } & RegisterFilter): Promise<DaySummaryResult> {
+    const range = { from: filter.day, to: filter.day, branch: filter.branch, pointOfSale: filter.pointOfSale };
+    assertRange(range);
+    const docs = await this.documents(range);
     const entries: DayEntry[] = [
       ...docs.sales.map((row): DayEntry => {
         const sale = this.toSaleItem(row);
@@ -382,8 +402,8 @@ export class SalesQueryService {
     return { day: filter.day, summary: this.summaryOf(docs), entries };
   }
 
-  private documents(filter: DayRange & RegisterFilter): Documents {
-    return { sales: this.saleRows(filter), payments: this.paymentRows(filter), movements: this.movementRows(filter) };
+  private async documents(filter: DayRange & RegisterFilter): Promise<Documents> {
+    return { sales: await this.saleRows(filter), payments: await this.paymentRows(filter), movements: await this.movementRows(filter) };
   }
 
   private summaryOf(docs: Documents): DaySummary {
@@ -424,15 +444,24 @@ export class SalesQueryService {
     };
   }
 
-  protected paymentRows(filter: PaymentsFilter, paging?: Paging): PaymentRow[] {
-    const page = paged('cp', paging, this.paymentsWhere(filter));
-    return this.db
-      .prepare(
-        `SELECT ${PAYMENT_COLUMNS} FROM customer_payments cp LEFT JOIN customers c ON c.id = cp.customer_id
-         WHERE ${page.where}
-         ORDER BY cp.day DESC, cp.created_at DESC, cp.id DESC${page.limit}`,
-      )
-      .all(...page.params) as unknown as PaymentRow[];
+  protected async paymentRows(filter: PaymentsFilter, paging?: Paging): Promise<PaymentRow[]> {
+    const query = this.db
+      .selectFrom('customer_payments as cp')
+      .leftJoin('customers as c', 'c.id', 'cp.customer_id')
+      .where((eb) => eb.and(this.paymentsWhere(filter)))
+      .select(['cp.id', 'cp.payload', 'cp.branch', 'cp.point_of_sale', 'cp.customer_id', 'c.name as customer_name', 'cp.voids_payment_id', 'cp.created_at', 'cp.day'])
+      .select(payloadNumber('cp', 'total').as('total'))
+      .select((eb) =>
+        eb
+          .selectFrom('customer_payments as v')
+          .select('v.id')
+          .whereRef('v.voids_payment_id', '=', 'cp.id')
+          .orderBy('v.created_at')
+          .orderBy('v.id')
+          .limit(1)
+          .as('voided_by'),
+      );
+    return paged(query, 'cp', paging).execute();
   }
 
   protected toPaymentItem(row: PaymentRow): CustomerPaymentItem {
@@ -454,15 +483,12 @@ export class SalesQueryService {
     };
   }
 
-  protected movementRows(filter: MovementsFilter, paging?: Paging): MovementRow[] {
-    const page = paged('m', paging, this.movementsWhere(filter));
-    return this.db
-      .prepare(
-        `SELECT m.id, m.payload, m.branch, m.point_of_sale, m.created_at, m.day FROM cash_movements m
-         WHERE ${page.where}
-         ORDER BY m.day DESC, m.created_at DESC, m.id DESC${page.limit}`,
-      )
-      .all(...page.params) as unknown as MovementRow[];
+  protected async movementRows(filter: MovementsFilter, paging?: Paging): Promise<MovementRow[]> {
+    const query = this.db
+      .selectFrom('cash_movements as m')
+      .where((eb) => eb.and(this.movementsWhere(filter)))
+      .select(['m.id', 'm.payload', 'm.branch', 'm.point_of_sale', 'm.created_at', 'm.day']);
+    return paged(query, 'm', paging).execute();
   }
 
   protected toMovementItem(row: MovementRow): CashMovementItem {
@@ -478,60 +504,48 @@ export class SalesQueryService {
     };
   }
 
-  private paymentsWhere(filter: PaymentsFilter): Where {
-    const where = rangeAndRegister('cp', filter);
-    if (filter.method !== undefined) addMethod(where, 'cp', filter.method);
-    if (filter.customerId !== undefined) {
-      where.clauses.push('cp.customer_id = ?');
-      where.params.push(filter.customerId);
-    }
-    const voided = 'EXISTS (SELECT 1 FROM customer_payments v WHERE v.voids_payment_id = cp.id)';
-    if (filter.status === 'voided') where.clauses.push(voided);
-    if (filter.status === 'valid') where.clauses.push(`cp.voids_payment_id IS NULL AND NOT ${voided}`);
-    return where;
+  /** Si otra cobranza la anula. */
+  private paymentVoided(): Cond {
+    return sql<SqlBool>`EXISTS ${this.db.selectFrom('customer_payments as v').select(sql.lit(1).as('one')).where(sql<SqlBool>`${col('v', 'voids_payment_id')} = ${col('cp', 'id')}`)}`;
   }
 
-  private movementsWhere(filter: MovementsFilter): Where {
-    const where = rangeAndRegister('m', filter);
-    if (filter.direction !== undefined) {
-      where.clauses.push(`json_extract(${safePayload('m')}, '$.direction') = ?`);
-      where.params.push(filter.direction);
-    }
-    if (filter.source !== undefined) {
-      where.clauses.push(`json_extract(${safePayload('m')}, '$.source') = ?`);
-      where.params.push(filter.source);
-    }
-    return where;
+  private paymentsWhere(filter: PaymentsFilter): Cond[] {
+    const conds = rangeAndRegister('cp', filter);
+    if (filter.method !== undefined) conds.push(hasMethod('cp', filter.method));
+    if (filter.customerId !== undefined) conds.push(sql<SqlBool>`${col('cp', 'customer_id')} = ${filter.customerId}::text`);
+    if (filter.status === 'voided') conds.push(this.paymentVoided());
+    if (filter.status === 'valid') conds.push(sql<SqlBool>`(${col('cp', 'voids_payment_id')} IS NULL AND NOT ${this.paymentVoided()})`);
+    return conds;
   }
 
-  private salesWhere(filter: SalesFilter): Where {
-    const where = rangeAndRegister('s', filter);
-    if (filter.method !== undefined) addMethod(where, 's', filter.method);
-    if (filter.customerId !== undefined) {
-      where.clauses.push('s.customer_id = ?');
-      where.params.push(filter.customerId);
-    }
-    if (filter.productId !== undefined) {
-      where.clauses.push(
-        `EXISTS (SELECT 1 FROM json_each(${safePayload('s')}, '$.lines') l
-          WHERE json_extract(l.value, '$.kind') = 'product' AND json_extract(l.value, '$.productId') = ?)`,
-      );
-      where.params.push(filter.productId);
-    }
-    if (filter.kind === 'void') where.clauses.push('s.voids_sale_id IS NOT NULL');
-    if (filter.kind === 'return') where.clauses.push('s.voids_sale_id IS NULL AND s.total < 0');
-    if (filter.kind === 'sale') where.clauses.push('s.voids_sale_id IS NULL AND s.total >= 0');
-    const voided = 'EXISTS (SELECT 1 FROM sales v WHERE v.voids_sale_id = s.id)';
-    if (filter.status === 'voided') where.clauses.push(voided);
-    if (filter.status === 'valid') where.clauses.push(`s.voids_sale_id IS NULL AND NOT ${voided}`);
-    return where;
+  private movementsWhere(filter: MovementsFilter): Cond[] {
+    const conds = rangeAndRegister('m', filter);
+    if (filter.direction !== undefined) conds.push(sql<SqlBool>`${col('m', 'payload')} ->> 'direction' = ${filter.direction}::text`);
+    if (filter.source !== undefined) conds.push(sql<SqlBool>`${col('m', 'payload')} ->> 'source' = ${filter.source}::text`);
+    return conds;
   }
 
-  private productNames(ids: string[]): Map<string, string> {
+  /** Si otra venta la anula. */
+  private saleVoided(): Cond {
+    return sql<SqlBool>`EXISTS ${this.db.selectFrom('sales as v').select(sql.lit(1).as('one')).where(sql<SqlBool>`${col('v', 'voids_sale_id')} = ${col('s', 'id')}`)}`;
+  }
+
+  private salesWhere(filter: SalesFilter): Cond[] {
+    const conds = rangeAndRegister('s', filter);
+    if (filter.method !== undefined) conds.push(hasMethod('s', filter.method));
+    if (filter.customerId !== undefined) conds.push(sql<SqlBool>`${col('s', 'customer_id')} = ${filter.customerId}::text`);
+    if (filter.productId !== undefined) conds.push(hasProduct('s', filter.productId));
+    if (filter.kind === 'void') conds.push(sql<SqlBool>`${col('s', 'voids_sale_id')} IS NOT NULL`);
+    if (filter.kind === 'return') conds.push(sql<SqlBool>`(${col('s', 'voids_sale_id')} IS NULL AND ${col('s', 'total')} < 0)`);
+    if (filter.kind === 'sale') conds.push(sql<SqlBool>`(${col('s', 'voids_sale_id')} IS NULL AND ${col('s', 'total')} >= 0)`);
+    if (filter.status === 'voided') conds.push(this.saleVoided());
+    if (filter.status === 'valid') conds.push(sql<SqlBool>`(${col('s', 'voids_sale_id')} IS NULL AND NOT ${this.saleVoided()})`);
+    return conds;
+  }
+
+  private async productNames(ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
-    const rows = this.db
-      .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(', ')})`)
-      .all(...ids) as unknown as { id: string; name: string }[];
+    const rows = await this.db.selectFrom('products').select(['id', 'name']).where('id', 'in', ids).execute();
     return new Map(rows.map((r) => [r.id, r.name]));
   }
 }

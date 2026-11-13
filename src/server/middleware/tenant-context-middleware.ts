@@ -1,12 +1,13 @@
 import type { Response, NextFunction } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { Container } from 'hardwired';
-import type { TenantManager } from '../db/tenant-manager.ts';
 import type { MembershipService } from '../users/membership-service.ts';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 import { createTenantScope } from '../di/container.ts';
 import { isSuspended } from '../platform/suspensions.ts';
 import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
+import { routeParam } from '../http/route-param.ts';
 
 /**
  * Resuelve el comercio del pedido y el rol con el que se opera (#19): la membresía activa (root y
@@ -14,13 +15,12 @@ import { OPEN_WHEN_BLOCKED, tenantPath } from './tenant-path.ts';
  * suspendido (#23) solo deja a sus usuarios lo abierto (Uso y pagos, estado de cobro y exportar).
  */
 export function createTenantContextMiddleware(
-  systemDb: DatabaseSync,
+  system: Kysely<SystemDatabase>,
   membershipService: MembershipService,
-  tenantManager: TenantManager,
   rootContainer?: Container,
 ) {
-  return (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): void => {
-    const tenantId = req.params['tenantId'] ?? req.params['id'] ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
+  return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
+    const tenantId = routeParam(req, 'tenantId') ?? routeParam(req, 'id') ?? (typeof req.headers['x-tenant-id'] === 'string' ? req.headers['x-tenant-id'].trim() : undefined);
 
     // El acceso anónimo (#24, M10): la demo es admin de su comercio demo; una caja real, member de su
     // comercio, con su suspensión. De ningún otro comercio.
@@ -29,15 +29,13 @@ export function createTenantContextMiddleware(
         res.status(403).json({ error: 'No tienes acceso a este tenant' });
         return;
       }
-      if (req.anonymous.kind === 'register' && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+      if (req.anonymous.kind === 'register' && (await isSuspended(system, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
         res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
         return;
       }
-      const tenantDb = tenantManager.getTenantDb(tenantId);
       req.activeTenantId = tenantId;
-      req.activeTenantDb = tenantDb;
       req.tenantRole = req.anonymous.kind === 'demo' ? 'admin' : 'member';
-      if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantId);
       next();
       return;
     }
@@ -52,24 +50,22 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    const role = membershipService.resolveRole(req.user, tenantId);
+    const role = await membershipService.resolveRole(req.user, tenantId);
     if (role === undefined) {
       res.status(403).json({ error: 'No tienes acceso a este tenant' });
       return;
     }
 
-    if (req.impersonator === undefined && isSuspended(systemDb, tenantId) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
+    if (req.impersonator === undefined && (await isSuspended(system, tenantId)) && !OPEN_WHEN_BLOCKED.test(tenantPath(req))) {
       res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
       return;
     }
 
-    const tenantDb = tenantManager.getTenantDb(tenantId);
     req.activeTenantId = tenantId;
-    req.activeTenantDb = tenantDb;
     req.tenantRole = role;
 
     if (rootContainer !== undefined) {
-      req.tenantScope = createTenantScope(rootContainer, tenantDb);
+      req.tenantScope = createTenantScope(rootContainer, tenantId);
     }
 
     next();

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import { jsonValue } from '../db/pg/sql-helpers.ts';
 import type { PlatformAuditItem } from '../../shared/platform-types.ts';
 
 export type AuditAction =
@@ -62,72 +64,79 @@ function actorName(actorUserId: string, name: string | null, registerName: strin
   return actorUserId === SYSTEM_ACTOR ? 'Automático' : 'Usuario borrado';
 }
 
-/** Registro de auditoría (#19): quién, qué y cuándo. M7 le suma "como quién". */
+export type AuditRecord = {
+  actorUserId: string;
+  impersonatorUserId?: string | undefined;
+  /** La caja, si el actor es `REGISTER_ACTOR` (M10). */
+  actorRegisterId?: string | undefined;
+  tenantId: string | null;
+  action: AuditAction;
+  targetUserId?: string | undefined;
+  details?: Record<string, unknown> | undefined;
+};
+
+/**
+ * Registro de auditoría (#19): quién, qué y cuándo. M7 le suma "como quién".
+ *
+ * `record` acepta el `trx` de quien lo llama (`audit.record(entrada, trx)`): así lo auditado queda en
+ * la misma transacción que el cambio y se deshace con él. Sin `trx`, escribe con su propio Kysely.
+ */
 export class AuditLog {
-  private db: DatabaseSync;
+  private db: Kysely<SystemDatabase>;
   private now: () => Date;
 
-  constructor(db: DatabaseSync, now: () => Date) {
+  constructor(db: Kysely<SystemDatabase>, now: () => Date) {
     this.db = db;
     this.now = now;
   }
 
-  record(params: {
-    actorUserId: string;
-    impersonatorUserId?: string | undefined;
-    /** La caja, si el actor es `REGISTER_ACTOR` (M10). */
-    actorRegisterId?: string | undefined;
-    tenantId: string | null;
-    action: AuditAction;
-    targetUserId?: string | undefined;
-    details?: Record<string, unknown> | undefined;
-  }): void {
-    this.db
-      .prepare(
-        'INSERT INTO audit_log (id, at, actor_user_id, impersonator_user_id, actor_register_id, tenant_id, action, target_user_id, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        `aud_${randomUUID()}`,
-        this.now().toISOString(),
-        params.actorUserId,
-        params.impersonatorUserId ?? null,
-        params.actorRegisterId ?? null,
-        params.tenantId,
-        params.action,
-        params.targetUserId ?? null,
-        JSON.stringify(params.details ?? {}),
-      );
+  async record(params: AuditRecord, db: Kysely<SystemDatabase> = this.db): Promise<void> {
+    await db
+      .insertInto('audit_log')
+      .values({
+        id: `aud_${randomUUID()}`,
+        at: this.now().toISOString(),
+        actor_user_id: params.actorUserId,
+        impersonator_user_id: params.impersonatorUserId ?? null,
+        actor_register_id: params.actorRegisterId ?? null,
+        tenant_id: params.tenantId,
+        action: params.action,
+        target_user_id: params.targetUserId ?? null,
+        details: jsonValue(params.details ?? {}),
+      })
+      .execute();
   }
 
-  listForTenant(tenantId: string, limit = 200): AuditEntry[] {
-    const rows = this.db
-      .prepare(
-        `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, actor.name AS actor_name, target.name AS target_name,
-           imp.name AS impersonator_name, reg.name AS register_name
-         FROM audit_log a
-         LEFT JOIN users actor ON actor.id = a.actor_user_id
-         LEFT JOIN users imp ON imp.id = a.impersonator_user_id
-         LEFT JOIN users target ON target.id = a.target_user_id
-         LEFT JOIN registers reg ON reg.id = a.actor_register_id
-         WHERE a.tenant_id = ?
-         ORDER BY a.at DESC
-         LIMIT ?`,
-      )
-      .all(tenantId, limit) as {
-      id: string;
-      at: string;
-      action: AuditAction;
-      details: string;
-      actor_user_id: string;
-      actor_name: string | null;
-      target_name: string | null;
-      impersonator_name: string | null;
-      register_name: string | null;
-    }[];
+  /** La auditoría con los nombres de quién, como quién y a quién (los borrados quedan en `null`). */
+  private listQuery() {
+    return this.db
+      .selectFrom('audit_log as a')
+      .leftJoin('users as actor', 'actor.id', 'a.actor_user_id')
+      .leftJoin('users as imp', 'imp.id', 'a.impersonator_user_id')
+      .leftJoin('users as target', 'target.id', 'a.target_user_id')
+      .leftJoin('registers as reg', 'reg.id', 'a.actor_register_id')
+      .select([
+        'a.id',
+        'a.at',
+        'a.action',
+        'a.details',
+        'a.actor_user_id',
+        'a.tenant_id',
+        'actor.name as actor_name',
+        'target.name as target_name',
+        'imp.name as impersonator_name',
+        'reg.name as register_name',
+      ])
+      .orderBy('a.at', 'desc')
+      .orderBy('a.seq', 'desc');
+  }
+
+  async listForTenant(tenantId: string, limit = 200): Promise<AuditEntry[]> {
+    const rows = await this.listQuery().where('a.tenant_id', '=', tenantId).limit(limit).execute();
     return rows.map((r) => ({
       id: r.id,
       at: r.at,
-      action: r.action,
+      action: r.action as AuditAction,
       actorName: actorName(r.actor_user_id, r.actor_name, r.register_name),
       impersonatorName: r.impersonator_name,
       targetName: r.target_name,
@@ -136,35 +145,13 @@ export class AuditLog {
   }
 
   /** Toda la auditoría, o la de un comercio, para el registro de plataforma (#23). */
-  listPlatform(p: { tenantId?: string | undefined; limit?: number | undefined } = {}): PlatformAuditItem[] {
-    const tenantId = p.tenantId ?? null;
-    const rows = this.db
-      .prepare(
-        `SELECT a.id, a.at, a.action, a.details, a.actor_user_id, a.tenant_id, t.name AS tenant_name,
-           actor.name AS actor_name, target.name AS target_name, imp.name AS impersonator_name, reg.name AS register_name
-         FROM audit_log a
-         LEFT JOIN users actor ON actor.id = a.actor_user_id
-         LEFT JOIN users imp ON imp.id = a.impersonator_user_id
-         LEFT JOIN users target ON target.id = a.target_user_id
-         LEFT JOIN registers reg ON reg.id = a.actor_register_id
-         LEFT JOIN tenants t ON t.id = a.tenant_id
-         WHERE (? IS NULL OR a.tenant_id = ?)
-         ORDER BY a.at DESC, a.rowid DESC
-         LIMIT ?`,
-      )
-      .all(tenantId, tenantId, p.limit ?? 200) as {
-      id: string;
-      at: string;
-      action: string;
-      details: string;
-      tenant_id: string | null;
-      tenant_name: string | null;
-      actor_user_id: string;
-      actor_name: string | null;
-      target_name: string | null;
-      impersonator_name: string | null;
-      register_name: string | null;
-    }[];
+  async listPlatform(p: { tenantId?: string | undefined; limit?: number | undefined } = {}): Promise<PlatformAuditItem[]> {
+    const tenantId = p.tenantId;
+    let query = this.listQuery().leftJoin('tenants as t', 't.id', 'a.tenant_id').select('t.name as tenant_name');
+    if (tenantId !== undefined) {
+      query = query.where('a.tenant_id', '=', tenantId);
+    }
+    const rows = await query.limit(p.limit ?? 200).execute();
     return rows.map((r) => ({
       id: r.id,
       at: r.at,
@@ -179,7 +166,7 @@ export class AuditLog {
   }
 }
 
-function parseDetails(raw: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(raw);
+/** `details` es un objeto jsonb; cualquier otra cosa se lee como vacío. */
+function parseDetails(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

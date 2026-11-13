@@ -1,11 +1,12 @@
-import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { sql, type ExpressionBuilder, type Kysely } from 'kysely';
+import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import { allocateCharge, type GiftBalance } from './allocation.ts';
 import { readBillingSettings, writeBillingSettings, type BillingSettingsPatch } from './settings.ts';
-import { DomainError } from '../errors.ts';
+import { isDemoTenant } from '../demo/demo-tenant-ids.ts';
 import { suspendedDays } from '../platform/suspensions.ts';
+import { DomainError } from '../errors.ts';
 import { argentinaToday, shiftDay } from '../../shared/argentina-day.ts';
-import { DEMO_TENANT_IDS_SQL } from '../demo/demo-tenant-ids.ts';
 import type {
   BillingSettings,
   BillingSummary,
@@ -18,77 +19,104 @@ import type {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+type Db = Kysely<SystemDatabase>;
+
 function requirePositive(amount: number): void {
   if (!(amount > 0)) throw new DomainError(400, 'El importe tiene que ser mayor que 0');
 }
 
+/** Una suma de importes con centavos, sin el ruido de la coma flotante (`1000.15 - 1000`). */
+function sumCents(a: number, b: number): number {
+  return Math.round((a + b) * 100) / 100;
+}
+
 type DatedGift = GiftBalance & { expiresAt: string };
 
+type GiftScope = ExpressionBuilder<SystemDatabase & { g: SystemDatabase['gift_credits'] }, 'g'>;
+
+/** El remanente de un crédito regalado `g`: su importe menos lo consumido (subconsulta correlacionada). */
+function remainingOf(eb: GiftScope) {
+  const consumed = eb
+    .selectFrom('gift_consumptions as gc')
+    .select((sub) => sub.fn.coalesce(sub.fn.sum<number>('gc.amount'), sql.lit(0)).as('consumed'))
+    .whereRef('gc.credit_id', '=', 'g.id');
+  return eb('g.amount', '-', consumed);
+}
+
 /**
- * Cobro (#21), en la base de sistema: cargos por caja (o equipo ajeno) y día, saldo pagado del
- * titular, créditos regalados del comercio, deuda y gracia. Cada escritura va en su transacción.
+ * Cobro (#21), en PostgreSQL (esquema `system`): cargos por caja (o equipo ajeno) y día, saldo pagado
+ * del titular, créditos regalados del comercio, deuda y gracia. Cada escritura va en su transacción;
+ * las que tocan el saldo de un titular lo bloquean primero (`lockHolder`), así dos cargos o un cargo
+ * y un pago a la vez no gastan dos veces el mismo saldo.
  */
 export class BillingService {
-  private db: DatabaseSync;
+  private db: Db;
   private now: () => Date;
 
-  constructor(deps: { db: DatabaseSync; now: () => Date }) {
+  constructor(deps: { db: Db; now: () => Date }) {
     this.db = deps.db;
     this.now = deps.now;
   }
 
-  isBillable(tenantId: string): boolean {
-    return this.holderOf(tenantId) !== null;
+  /** Los comercios con titular (los que se cobran), para el barrido. */
+  async billableTenantIds(): Promise<string[]> {
+    const rows = await this.db.selectFrom('tenants').select('id').where('holder_user_id', 'is not', null).orderBy('seq').execute();
+    return rows.map((r) => r.id);
+  }
+
+  async isBillable(tenantId: string): Promise<boolean> {
+    return (await this.holderOf(tenantId)) !== null;
   }
 
   /** Crea los cargos que falten, en orden de día. Devuelve cuántos creó. */
-  charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): number {
-    const holder = this.holderOf(p.tenantId);
+  async charge(p: { tenantId: string; registerId: string; chargeDevice: string; days: readonly string[] }): Promise<number> {
+    const holder = await this.holderOf(p.tenantId);
     if (holder === null) {
-      const demo = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id IN ${DEMO_TENANT_IDS_SQL}`).get(p.tenantId);
-      if (demo === undefined) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
+      if (!(await isDemoTenant(this.db, p.tenantId))) console.warn(`[cobro] el comercio ${p.tenantId} no tiene titular: no se cobra`);
       return 0;
     }
     // Los días con el comercio suspendido no se cobran (#23)
-    const skip = suspendedDays(this.db, p.tenantId, p.days);
+    const skip = await suspendedDays(this.db, p.tenantId, p.days);
     let created = 0;
     for (const day of [...new Set(p.days)].filter((d) => !skip.has(d)).sort()) {
-      if (this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;
+      if (await this.chargeOne(p.tenantId, holder, p.registerId, p.chargeDevice, day)) created++;
     }
     return created;
   }
 
-  summary(tenantId: string): BillingSummary {
-    const settings = readBillingSettings(this.db);
-    const holderId = this.holderOf(tenantId);
+  async summary(tenantId: string): Promise<BillingSummary> {
+    const settings = await readBillingSettings(this.db);
+    const tenant = await this.db.selectFrom('tenants').select(['holder_user_id', 'grace_until']).where('id', '=', tenantId).executeTakeFirst();
+    const holderId = tenant?.holder_user_id ?? null;
     const today = argentinaToday(this.now());
     const holder =
       holderId === null
         ? null
-        : ((this.db.prepare('SELECT id AS userId, name, email FROM users WHERE id = ?').get(holderId) as
-            | { userId: string; name: string; email: string }
-            | undefined) ?? null);
-    const paidBalance = holderId === null ? 0 : this.paidBalance(holderId);
-    const gifts = this.giftBalances(tenantId);
+        : ((await this.db.selectFrom('users').select(['id as userId', 'name', 'email']).where('id', '=', holderId).executeTakeFirst()) ?? null);
+    const paidBalance = holderId === null ? 0 : await this.paidBalance(holderId);
+    const gifts = await this.giftBalances(tenantId);
     const giftBalance = gifts.reduce((sum, g) => sum + g.remaining, 0);
     const nextGiftExpiry = gifts[0]?.expiresAt ?? null;
-    const debtRow = this.db
-      .prepare('SELECT COALESCE(SUM(debt_amount), 0) AS debt, MIN(day) AS oldest FROM charges WHERE tenant_id = ? AND debt_amount > 0')
-      .get(tenantId) as { debt: number; oldest: string | null };
-    const activeUnits = (
-      this.db
-        .prepare("SELECT COUNT(DISTINCT register_id || '|' || device_id) AS n FROM charges WHERE tenant_id = ? AND day >= ?")
-        .get(tenantId, shiftDay(today, -6)) as { n: number }
-    ).n;
-    const dailyBurn = settings.pricePerRegisterDay * Math.max(1, activeUnits);
+    const debtRow = await this.db
+      .selectFrom('charges')
+      .select((eb) => [eb.fn.coalesce(eb.fn.sum<number>('debt_amount'), sql.lit(0)).as('debt'), eb.fn.min<string | null>('day').as('oldest')])
+      .where('tenant_id', '=', tenantId)
+      .where('debt_amount', '>', 0)
+      .executeTakeFirstOrThrow();
+    const activeUnits = await this.db
+      .selectFrom('charges')
+      .select(sql<number>`count(DISTINCT (${sql.ref('register_id')}, ${sql.ref('device_id')}))`.as('n'))
+      .where('tenant_id', '=', tenantId)
+      .where('day', '>=', shiftDay(today, -6))
+      .executeTakeFirstOrThrow();
+    const dailyBurn = settings.pricePerRegisterDay * Math.max(1, activeUnits.n);
     const base = { billable: holderId !== null, holder, paidBalance, giftBalance, nextGiftExpiry, debt: debtRow.debt, dailyBurn };
 
     if (holderId === null) {
       return { ...base, state: 'ok', deadline: null, daysCovered: null };
     }
     if (debtRow.debt > 0 && debtRow.oldest !== null) {
-      const graceUntil = (this.db.prepare('SELECT grace_until FROM tenants WHERE id = ?').get(tenantId) as { grace_until: string | null })
-        .grace_until;
+      const graceUntil = tenant?.grace_until ?? null;
       const byRule = shiftDay(debtRow.oldest, settings.graceDays);
       const deadline = graceUntil !== null && graceUntil > byRule ? graceUntil : byRule;
       return { ...base, state: today > deadline ? 'restricted' : 'debt', deadline, daysCovered: 0 };
@@ -98,58 +126,56 @@ export class BillingService {
   }
 
   /** El bono de alta del comercio, con el importe y el vencimiento de la configuración. */
-  grantSignupBonus(tenantId: string, actorUserId: string | null): string {
-    const settings = readBillingSettings(this.db);
+  async grantSignupBonus(tenantId: string, actorUserId: string | null, db: Db = this.db): Promise<string> {
+    const settings = await readBillingSettings(db);
     const at = this.now();
     const id = `gift_${randomUUID()}`;
-    this.db
-      .prepare(
-        "INSERT INTO gift_credits (id, tenant_id, amount, expires_at, origin, granted_by, reason, created_at) VALUES (?, ?, ?, ?, 'signup', ?, 'Bono de alta', ?)",
-      )
-      .run(id, tenantId, settings.signupBonus, new Date(at.getTime() + settings.signupBonusDays * DAY_MS).toISOString(), actorUserId, at.toISOString());
+    await db
+      .insertInto('gift_credits')
+      .values({
+        id,
+        tenant_id: tenantId,
+        amount: settings.signupBonus,
+        expires_at: new Date(at.getTime() + settings.signupBonusDays * DAY_MS).toISOString(),
+        origin: 'signup',
+        granted_by: actorUserId,
+        reason: 'Bono de alta',
+        created_at: at.toISOString(),
+      })
+      .execute();
     return id;
   }
 
   // --- consultas de la pantalla Créditos ---
 
   /** Los cargos del comercio en el rango (días argentinos), del más nuevo al más viejo, con el total del filtro. */
-  listCharges(tenantId: string, q: { from?: string | undefined; to?: string | undefined; page: number; pageSize: number }): ChargesPage {
-    const where = ['c.tenant_id = ?'];
-    const args: string[] = [tenantId];
-    if (q.from !== undefined) {
-      where.push('c.day >= ?');
-      args.push(q.from);
-    }
-    if (q.to !== undefined) {
-      where.push('c.day <= ?');
-      args.push(q.to);
-    }
-    const filter = where.join(' AND ');
-    const totals = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(c.amount), 0) AS total FROM charges c WHERE ${filter}`).get(...args) as {
-      n: number;
-      total: number;
-    };
-    const rows = this.db
-      .prepare(
-        `SELECT c.id, c.day, c.register_id, COALESCE(r.name, 'Caja borrada') AS register_name, c.device_id, c.amount,
-                c.paid_amount, c.gift_amount, c.debt_amount, c.created_at
-         FROM charges c LEFT JOIN registers r ON r.id = c.register_id
-         WHERE ${filter}
-         ORDER BY c.day DESC, register_name, c.device_id
-         LIMIT ? OFFSET ?`,
-      )
-      .all(...args, q.pageSize, (q.page - 1) * q.pageSize) as {
-      id: string;
-      day: string;
-      register_id: string;
-      register_name: string;
-      device_id: string;
-      amount: number;
-      paid_amount: number;
-      gift_amount: number;
-      debt_amount: number;
-      created_at: string;
-    }[];
+  async listCharges(tenantId: string, q: { from?: string | undefined; to?: string | undefined; page: number; pageSize: number }): Promise<ChargesPage> {
+    let filtered = this.db.selectFrom('charges as c').where('c.tenant_id', '=', tenantId);
+    if (q.from !== undefined) filtered = filtered.where('c.day', '>=', q.from);
+    if (q.to !== undefined) filtered = filtered.where('c.day', '<=', q.to);
+    const totals = await filtered
+      .select((eb) => [eb.fn.countAll<number>().as('n'), eb.fn.coalesce(eb.fn.sum<number>('c.amount'), sql.lit(0)).as('total')])
+      .executeTakeFirstOrThrow();
+    const rows = await filtered
+      .leftJoin('registers as r', 'r.id', 'c.register_id')
+      .select((eb) => [
+        'c.id',
+        'c.day',
+        'c.register_id',
+        eb.fn.coalesce('r.name', sql.lit('Caja borrada')).as('register_name'),
+        'c.device_id',
+        'c.amount',
+        'c.paid_amount',
+        'c.gift_amount',
+        'c.debt_amount',
+        'c.created_at',
+      ])
+      .orderBy('c.day', 'desc')
+      .orderBy('register_name')
+      .orderBy('c.device_id')
+      .limit(q.pageSize)
+      .offset((q.page - 1) * q.pageSize)
+      .execute();
     return {
       items: rows.map((r) => ({
         id: r.id,
@@ -171,48 +197,80 @@ export class BillingService {
   }
 
   /** Pagos, devoluciones, deuda cancelada y créditos otorgados o anulados del comercio, lo más nuevo primero. */
-  listMovements(tenantId: string): CreditMovementItem[] {
-    return this.db
-      .prepare(
-        `SELECT id, kind, day, amount, info, by_name AS byName, created_at AS createdAt FROM (
-           SELECT p.id, p.kind, p.day, p.amount, p.info, u.name AS by_name, p.created_at
-           FROM paid_movements p LEFT JOIN users u ON u.id = p.created_by
-           WHERE p.tenant_id = ? AND p.kind IN ('payment', 'refund', 'debt-settlement')
-           UNION ALL
-           SELECT g.id, 'gift-granted', substr(g.created_at, 1, 10), g.amount, g.reason, u.name, g.created_at
-           FROM gift_credits g LEFT JOIN users u ON u.id = g.granted_by
-           WHERE g.tenant_id = ?
-           UNION ALL
-           SELECT g.id || ':void', 'gift-voided', substr(g.voided_at, 1, 10), 0, g.void_reason, u.name, g.voided_at
-           FROM gift_credits g LEFT JOIN users u ON u.id = g.voided_by
-           WHERE g.tenant_id = ? AND g.voided_at IS NOT NULL
-         ) ORDER BY createdAt DESC, id DESC LIMIT 500`,
-      )
-      .all(tenantId, tenantId, tenantId) as CreditMovementItem[];
+  async listMovements(tenantId: string): Promise<CreditMovementItem[]> {
+    // El día de un crédito es el de su instante en UTC, como cuando era `substr(created_at, 1, 10)`
+    const utcDay = (column: 'g.created_at' | 'g.voided_at') => sql<string>`(${sql.ref(column)} AT TIME ZONE 'UTC')::date`;
+    const paid = this.db
+      .selectFrom('paid_movements as p')
+      .leftJoin('users as u', 'u.id', 'p.created_by')
+      .select([
+        'p.id',
+        sql<CreditMovementItem['kind']>`${sql.ref('p.kind')}`.as('kind'),
+        'p.day',
+        'p.amount',
+        'p.info',
+        'u.name as byName',
+        sql<string>`${sql.ref('p.created_at')}`.as('createdAt'),
+      ])
+      .where('p.tenant_id', '=', tenantId)
+      .where('p.kind', 'in', ['payment', 'refund', 'debt-settlement']);
+    const granted = this.db
+      .selectFrom('gift_credits as g')
+      .leftJoin('users as u', 'u.id', 'g.granted_by')
+      .select([
+        'g.id',
+        sql<CreditMovementItem['kind']>`'gift-granted'`.as('kind'),
+        utcDay('g.created_at').as('day'),
+        'g.amount',
+        'g.reason as info',
+        'u.name as byName',
+        sql<string>`${sql.ref('g.created_at')}`.as('createdAt'),
+      ])
+      .where('g.tenant_id', '=', tenantId);
+    const voided = this.db
+      .selectFrom('gift_credits as g')
+      .leftJoin('users as u', 'u.id', 'g.voided_by')
+      .select([
+        sql<string>`${sql.ref('g.id')} || ':void'`.as('id'),
+        sql<CreditMovementItem['kind']>`'gift-voided'`.as('kind'),
+        utcDay('g.voided_at').as('day'),
+        sql<number>`0::numeric`.as('amount'),
+        'g.void_reason as info',
+        'u.name as byName',
+        sql<string>`${sql.ref('g.voided_at')}`.as('createdAt'),
+      ])
+      .where('g.tenant_id', '=', tenantId)
+      .where('g.voided_at', 'is not', null);
+    return await this.db
+      .selectFrom(paid.unionAll(granted).unionAll(voided).as('m'))
+      .select(['m.id', 'm.kind', 'm.day', 'm.amount', 'm.info', 'm.byName', 'm.createdAt'])
+      .orderBy('m.createdAt', 'desc')
+      .orderBy('m.id', 'desc')
+      .limit(500)
+      .execute();
   }
 
   /** Los créditos regalados del comercio con su remanente y estado. */
-  listGifts(tenantId: string): GiftItem[] {
+  async listGifts(tenantId: string): Promise<GiftItem[]> {
     const nowIso = this.now().toISOString();
-    const rows = this.db
-      .prepare(
-        `SELECT g.id, g.origin, g.amount, g.expires_at, g.voided_at, g.reason, g.created_at, u.name AS granted_by_name,
-                g.amount - COALESCE((SELECT SUM(c.amount) FROM gift_consumptions c WHERE c.credit_id = g.id), 0) AS remaining
-         FROM gift_credits g LEFT JOIN users u ON u.id = g.granted_by
-         WHERE g.tenant_id = ?
-         ORDER BY g.created_at DESC, g.id DESC`,
-      )
-      .all(tenantId) as {
-      id: string;
-      origin: string;
-      amount: number;
-      expires_at: string;
-      voided_at: string | null;
-      reason: string | null;
-      created_at: string;
-      granted_by_name: string | null;
-      remaining: number;
-    }[];
+    const rows = await this.db
+      .selectFrom('gift_credits as g')
+      .leftJoin('users as u', 'u.id', 'g.granted_by')
+      .select((eb) => [
+        'g.id',
+        'g.origin',
+        'g.amount',
+        'g.expires_at',
+        'g.voided_at',
+        'g.reason',
+        'g.created_at',
+        'u.name as granted_by_name',
+        remainingOf(eb).as('remaining'),
+      ])
+      .where('g.tenant_id', '=', tenantId)
+      .orderBy('g.created_at', 'desc')
+      .orderBy('g.id', 'desc')
+      .execute();
     return rows.map((r): GiftItem => ({
       id: r.id,
       origin: r.origin === 'signup' ? 'signup' : 'grant',
@@ -226,164 +284,214 @@ export class BillingService {
     }));
   }
 
-  paymentInfo(): PaymentInfo {
-    const s = readBillingSettings(this.db);
+  async paymentInfo(): Promise<PaymentInfo> {
+    const s = await readBillingSettings(this.db);
     return { alias: s.paymentAlias, cbu: s.paymentCbu, holder: s.paymentHolder, supportWhatsapp: s.supportWhatsapp };
   }
 
   // --- plataforma ---
 
   /** Un pago al titular del comercio: cancela primero la deuda de sus comercios, del cargo más antiguo; el resto queda de saldo. */
-  registerPayment(p: {
+  async registerPayment(p: {
     tenantId: string;
     day: string;
     amount: number;
     info?: string | undefined;
     actorUserId: string;
     paymentRef?: string | undefined;
-  }): { movementId: string; settled: number } {
-    const holder = this.requireHolder(p.tenantId);
+  }): Promise<{ movementId: string; settled: number }> {
+    const holder = await this.requireHolder(p.tenantId);
     requirePositive(p.amount);
-    if (p.paymentRef !== undefined && this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(p.paymentRef) !== undefined) {
+    if (p.paymentRef !== undefined && (await this.paymentRefExists(p.paymentRef))) {
       throw new DomainError(409, 'Ese pago ya estaba registrado');
     }
     const at = this.now().toISOString();
     const movementId = `pm_${randomUUID()}`;
-    let settled = 0;
-    this.db.exec('BEGIN');
-    try {
-      this.db
-        .prepare(
-          "INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, payment_ref, day, info, created_by, created_at) VALUES (?, ?, 'payment', ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(movementId, holder, p.amount, p.tenantId, p.paymentRef ?? null, p.day, p.info ?? null, p.actorUserId, at);
-      const debts = this.db
-        .prepare(
-          `SELECT c.id, c.tenant_id, c.day, c.debt_amount FROM charges c JOIN tenants t ON t.id = c.tenant_id
-           WHERE t.holder_user_id = ? AND c.debt_amount > 0 ORDER BY c.day, c.created_at, c.id`,
-        )
-        .all(holder) as { id: string; tenant_id: string; day: string; debt_amount: number }[];
+    return await this.db.transaction().execute(async (trx) => {
+      await this.lockHolder(holder, trx);
+      // El índice único de payment_ref frena una carrera con la misma referencia: el segundo falla
+      await trx
+        .insertInto('paid_movements')
+        .values({
+          id: movementId,
+          user_id: holder,
+          kind: 'payment',
+          amount: p.amount,
+          tenant_id: p.tenantId,
+          payment_ref: p.paymentRef ?? null,
+          day: p.day,
+          info: p.info ?? null,
+          created_by: p.actorUserId,
+          created_at: at,
+        })
+        .execute();
+      const debts = await trx
+        .selectFrom('charges as c')
+        .innerJoin('tenants as t', 't.id', 'c.tenant_id')
+        .select(['c.id', 'c.tenant_id', 'c.day', 'c.debt_amount'])
+        .where('t.holder_user_id', '=', holder)
+        .where('c.debt_amount', '>', 0)
+        .orderBy('c.day')
+        .orderBy('c.created_at')
+        .orderBy('c.id')
+        .execute();
       let left = p.amount;
+      let settled = 0;
       for (const debt of debts) {
         if (left <= 0) break;
         const x = Math.min(left, debt.debt_amount);
-        this.db
-          .prepare(
-            `UPDATE charges SET debt_amount = debt_amount - ?, paid_amount = paid_amount + ?,
-               debt_settled_at = CASE WHEN debt_amount - ? <= 0 THEN ? ELSE NULL END
-             WHERE id = ?`,
-          )
-          .run(x, x, x, at, debt.id);
-        this.db
-          .prepare(
-            "INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, charge_id, day, created_by, created_at) VALUES (?, ?, 'debt-settlement', ?, ?, ?, ?, ?, ?)",
-          )
-          .run(`pm_${randomUUID()}`, holder, -x, debt.tenant_id, debt.id, debt.day, p.actorUserId, at);
-        left -= x;
-        settled += x;
+        await trx
+          .updateTable('charges')
+          .set((eb) => ({
+            debt_amount: eb('debt_amount', '-', x),
+            paid_amount: eb('paid_amount', '+', x),
+            debt_settled_at: sumCents(debt.debt_amount, -x) <= 0 ? at : null,
+          }))
+          .where('id', '=', debt.id)
+          .execute();
+        await trx
+          .insertInto('paid_movements')
+          .values({
+            id: `pm_${randomUUID()}`,
+            user_id: holder,
+            kind: 'debt-settlement',
+            amount: -x,
+            tenant_id: debt.tenant_id,
+            charge_id: debt.id,
+            day: debt.day,
+            created_by: p.actorUserId,
+            created_at: at,
+          })
+          .execute();
+        left = sumCents(left, -x);
+        settled = sumCents(settled, x);
       }
-      this.db.exec('COMMIT');
-    } catch (err: unknown) {
-      this.db.exec('ROLLBACK');
-      throw err;
-    }
-    return { movementId, settled };
+      return { movementId, settled };
+    });
   }
 
   /** Créditos regalados por root o soporte: vencen al terminar el día argentino `expiresOn`. */
-  grantCredits(p: { tenantId: string; amount: number; expiresOn: string; reason?: string | undefined; actorUserId: string }): string {
-    this.requireTenant(p.tenantId);
+  async grantCredits(p: { tenantId: string; amount: number; expiresOn: string; reason?: string | undefined; actorUserId: string }): Promise<string> {
+    await this.requireTenant(p.tenantId);
     requirePositive(p.amount);
     const id = `gift_${randomUUID()}`;
-    const expiresAt = `${shiftDay(p.expiresOn, 1)}T03:00:00.000Z`;
-    this.db
-      .prepare("INSERT INTO gift_credits (id, tenant_id, amount, expires_at, origin, granted_by, reason, created_at) VALUES (?, ?, ?, ?, 'grant', ?, ?, ?)")
-      .run(id, p.tenantId, p.amount, expiresAt, p.actorUserId, p.reason ?? null, this.now().toISOString());
+    await this.db
+      .insertInto('gift_credits')
+      .values({
+        id,
+        tenant_id: p.tenantId,
+        amount: p.amount,
+        expires_at: `${shiftDay(p.expiresOn, 1)}T03:00:00.000Z`,
+        origin: 'grant',
+        granted_by: p.actorUserId,
+        reason: p.reason ?? null,
+        created_at: this.now().toISOString(),
+      })
+      .execute();
     return id;
   }
 
   /** Anula el remanente de un crédito regalado (lo consumido queda como está). */
-  voidCredit(p: { tenantId: string; creditId: string; reason: string; actorUserId: string }): void {
-    const res = this.db
-      .prepare('UPDATE gift_credits SET voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ? AND tenant_id = ? AND voided_at IS NULL')
-      .run(this.now().toISOString(), p.actorUserId, p.reason, p.creditId, p.tenantId);
-    if (res.changes === 0) throw new DomainError(404, 'Crédito no encontrado');
+  async voidCredit(p: { tenantId: string; creditId: string; reason: string; actorUserId: string }): Promise<void> {
+    const res = await this.db
+      .updateTable('gift_credits')
+      .set({ voided_at: this.now().toISOString(), voided_by: p.actorUserId, void_reason: p.reason })
+      .where('id', '=', p.creditId)
+      .where('tenant_id', '=', p.tenantId)
+      .where('voided_at', 'is', null)
+      .executeTakeFirst();
+    if (Number(res.numUpdatedRows) === 0) throw new DomainError(404, 'Crédito no encontrado');
   }
 
-  setGrace(p: { tenantId: string; until: string }): void {
-    this.requireTenant(p.tenantId);
-    this.db.prepare('UPDATE tenants SET grace_until = ? WHERE id = ?').run(p.until, p.tenantId);
+  async setGrace(p: { tenantId: string; until: string }): Promise<void> {
+    await this.requireTenant(p.tenantId);
+    await this.db.updateTable('tenants').set({ grace_until: p.until }).where('id', '=', p.tenantId).execute();
   }
 
   /** Devolución del saldo pagado del titular (solo root): nunca más que el saldo. */
-  refund(p: { tenantId: string; amount: number; info?: string | undefined; actorUserId: string }): string {
-    const holder = this.requireHolder(p.tenantId);
+  async refund(p: { tenantId: string; amount: number; info?: string | undefined; actorUserId: string }): Promise<string> {
+    const holder = await this.requireHolder(p.tenantId);
     requirePositive(p.amount);
-    if (p.amount > this.paidBalance(holder)) throw new DomainError(400, 'La devolución supera el saldo pagado');
     const id = `pm_${randomUUID()}`;
     const at = this.now();
-    this.db
-      .prepare("INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, day, info, created_by, created_at) VALUES (?, ?, 'refund', ?, ?, ?, ?, ?, ?)")
-      .run(id, holder, -p.amount, p.tenantId, argentinaToday(at), p.info ?? null, p.actorUserId, at.toISOString());
+    await this.db.transaction().execute(async (trx) => {
+      await this.lockHolder(holder, trx);
+      if (p.amount > (await this.paidBalance(holder, trx))) throw new DomainError(400, 'La devolución supera el saldo pagado');
+      await trx
+        .insertInto('paid_movements')
+        .values({
+          id,
+          user_id: holder,
+          kind: 'refund',
+          amount: -p.amount,
+          tenant_id: p.tenantId,
+          day: argentinaToday(at),
+          info: p.info ?? null,
+          created_by: p.actorUserId,
+          created_at: at.toISOString(),
+        })
+        .execute();
+    });
     return id;
   }
 
   /** Cambia el titular: tiene que ser un owner activo. El saldo pagado es de la persona y no se mueve. */
-  setHolder(p: { tenantId: string; userId: string }): void {
-    this.requireTenant(p.tenantId);
-    const owner = this.db
-      .prepare("SELECT 1 FROM memberships WHERE tenant_id = ? AND user_id = ? AND role = 'owner' AND status = 'active'")
-      .get(p.tenantId, p.userId);
+  async setHolder(p: { tenantId: string; userId: string }): Promise<void> {
+    await this.requireTenant(p.tenantId);
+    const owner = await this.db
+      .selectFrom('memberships')
+      .select('user_id')
+      .where('tenant_id', '=', p.tenantId)
+      .where('user_id', '=', p.userId)
+      .where('role', '=', 'owner')
+      .where('status', '=', 'active')
+      .executeTakeFirst();
     if (owner === undefined) throw new DomainError(400, 'El titular tiene que ser un owner activo del comercio');
-    this.db.prepare('UPDATE tenants SET holder_user_id = ? WHERE id = ?').run(p.userId, p.tenantId);
+    await this.db.updateTable('tenants').set({ holder_user_id: p.userId }).where('id', '=', p.tenantId).execute();
   }
 
-  settings(): BillingSettings {
-    return readBillingSettings(this.db);
+  async settings(): Promise<BillingSettings> {
+    return await readBillingSettings(this.db);
   }
 
-  updateSettings(patch: BillingSettingsPatch, actorUserId: string): BillingSettings {
-    return writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
+  async updateSettings(patch: BillingSettingsPatch, actorUserId: string): Promise<BillingSettings> {
+    return await writeBillingSettings(this.db, patch, actorUserId, this.now().toISOString());
   }
 
   /** Un comercio por su identificador, para la planilla; `demo` si es una demo. */
-  findTenantBySlug(slug: string): { id: string; name: string; demo: boolean } | undefined {
-    const row = this.db
-      .prepare(`SELECT id, name, id IN ${DEMO_TENANT_IDS_SQL} AS demo FROM tenants WHERE slug = ?`)
-      .get(slug) as { id: string; name: string; demo: number } | undefined;
-    return row === undefined ? undefined : { id: row.id, name: row.name, demo: row.demo === 1 };
+  async findTenantBySlug(slug: string): Promise<{ id: string; name: string; demo: boolean } | undefined> {
+    const row = await this.db.selectFrom('tenants').select(['id', 'name']).where('slug', '=', slug).executeTakeFirst();
+    return row === undefined ? undefined : { id: row.id, name: row.name, demo: await isDemoTenant(this.db, row.id) };
   }
 
-  paymentRefExists(ref: string): boolean {
-    return this.db.prepare('SELECT 1 FROM paid_movements WHERE payment_ref = ?').get(ref) !== undefined;
+  async paymentRefExists(ref: string): Promise<boolean> {
+    return (await this.db.selectFrom('paid_movements').select('id').where('payment_ref', '=', ref).executeTakeFirst()) !== undefined;
   }
 
   /** Los pagos registrados, del más nuevo al más viejo. */
-  listPayments(limit = 200): PlatformPaymentItem[] {
-    const rows = this.db
-      .prepare(
-        `SELECT p.id, p.day, p.amount, p.info, p.tenant_id, t.name AS tenant_name, h.name AS holder_name,
-                c.name AS created_by_name, p.created_at, p.payment_ref
-         FROM paid_movements p
-         JOIN users h ON h.id = p.user_id
-         LEFT JOIN tenants t ON t.id = p.tenant_id
-         LEFT JOIN users c ON c.id = p.created_by
-         WHERE p.kind = 'payment'
-         ORDER BY p.created_at DESC, p.id DESC
-         LIMIT ?`,
-      )
-      .all(limit) as {
-      id: string;
-      day: string;
-      amount: number;
-      info: string | null;
-      tenant_id: string | null;
-      tenant_name: string | null;
-      holder_name: string;
-      created_by_name: string | null;
-      created_at: string;
-      payment_ref: string | null;
-    }[];
+  async listPayments(limit = 200): Promise<PlatformPaymentItem[]> {
+    const rows = await this.db
+      .selectFrom('paid_movements as p')
+      .innerJoin('users as h', 'h.id', 'p.user_id')
+      .leftJoin('tenants as t', 't.id', 'p.tenant_id')
+      .leftJoin('users as c', 'c.id', 'p.created_by')
+      .select([
+        'p.id',
+        'p.day',
+        'p.amount',
+        'p.info',
+        'p.tenant_id',
+        't.name as tenant_name',
+        'h.name as holder_name',
+        'c.name as created_by_name',
+        'p.created_at',
+        'p.payment_ref',
+      ])
+      .where('p.kind', '=', 'payment')
+      .orderBy('p.created_at', 'desc')
+      .orderBy('p.id', 'desc')
+      .limit(limit)
+      .execute();
     return rows.map((r) => ({
       id: r.id,
       day: r.day,
@@ -400,91 +508,106 @@ export class BillingService {
 
   // --- internos ---
 
-  private requireTenant(tenantId: string): void {
-    const row = this.db.prepare(`SELECT 1 FROM tenants WHERE id = ? AND id NOT IN ${DEMO_TENANT_IDS_SQL}`).get(tenantId);
-    if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
+  private async requireTenant(tenantId: string): Promise<void> {
+    const row = await this.db.selectFrom('tenants').select('id').where('id', '=', tenantId).executeTakeFirst();
+    if (row === undefined || (await isDemoTenant(this.db, tenantId))) throw new DomainError(404, 'Comercio no encontrado');
   }
 
-  private requireHolder(tenantId: string): string {
-    this.requireTenant(tenantId);
-    const holder = this.holderOf(tenantId);
+  private async requireHolder(tenantId: string): Promise<string> {
+    await this.requireTenant(tenantId);
+    const holder = await this.holderOf(tenantId);
     if (holder === null) throw new DomainError(400, 'El comercio no tiene titular');
     return holder;
   }
 
-  private holderOf(tenantId: string): string | null {
-    const row = this.db.prepare('SELECT holder_user_id FROM tenants WHERE id = ?').get(tenantId) as
-      | { holder_user_id: string | null }
-      | undefined;
+  private async holderOf(tenantId: string): Promise<string | null> {
+    const row = await this.db.selectFrom('tenants').select('holder_user_id').where('id', '=', tenantId).executeTakeFirst();
     return row?.holder_user_id ?? null;
   }
 
-  private paidBalance(userId: string): number {
-    return (this.db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM paid_movements WHERE user_id = ?').get(userId) as { balance: number })
-      .balance;
+  /**
+   * Bloquea el saldo del titular hasta el fin de la transacción: cargos, pagos y devoluciones del
+   * mismo titular van de a uno. Un candado de transacción sobre el id, no sobre la fila de `users`
+   * (un `FOR UPDATE` ahí frenaría las FK que apuntan al usuario, como una sesión nueva).
+   */
+  private async lockHolder(holder: string, trx: Db): Promise<void> {
+    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${holder}`}, 0))`.execute(trx);
+  }
+
+  private async paidBalance(userId: string, db: Db = this.db): Promise<number> {
+    const row = await db
+      .selectFrom('paid_movements')
+      .select((eb) => eb.fn.coalesce(eb.fn.sum<number>('amount'), sql.lit(0)).as('balance'))
+      .where('user_id', '=', userId)
+      .executeTakeFirstOrThrow();
+    return row.balance;
   }
 
   /** Regalados vigentes con remanente, por vencimiento más próximo. */
-  private giftBalances(tenantId: string): DatedGift[] {
-    const rows = this.db
-      .prepare(
-        `SELECT g.id, g.expires_at, g.amount - COALESCE((SELECT SUM(c.amount) FROM gift_consumptions c WHERE c.credit_id = g.id), 0) AS remaining
-         FROM gift_credits g
-         WHERE g.tenant_id = ? AND g.voided_at IS NULL AND g.expires_at > ?
-         ORDER BY g.expires_at, g.created_at, g.id`,
-      )
-      .all(tenantId, this.now().toISOString()) as { id: string; expires_at: string; remaining: number }[];
+  private async giftBalances(tenantId: string, db: Db = this.db): Promise<DatedGift[]> {
+    const rows = await db
+      .selectFrom('gift_credits as g')
+      .select((eb) => ['g.id', 'g.expires_at', remainingOf(eb).as('remaining')])
+      .where('g.tenant_id', '=', tenantId)
+      .where('g.voided_at', 'is', null)
+      .where('g.expires_at', '>', this.now().toISOString())
+      .orderBy('g.expires_at')
+      .orderBy('g.created_at')
+      .orderBy('g.id')
+      .execute();
     return rows.filter((r) => r.remaining > 0).map((r) => ({ creditId: r.id, remaining: r.remaining, expiresAt: r.expires_at }));
   }
 
-  private chargeOne(tenantId: string, holder: string, registerId: string, device: string, day: string): boolean {
-    this.db.exec('BEGIN');
-    try {
-      const exists = this.db.prepare('SELECT 1 FROM charges WHERE register_id = ? AND device_id = ? AND day = ?').get(registerId, device, day);
-      if (exists !== undefined) {
-        this.db.exec('COMMIT');
-        return false;
-      }
-      const settings = readBillingSettings(this.db);
+  private async chargeOne(tenantId: string, holder: string, registerId: string, device: string, day: string): Promise<boolean> {
+    return await this.db.transaction().execute(async (trx) => {
+      await this.lockHolder(holder, trx);
+      const exists = await trx
+        .selectFrom('charges')
+        .select('id')
+        .where('register_id', '=', registerId)
+        .where('device_id', '=', device)
+        .where('day', '=', day)
+        .executeTakeFirst();
+      if (exists !== undefined) return false;
+      const settings = await readBillingSettings(trx);
       const allocation = allocateCharge({
         price: settings.pricePerRegisterDay,
         paidShare: settings.paidShare,
-        paidBalance: this.paidBalance(holder),
-        gifts: this.giftBalances(tenantId),
+        paidBalance: await this.paidBalance(holder, trx),
+        gifts: await this.giftBalances(tenantId, trx),
       });
       const id = `chg_${randomUUID()}`;
       const at = this.now().toISOString();
       const giftAmount = allocation.gifts.reduce((sum, g) => sum + g.amount, 0);
-      this.db
-        .prepare(
-          `INSERT INTO charges (id, tenant_id, register_id, device_id, day, amount, paid_amount, gift_amount, debt_amount, rule, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+      await trx
+        .insertInto('charges')
+        .values({
           id,
-          tenantId,
-          registerId,
-          device,
+          tenant_id: tenantId,
+          register_id: registerId,
+          device_id: device,
           day,
-          settings.pricePerRegisterDay,
-          allocation.paid,
-          giftAmount,
-          allocation.debt,
-          JSON.stringify({ price: settings.pricePerRegisterDay, paidShare: settings.paidShare }),
-          at,
-        );
-      const consume = this.db.prepare('INSERT INTO gift_consumptions (charge_id, credit_id, amount) VALUES (?, ?, ?)');
-      for (const g of allocation.gifts) consume.run(id, g.creditId, g.amount);
-      if (allocation.paid > 0) {
-        this.db
-          .prepare("INSERT INTO paid_movements (id, user_id, kind, amount, tenant_id, charge_id, day, created_at) VALUES (?, ?, 'charge', ?, ?, ?, ?, ?)")
-          .run(`pm_${randomUUID()}`, holder, -allocation.paid, tenantId, id, day, at);
+          amount: settings.pricePerRegisterDay,
+          paid_amount: allocation.paid,
+          gift_amount: giftAmount,
+          debt_amount: allocation.debt,
+          rule: JSON.stringify({ price: settings.pricePerRegisterDay, paidShare: settings.paidShare }),
+          created_at: at,
+        })
+        .execute();
+      if (allocation.gifts.length > 0) {
+        await trx
+          .insertInto('gift_consumptions')
+          .values(allocation.gifts.map((g) => ({ charge_id: id, credit_id: g.creditId, amount: g.amount })))
+          .execute();
       }
-      this.db.exec('COMMIT');
+      if (allocation.paid > 0) {
+        await trx
+          .insertInto('paid_movements')
+          .values({ id: `pm_${randomUUID()}`, user_id: holder, kind: 'charge', amount: -allocation.paid, tenant_id: tenantId, charge_id: id, day, created_at: at })
+          .execute();
+      }
       return true;
-    } catch (err: unknown) {
-      this.db.exec('ROLLBACK');
-      throw err;
-    }
+    });
   }
 }

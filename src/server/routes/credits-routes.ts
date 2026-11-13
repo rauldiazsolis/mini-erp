@@ -23,30 +23,30 @@ export function createCreditsRoutes(billing: BillingService): Router {
   const view = requirePermission('credits.view');
   const tenantOf = (req: AuthenticatedAdminRequest): string => req.activeTenantId ?? '';
 
-  router.get('/credits', view, (req: AuthenticatedAdminRequest, res: Response) => {
-    const body: CreditsResponse = { ...billing.summary(tenantOf(req)), paymentInfo: billing.paymentInfo() };
+  router.get('/credits', view, async (req: AuthenticatedAdminRequest, res: Response) => {
+    const body: CreditsResponse = { ...(await billing.summary(tenantOf(req))), paymentInfo: await billing.paymentInfo() };
     res.status(200).json(body);
   });
 
-  router.get('/credits/charges', view, (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/credits/charges', view, async (req: AuthenticatedAdminRequest, res: Response) => {
     const parsed = chargesQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Consulta inválida' });
       return;
     }
-    res.status(200).json(billing.listCharges(tenantOf(req), parsed.data));
+    res.status(200).json(await billing.listCharges(tenantOf(req), parsed.data));
   });
 
-  router.get('/credits/movements', view, (req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(billing.listMovements(tenantOf(req)));
+  router.get('/credits/movements', view, async (req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await billing.listMovements(tenantOf(req)));
   });
 
-  router.get('/credits/gifts', view, (req: AuthenticatedAdminRequest, res: Response) => {
-    res.status(200).json(billing.listGifts(tenantOf(req)));
+  router.get('/credits/gifts', view, async (req: AuthenticatedAdminRequest, res: Response) => {
+    res.status(200).json(await billing.listGifts(tenantOf(req)));
   });
 
-  router.get('/billing-status', requirePermission('tenant.view'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const summary = billing.summary(tenantOf(req));
+  router.get('/billing-status', requirePermission('tenant.view'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const summary = await billing.summary(tenantOf(req));
     const body: BillingStatus = { state: summary.state, debt: summary.debt, deadline: summary.deadline };
     res.status(200).json(body);
   });

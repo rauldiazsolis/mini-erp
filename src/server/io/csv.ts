@@ -106,6 +106,12 @@ export function parseDay(raw: string): string | undefined {
  * `1.200` es 1200. Con `'auto'`, un solo punto es decimal.
  */
 export function parseAmount(raw: string, decimal: DecimalMode = 'auto'): number | undefined {
+  const exact = parseDecimal(raw, decimal);
+  return exact === undefined ? undefined : Math.round(exact * 100) / 100;
+}
+
+/** Como `parseAmount`, pero sin redondear a centavos: para validar los decimales (dinero de sistema). */
+export function parseDecimal(raw: string, decimal: DecimalMode = 'auto'): number | undefined {
   const clean = raw.replace(/[$\s]/g, '');
   let normalized = clean;
   if (clean.includes(',') || decimal === 'comma') {
@@ -114,7 +120,7 @@ export function parseAmount(raw: string, decimal: DecimalMode = 'auto'): number 
     normalized = clean.replace(/\./g, '');
   }
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return undefined;
-  return Math.round(Number(normalized) * 100) / 100;
+  return Number(normalized);
 }
 
 const TRUE_WORDS = new Set(['si', 's', 'x', '1', 'true', 'verdadero', 'yes']);

@@ -1,41 +1,40 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
-import { openSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
 import { impersonate } from './helpers/impersonate.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 const MIN = 60 * 1000;
 
 describe('sesión de impersonación (#23, M7b)', () => {
   let app: Express;
-  let systemDb: DatabaseSync;
   let now: Date;
   let tokens: { root: string; support: string; owner: string; otherSupport: string };
   let ids: { owner: string; support: string; root: string; lonely: string; disabled: string; otherSupport: string };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
-    systemDb = openSystemDb(':memory:');
-    const tenantManager = new TenantManager(systemDb, { inMemory: true });
-    const bundle = createApp({ systemDb, tenantManager, now: () => now });
+    const tenantManager = new TenantManager(db());
+    const bundle = createApp({ database: db(), tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;
-    const root = auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' }).user;
-    const support = auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
-    const otherSupport = auth.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Beto' });
-    systemDb.prepare("UPDATE users SET global_role = 'support' WHERE id IN (?, ?)").run(support.user.id, otherSupport.user.id);
-    const owner = auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
-    tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
-    tenantManager.createTenant({ id: 'almacen', slug: 'almacen', name: 'Almacén Y', ownerUserId: owner.user.id });
-    const lonely = auth.createUser({ email: 'solo@x.com', password: 'password123', name: 'Sin comercio' });
-    const disabled = auth.createUser({ email: 'baja@x.com', password: 'password123', name: 'De baja' });
-    tenantManager.createTenant({ id: 'otro', slug: 'otro', name: 'Otro', ownerUserId: disabled.user.id });
-    systemDb.prepare("UPDATE users SET status = 'disabled' WHERE id = ?").run(disabled.user.id);
+    const root = (await auth.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' })).user;
+    const support = await auth.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Ana' });
+    const otherSupport = await auth.createUser({ email: 'soporte2@x.com', password: 'password123', name: 'Beto' });
+    await db().system.updateTable('users').set({ global_role: 'support' }).where('id', 'in', [support.user.id, otherSupport.user.id]).execute();
+    const owner = await auth.createUser({ email: 'juan@x.com', password: 'password123', name: 'Juan' });
+    await tenantManager.createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco X', ownerUserId: owner.user.id });
+    await tenantManager.createTenant({ id: 'almacen', slug: 'almacen', name: 'Almacén Y', ownerUserId: owner.user.id });
+    const lonely = await auth.createUser({ email: 'solo@x.com', password: 'password123', name: 'Sin comercio' });
+    const disabled = await auth.createUser({ email: 'baja@x.com', password: 'password123', name: 'De baja' });
+    await tenantManager.createTenant({ id: 'otro', slug: 'otro', name: 'Otro', ownerUserId: disabled.user.id });
+    await db().system.updateTable('users').set({ status: 'disabled' }).where('id', '=', disabled.user.id).execute();
     tokens = {
-      root: auth.login({ email: 'root@x.com', password: 'password123' }).token,
+      root: (await auth.login({ email: 'root@x.com', password: 'password123' })).token,
       support: support.token,
       otherSupport: otherSupport.token,
       owner: owner.token,
@@ -52,9 +51,12 @@ describe('sesión de impersonación (#23, M7b)', () => {
 
   const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
   const audit = () =>
-    systemDb
-      .prepare("SELECT action, actor_user_id, target_user_id, tenant_id, details FROM audit_log WHERE action LIKE 'impersonation.%' ORDER BY rowid")
-      .all() as { action: string; actor_user_id: string; target_user_id: string; tenant_id: string; details: string }[];
+    db()
+      .system.selectFrom('audit_log')
+      .select(['action', 'actor_user_id', 'target_user_id', 'tenant_id', 'details'])
+      .where('action', 'like', 'impersonation.%')
+      .orderBy('seq')
+      .execute();
 
   it('soporte entra como el usuario: su token, su rol y el impersonador en /auth/me', async () => {
     const res = await request(app).post('/api/impersonations').set(bearer(tokens.support)).send({ userId: ids.owner });
@@ -70,8 +72,8 @@ describe('sesión de impersonación (#23, M7b)', () => {
     expect(meBody.user.id).toBe(ids.owner);
     expect(meBody.impersonator.id).toBe(ids.support);
     expect((await request(app).get('/api/tenants/kiosco/products').set(bearer(body.token))).status).toBe(200);
-    expect(audit()).toEqual([
-      { action: 'impersonation.started', actor_user_id: ids.support, target_user_id: ids.owner, tenant_id: 'almacen', details: '{}' },
+    expect(await audit()).toEqual([
+      { action: 'impersonation.started', actor_user_id: ids.support, target_user_id: ids.owner, tenant_id: 'almacen', details: {} },
     ]);
   });
 
@@ -97,26 +99,27 @@ describe('sesión de impersonación (#23, M7b)', () => {
   it('vence a las 2 h sin uso: cada uso la estira (a lo sumo una escritura por minuto)', async () => {
     const imp = await impersonate(app, tokens.support, ids.owner);
     const use = () => request(app).get('/api/auth/me').set(bearer(imp));
-    const lastUsed = () => (systemDb.prepare('SELECT last_used_at FROM sessions WHERE token = ?').get(imp) as { last_used_at: string }).last_used_at;
+    const lastUsed = async () =>
+      (await db().system.selectFrom('sessions').select('last_used_at').where('token', '=', imp).executeTakeFirstOrThrow()).last_used_at;
     now = new Date(now.getTime() + 30 * MIN);
     expect((await use()).status).toBe(200);
-    expect(lastUsed()).toBe('2026-10-05T15:30:00.000Z');
+    expect(await lastUsed()).toBe('2026-10-05T15:30:00.000Z');
     now = new Date(now.getTime() + 30 * 1000); // medio minuto: no escribe
     expect((await use()).status).toBe(200);
-    expect(lastUsed()).toBe('2026-10-05T15:30:00.000Z');
+    expect(await lastUsed()).toBe('2026-10-05T15:30:00.000Z');
     now = new Date('2026-10-05T17:29:00.000Z'); // 1 h 59 desde el último uso
     expect((await use()).status).toBe(200);
     now = new Date('2026-10-05T19:30:00.000Z'); // 2 h 01 sin uso
     expect((await use()).status).toBe(401);
-    expect(systemDb.prepare('SELECT COUNT(*) AS n FROM sessions WHERE token = ?').get(imp)).toEqual({ n: 0 });
-    expect(audit().at(-1)).toMatchObject({ action: 'impersonation.ended', details: JSON.stringify({ reason: 'expired' }) });
+    expect(await db().system.selectFrom('sessions').select('token').where('token', '=', imp).execute()).toEqual([]);
+    expect((await audit()).at(-1)).toMatchObject({ action: 'impersonation.ended', details: { reason: 'expired' } });
   });
 
   it('"Salir" la termina; con una sesión propia es 400', async () => {
     const imp = await impersonate(app, tokens.support, ids.owner);
     expect((await request(app).delete('/api/impersonations/current').set(bearer(imp))).status).toBe(200);
     expect((await request(app).get('/api/auth/me').set(bearer(imp))).status).toBe(401);
-    expect(audit().at(-1)).toMatchObject({ action: 'impersonation.ended', actor_user_id: ids.support, details: JSON.stringify({ reason: 'exit' }) });
+    expect((await audit()).at(-1)).toMatchObject({ action: 'impersonation.ended', actor_user_id: ids.support, details: { reason: 'exit' } });
     expect((await request(app).delete('/api/impersonations/current').set(bearer(tokens.support))).status).toBe(400);
     // La sesión de soporte sigue
     expect((await request(app).get('/api/auth/me').set(bearer(tokens.support))).status).toBe(200);
@@ -127,7 +130,7 @@ describe('sesión de impersonación (#23, M7b)', () => {
     expect((await request(app).post('/api/auth/logout').set(bearer(tokens.support))).status).toBe(200);
     expect((await request(app).get('/api/auth/me').set(bearer(tokens.support))).status).toBe(401);
     expect((await request(app).get('/api/auth/me').set(bearer(imp))).status).toBe(401);
-    expect(audit().at(-1)).toMatchObject({ action: 'impersonation.ended', details: JSON.stringify({ reason: 'parent-ended' }) });
+    expect((await audit()).at(-1)).toMatchObject({ action: 'impersonation.ended', details: { reason: 'parent-ended' } });
   });
 
   it('muere si soporte queda desactivado', async () => {

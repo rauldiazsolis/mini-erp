@@ -1,22 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
-import { initSystemDb } from '../src/server/db/system-db.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const db = setupTestDb();
 
 describe('Auth & Multitenancy (Etapa 1.3)', () => {
-  let systemDb: DatabaseSync;
   let tenantManager: TenantManager;
   let app: ReturnType<typeof createApp>['app'];
   let authService: ReturnType<typeof createApp>['authService'];
 
   beforeEach(() => {
-    systemDb = new DatabaseSync(':memory:');
-    initSystemDb(systemDb);
-    tenantManager = new TenantManager(systemDb, { inMemory: true });
+    tenantManager = new TenantManager(db());
 
-    const bundle = createApp({ systemDb, tenantManager });
+    const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     authService = bundle.authService;
   });
@@ -33,7 +31,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   });
 
   it('permite login y consulta de perfil con /api/auth/me', async () => {
-    authService.createUser({ email: 'juan@tienda.com', password: 'mypassword', name: 'Juan' });
+    await authService.createUser({ email: 'juan@tienda.com', password: 'mypassword', name: 'Juan' });
 
     const loginRes = await request(app)
       .post('/api/auth/login')
@@ -101,7 +99,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
 
   it('root y soporte no ven comercios ajenos como propios ni entran sin impersonar (#16)', async () => {
     // Root por ensureRoot (#3: el registro ya no da root) y login
-    authService.ensureRoot({ email: 'root@sistema.com', password: 'password-root-123', name: 'Root' });
+    await authService.ensureRoot({ email: 'root@sistema.com', password: 'password-root-123', name: 'Root' });
     const rootRes = await request(app).post('/api/auth/login').send({ email: 'root@sistema.com', password: 'password-root-123' });
     const rootToken = (rootRes.body as { token: string }).token;
 
@@ -117,21 +115,21 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
     expect((me.body as { tenants: unknown[] }).tenants).toEqual([]);
     expect((await request(app).get('/api/tenants/zapateria-real/products').set('Authorization', `Bearer ${rootToken}`)).status).toBe(403);
   });
-  it('changePassword cierra las otras sesiones y deja la actual (#19)', () => {
-    const a = authService.createUser({ email: 'pepa@kiosco.com', password: 'clave-vieja', name: 'Pepa' });
-    const otra = authService.createSession(a.user.id);
-    authService.changePassword({ userId: a.user.id, currentPassword: 'clave-vieja', newPassword: 'clave-nueva', currentToken: a.token });
-    expect(authService.validateSession(a.token)).toBeDefined();
-    expect(authService.validateSession(otra)).toBeUndefined();
-    expect(() => {
-      authService.changePassword({ userId: a.user.id, currentPassword: 'mal', newPassword: 'otra-clave', currentToken: a.token });
-    }).toThrow('La contraseña actual no es correcta');
+  it('changePassword cierra las otras sesiones y deja la actual (#19)', async () => {
+    const a = await authService.createUser({ email: 'pepa@kiosco.com', password: 'clave-vieja', name: 'Pepa' });
+    const otra = await authService.createSession(a.user.id);
+    await authService.changePassword({ userId: a.user.id, currentPassword: 'clave-vieja', newPassword: 'clave-nueva', currentToken: a.token });
+    expect(await authService.validateSession(a.token)).toBeDefined();
+    expect(await authService.validateSession(otra)).toBeUndefined();
+    await expect(
+      authService.changePassword({ userId: a.user.id, currentPassword: 'mal', newPassword: 'otra-clave', currentToken: a.token }),
+    ).rejects.toThrow('La contraseña actual no es correcta');
   });
 
-  it('una membresía desactivada no da acceso al comercio (#19)', () => {
-    const a = authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
-    tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
-    systemDb.prepare("UPDATE memberships SET status = 'disabled' WHERE user_id = ?").run(a.user.id);
-    expect(authService.listUserTenants(a.user.id)).toEqual([]);
+  it('una membresía desactivada no da acceso al comercio (#19)', async () => {
+    const a = await authService.createUser({ email: 'ex@kiosco.com', password: 'password123', name: 'Ex' });
+    await tenantManager.createTenant({ id: 'kiosco-x', slug: 'kiosco-x', name: 'Kiosco X', ownerUserId: a.user.id });
+    await db().system.updateTable('memberships').set({ status: 'disabled' }).where('user_id', '=', a.user.id).execute();
+    expect(await authService.listUserTenants(a.user.id)).toEqual([]);
   });
 });

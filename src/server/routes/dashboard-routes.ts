@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { DashboardService } from '../dashboard/dashboard-service.ts';
+import type { DashboardService } from '../dashboard/dashboard-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { dashboardSummaryServiceDef } from '../di/container.ts';
@@ -12,19 +12,16 @@ const summaryQuerySchema = z.object({
 });
 
 function getDashboardService(req: AuthenticatedAdminRequest): DashboardService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(dashboardSummaryServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new DashboardService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(dashboardSummaryServiceDef);
 }
 
 export function createDashboardRoutes(): Router {
   const router = Router({ mergeParams: true });
 
-  router.get('/dashboard/summary', requirePermission('tenant.use'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/dashboard/summary', requirePermission('tenant.use'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = summaryQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Parámetros inválidos' });
@@ -33,7 +30,7 @@ export function createDashboardRoutes(): Router {
 
     try {
       const service = getDashboardService(req);
-      const summary = service.getSummary({
+      const summary = await service.getSummary({
         period: parseResult.data.period,
         branchId: parseResult.data.branchId,
       });

@@ -6,7 +6,7 @@ en el mismo trabajo que la toma. La historia de las fases y etapas está en
 
 ## Qué es esto
 
-`mini-erp` es un backend multitenant (Express + SQLite) con un admin web (Preact) que implementa el
+`mini-erp` es un backend multitenant (Express + PostgreSQL) con un admin web (Preact) que implementa el
 **Connector API** de [offline-pos](https://github.com/rauldiazsolis/offline-pos), un POS web
 offline-first. Es **un backend más** de los que usan el POS: el POS no lo conoce ni tiene código para
 él. Hasta el 2026-09-29 vivía en `mini-erp/` dentro de offline-pos (epic
@@ -115,31 +115,36 @@ no está terminada sin `typecheck` con 0 errores y todos los tests en verde:
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
+Los tests necesitan **PostgreSQL 16** andando (ver "Persistencia"): crean y borran bases
+`minierp_test_*` en el servidor de `TEST_DATABASE_URL` (por omisión
+`postgres://minierp:minierp@localhost:5432/postgres`, un rol que pueda crear bases); nunca tocan la
+de desarrollo. El CI levanta el suyo.
+
 Y `pnpm build` si se toca el cliente o la config de Vite. Todo en verde antes de cada commit. En
 Windows, pnpm se corre desde PowerShell.
 
 Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e (Playwright, en
-`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con `DATA_DIR=test-results/e2e-data`
-(base descartable; nunca la de desarrollo) y corre en el CI.
+`e2e/`): `pnpm test:e2e`. Levanta el mini-erp en el puerto 4110 con la base `minierp_e2e`, que
+`e2e/serve.ts` recrea (descartable; nunca la de desarrollo) y corre en el CI.
 
 ## Convenciones de TypeScript y Node
 
 - **TypeScript estricto**: `any` prohibido; `unknown` solo en fronteras externas (payloads HTTP) y
   validado con Zod en la línea siguiente.
 - **Node 24 sin compilar** (strip de tipos): `pnpm dev` y `pnpm start` corren `.ts` directo.
-  - Sin "parameter properties" en constructores (`constructor(private db: DatabaseSync)` no se puede
-    stripear); la propiedad se declara en el cuerpo de la clase:
+  - Sin "parameter properties" en constructores (`constructor(private db: Kysely<SystemDatabase>)` no
+    se puede stripear); la propiedad se declara en el cuerpo de la clase:
     ```typescript
     class MiServicio {
-      private db: DatabaseSync;
-      constructor(db: DatabaseSync) {
+      private db: Kysely<SystemDatabase>;
+      constructor(db: Kysely<SystemDatabase>) {
         this.db = db;
       }
     }
     ```
   - Imports relativos con extensión (`.ts`, `.tsx`): `allowImportingTsExtensions` + `noEmit`.
   - `--watch-path=src/server` en desarrollo: un `--watch` global reinicia en bucle con cada escritura
-    en SQLite (`data/`) o en `dist/`.
+    en `dist/`.
 - **UI (Preact)**: tipar con `JSX.IntrinsicElements['button']`, `JSX.TargetedEvent`, etc.; nada de
   tipos laxos.
 - **TypeScript 6** con `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
@@ -156,33 +161,106 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   equivocado", `error: (iss) => (iss.input === undefined ? … : …)`). Idioma configurable: #74;
   formularios del admin con los esquemas compartidos: #75.
 
+## Persistencia: PostgreSQL con Kysely
+
+**PostgreSQL 16**, una sola base (la de `DATABASE_URL`), con Kysely como query builder tipado sobre
+`pg`. Desde la 0.18.0; antes era SQLite, un archivo por comercio (la migración, sus fases y sus
+decisiones: `docs/superpowers/specs/2026-11-11-postgres-kysely-design.md`; de SQLite no queda nada).
+Todo lo de PostgreSQL vive en `src/server/db/pg/`. Las reglas valen para todo el código;
+(lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-guards.test.ts`).
+
+- **Un esquema por comercio**: una sola base, con `system` para lo global y `tenant_<id>` por
+  comercio. El nombre sale solo de `tenantSchemaName(id)`, que valida el id (minúsculas, dígitos y
+  guiones, hasta 56 caracteres).
+- **Los servicios reciben su Kysely ya acotado**: uno de sistema recibe `Database.system`
+  (`Kysely<SystemDatabase>`) y uno de comercio, `Database.forTenant(id)` (`Kysely<TenantDatabase>`)
+  del scope de Hardwired; nunca `Database.root`, un nombre de esquema ni un `tenant_id` para filtrar.
+  `withSchema` y el pool están en un solo archivo, `db/pg/database.ts` (test).
+- **SQL crudo sin nombres de tabla**: dentro de `sql` una tabla va con `sql.table()` o `sql.ref()`,
+  porque `withSchema` no alcanza a un nombre escrito a mano (`test/pg-isolation.test.ts`). Y ni así
+  en una sentencia cruda raíz (`sql\`…\`.execute(db)`): ahí `sql.table()` tampoco recibe el esquema.
+  Toda consulta de comercio arranca del query builder; `sql` es para expresiones adentro. El
+  `search_path` solo lo toca el runner de migraciones (test).
+- **Todo el acceso a datos es `async`**, sin promesas sueltas (lint: `no-floating-promises`,
+  `no-misused-promises`). Un handler de Express (5) es `async` y deja que el error suba; un
+  parámetro de ruta se lee con `routeParam(req, nombre)`. `res.json(promesa)` no lo atrapa ni el lint
+  ni `tsc`: cada llamada lleva su `await`. `require-await` está prendida: una función que no
+  espera nada no es `async`.
+- **Transacciones** con `db.transaction().execute()`, pasando el `trx` hacia abajo. Adentro no se
+  pide otra conexión al pool ni se espera nada que no sea la base: con `max: 10` es un deadlock.
+  - El executor va al final y es opcional (`metodo(…, db = this.db)`). Una función compartida que
+    escribe varias tablas (`writeStock`, `postToBalance`, `applyPendingFor`, `records.ts`) abre su
+    transacción solo si `db` no es una (`db.isTransaction`).
+  - Un savepoint, con `inSavepoint(trx, nombre, work)` (`sql-helpers.ts`): el push lo usa por evento
+    y la importación por fila.
+  - Sumas (stock, saldo) en SQL, nunca leer-sumar-escribir en JS; un estado que se pisa (un link de
+    un uso, una reserva, una discrepancia), con `UPDATE` condicional.
+  - Errores de PostgreSQL: `isUniqueViolation`, `isForeignKeyViolation`, `isTransientError`.
+- **Columnas explícitas**: sin `.selectAll()` ni `returningAll()` en `src/server` (test), ni
+  `SELECT *` en SQL crudo.
+- **El esquema está en un manifiesto** (`db/pg/system-schema.ts`, `tenant-schema.ts`): de ahí salen
+  los tipos de Kysely y `test/pg-schema.test.ts` lo compara con la base real. Una migración que
+  agrega una columna la agrega también ahí, con su sufijo: `?` nullable, `=` con default, `!`
+  generada.
+- **Tipos y cómo se leen** (los parsers están en el pool, `database.ts`):
+  - Instantes en `timestamptz`, leídos como texto ISO en UTC, igual que `toISOString()`.
+  - Días (el día argentino, una fecha de ticket, un vencimiento por día) en `date`, leídos como
+    `YYYY-MM-DD`.
+  - Dinero en `numeric(14,2)` y cantidades en `numeric(14,4)`; `numeric` y `bigint` se leen como
+    `number`, que es lo que viaja en el JSON del contrato.
+  - JSON en `jsonb`: se lee ya parseado (`unknown`, se valida con Zod) y se escribe con
+    `jsonValue()`, nunca pasando un array o un objeto directo.
+  - Una tabla que se lista en orden de inserción tiene `seq` (identidad) para desempatar.
+- **Búsquedas de texto** sin distinguir mayúsculas ni tildes: `searchable(columna)` contra
+  `searchPattern(texto)` (`db/pg/sql-helpers.ts`, con la extensión `unaccent`), nunca `LIKE` o
+  `ILIKE` a mano.
+- **Migraciones** (`db/pg/migrations/`): ninguna etapa cambia el esquema sin una migración y nunca
+  se borra ni se reinicia una base con datos. `system.ts` y `tenant.ts` listan las de cada esquema; una
+  nueva es un archivo `<tipo>/v<N>-<nombre>.ts` con `{ version, name, up(db) }`, agregado al final.
+  `schema_migrations` de cada esquema es el puntero. `up` corre con el `search_path` en su esquema:
+  escribe las tablas sin calificar, no abre transacciones y no depende de datos de fuera de su
+  esquema. La v1 de cada esquema es la línea de base, **congelada desde la 0.18.0** (la primera
+  publicada sobre PostgreSQL): no se toca nunca más, y todo cambio de esquema es una migración nueva
+  con su test.
+- **Expand & Contract**, para migrar sin cortar el servicio:
+  - Una columna nueva es nullable o tiene un `DEFAULT` constante; nunca `NOT NULL` sin default.
+  - Renombrar o borrar va en dos versiones: primero se deja de usar, después se quita.
+  - Un índice sobre una tabla con datos se crea con `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, en
+    una migración `transactional: false`: el runner la corre fuera de una transacción y tiene que
+    poder repetirse.
+- **Un solo pool**, `max: 10` (`POOL_MAX`; la instancia tiene 512 MB y PostgreSQL acepta 20
+  conexiones); scripts y tests lo cierran al terminar (`Database.destroy()`).
+- **Backup y copia previa con `pg_dump`** (`src/server/backup/pg-backup.ts`, `scripts/backup.ts`):
+  `pg_dump -Fc` de `DATABASE_URL` a `BACKUP_DIR` (por omisión `backups`), un
+  `minierp-AAAA-MM-DDTHH-MM-SSZ.dump` (UTC) por corrida, escrito como `.tmp` y renombrado al
+  terminar. Excluye los esquemas de los comercios demo con un `--exclude-schema` por cada uno de
+  `system.demo_tenants` (nombre exacto, nunca por prefijo). Retención de 7 días por la fecha del
+  nombre, solo después de un dump bueno. Una contraseña de la URL va por `PGPASSWORD`, nunca en los
+  argumentos. Lo corren el timer nocturno y `deploy.sh` antes de activar una versión (ver "Deploy").
+  Una base restaurada arranca con las demos vacías (sus filas de sistema están, sus esquemas no):
+  `deploy/README.md`, "Restaurar un backup".
+- **Los tests corren contra PostgreSQL**: un test que usa la base llama a `setupTestDb()`
+  (`test/helpers/test-db.ts`) arriba del archivo y recibe la base de su worker, vacía antes de cada
+  test; ninguno crea un pool propio ni usa `DATABASE_URL`.
+- **Rama de un epic** (así se hizo esta migración, con las fases 1 a 6 ya hechas): un trabajo que en el
+  medio no se puede publicar vive en una rama `epic/<tema>`. Cada sesión parte de ella y, al cerrar su
+  fase verificada, la mergea ahí con `git merge --no-ff` (sin PR), la sube y borra su rama local y
+  remota. A `main` entra todo junto, en un solo PR, al terminar la última fase. En esta migración, y
+  solo en ella, el agente delegó en subagentes la lectura extensa y la migración de un servicio con
+  sus tests; la regla general ("nunca un subagente por tarea") no cambia.
+
 ## Arquitectura
 
-- **DB por tenant** con `DatabaseSync` de `node:sqlite`:
-  - `data/system.sqlite`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`),
-    cajas con sus keys y todo el cobro (cargos, pagados, regalados, configuración).
-  - `data/tenants/<tenantId>.sqlite`: catálogo, stock por sucursal, clientes, cuentas corrientes,
-    ventas y lotes de sincronización.
-- **Migraciones de esquema** (#47, spec `docs/superpowers/specs/2026-10-02-migraciones-mantenimiento-design.md`):
-  - **Ninguna etapa cambia el esquema sin una migración.** Producción tiene datos: nunca se borra ni
-    se reinicia una base.
-  - Por tipo de base, en `src/server/db/migrations/`: `system.ts` y `tenant.ts` tienen la línea de
-    base (sistema 4, comercio 1), que **no se toca nunca más**, y la lista de migraciones;
-    `PRAGMA user_version` es el puntero.
-  - Una migración nueva: un archivo `migrations/<tipo>/v<N>-<nombre>.ts` con
-    `{ version: N, name, up(db) }` (N = la última + 1), agregado al final de la lista. `up` no abre
-    transacciones (la abre `migrateDb`, una por migración) y no depende de datos de fuera de su base.
-  - Su test parte de una base de la versión anterior **con datos** (`createDbAtVersion` en
-    `test/helpers/`) y verifica que sobreviven (ejemplo: `test/tenant-migration-v2.test.ts`). Migra
-    con el esquema cortado en su versión (`HASTA_VN`, como `test/system-migration-v9.test.ts`): así
-    una migración posterior no lo rompe.
-  - Solo el arranque migra bases con datos (`runMigrations`, en un worker): antes copia lo que va a
-    migrar a `<DATA_DIR>/pre-migracion/<fecha>/` y, si una falla, restaura las ya migradas.
-    `openSystemDb` y `openTenantDb` crean bases nuevas y verifican las existentes (`checkDb`), nunca
-    migran.
-  - Una base anterior a la línea de base o más nueva que el código (un rollback) no arranca.
+- **Un esquema por comercio** en PostgreSQL (ver "Persistencia"):
+  - `system`: usuarios, tenants, membresías, roles globales (`root`, `support`, `user`), cajas con
+    sus keys y todo el cobro.
+  - `tenant_<id>`: catálogo, stock por sucursal, clientes, cuentas corrientes, ventas y lotes de
+    sincronización. Lo crea `TenantManager` al dar de alta el comercio (`createTenantSchema`, fuera
+    de la transacción del alta; si el alta falla, `dropTenantSchema`).
+  - `test/pg-guards.test.ts` falla si algo en `src/`, `scripts/`, `test/` o `e2e/` importa `node:sqlite`.
 - **Arranque en dos fases** (`src/server/startup.ts`): el servidor escucha enseguida con el app de
-  mantenimiento (`src/server/maintenance/`, sin bases), migra y recién ahí monta el app completo.
+  mantenimiento (`src/server/maintenance/`, sin bases), migra PostgreSQL (`migrateAll`: `system` y
+  el esquema de cada comercio, con el avance en `/health`) y recién ahí monta el app completo.
   - Mientras tanto, `/health` da `503 maintenance` (o `migration-failed`, y el proceso sigue vivo),
     `/connector/info` da `status: maintenance` sin key, el resto del Connector API y `/api` dan `503`
     con `Retry-After: 30`, y las páginas, la de actualización.
@@ -228,7 +306,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     Caja 1 del Kiosco.
   - Dos cajas de demo con key fija (`DEV_DEMOS`: Kiosco y Almacén demo), que se vuelven a crear al
     arrancar si un reinicio o la inactividad las revocó.
-  - Es idempotente y no borra nada: para sembrar de nuevo, se borra la carpeta de datos de desarrollo.
+  - Es idempotente y no borra nada: para sembrar de nuevo, se borra la base de `DATABASE_URL` y se vuelve a crear (`dropdb` y `createdb`).
     El arranque lista usuarios y keys en el log.
 - **Límite de pedidos por IP** (`src/server/middleware/rate-limit.ts`, ventana fija en memoria): 10
   demos por hora (`DEMO_RATE_LIMIT`) y 20 pedidos cada 15 minutos a login y registro
@@ -248,8 +326,13 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     tiene), sin tumbar el resto.
   - **El backend nunca rechaza de forma síncrona el contenido de un lote**: responde `200` y reporta
     las inconsistencias como `issues` en el pull.
-  - El push aplica cada lote en una transacción y cada evento en un `SAVEPOINT` (#2): un evento que
-    tira un error se deshace solo y queda como `issue` con su `eventId`.
+  - El push aplica cada lote en una transacción y cada evento en un `SAVEPOINT` (#2, `inSavepoint`):
+    un evento que tira un error se deshace solo y queda como `issue` con su `eventId`. Un lote a la
+    vez por comercio; un lote repetido o simultáneo devuelve su estado sin repetir efectos; un error
+    pasajero de la base (deadlock) tumba el lote y el POS lo reintenta.
+  - Fechas e instantes se validan en la frontera (`z.iso.date()` para `ticket.date` y
+    `receipt.date`, `z.iso.datetime({ offset: true })` para `createdAt`); el carácter nulo se quita al
+    entrar; un total con más de 2 decimales se guarda redondeado (el `payload`, intacto).
   - **Discrepancias** (`src/server/discrepancy/`, tabla `discrepancies`): lo que el push no puede
     aplicar o le parece raro, sin rechazar el lote. Un movimiento de un cliente desconocido queda
     pendiente y se aplica solo cuando el cliente aparece (evento `customer`, alta en el admin o
@@ -270,24 +353,26 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   - **Un comercio fijo por rubro**: `demo-kiosco`, `demo-almacen` y `demo-ferreteria` ("Kiosco Demo",
     etc.), sin dueño, marcados en `demo_tenants`. La semilla (`seedDemoCommerce`,
     `seeds/demo-commerce.ts`) pone el catálogo con ids deterministas (`demo_<sku>`), los clientes demo
-    y 30 días de historial de dos cajas de la casa, relativos a `now`. `DEMO_TENANT_IDS_SQL`
+    y 30 días de historial de dos cajas de la casa, relativos a `now`. `demoTenantIds(db)`
     (`demo/demo-tenant-ids.ts`) es la marca de demo para cobro, plataforma, suspensión,
     impersonación y backup: los comercios demo nunca cobran ni aparecen en Comercios o Usuarios.
   - **Una caja por visitante**: `POST /connector/demo-sessions` (el único endpoint sin key) crea en
     el comercio del rubro una caja `Demo XXXX` con su key y su fila de `demo_sessions`. Los visitantes
     comparten el comercio. `demo_sessions` es el registro para M9: **nunca se borra** y vive en
-    `system.sqlite`, fuera del comercio. Tope `DEMO_MAX_ACTIVE` de cajas activas (`503 demo-capacity`).
+    el esquema `system`, fuera del comercio. Tope `DEMO_MAX_ACTIVE` de cajas activas (`503 demo-capacity`).
   - **Revocar** una caja es `active = 0` en la caja y su key (`401` a todo), con `revoked_at` y
     `revoke_reason` (`reset` o `idle`). Pasa con el reinicio total o a las `DEMO_TTL_HOURS` sin uso: la
     auth del POS y el admin anónimo corren `last_used_at` (`touchRegister`, a lo sumo por minuto).
-  - **Reinicios** (`DemoResetService`, sincrónicos): el **total** vacía todas las tablas del comercio
-    (salen de `sqlite_master`), vuelve a sembrar y revoca sus cajas; el **parcial** devuelve
+  - **Reinicios** (`DemoResetService`, sincrónicos): el **total** revoca primero sus cajas (transacción
+    de sistema) y después, en una transacción del comercio, toma el candado de lote del push (la
+    primera sucursal, `FOR UPDATE`), vacía todas las tablas (salen del manifiesto, `TENANT_TABLES`) y
+    vuelve a sembrar. Un push que esperaba ese candado no encuentra la sucursal y falla como pasajero
+    (`TransientError`, `500`): el POS lo reintenta con la key ya revocada. El **parcial** devuelve
     productos, stock (con `inventory_count`) y datos de clientes de la semilla, borra lo creado por
     visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
     cajas.
   - **El barrido** (`startDemoSweeper` en `demo/demo-sweeper.ts`, al arrancar y cada 15 minutos):
-    borra las demos por tenant de antes de M8 (`legacy_demo_sessions`), hace el reinicio total
-    automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
+    hace el reinicio total automático a las `DEMO_RESET_HOUR` (4) **hora argentina** de cada día (si el servidor estaba
     caído, al arrancar), revoca las cajas inactivas y repone el stock que bajó de un cuarto del de la
     semilla ("Reposición automática"). Loguea `[demos] barrido: …`.
   - **Portal**: el visitante abre el admin del comercio demo desde el POS con `/MINI` (ver "Portal y
@@ -354,7 +439,7 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
     `funnel_contacts`).
 - **Ventas & Caja** (#20, spec `docs/superpowers/specs/2026-10-02-m4-ventas-caja-design.md`):
   - **El día de un comercio es el día argentino** (UTC−3 fijo): `src/shared/argentina-day.ts` en TS
-    y `date(x, '-3 hours')` en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
+    y `argentinaDay(expr)` (`db/pg/sql-helpers.ts`) en SQL. Ventas y cobranzas van por `ticket.date` y `receipt.date` si
     vienen, como el `/RESUMEN` del POS. Nunca la hora del servidor (en Lightsail es UTC).
   - **Escritura**: ventas, cobranzas y movimientos de caja se escriben solo con
     `src/server/sales/records.ts`, que guarda el payload y completa las columnas derivadas (`day`,
@@ -456,8 +541,9 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 - **Importación y carga inicial** (#22, spec `docs/superpowers/specs/2026-10-03-m6-importacion-design.md`):
   - **El servidor parsea, sugiere y valida, sin estado**: `POST /import/:entity` (`customers` o
     `products`, capacidad `bulk`) recibe `{ csv, mapping?, dryRun }` y devuelve columnas, mapeo,
-    resultado por fila y totales. La vista previa corre igual dentro de un `SAVEPOINT` y se deshace;
-    al confirmar, las filas con error se omiten y el resto se aplica en esa transacción.
+    resultado por fila y totales. Corre en una transacción y cada fila que escribe, en su savepoint
+    (un error de base es error de esa fila); la vista previa aplica igual y se deshace. Al confirmar,
+    las filas con error se omiten y el resto se aplica. Dinero con más de 2 decimales: error de fila.
   - Parser común en `src/server/io/csv.ts` (lo usa también la planilla de cobranzas): separador
     detectado, comillas, BOM y montos; en un archivo con `;` el punto es siempre de miles. Campos y
     tipos en `src/shared/import-fields.ts`; sinónimos y mapeo sugerido en `src/server/io/suggest-mapping.ts`.
@@ -566,14 +652,32 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   `52-203-224-101.sslip.io` redirigen con 308 desde Caddy (`deploy/set-host.sh`, #11): sirven para el
   navegador, la conexión del POS va siempre al principal. Todo lo del servidor está en `deploy/`; la
   guía para quien lo opera, en `deploy/README.md`.
-- En la instancia: `minierp` corre `mini-erp.service` (`/opt/mini-erp/current`, datos en
-  `/var/lib/mini-erp`, entorno en `/etc/mini-erp/env`); `deploy` recibe las versiones y solo puede
-  reiniciar el servicio.
+- En la instancia: `minierp` corre `mini-erp.service` (`/opt/mini-erp/current`, entorno en
+  `/etc/mini-erp/env`; el servicio no escribe archivos: `ProtectSystem=strict` sin `ReadWritePaths`) y
+  `deploy` recibe las versiones y solo puede reiniciar el servicio y correr el backup
+  (`systemctl start mini-erp-backup.service`); está en `systemd-journal` para leer su log.
+- **PostgreSQL 16 de apt en la misma instancia** (`deploy/provision.sh`): el cluster en el disco
+  adicional de Lightsail, montado en `/mnt/pgdata` (sin el disco, `provision.sh` no sigue; un drop-in
+  `RequiresMountsFor` lo espera al arrancar), locale `C.UTF-8`, memoria ajustada a 512 MB
+  (`shared_buffers=64MB`, `work_mem=2MB`, `max_connections=20`, en `conf.d/mini-erp.conf`) y solo el
+  socket Unix (`listen_addresses=''`). El rol `minierp` entra por `peer`, sin contraseña:
+  `DATABASE_URL=postgres://minierp@/minierp?host=/var/run/postgresql` (el usuario va explícito porque
+  `pg` no lo toma del sistema sin `$USER`), así `/etc/mini-erp/env` sigue sin secretos. La extensión
+  `unaccent` la crea `minierp`, así es su dueño y un `pg_restore --clean` como `minierp` funciona.
+  Swap de 1 GB con `swappiness` 10. Las units piden `postgresql.service` (`Requires` y `After`).
+  `/var/lib/mini-erp` queda solo como home de `minierp`.
 - `.github/workflows/deploy.yml`, por tag `v*` o manual: corre el CI entero (`ci.yml` con
   `workflow_call`), sube un tarball por SSH y lo activa con `deploy/deploy.sh`, que espera la
   migración (hasta 15 min, `/health` en `maintenance`) y vuelve a la versión anterior si `/health` no
-  responde o la migración falla. Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment
-  `production`: los carga el usuario, nunca el agente.
+  responde o la migración falla.
+  - **Copia previa**: antes de activar, `sudo systemctl start mini-erp-backup.service` con el código
+    de la versión activa (la que conoce la base como está); si falla, no activa. Se saltea en el
+    primer deploy y si la versión activa es anterior a PostgreSQL (no tiene
+    `src/server/backup/pg-backup.ts`). El dump escrito queda en `PREDUMP` (del journal del backup).
+  - Si la nueva falla y la anterior tampoco arranca (un esquema más nuevo que su código da
+    `503 migration-failed`), dice qué dump restaurar según `deploy/README.md`.
+  - Secretos (`SSH_*`) y `PUBLIC_HOST` en el environment `production`: los carga el usuario, nunca
+    el agente.
 - **Versión única** (#40): la de `package.json`, sin literales en el código (`src/server/app-version.ts`
   para `/health` y `GET /connector/info`; `appVersionDefine` en `vite.config.ts` para el cliente). Se
   sube en el PR de cada etapa (`pnpm version minor --no-git-tag-version`; `patch` para arreglos) y el
@@ -581,8 +685,11 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
   `main` limpio, al día y un tag nuevo).
   `deploy.yml` frena si el tag no coincide (`scripts/check-release.ts`) y, al final, comprueba que
   `/health` responda la versión subida.
-- Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30) con
-  `scripts/backup.ts` (`VACUUM INTO` de las bases reales, sin demos, 7 días).
+- Backups: snapshots automáticos de Lightsail y `mini-erp-backup.timer` (03:30 UTC) con
+  `scripts/backup.ts`: `pg_dump -Fc` sin los esquemas de demo, 7 días, en `/var/lib/mini-erp-backups`
+  (`mini-erp-backup.service`: `UMask=0077`, `ProtectSystem=strict` y escritura solo ahí). La
+  restauración (`pg_restore --clean --if-exists --exit-on-error --no-owner`, con el servicio detenido)
+  está en `deploy/README.md`.
 - Nunca guardar backups como artifacts de GitHub: en un repo público los baja cualquiera, y tienen
   hashes de contraseñas.
 
@@ -596,12 +703,14 @@ Si se toca el recorrido de la demo, el alta o el Connector API, también el e2e 
 
 ## Estado
 
-**Publicado** en https://mini.contax.ar, en la versión de `package.json` (hoy `0.17.0`), contra el
+**Publicado** en https://mini.contax.ar, en la versión de `package.json` (hoy `0.18.0`), contra el
 POS de `https://pos.contax.ar/v4/`. Fases 1 a 10 (núcleo multitenant, API de gestión, admin, grillas,
 IoC, sync en vivo con el POS, temas, estrictez de TypeScript y Zod, demo y alta con el POS publicado,
 deploy público) y, del **MVP de mini contax** (epic #17, spec
 `docs/superpowers/specs/2026-10-01-mvp-mini-contax-design.md`), M1 a M10: detalle de cada una en
-`docs/historia.md`. Después de M9 llegó el admin usable en el teléfono (PR #92).
+`docs/historia.md`. Después de M9 llegó el admin usable en el teléfono (PR #92) y, en la 0.18.0, la
+migración de SQLite a PostgreSQL 16 con Kysely (una base, un esquema por comercio, backup con
+`pg_dump`; el paso de producción, en `deploy/README.md`, "Pasar a PostgreSQL").
 
 **Siguiente**: M11 (#27), relevamiento por escaneo y base global de productos, el último del hito 2
 (un comercio desconocido, sin ayuda); empieza con su brainstorming. La parte del POS del MVP (epic
@@ -614,8 +723,7 @@ La lista completa, siempre al día, está en
 
 - **MVP**: #27 (M11) y el epic #17.
 - **`backlog`, transversal**: #65 (12 o 24 horas en el admin), #70 (confirmar antes de descartar un
-  formulario), #74 (idioma de la validación), #75 (formularios con los esquemas Zod compartidos), #77
-  (`busy_timeout` de SQLite), #82 (e2e: demo-onboarding se cruza con demo-v2).
+  formulario), #74 (idioma de la validación), #75 (formularios con los esquemas Zod compartidos), #82 (e2e: demo-onboarding se cruza con demo-v2).
 - **`backlog`, producto** (lo que quedó afuera del MVP): #28 (mail transaccional), #29 (verificar el
   WhatsApp), #30 (regalos por escala), #31 (Mercado Pago), #32 (deuda: dejar de procesar lotes), #33
   (importar .xlsx), #34 (Open Food Facts), #35 (renombrar a mini-contax), #36 (permisos por usuario),

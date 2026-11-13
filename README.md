@@ -9,8 +9,9 @@
 
 ![Node](https://img.shields.io/badge/Node-24-5fa04e?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&logoColor=white)
-![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-003b57?logo=sqlite&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql&logoColor=white)
+![Kysely](https://img.shields.io/badge/Kysely-0.29-2e7d32)
 ![Preact](https://img.shields.io/badge/Preact-signals-673ab8?logo=preact&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06b6d4?logo=tailwindcss&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-10-f69220?logo=pnpm&logoColor=white)
@@ -27,7 +28,7 @@ real.
 
 ## Qué hace
 
-- **Comercios aislados**: una base SQLite por comercio, con roles (dueño, admin, empleado) e
+- **Comercios aislados**: un esquema de PostgreSQL por comercio, con roles (dueño, admin, empleado) e
   invitaciones por link.
 - **Catálogo, stock y clientes**: grillas con edición en línea, stock por sucursal con kardex,
   cuentas corrientes, cobranzas e importación desde CSV (el Excel en castellano también).
@@ -51,8 +52,8 @@ flowchart LR
   subgraph S["mini-erp · Express en Node 24"]
     C --> SV["Servicios por request<br/>(Hardwired)"]
     API --> SV
-    SV --> SYS[("system.sqlite<br/>usuarios, comercios,<br/>cajas, cobro")]
-    SV --> TEN[("tenants/&lt;id&gt;.sqlite<br/>catálogo, stock, clientes,<br/>ventas")]
+    SV --> SYS[("PostgreSQL · system<br/>usuarios, comercios,<br/>cajas, cobro")]
+    SV --> TEN[("PostgreSQL · tenant_&lt;id&gt;<br/>catálogo, stock, clientes,<br/>ventas")]
   end
 ```
 
@@ -79,21 +80,30 @@ el contrato **4.6.0** con las capacidades `customer-payment-void`, `demo-session
 
 ## Levantarlo
 
-Requiere Node 24 y pnpm 10.
+Requiere Node 24, pnpm 10 y PostgreSQL 16 (el sistema y cada comercio, en su esquema). El servidor no arranca sin
+`DATABASE_URL`; los tests usan su propio servidor (ver "Verificación" en `AGENTS.md`).
 
 ```bash
 pnpm install
-pnpm dev
+```
+
+```bash
+createdb -T template0 -E UTF8 --lc-collate=C --lc-ctype=C.UTF-8 minierp
+```
+
+```bash
+DATABASE_URL=postgres://usuario:clave@localhost:5432/minierp pnpm dev
 ```
 
 El servidor queda en `http://localhost:4100` (o en el puerto de `PORT`): el landing en `/`, el admin
 en `/admin`, el alta en `/alta`, la plataforma en `/plataforma`, la API del admin en `/api` y el
-Connector API en `/connector`. Los datos van a `data/` (o a `DATA_DIR`).
+Connector API en `/connector`. Todo va a la base de `DATABASE_URL`, que el arranque migra: el esquema
+`system` y uno por comercio.
 
 Fuera de producción, el arranque siembra datos de desarrollo si no existen y los lista en la consola:
 usuarios con la contraseña `admin123` (`root@local.test`, `soporte@local.test`, `dueno-a@local.test`
 y otros), un comercio por rubro con 30 días de ventas y cajas con key fija (`mpos_dev_demo_key_12345`
-es la Caja 1 del Kiosco). Para sembrar de nuevo, se borra la carpeta de datos. Con
+es la Caja 1 del Kiosco). Para sembrar de nuevo, se borra la base (`dropdb minierp` y otra vez el `createdb`). Con
 `NODE_ENV=production` no se crea nada de eso; el `root` se crea una vez con
 `node scripts/create-root.ts` (pide email, nombre y una contraseña de al menos 8 caracteres).
 
@@ -119,8 +129,8 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `DATA_DIR` | `data` | Carpeta de las bases (`system.sqlite` y `tenants/`) |
-| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (se guardan 7 días) |
+| `DATABASE_URL` | (obligatoria) | La base de PostgreSQL (`postgres://usuario:clave@host:5432/base`). En producción, por el socket local y sin contraseña: `postgres://minierp@/minierp?host=/var/run/postgresql` |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (404) y los comercios demo |
@@ -136,8 +146,12 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 
 Publicado en **https://mini.contax.ar** (AWS Lightsail detrás de Caddy; `mini.contax.com.ar`
 redirige ahí). Cada tag `v*` corre el CI entero y despliega por SSH, con migraciones en modo
-mantenimiento y vuelta a la versión anterior si la nueva no responde. Backups: snapshots diarios de
-Lightsail y una copia nocturna de las bases reales. La guía de operación está en
+mantenimiento y vuelta a la versión anterior si la nueva no responde. PostgreSQL 16 corre en la
+misma instancia, con los datos en un disco aparte.
+
+Backups: snapshots diarios de Lightsail y `node scripts/backup.ts`, un `pg_dump -Fc` de toda la base
+salvo los comercios demo, cada noche y antes de cada deploy (si esa copia falla, la versión nueva no
+se activa), con 7 días de retención. La guía de operación, con la restauración, está en
 [`deploy/README.md`](./deploy/README.md).
 
 ## Documentación

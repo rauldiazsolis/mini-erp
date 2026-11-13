@@ -1,9 +1,11 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { BulkService } from '../bulk/bulk-service.ts';
+import { fitsMoneyColumn } from '../../shared/money.ts';
+import type { BulkService } from '../bulk/bulk-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { bulkServiceDef } from '../di/container.ts';
+import { sendError } from '../errors.ts';
 
 const bulkPriceSchema = z.object({
   action: z.enum(['percentage', 'fixed', 'items'], {
@@ -16,7 +18,7 @@ const bulkPriceSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1, 'ID de producto requerido'),
-        price: z.number().nonnegative('El precio no puede ser negativo'),
+        price: z.number().nonnegative('El precio no puede ser negativo').refine(fitsMoneyColumn, 'Importe inválido'),
       }),
     )
     .optional(),
@@ -32,20 +34,17 @@ const bulkInterestSchema = z.object({
 });
 
 function getBulkService(req: AuthenticatedAdminRequest): BulkService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(bulkServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new BulkService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(bulkServiceDef);
 }
 
 export function createBulkRoutes(): Router {
   const router = Router({ mergeParams: true });
 
   // POST /bulk/prices - Actualización masiva de precios
-  router.post('/bulk/prices', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/prices', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkPriceSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -54,16 +53,15 @@ export function createBulkRoutes(): Router {
 
     try {
       const service = getBulkService(req);
-      const result = service.previewOrApplyPrices(parseResult.data);
+      const result = await service.previewOrApplyPrices(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error en actualización masiva de precios';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 
   // POST /bulk/interests - Devengamiento masivo de intereses en cuentas corrientes
-  router.post('/bulk/interests', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/bulk/interests', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     const parseResult = bulkInterestSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Datos inválidos' });
@@ -72,11 +70,10 @@ export function createBulkRoutes(): Router {
 
     try {
       const service = getBulkService(req);
-      const result = service.previewOrApplyInterests(parseResult.data);
+      const result = await service.previewOrApplyInterests(parseResult.data);
       res.status(200).json(result);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error en cálculo masivo de intereses';
-      res.status(400).json({ error: msg });
+      sendError(res, err, 500);
     }
   });
 

@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { ImportExportService } from '../io/import-export-service.ts';
+import type { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { importExportServiceDef, importServiceDef } from '../di/container.ts';
@@ -9,6 +9,7 @@ import { isImportFieldName, type ImportMapping } from '../../shared/import-field
 import { hasExampleCatalog } from '../../shared/business-type.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { FunnelService } from '../funnel/funnel-service.ts';
+import { routeParam } from '../http/route-param.ts';
 
 const importBodySchema = z.object({
   csv: z.string({ error: (iss) => (iss.input === undefined ? 'Falta el contenido del archivo' : undefined) }),
@@ -27,20 +28,17 @@ function toMapping(raw: Record<string, string | null>): ImportMapping {
 }
 
 function getImportExportService(req: AuthenticatedAdminRequest): ImportExportService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(importExportServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new ImportExportService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(importExportServiceDef);
 }
 
 /** La carga del embudo (#25): la primera vez que un comercio real carga algo, nunca en un comercio demo. */
-function recordLoad(funnel: FunnelService, tenantId: string | undefined, source: string): void {
+async function recordLoad(funnel: FunnelService, tenantId: string | undefined, source: string): Promise<void> {
   if (tenantId === undefined) return;
   try {
-    if (!funnel.isDemoTenant(tenantId)) funnel.record('catalog-loaded', { tenantId, data: { source } });
+    if (!(await funnel.isDemoTenant(tenantId))) await funnel.record('catalog-loaded', { tenantId, data: { source } });
   } catch (err: unknown) {
     console.error('[embudo] no se pudo registrar la carga:', err);
   }
@@ -50,8 +48,8 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
   const router = Router({ mergeParams: true });
 
   // GET /export/:entity - Exportar datos en CSV o JSON
-  router.get('/export/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const entity = req.params['entity'];
+  router.get('/export/:entity', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const entity = routeParam(req, 'entity');
     const format = req.query['format'] === 'csv' ? 'csv' : 'json';
     const tenantId = req.activeTenantId ?? 'tenant';
 
@@ -61,13 +59,13 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
 
       switch (entity) {
         case 'products':
-          result = service.exportProducts(format);
+          result = await service.exportProducts(format);
           break;
         case 'customers':
-          result = service.exportCustomers(format);
+          result = await service.exportCustomers(format);
           break;
         case 'stock':
-          result = service.exportStock(format);
+          result = await service.exportStock(format);
           break;
         default:
           res.status(400).json({ error: "Entidad inválida. Debe ser 'products', 'customers' o 'stock'" });
@@ -87,9 +85,9 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
     }
   });
 
-  // POST /import/:entity - CSV con mapeo de columnas (#22): vista previa (dryRun) o confirmación
-  router.post('/import/:entity', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
-    const entity = req.params['entity'];
+  // POST /import/:entity - CSV con mapeo de columnas async (#22): vista previa (dryRun) o confirmación
+  router.post('/import/:entity', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
+    const entity = routeParam(req, 'entity');
     if (entity !== 'customers' && entity !== 'products') {
       res.status(400).json({ error: "Entidad de importación inválida. Debe ser 'products' o 'customers'" });
       return;
@@ -101,10 +99,10 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
     }
     try {
       const service = req.tenantScope?.use(importServiceDef);
-      if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
+      if (service === undefined) throw new Error('Scope del comercio no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
-      const result = service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
-      if (!dryRun && result.totals.create + result.totals.update > 0) recordLoad(funnel, req.activeTenantId, `import-${entity}`);
+      const result = await service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
+      if (!dryRun && result.totals.create + result.totals.update > 0) await recordLoad(funnel, req.activeTenantId, `import-${entity}`);
       res.status(200).json(result);
     } catch (err: unknown) {
       sendError(res, err, 500);
@@ -112,26 +110,26 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
   });
 
   // Catálogo de ejemplo del rubro (#22): el alta crea el comercio vacío; se ofrece mientras no tenga productos
-  router.get('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.get('/catalog/example', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
-      const available = hasExampleCatalog(businessType) && getImportExportService(req).countProducts() === 0;
+      const businessType = await tenants.getBusinessType(req.activeTenantId ?? '');
+      const available = hasExampleCatalog(businessType) && (await getImportExportService(req).countProducts()) === 0;
       res.status(200).json({ businessType, available });
     } catch (err: unknown) {
       sendError(res, err, 500);
     }
   });
 
-  router.post('/catalog/example', requirePermission('bulk'), (req: AuthenticatedAdminRequest, res: Response) => {
+  router.post('/catalog/example', requirePermission('bulk'), async (req: AuthenticatedAdminRequest, res: Response) => {
     try {
-      const businessType = tenants.getBusinessType(req.activeTenantId ?? '');
+      const businessType = await tenants.getBusinessType(req.activeTenantId ?? '');
       if (!hasExampleCatalog(businessType)) {
         res.status(409).json({ error: 'Tu rubro no tiene catálogo de ejemplo' });
         return;
       }
       // Idempotente: el preset saltea los SKU que ya existen
-      const { productsCreated } = getImportExportService(req).applyBusinessPreset(businessType);
-      if (productsCreated > 0) recordLoad(funnel, req.activeTenantId, 'example');
+      const { productsCreated } = await getImportExportService(req).applyBusinessPreset(businessType);
+      if (productsCreated > 0) await recordLoad(funnel, req.activeTenantId, 'example');
       res.status(200).json({ productsCreated });
     } catch (err: unknown) {
       sendError(res, err, 500);
