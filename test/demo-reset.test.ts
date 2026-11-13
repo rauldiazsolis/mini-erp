@@ -22,7 +22,7 @@ describe('reinicios del comercio demo (#24)', () => {
   let db: Kysely<TenantDatabase>;
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(pgDb(), { inMemory: true });
+    tenantManager = new TenantManager(pgDb());
     apiKeyService = new ApiKeyService(pgDb().system);
     clock = new Date('2026-10-05T15:00:00.000Z');
     service = new DemoSessionService({

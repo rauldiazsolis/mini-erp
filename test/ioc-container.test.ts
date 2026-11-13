@@ -33,7 +33,7 @@ const db = setupTestDb();
 describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multitenant (Fase 5)', () => {
   /** Un contenedor con dos comercios ya creados (`t1` y `t2`), cada uno con su esquema. */
   async function rootWithTenants() {
-    const root = createRootContainer({ database: db(), tenantManager: new TenantManager(db(), { inMemory: true }) });
+    const root = createRootContainer({ database: db(), tenantManager: new TenantManager(db()) });
     const tenants = root.use(tenantManagerDef);
     await tenants.createTenant({ id: 't1', slug: 't1', name: 'Uno' });
     await tenants.createTenant({ id: 't2', slug: 't2', name: 'Dos' });
@@ -141,7 +141,7 @@ describe('IoC Container (Hardwired) - Inversión de Control y Aislamiento Multit
 
   describe('Integración HTTP con Express y Scopes de Request IoC', () => {
     it('aisla las peticiones HTTP entre tenants a través del middleware y req.tenantScope', async () => {
-      const tenantManager = new TenantManager(db(), { inMemory: true });
+      const tenantManager = new TenantManager(db());
       const { app, rootContainer } = createApp({ database: db(), tenantManager });
 
       expect(rootContainer).toBeDefined();

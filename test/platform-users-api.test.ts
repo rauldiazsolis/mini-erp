@@ -13,7 +13,7 @@ describe('usuarios desde la plataforma (#23)', () => {
   let ids: { root: string; support: string; support2: string; owner: string };
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const root = await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

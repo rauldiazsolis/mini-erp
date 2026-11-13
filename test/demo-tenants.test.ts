@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { sql } from 'kysely';
+import { tenantSchemaName } from '../src/server/db/pg/tenant-schema-name.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { AuthService } from '../src/server/auth/auth-service.ts';
 import {
@@ -34,7 +33,7 @@ describe('Templates de demo (#9)', () => {
   });
 
   it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', async () => {
-    const manager = new TenantManager(pgDb(), { inMemory: true });
+    const manager = new TenantManager(pgDb());
     await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
     const db = manager.forTenant('demo-a');
     await seedDemoSession(db, 'almacen');
@@ -50,7 +49,7 @@ describe('Templates de demo (#9)', () => {
 
 describe('TenantManager y demos (#9)', () => {
   it('crea un tenant sin dueño', async () => {
-    const manager = new TenantManager(pgDb(), { inMemory: true });
+    const manager = new TenantManager(pgDb());
     await manager.createTenant({ id: 'demo-b', slug: 'demo-b', name: 'Demo' });
     expect(await manager.tenantExists('demo-b')).toBe(true);
     expect(await countWhere('memberships')).toBe(0);
@@ -58,7 +57,7 @@ describe('TenantManager y demos (#9)', () => {
 
   it('deleteTenant borra el tenant con sus cajas, equipos, keys y membresías', async () => {
     const sys = pgDb().system;
-    const manager = new TenantManager(pgDb(), { inMemory: true });
+    const manager = new TenantManager(pgDb());
     await insertUser('ana');
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: 'ana' });
     const now = new Date().toISOString();
@@ -78,22 +77,18 @@ describe('TenantManager y demos (#9)', () => {
     expect([await countWhere('tenants'), await countWhere('memberships'), await countWhere('registers'), await countWhere('register_devices'), await countWhere('tenant_api_keys')]).toEqual([0, 0, 0, 0, 0]);
   });
 
-  it('deleteTenant borra el archivo de la base', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'mini-erp-demo-'));
-    try {
-      const manager = new TenantManager(pgDb(), { baseDir: dir });
-      await manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
-      const file = join(dir, 'demo-c.sqlite');
-      expect(existsSync(file)).toBe(true);
-      await manager.deleteTenant('demo-c');
-      expect(existsSync(file)).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('deleteTenant borra el esquema del comercio', async () => {
+    const manager = new TenantManager(pgDb());
+    await manager.createTenant({ id: 'demo-c', slug: 'demo-c', name: 'Demo' });
+    const schemas = async () =>
+      (await sql<{ n: string }>`SELECT count(*) AS n FROM pg_namespace WHERE nspname = ${tenantSchemaName('demo-c')}`.execute(pgDb().root)).rows[0]?.n;
+    expect(Number(await schemas())).toBe(1);
+    await manager.deleteTenant('demo-c');
+    expect(Number(await schemas())).toBe(0);
   });
 
   it('las demos no aparecen en la lista de comercios, ni para root', async () => {
-    const manager = new TenantManager(pgDb(), { inMemory: true });
+    const manager = new TenantManager(pgDb());
     const auth = new AuthService(pgDb().system);
     const { user } = await auth.createUser({ email: 'root@b.com', password: 'secreta1', name: 'Root' });
     await manager.createTenant({ id: 'tienda', slug: 'tienda', name: 'Tienda', ownerUserId: user.id });

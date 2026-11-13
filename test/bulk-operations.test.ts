@@ -57,7 +57,7 @@ describe('Operaciones Masivas (Etapa 2.4)', () => {
   const tenantId = 'kiosco-bulk-test';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
     const created = createApp({ database: db(), tenantManager });
     app = created.app;
 

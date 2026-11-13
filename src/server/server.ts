@@ -42,7 +42,6 @@ const started = await startServer({
       return bundle.app;
     } catch (err: unknown) {
       for (const timer of sweepers) clearInterval(timer);
-      bundle.tenantManager.closeAll();
       // El pool queda abierto: el proceso sigue vivo en mantenimiento hasta que lo paren
       throw err;
     }

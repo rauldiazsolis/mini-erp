@@ -21,7 +21,7 @@ function sample(route: string, tenantId = 'demo-kiosco'): { method: 'get' | 'pos
 
 describe('permisos del acceso anónimo en todas las rutas del comercio (#24, M10)', () => {
   it('lo que no puede da 403; lo demás pasa el permiso', async () => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const { app } = createApp({ database: db(), tenantManager, demoConfig: { enabled: true, ttlHours: 24, maxActive: 50, resetHour: 4 } });
     const demo = await request(app).post('/connector/demo-sessions').set(V).send({});
     const apiKey = (demo.body as { apiKey: string }).apiKey;
@@ -39,7 +39,7 @@ describe('permisos del acceso anónimo en todas las rutas del comercio (#24, M10
   });
 
   it('la caja real solo pasa tenant.view y sales.view (M10)', async () => {
-    const { app } = createApp({ database: db(), tenantManager: new TenantManager(db(), { inMemory: true }) });
+    const { app } = createApp({ database: db(), tenantManager: new TenantManager(db()) });
     const alta = await request(app).post('/api/alta').send({
       name: 'Ana',
       email: 'ana@kiosco.com',

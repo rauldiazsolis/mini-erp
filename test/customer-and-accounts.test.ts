@@ -53,7 +53,7 @@ describe('Clientes, Cuentas Corrientes y Ajustes de Saldo (Etapa 2.3)', () => {
   const tenantId = 'kiosco-customers-test';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
     const created = createApp({ database: db(), tenantManager });
     app = created.app;
 

@@ -21,7 +21,7 @@ describe('portal y acceso anónimo de la demo (#24)', () => {
   let clock: Date;
 
   beforeEach(() => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: db(),
       tenantManager,
@@ -132,7 +132,7 @@ describe('portal de una caja real (M10, #26)', () => {
   let clock: Date;
 
   beforeEach(() => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
     clock = new Date('2026-10-05T15:00:00.000Z');
     app = createApp({ database: db(), tenantManager, now: () => clock }).app;
   });

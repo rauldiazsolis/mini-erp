@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/server/app.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
@@ -36,7 +36,7 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   const tenantId = 'kiosco-dash-test';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
 
@@ -96,9 +96,6 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
     }
   });
 
-  afterEach(() => {
-    tenantManager.closeAll();
-  });
 
   it('requiere autenticación admin para consultar el resumen del dashboard', async () => {
     const res = await request(app).get(`/api/tenants/${tenantId}/dashboard/summary`);

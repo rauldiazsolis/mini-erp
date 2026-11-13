@@ -16,7 +16,7 @@ describe('lo que no puede quien impersona (#23, M7b)', () => {
   let ids: { owner: string; support: string; coOwner: string; admin: string };
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     const auth = bundle.authService;

@@ -16,7 +16,7 @@ describe('Connector API v4.2.0 (Etapa 1.4)', () => {
   const tenantDb = () => db().forTenant(tenantId);
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
 
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;

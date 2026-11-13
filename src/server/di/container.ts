@@ -1,11 +1,8 @@
 import { container, unbound, fn, type Container, type IContainer } from 'hardwired';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import { createDatabase, databaseUrl, type Database } from '../db/pg/database.ts';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
-import { dataDir } from '../db/data-dir.ts';
-import { join } from 'node:path';
 import { TenantManager } from '../db/tenant-manager.ts';
 import { AuthService } from '../auth/auth-service.ts';
 import { ApiKeyService } from '../tenant/api-key-service.ts';
@@ -58,13 +55,11 @@ export const systemKyselyDef = fn.singleton((c): Kysely<SystemDatabase> => c.use
  */
 export const tenantDbDef = unbound<Kysely<TenantDatabase>>('tenantDb');
 
-/** Transitorio: la base SQLite del comercio, para los servicios sin migrar: se va al cerrar la fase 4. */
-export const legacyTenantSqliteDef = unbound<DatabaseSync>('legacyTenantSqlite');
 
 // --- DEFINICIONES SINGLETON DE APLICACIÓN ---
 
 export const tenantManagerDef = fn.singleton(
-  (c) => new TenantManager(c.use(databaseDef), { baseDir: join(dataDir(), 'tenants') }),
+  (c) => new TenantManager(c.use(databaseDef)),
 );
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemKyselyDef)));
 
@@ -243,9 +238,7 @@ export function createRootContainer(deps?: ContainerDependencies): Container {
  */
 export function createTenantScope(root: Container, tenantId: string): IContainer {
   const tenantDb = root.use(databaseDef).forTenant(tenantId);
-  const legacySqlite = root.use(tenantManagerDef).getTenantDb(tenantId);
   return root.scope((s) => {
     s.bind(tenantDbDef).toValue(tenantDb);
-    s.bind(legacyTenantSqliteDef).toValue(legacySqlite);
   });
 }

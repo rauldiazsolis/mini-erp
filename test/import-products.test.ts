@@ -28,7 +28,7 @@ describe('importación de productos y stock (#22)', () => {
   let service: ImportService;
 
   beforeEach(async () => {
-    const tm = new TenantManager(pgDb(), { inMemory: true });
+    const tm = new TenantManager(pgDb());
     await tm.createTenant({ id: 't1', slug: 't1', name: 'T1', seedDemoData: false });
     db = pgDb().forTenant('t1');
     await db.insertInto('branches').values({ id: 'branch-norte', name: 'Norte', code: 'NORTE', created_at: now }).execute();

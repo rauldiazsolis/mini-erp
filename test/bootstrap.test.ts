@@ -10,7 +10,7 @@ import { setupTestDb } from './helpers/test-db.ts';
 const pgDb = setupTestDb();
 
 async function boot(env: NodeJS.ProcessEnv) {
-  const tenantManager = new TenantManager(pgDb(), { inMemory: true });
+  const tenantManager = new TenantManager(pgDb());
   const bundle = createApp({ database: pgDb(), tenantManager });
   const run = async () => {
     const result = await bootstrap({ env, bundle });

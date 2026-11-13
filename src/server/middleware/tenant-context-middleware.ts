@@ -2,7 +2,6 @@ import type { Response, NextFunction } from 'express';
 import type { Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
 import type { Container } from 'hardwired';
-import type { TenantManager } from '../db/tenant-manager.ts';
 import type { MembershipService } from '../users/membership-service.ts';
 import type { AuthenticatedAdminRequest } from './auth-middleware.ts';
 import { createTenantScope } from '../di/container.ts';
@@ -18,7 +17,6 @@ import { routeParam } from '../http/route-param.ts';
 export function createTenantContextMiddleware(
   system: Kysely<SystemDatabase>,
   membershipService: MembershipService,
-  tenantManager: TenantManager,
   rootContainer?: Container,
 ) {
   return async (req: AuthenticatedAdminRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -35,9 +33,7 @@ export function createTenantContextMiddleware(
         res.status(403).json({ code: 'tenant-suspended', error: 'Este comercio está suspendido: escribile a soporte' });
         return;
       }
-      const tenantDb = tenantManager.getTenantDb(tenantId);
       req.activeTenantId = tenantId;
-      req.activeTenantDb = tenantDb;
       req.tenantRole = req.anonymous.kind === 'demo' ? 'admin' : 'member';
       if (rootContainer !== undefined) req.tenantScope = createTenantScope(rootContainer, tenantId);
       next();
@@ -65,9 +61,7 @@ export function createTenantContextMiddleware(
       return;
     }
 
-    const tenantDb = tenantManager.getTenantDb(tenantId);
     req.activeTenantId = tenantId;
-    req.activeTenantDb = tenantDb;
     req.tenantRole = role;
 
     if (rootContainer !== undefined) {

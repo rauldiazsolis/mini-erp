@@ -17,7 +17,7 @@ describe('push, pull y reservas sobre PostgreSQL (fase 4)', () => {
   let connector: ConnectorService;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(pgDb(), { inMemory: true });
+    const tenantManager = new TenantManager(pgDb());
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco' });
     t = pgDb().forTenant(tenantId);
     connector = new ConnectorService(t);

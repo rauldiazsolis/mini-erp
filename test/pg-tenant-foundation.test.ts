@@ -26,7 +26,7 @@ describe('cimientos de comercio en PostgreSQL (fase 4)', () => {
   });
 
   it('un comercio de nombre larguísimo se crea, y el segundo con el mismo nombre también', async () => {
-    const manager = new TenantManager(db(), { inMemory: true });
+    const manager = new TenantManager(db());
     const slug = slugify('La Gran Ferretería Industrial y Corralón de Materiales del Barrio Norte');
     const first = await manager.createTenant({ id: slug, slug, name: 'Uno' });
     const second = await manager.createTenant({ id: slug, slug, name: 'Dos' });
@@ -36,14 +36,14 @@ describe('cimientos de comercio en PostgreSQL (fase 4)', () => {
   });
 
   it('createTenant crea el esquema del comercio con su sucursal por defecto', async () => {
-    const manager = new TenantManager(db(), { inMemory: true });
+    const manager = new TenantManager(db());
     await manager.createTenant({ id: 'kiosco-a', slug: 'kiosco-a', name: 'Kiosco A' });
     const branches = await manager.forTenant('kiosco-a').selectFrom('branches').select(['id', 'code', 'name']).execute();
     expect(branches).toEqual([{ id: DEFAULT_BRANCH_ID, code: 'CENTRAL', name: 'Sucursal Central' }]);
   });
 
   it('deleteTenant borra la fila y el esquema; el bono del comercio se va con él', async () => {
-    const manager = new TenantManager(db(), { inMemory: true });
+    const manager = new TenantManager(db());
     await manager.createTenant({ id: 'kiosco-a', slug: 'kiosco-a', name: 'Kiosco A' });
     await db()
       .system.insertInto('gift_credits')
@@ -58,7 +58,7 @@ describe('cimientos de comercio en PostgreSQL (fase 4)', () => {
   });
 
   it('si el esquema no se puede crear, createTenant no deja el comercio a medias', async () => {
-    const manager = new TenantManager(db(), { inMemory: true });
+    const manager = new TenantManager(db());
     // Un esquema que ya existe con ese nombre: createTenantSchema falla
     await sql`CREATE SCHEMA ${sql.id(tenantSchemaName('ocupado'))}`.execute(db().root);
     await expect(manager.createTenant({ id: 'ocupado', slug: 'ocupado', name: 'Ocupado' })).rejects.toThrow(/ya existe/);

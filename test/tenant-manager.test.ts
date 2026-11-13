@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -12,12 +12,9 @@ describe('TenantManager', () => {
   let manager: TenantManager;
 
   beforeEach(() => {
-    manager = new TenantManager(db(), { inMemory: true });
+    manager = new TenantManager(db());
   });
 
-  afterEach(() => {
-    manager.closeAll();
-  });
 
   it('crea un nuevo tenant con sucursal por defecto y datos seed iniciales', async () => {
     await insertUser('user-1', 'owner@example.com', 'Owner');

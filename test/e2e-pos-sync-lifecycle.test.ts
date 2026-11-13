@@ -68,7 +68,7 @@ describe('FASE 6: E2E POS Sync Lifecycle & Live Verification', () => {
   const posName = 'Caja Principal';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
 
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;

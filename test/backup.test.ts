@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { openTenantDb } from '../src/server/db/tenant-db.ts';
 import { backupAll } from '../src/server/backup/backup.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -17,12 +18,15 @@ afterEach(() => {
 async function seed(): Promise<{ dataDir: string; backupDir: string }> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-backup-'));
   const dataDir = join(root, 'data');
-  const tenants = new TenantManager(db(), { baseDir: join(dataDir, 'tenants') });
+  const tenants = new TenantManager(db());
   await tenants.createTenant({ id: 'kiosco-real', slug: 'kiosco-real', name: 'Kiosco real' });
   await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
+  // El backup copia las bases de comercio de SQLite (hasta la fase 6); los comercios ya no nacen con una
+  for (const id of ['kiosco-real', 'demo-abc']) {
+    openTenantDb(join(dataDir, 'tenants', `${id}.sqlite`)).close();
+  }
   const at = new Date().toISOString();
   await db().system.insertInto('demo_tenants').values({ tenant_id: 'demo-abc', template: 'kiosco', last_full_reset_at: at }).execute();
-  tenants.closeAll();
   return { dataDir, backupDir: join(root, 'backups') };
 }
 

@@ -20,7 +20,7 @@ describe('dashboard con día argentino y anulaciones como el POS (#20)', () => {
   let db: Kysely<TenantDatabase>;
 
   beforeEach(async () => {
-    await new TenantManager(pgDb(), { inMemory: true }).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
+    await new TenantManager(pgDb()).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
     db = pgDb().forTenant('kiosco');
     const at = now.toISOString();
     await db

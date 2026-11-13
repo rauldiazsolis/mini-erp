@@ -39,7 +39,7 @@ describe('contraseñas (#19)', () => {
 
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
-    bundle = createApp({ database: db(), tenantManager: new TenantManager(db(), { inMemory: true }), now: () => clock });
+    bundle = createApp({ database: db(), tenantManager: new TenantManager(db()), now: () => clock });
     app = bundle.app;
     const a = await altaDe('ana@k.com', 'Kiosco Ana');
     owner = { token: a.token, id: a.user.id };

@@ -12,7 +12,7 @@ const now = new Date('2026-10-05T15:00:00.000Z');
 
 /** El esquema de un comercio recién creado, que ya trae su sucursal por defecto. */
 async function fresh(id = 'comercio'): Promise<Kysely<TenantDatabase>> {
-  const manager = new TenantManager(pgDb(), { inMemory: true });
+  const manager = new TenantManager(pgDb());
   await manager.createTenant({ id, slug: id, name: id });
   return manager.forTenant(id);
 }

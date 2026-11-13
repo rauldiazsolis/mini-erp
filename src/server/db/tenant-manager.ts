@@ -1,12 +1,8 @@
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import type { Database } from './pg/database.ts';
 import { createTenantSchema, dropTenantSchema } from './pg/migrations/migrate.ts';
 import type { SystemDatabase } from './pg/system-schema.ts';
 import type { TenantDatabase } from './pg/tenant-schema.ts';
-import { initTenantDb, openTenantDb } from './tenant-db.ts';
 import { seedDemoTenant } from '../seeds/index.ts';
 import { isBusinessType, type BusinessType } from '../../shared/business-type.ts';
 
@@ -33,24 +29,15 @@ export const DEFAULT_BRANCH_ID = 'branch-central';
 
 /**
  * Los comercios: sus filas de sistema (`tenants`, la membresía del owner) y el esquema de cada uno
- * (`tenant_<id>`), en PostgreSQL. Mientras dura la fase 4 conserva también la base SQLite de cada
- * comercio (`getTenantDb`), para los servicios que todavía no se migraron.
+ * (`tenant_<id>`), en PostgreSQL.
  */
 export class TenantManager {
   private database: Database;
   private db: Kysely<SystemDatabase>;
-  private cache = new Map<string, DatabaseSync>();
-  private baseDir: string;
-  private inMemory: boolean;
 
-  constructor(
-    database: Database,
-    options?: { baseDir?: string; inMemory?: boolean },
-  ) {
+  constructor(database: Database) {
     this.database = database;
     this.db = database.system;
-    this.baseDir = options?.baseDir ?? join(process.cwd(), 'data', 'tenants');
-    this.inMemory = options?.inMemory ?? false;
   }
 
   /**
@@ -59,26 +46,6 @@ export class TenantManager {
    */
   forTenant(tenantId: string): Kysely<TenantDatabase> {
     return this.database.forTenant(tenantId);
-  }
-
-  /** Transitorio (SQLite): se va al cerrar la fase 4. */
-  getTenantDb(tenantId: string): DatabaseSync {
-    const existing = this.cache.get(tenantId);
-    if (existing !== undefined) {
-      return existing;
-    }
-
-    let db: DatabaseSync;
-    if (this.inMemory) {
-      db = new DatabaseSync(':memory:');
-      initTenantDb(db);
-    } else {
-      const filePath = join(this.baseDir, `${tenantId}.sqlite`);
-      db = openTenantDb(filePath);
-    }
-
-    this.cache.set(tenantId, db);
-    return db;
   }
 
   async tenantExists(id: string, db: Kysely<SystemDatabase> = this.db): Promise<boolean> {
@@ -179,9 +146,6 @@ export class TenantManager {
     const now = options.now ?? new Date().toISOString();
     await createTenantSchema(this.database.root, tenantId);
     try {
-      // Transitorio: el archivo SQLite del comercio sigue naciendo con él, vacío (lo esperan el backup
-      // y `runMigrations`); ya no recibe ni la sucursal ni la semilla. Se va al cerrar la fase 4.
-      this.getTenantDb(tenantId);
       // La sucursal por defecto y la semilla, juntas
       await this.forTenant(tenantId)
         .transaction()
@@ -203,35 +167,7 @@ export class TenantManager {
    * suspensiones, pedidos de ayuda y bonos se van con la fila (`ON DELETE CASCADE`).
    */
   async deleteTenant(id: string): Promise<void> {
-    const db = this.cache.get(id);
-    if (db !== undefined) {
-      try {
-        db.close();
-      } catch {
-        // Ignorar si ya estaba cerrada
-      }
-      this.cache.delete(id);
-    }
-
     await this.db.deleteFrom('tenants').where('id', '=', id).execute();
     await dropTenantSchema(this.database.root, id);
-
-    if (!this.inMemory) {
-      const file = join(this.baseDir, `${id}.sqlite`);
-      for (const path of [file, `${file}-wal`, `${file}-shm`]) {
-        rmSync(path, { force: true });
-      }
-    }
-  }
-
-  closeAll(): void {
-    for (const db of this.cache.values()) {
-      try {
-        db.close();
-      } catch {
-        // Ignorar si ya estaba cerrada
-      }
-    }
-    this.cache.clear();
   }
 }

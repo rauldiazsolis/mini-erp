@@ -51,7 +51,7 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
   let db: Kysely<TenantDatabase>;
 
   beforeEach(async () => {
-    await new TenantManager(pgDb(), { inMemory: true }).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
+    await new TenantManager(pgDb()).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
     db = pgDb().forTenant('kiosco');
     await insertProduct(db, 'p1', 'Alfajor Triple Dulce de Leche', 950);
     await insertProduct(db, 'p2', 'Gaseosa 500 ml', 1000);

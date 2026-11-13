@@ -9,7 +9,7 @@ const db = setupTestDb();
 
 describe('App Scaffolding & Healthcheck', () => {
   it('responde 200 OK en /health con el status correcto', async () => {
-    const tenantManager = new TenantManager(db(), { inMemory: true });
+    const tenantManager = new TenantManager(db());
 
     const { app } = createApp({ database: db(), tenantManager });
     const res = await request(app).get('/health');

@@ -36,7 +36,7 @@ describe('Importación, Exportación y Semillas de Negocio (Etapa 2.5)', () => {
   const tenantId = 'kiosco-io-test';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db(), { inMemory: true });
+    tenantManager = new TenantManager(db());
     const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
