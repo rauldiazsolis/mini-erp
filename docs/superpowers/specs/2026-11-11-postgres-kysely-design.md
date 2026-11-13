@@ -267,11 +267,32 @@ Además:
   salen de los mismos módulos que el push (`saveSales` y compañía en `records.ts`,
   `postSeriesToBalance` en `account-ledger.ts`, `setStockMany` en `write-stock.ts`).
 
+## Decidido en la fase 5 (2026-11-13)
+
+1. **Backup: se borra el de SQLite y el script falla a propósito hasta la fase 6.**
+   `src/server/backup/backup.ts` (`VACUUM INTO` de `.sqlite` que ya no existen) y `test/backup.test.ts`
+   se borran: no respaldan nada y son lo último que abre SQLite. `scripts/backup.ts` queda, porque lo
+   corre `mini-erp-backup.timer`, pero sale con error ("pendiente: pg_dump, fase 6"): un backup que no
+   copia nada no puede terminar en verde. La fase 6 lo reescribe con `pg_dump -Fc` (sin los esquemas de
+   demo, 7 días). Nada de esto se publica antes de la fase 6.
+2. **Reinicio total contra un push simultáneo: se cierra** (era el punto 2 de "Para decidir").
+   - El reinicio **revoca primero** las cajas de visitante (transacción de sistema) y recién después
+     vacía y siembra el comercio. Si la siembra falla, las demos ya quedaron cortadas: el barrido
+     reintenta a los 15 minutos, y es lo mismo que vería el visitante con el reinicio hecho.
+   - Dentro de su transacción, el reinicio **toma primero el candado de lote** del push (la fila de la
+     primera sucursal, `FOR UPDATE`): el push y el reinicio ya no se traban en otro orden.
+   - Un push que esperaba ese candado y lo recibe después del reinicio no encuentra la fila (el
+     reinicio la borró y sembró otra, que su sentencia no ve): lo toma como **error pasajero**, deshace
+     el lote y el POS lo reintenta, ya con la key revocada (`401`, "la demo terminó"). Nada del
+     visitante queda en el comercio recién sembrado.
+   - Las escrituras sueltas del admin anónimo durante el reinicio no se cubren: son de a una fila y la
+     ventana es de milisegundos.
+
 ## Para decidir en las fases que siguen
 
 1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.
-2. **Reinicio total de una demo contra un push simultáneo**: con SQLite era sincrónico. Ahora un
+2. ~~**Reinicio total de una demo contra un push simultáneo**~~ (cerrado en la fase 5, ver arriba): con SQLite era sincrónico. Ahora un
    push que confirma justo después del reinicio puede dejar filas en el comercio recién sembrado (la
    key del visitante se revoca después, fuera de la transacción), o un deadlock hace fallar el
    reinicio (el barrido lo reintenta a los 15 minutos; el manual da 500). La ventana es chica; se
