@@ -35,9 +35,14 @@ jobs:
       # (postgresql-client-16): el runner trae los de PostgreSQL 17, que escriben
       # `SET transaction_timeout`, y un servidor 16 no lo conoce. /usr/bin/pg_dump es el wrapper de
       # Debian, que elige el major más nuevo instalado: por eso va su carpeta primero en el PATH.
+      # ubuntu-latest (26.04) no trae postgresql-client-16 en sus repos: sale del repo oficial
+      # (PGDG), que habilita el script de postgresql-common (agrega la clave y la fuente, y corre
+      # apt-get update).
       - name: Cliente de PostgreSQL 16
         run: |
           sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-16
           echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
           /usr/lib/postgresql/16/bin/pg_dump --version
