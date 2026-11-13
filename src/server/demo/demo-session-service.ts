@@ -74,7 +74,7 @@ export class DemoSessionService {
     if (!(await this.deps.tenantManager.tenantExists(tenantId))) {
       await this.deps.tenantManager.createTenant({ id: tenantId, slug: tenantId, name });
     }
-    await seedDemoCommerce(this.deps.tenantManager.getTenantDb(tenantId), template, now);
+    await seedDemoCommerce(this.deps.tenantManager.forTenant(tenantId), template, now);
     await this.deps.db
       .insertInto('demo_tenants')
       .values({ tenant_id: tenantId, template, last_full_reset_at: now.toISOString() })

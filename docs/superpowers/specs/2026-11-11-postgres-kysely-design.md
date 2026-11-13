@@ -219,8 +219,15 @@ Además:
   los datos de un comercio (demos, reconciliación, semillas) los pide con
   `TenantManager.forTenant(id)`, que es `Database.forTenant`.
 - **El arranque migra todo PostgreSQL** (`migrateAll`: `system` y el esquema de cada comercio).
-- **El reinicio total de una demo** vacía las tablas del manifiesto (`TENANT_TABLES`) con
-  `TRUNCATE … RESTART IDENTITY`, en la misma transacción que vuelve a sembrar.
+- **El reinicio total de una demo** vacía las tablas del manifiesto (`TENANT_TABLES`) con un
+  `DELETE` por tabla (las referenciadas, `branches` y `customers`, al final), en la misma
+  transacción que vuelve a sembrar. No es `TRUNCATE`: una sentencia cruda no recibe el esquema de
+  `withSchema`, son pocos cientos de filas y un `DELETE` no bloquea los pulls mientras tanto. Las
+  columnas `seq` no se reinician (solo desempatan).
+- **Las semillas escriben por lotes**: un insert de varias filas por tabla (`inChunks`, de a 500),
+  una transacción por comercio, y el stock y el saldo finales calculados en memoria. Las filas
+  salen de los mismos módulos que el push (`saveSales` y compañía en `records.ts`,
+  `postSeriesToBalance` en `account-ledger.ts`, `setStockMany` en `write-stock.ts`).
 
 ## Para decidir en las fases que siguen
 

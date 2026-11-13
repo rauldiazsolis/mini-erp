@@ -354,7 +354,7 @@ PostgreSQL; (lint) y (test) dicen qué herramienta las hace cumplir (`test/pg-gu
     `revoke_reason` (`reset` o `idle`). Pasa con el reinicio total o a las `DEMO_TTL_HOURS` sin uso: la
     auth del POS y el admin anónimo corren `last_used_at` (`touchRegister`, a lo sumo por minuto).
   - **Reinicios** (`DemoResetService`, sincrónicos): el **total** vacía todas las tablas del comercio
-    (salen de `sqlite_master`), vuelve a sembrar y revoca sus cajas; el **parcial** devuelve
+    (salen del manifiesto, `TENANT_TABLES`) y vuelve a sembrar en una transacción, y revoca sus cajas; el **parcial** devuelve
     productos, stock (con `inventory_count`) y datos de clientes de la semilla, borra lo creado por
     visitantes (clientes, solo sin movimientos) y descarta discrepancias, y conserva ventas, saldos y
     cajas.

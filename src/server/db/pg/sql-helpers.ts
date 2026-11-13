@@ -97,3 +97,15 @@ export async function inSavepoint<DB, T>(trx: Transaction<DB>, name: string, wor
   await sql`RELEASE SAVEPOINT ${savepoint}`.execute(trx);
   return result;
 }
+
+/**
+ * Parte una lista en tramos para un `INSERT` de varias filas: PostgreSQL admite 65535 parámetros
+ * por sentencia, y 500 filas entran holgadas con cualquier tabla del esquema.
+ */
+export function inChunks<T>(rows: readonly T[], size = 500): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < rows.length; i += size) {
+    chunks.push(rows.slice(i, i + size));
+  }
+  return chunks;
+}

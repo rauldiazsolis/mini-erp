@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { createTenantSchema } from '../src/server/db/pg/migrations/migrate.ts';
 import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
-import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
+import { saveCashMovement, saveCashMovements, saveCustomerPayment, saveCustomerPayments, saveSale, saveSales } from '../src/server/sales/records.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -212,36 +210,81 @@ describe('records.ts sobre PostgreSQL (fase 4)', () => {
     await saveSale(t, { id: 'v1', total: 1, createdAt: recibida, note: 'a\u0000b' }, caja, recibida);
     expect((await ventas())[0]?.payload).toMatchObject({ note: 'ab' });
   });
+
+  it('en lote (las semillas), las filas son las mismas que de a una', async () => {
+    const venta = (id: string) => ({ id, total: 100.005, customerId: 'c1', ticket: { date: '2026-10-01', number: 7 }, createdAt: recibida });
+    const cobranza = (id: string) => ({ id, customerId: 'c1', total: 5, receipt: { date: '2026-10-01', number: 2 }, createdAt: recibida });
+    const movimiento = (id: string) => ({ id, concept: 'Fondo', createdAt: recibida });
+    const conCaja = { ...caja, registerId: 'reg-1', chargeDevice: '' };
+    /** Las filas sin su id (ni el del payload): lo único que cambia entre la `a` y la `b`. */
+    const sinId = (rows: { id: string; payload: unknown }[]): unknown[] =>
+      rows.map((row) => ({ ...row, id: '', payload: { ...(row.payload as Record<string, unknown>), id: '' } }));
+    const pagos = async () =>
+      await t.selectFrom('customer_payments').select(['id', 'payload', 'customer_id', 'day', 'receipt_date', 'receipt_number', 'created_at', 'branch']).orderBy('id').execute();
+    const caja2 = async () => await t.selectFrom('cash_movements').select(['id', 'payload', 'day', 'created_at', 'point_of_sale']).orderBy('id').execute();
+
+    await saveSale(t, venta('a'), conCaja, recibida);
+    await saveCustomerPayment(t, cobranza('a'), conCaja, recibida);
+    await saveCashMovement(t, movimiento('a'), conCaja, recibida);
+    await saveSales(t, [{ record: venta('b'), origin: conCaja, receivedAt: recibida }]);
+    await saveCustomerPayments(t, [{ record: cobranza('b'), origin: conCaja, receivedAt: recibida }]);
+    await saveCashMovements(t, [{ record: movimiento('b'), origin: conCaja, receivedAt: recibida }]);
+
+    for (const rows of [await ventas(), await pagos(), await caja2()]) {
+      expect(rows).toHaveLength(2);
+      const [a, b] = sinId(rows);
+      expect(b).toEqual(a);
+    }
+    expect((await ventas())[1]).toMatchObject({ id: 'b', total: 100.01, day: '2026-10-01', register_id: 'reg-1', charge_device: '' });
+  });
+
+  it('un lote vacío no hace nada, y uno grande entra partido en tramos', async () => {
+    await saveSales(t, []);
+    await saveCustomerPayments(t, []);
+    await saveCashMovements(t, []);
+    expect(await ventas()).toEqual([]);
+    const muchas = Array.from({ length: 1201 }, (_, i) => ({ record: { id: `v${String(i)}`, total: i, createdAt: recibida }, origin: caja, receivedAt: recibida }));
+    await saveSales(t, muchas);
+    expect(await ventas()).toHaveLength(1201);
+    // Reenviar el lote no duplica ni le cambia la caja a una venta
+    await saveSales(t, muchas.map((m) => ({ ...m, origin: { ...caja, registerId: 'otra' } })));
+    const otra = await ventas();
+    expect(otra).toHaveLength(1201);
+    expect(otra.filter((v) => v.register_id === 'otra')).toHaveLength(1201); // no tenían caja: la toman
+    await saveSales(t, muchas.map((m) => ({ ...m, origin: { ...caja, registerId: 'tercera' } })));
+    expect((await ventas()).filter((v) => v.register_id === 'otra')).toHaveLength(1201);
+  });
 });
 
 describe('semilla de actividad con forma de contrato (#20)', () => {
   it('ventas numeradas, una anulación, una cobranza y movimientos del contrato; nada después de ahora', async () => {
-    const db = new DatabaseSync(':memory:');
-    initTenantDb(db);
+    await createTenantSchema(pgDb().root, 'kiosco');
+    const db = pgDb().forTenant('kiosco');
     const now = new Date('2026-10-02T21:00:00.000Z'); // 18:00 argentinas
-    db.prepare("INSERT INTO branches (id, name, code, created_at) VALUES ('b1', 'Central', 'CENTRAL', ?)").run(now.toISOString());
-    db.prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p1', 'S1', 'Alfajor', 500, ?, ?)").run(now.toISOString(), now.toISOString());
-    db.prepare("INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES ('p1', 'b1', 100, ?)").run(now.toISOString());
-    db.prepare("INSERT INTO customers (id, name, balance, created_at, updated_at) VALUES ('cust-juan', 'Juan', 0, ?, ?)").run(now.toISOString(), now.toISOString());
+    const at = now.toISOString();
+    await db.insertInto('branches').values({ id: 'b1', name: 'Central', code: 'CENTRAL', created_at: at }).execute();
+    await db.insertInto('products').values({ id: 'p1', sku: 'S1', name: 'Alfajor', price: 500, created_at: at, updated_at: at }).execute();
+    await db.insertInto('stock').values({ product_id: 'p1', branch_id: 'b1', quantity: 100, updated_at: at }).execute();
+    await db.insertInto('customers').values({ id: 'cust-juan', name: 'Juan', balance: 0, created_at: at, updated_at: at }).execute();
 
-    await generateHistoricalDemoActivity(db, 'b1', now);
+    const created = await generateHistoricalDemoActivity(db, 'b1', now);
 
-    const ventas = db.prepare('SELECT payload, day, ticket_number, voids_sale_id, created_at FROM sales').all() as {
-      payload: string; day: string | null; ticket_number: number | null; voids_sale_id: string | null; created_at: string;
-    }[];
+    const ventas = await db.selectFrom('sales').select(['payload', 'day', 'ticket_number', 'voids_sale_id', 'created_at']).execute();
     expect(ventas.length).toBeGreaterThan(0);
+    expect(created.salesCreated).toBe(ventas.length);
     expect(ventas.every((v) => v.day !== null && v.ticket_number !== null)).toBe(true);
     expect(ventas.every((v) => v.created_at <= now.toISOString())).toBe(true);
     expect(ventas.filter((v) => v.voids_sale_id !== null)).toHaveLength(1);
 
-    const cobranzas = db.prepare('SELECT payload FROM customer_payments').all() as { payload: string }[];
+    const cobranzas = await db.selectFrom('customer_payments').select('payload').execute();
     expect(cobranzas).toHaveLength(1);
-    expect(JSON.parse(cobranzas[0]?.payload ?? '')).toMatchObject({ customerId: 'cust-juan', payments: [{ method: 'cash' }] });
+    expect(cobranzas[0]?.payload).toMatchObject({ customerId: 'cust-juan', payments: [{ method: 'cash' }] });
 
-    const movimientos = (db.prepare('SELECT payload FROM cash_movements').all() as { payload: string }[]).map(
-      (m) => JSON.parse(m.payload) as { direction?: string; concept?: string; source?: string },
+    const movimientos = (await db.selectFrom('cash_movements').select('payload').execute()).map(
+      (m) => m.payload as { direction?: string; concept?: string; source?: string },
     );
     expect(movimientos.length).toBeGreaterThan(0);
+    expect(created.cashMovementsCreated).toBe(movimientos.length);
     expect(movimientos.every((m) => (m.direction === 'in' || m.direction === 'out') && typeof m.concept === 'string' && typeof m.source === 'string')).toBe(true);
     expect(movimientos.some((m) => m.source === 'count-adjustment')).toBe(true);
   });

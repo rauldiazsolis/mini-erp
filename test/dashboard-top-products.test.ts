@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
 import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
 import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
@@ -136,24 +134,20 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
   });
 
   it('el historial simulado de las demos usa líneas y medios de pago del contrato', async () => {
-    // El generador es de las semillas, que todavía escriben SQLite
-    const db = new DatabaseSync(':memory:');
-    initTenantDb(db);
+    // p1 y p2 ya están (beforeEach), con la sucursal por defecto del comercio
     const now = new Date().toISOString();
-    for (const [id, name, price] of [['p1', 'Alfajor Triple Dulce de Leche', 950], ['p2', 'Gaseosa 500 ml', 1000], ['p3', 'Yerba 1 kg', 3200]] as const) {
-      db.prepare('INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, `SKU-${id}`, name, price, now, now);
-    }
-    db.prepare("INSERT INTO branches (id, name, code, created_at) VALUES ('b1', 'Central', 'CENTRAL', ?)").run(now);
+    await insertProduct(db, 'p3', 'Yerba 1 kg', 3200);
     // Los clientes a los que el generador les vende (cuenta corriente y consumidor final)
-    for (const [id, name] of [['cust-juan', 'Juan'], ['cust-cf', 'Consumidor Final']] as const) {
-      db.prepare('INSERT INTO customers (id, name, balance, created_at, updated_at) VALUES (?, ?, 0, ?, ?)').run(id, name, now, now);
-    }
-    await generateHistoricalDemoActivity(db, 'b1');
+    await db
+      .insertInto('customers')
+      .values([['cust-juan', 'Juan'], ['cust-cf', 'Consumidor Final']].map(([id = '', name = '']) => ({ id, name, balance: 0, created_at: now, updated_at: now })))
+      .execute();
+    await generateHistoricalDemoActivity(db, 'branch-central');
 
-    const rows = db.prepare('SELECT payload FROM sales').all() as Array<{ payload: string }>;
+    const rows = await db.selectFrom('sales').select('payload').execute();
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
-      const sale = JSON.parse(row.payload) as {
+      const sale = row.payload as {
         lines: Array<Record<string, unknown>>;
         payments: Array<{ method: string }>;
       };

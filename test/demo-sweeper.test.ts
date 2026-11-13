@@ -64,18 +64,38 @@ describe('barrido de demos (#24)', () => {
   });
 
   it('restock repone lo que bajó de un cuarto de la semilla, con su movimiento', async () => {
-    const db = tenantManager.getTenantDb('demo-kiosco');
+    const db = tenantManager.forTenant('demo-kiosco');
+    const setQuantity = async (productId: string, quantity: number): Promise<void> => {
+      await db.updateTable('stock').set({ quantity }).where('product_id', '=', productId).execute();
+    };
+    const quantityOf = async (productId: string): Promise<number | undefined> =>
+      (await db.selectFrom('stock').select('quantity').where('product_id', '=', productId).executeTakeFirst())?.quantity;
     await resets.restock(); // lo que el historial sembrado ya haya bajado
-    db.prepare("UPDATE stock SET quantity = 11 WHERE product_id = 'demo_KIO-001'").run(); // 48 / 4 = 12
-    db.prepare("UPDATE stock SET quantity = 14 WHERE product_id = 'demo_KIO-002'").run(); // 60 / 4 = 15
-    db.prepare("UPDATE stock SET quantity = 30 WHERE product_id = 'demo_KIO-004'").run(); // 72 / 4 = 18: no
+    await setQuantity('demo_KIO-001', 11); // 48 / 4 = 12
+    await setQuantity('demo_KIO-002', 14); // 60 / 4 = 15
+    await setQuantity('demo_KIO-004', 30); // 72 / 4 = 18: no
     expect(await resets.restock()).toBe(2);
-    expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-001'").get()).toEqual({ quantity: 48 });
+    expect(await quantityOf('demo_KIO-001')).toBe(48);
     expect(
-      db.prepare("SELECT reason, notes FROM stock_movements WHERE product_id = 'demo_KIO-001' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(),
-    ).toEqual({ reason: 'restock', notes: 'Reposición automática' });
-    expect(db.prepare("SELECT quantity FROM stock WHERE product_id = 'demo_KIO-004'").get()).toEqual({ quantity: 30 });
+      await db
+        .selectFrom('stock_movements')
+        .select(['reason', 'notes', 'delta'])
+        .where('product_id', '=', 'demo_KIO-001')
+        .orderBy('seq', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    ).toEqual({ reason: 'restock', notes: 'Reposición automática', delta: 37 });
+    expect(await quantityOf('demo_KIO-004')).toBe(30);
     expect(await resets.restock()).toBe(0);
+  });
+
+  it('restock no repone un producto de la semilla que alguien borró', async () => {
+    const db = tenantManager.forTenant('demo-kiosco');
+    await resets.restock();
+    await db.updateTable('stock').set({ quantity: 1 }).where('product_id', '=', 'demo_KIO-001').execute();
+    await db.deleteFrom('products').where('id', '=', 'demo_KIO-001').execute();
+    expect(await resets.restock()).toBe(0);
+    expect(await db.selectFrom('stock').select('quantity').where('product_id', '=', 'demo_KIO-001').executeTakeFirst()).toEqual({ quantity: 1 });
   });
 
   it('el barrido al arrancar hace todo y loguea', async () => {

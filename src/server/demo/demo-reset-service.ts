@@ -1,11 +1,12 @@
-import type { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
+import { TENANT_TABLES } from '../db/pg/tenant-schema.ts';
 import type { TenantManager } from '../db/tenant-manager.ts';
-import { writeStock } from '../stock/write-stock.sqlite.ts';
+import { setStockMany } from '../stock/write-stock.ts';
 import {
   DEMO_BRANCH_ID,
   DEMO_CUSTOMERS,
+  demoProductRow,
   demoSeedProducts,
   isDemoTemplate,
   seedDemoCommerce,
@@ -39,12 +40,14 @@ export class DemoResetService {
   async resetFull(template: DemoTemplate): Promise<{ revoked: number }> {
     const tenantId = await this.deps.sessions.ensureDemoTenant(template);
     const now = this.deps.now();
-    const db = this.deps.tenantManager.getTenantDb(tenantId);
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
-    await inTransaction(db, async () => {
-      for (const t of tables) db.exec(`DELETE FROM "${t.name}"`);
-      await seedDemoCommerce(db, template, now);
+    // Vaciar y volver a sembrar es una sola transacción del comercio: nadie ve la demo a medias
+    await this.deps.tenantManager.forTenant(tenantId).transaction().execute(async (trx) => {
+      for (const table of TABLES_TO_EMPTY) {
+        await trx.deleteFrom(table).execute();
+      }
+      await seedDemoCommerce(trx, template, now);
     });
+    // Lo de sistema, después y fuera de esa transacción
     const revoked = await this.deps.sessions.revokeTenant(tenantId, 'reset');
     await this.deps.db.updateTable('demo_tenants').set({ last_full_reset_at: now.toISOString() }).where('tenant_id', '=', tenantId).execute();
     return { revoked };
@@ -53,53 +56,93 @@ export class DemoResetService {
   async resetPartial(template: DemoTemplate): Promise<void> {
     const tenantId = await this.deps.sessions.ensureDemoTenant(template);
     const at = this.deps.now().toISOString();
-    const db = this.deps.tenantManager.getTenantDb(tenantId);
     const products = demoSeedProducts(template);
     const customers = DEMO_CUSTOMERS.filter((c): c is SeedCustomer & { id: string } => c.id !== undefined);
-    const productIds = sqlList(products.map((p) => p.id));
-    const customerIds = sqlList(customers.map((c) => c.id));
-    await inTransaction(db, async () => {
+    const productIds = products.map((p) => p.id);
+    const customerIds = customers.map((c) => c.id);
+    await this.deps.tenantManager.forTenant(tenantId).transaction().execute(async (trx) => {
       // Los productos de visitantes afuera (con su stock y su kardex), antes de devolverles el SKU a los de la semilla
-      db.exec(`DELETE FROM stock WHERE product_id NOT IN (${productIds})`);
-      db.exec(`DELETE FROM stock_movements WHERE product_id NOT IN (${productIds})`);
-      db.exec(`DELETE FROM products WHERE id NOT IN (${productIds})`);
-      const upsertProduct = db.prepare(
-        `INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, blocked_reason, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET sku = excluded.sku, barcodes = excluded.barcodes, name = excluded.name, price = excluded.price,
-           tax_rate = excluded.tax_rate, category = excluded.category, tracks_stock = 1, blocked_reason = NULL, updated_at = excluded.updated_at`,
-      );
-      for (const p of products) {
-        upsertProduct.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate ?? 0.21, p.category, at, at);
-        await writeStock(db, {
-          productId: p.id,
-          branchId: DEMO_BRANCH_ID,
-          type: 'set',
-          quantity: p.stock,
-          reason: 'inventory_count',
-          notes: 'Reinicio parcial de la demo',
-          now: at,
-        });
-      }
-      // Los clientes de visitantes sin movimientos afuera; con movimientos quedan (su libro sale de ventas que se conservan)
-      db.exec(`DELETE FROM customers WHERE id NOT IN (${customerIds}) AND id NOT IN (SELECT customer_id FROM account_movements)`);
-      const lastBalance = db.prepare(
-        'SELECT balance_after FROM account_movements WHERE customer_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1',
-      );
-      const upsertCustomer = db.prepare(
-        `INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, blocked_reason, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, document = excluded.document, phone = excluded.phone,
-           credit_limit = excluded.credit_limit, margin = excluded.margin, unrestricted = excluded.unrestricted,
-           blocked_reason = NULL, updated_at = excluded.updated_at`,
-      );
-      for (const c of customers) {
-        const balance = (lastBalance.get(c.id) as { balance_after: number } | undefined)?.balance_after ?? c.balance;
-        upsertCustomer.run(c.id, c.name, c.document ?? null, c.phone ?? null, c.creditLimit, c.margin, balance, c.unrestricted === true ? 1 : 0, at, at);
-      }
-      db.prepare(
-        "UPDATE discrepancies SET resolved_at = ?, resolution = 'dismissed', resolved_by = 'system', note = 'Reinicio parcial de la demo' WHERE resolved_at IS NULL",
-      ).run(at);
+      await trx.deleteFrom('stock').where('product_id', 'not in', productIds).execute();
+      await trx.deleteFrom('stock_movements').where('product_id', 'not in', productIds).execute();
+      await trx.deleteFrom('products').where('id', 'not in', productIds).execute();
+      await trx
+        .insertInto('products')
+        .values(products.map((p) => demoProductRow(p, at)))
+        .onConflict((oc) =>
+          oc.column('id').doUpdateSet((eb) => ({
+            sku: eb.ref('excluded.sku'),
+            barcodes: eb.ref('excluded.barcodes'),
+            name: eb.ref('excluded.name'),
+            price: eb.ref('excluded.price'),
+            tax_rate: eb.ref('excluded.tax_rate'),
+            category: eb.ref('excluded.category'),
+            tracks_stock: true,
+            blocked_reason: null,
+            updated_at: eb.ref('excluded.updated_at'),
+          })),
+        )
+        .execute();
+      await setStockMany(trx, {
+        branchId: DEMO_BRANCH_ID,
+        items: products.map((p) => ({ productId: p.id, quantity: p.stock })),
+        reason: 'inventory_count',
+        notes: 'Reinicio parcial de la demo',
+        now: at,
+      });
+      // Los clientes de visitantes sin movimientos ni reservas afuera; con cuenta corriente quedan (su
+      // libro sale de ventas que se conservan, y la base no deja borrarlos)
+      await trx
+        .deleteFrom('customers')
+        .where('id', 'not in', customerIds)
+        .where('id', 'not in', (eb) => eb.selectFrom('account_movements').select('customer_id'))
+        .where('id', 'not in', (eb) => eb.selectFrom('account_holds').select('customer_id'))
+        .execute();
+      // El saldo no se toca: el de un cliente de la semilla que alguien borró sale de su último movimiento
+      const lastBalances = await trx
+        .selectFrom('account_movements')
+        .distinctOn('customer_id')
+        .select(['customer_id', 'balance_after'])
+        .where('customer_id', 'in', customerIds)
+        .orderBy('customer_id')
+        .orderBy('created_at', 'desc')
+        .orderBy('seq', 'desc')
+        .execute();
+      const lastBalance = new Map(lastBalances.map((row) => [row.customer_id, row.balance_after]));
+      await trx
+        .insertInto('customers')
+        .values(
+          customers.map((c) => ({
+            id: c.id,
+            name: c.name,
+            document: c.document ?? null,
+            phone: c.phone ?? null,
+            credit_limit: c.creditLimit,
+            margin: c.margin,
+            balance: lastBalance.get(c.id) ?? c.balance,
+            unrestricted: c.unrestricted === true,
+            blocked_reason: null,
+            created_at: at,
+            updated_at: at,
+          })),
+        )
+        .onConflict((oc) =>
+          oc.column('id').doUpdateSet((eb) => ({
+            name: eb.ref('excluded.name'),
+            document: eb.ref('excluded.document'),
+            phone: eb.ref('excluded.phone'),
+            credit_limit: eb.ref('excluded.credit_limit'),
+            margin: eb.ref('excluded.margin'),
+            unrestricted: eb.ref('excluded.unrestricted'),
+            blocked_reason: null,
+            updated_at: eb.ref('excluded.updated_at'),
+          })),
+        )
+        .execute();
+      await trx
+        .updateTable('discrepancies')
+        .set({ resolved_at: at, resolution: 'dismissed', resolved_by: 'system', note: 'Reinicio parcial de la demo' })
+        .where('resolved_at', 'is', null)
+        .execute();
     });
     await this.deps.db.updateTable('demo_tenants').set({ last_partial_reset_at: at }).where('tenant_id', '=', tenantId).execute();
   }
@@ -158,8 +201,13 @@ export class DemoResetService {
     r: { tenant_id: string; template: string; last_full_reset_at: string; last_partial_reset_at: string | null; name: string; active: number; created: number },
     today: string,
   ): Promise<DemoStatusItem> {
-    const db = this.deps.tenantManager.getTenantDb(r.tenant_id);
-    const sales = db.prepare('SELECT COUNT(*) AS n FROM sales WHERE day = ? AND voids_sale_id IS NULL').get(today) as { n: number };
+    const sales = await this.deps.tenantManager
+      .forTenant(r.tenant_id)
+      .selectFrom('sales')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('day', '=', today)
+      .where('voids_sale_id', 'is', null)
+      .executeTakeFirstOrThrow();
     return {
       template: r.template,
       tenantId: r.tenant_id,
@@ -180,41 +228,42 @@ export class DemoResetService {
     for (const row of rows) {
       const template = row.template;
       if (!isDemoTemplate(template)) continue;
-      const db = this.deps.tenantManager.getTenantDb(row.tenant_id);
-      const qty = db.prepare('SELECT s.quantity FROM stock s JOIN products p ON p.id = s.product_id WHERE s.product_id = ? AND s.branch_id = ?');
-      await inTransaction(db, async () => {
-        for (const p of demoSeedProducts(template)) {
-          const current = (qty.get(p.id, DEMO_BRANCH_ID) as { quantity: number } | undefined)?.quantity;
-          if (current === undefined || current >= p.stock / 4) continue;
-          await writeStock(db, {
-            productId: p.id,
-            branchId: DEMO_BRANCH_ID,
-            type: 'set',
-            quantity: p.stock,
-            reason: 'restock',
-            notes: 'Reposición automática',
-            now: at,
-          });
-          restocked++;
-        }
+      const seed = demoSeedProducts(template);
+      const db = this.deps.tenantManager.forTenant(row.tenant_id);
+      // Solo los que siguen en el catálogo: un producto borrado no se repone
+      const current = await db
+        .selectFrom('stock as s')
+        .innerJoin('products as p', 'p.id', 's.product_id')
+        .select(['s.product_id', 's.quantity'])
+        .where('s.branch_id', '=', DEMO_BRANCH_ID)
+        .where('s.product_id', 'in', seed.map((p) => p.id))
+        .execute();
+      const quantity = new Map(current.map((r) => [r.product_id, r.quantity]));
+      const low = seed.filter((p) => {
+        const now = quantity.get(p.id);
+        return now !== undefined && now < p.stock / 4;
       });
+      if (low.length === 0) continue;
+      await setStockMany(db, {
+        branchId: DEMO_BRANCH_ID,
+        items: low.map((p) => ({ productId: p.id, quantity: p.stock })),
+        reason: 'restock',
+        notes: 'Reposición automática',
+        now: at,
+      });
+      restocked += low.length;
     }
     return restocked;
   }
 }
 
-/** Ids fijos del código (nunca de un visitante) como lista de SQL. */
-function sqlList(ids: string[]): string {
-  return ids.map((id) => `'${id.replace(/'/g, "''")}'`).join(', ');
-}
-
-async function inTransaction(db: DatabaseSync, work: () => Promise<void>): Promise<void> {
-  db.exec('BEGIN');
-  try {
-    await work();
-    db.exec('COMMIT');
-  } catch (err: unknown) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-}
+/**
+ * Las tablas que vacía el reinicio total: todas las del manifiesto (`schema_migrations` no está),
+ * con las que tienen referencias de otras (`branches`, `customers`) al final.
+ */
+const REFERENCED_TABLES: ReadonlySet<string> = new Set(['branches', 'customers']);
+const TENANT_TABLE_NAMES = Object.keys(TENANT_TABLES) as (keyof typeof TENANT_TABLES)[];
+const TABLES_TO_EMPTY = [
+  ...TENANT_TABLE_NAMES.filter((table) => !REFERENCED_TABLES.has(table)),
+  ...TENANT_TABLE_NAMES.filter((table) => REFERENCED_TABLES.has(table)),
+];

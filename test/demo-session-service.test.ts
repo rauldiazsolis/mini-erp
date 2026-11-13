@@ -66,7 +66,7 @@ describe('DemoSessionService (#24)', () => {
       { tenant_id: 'demo-kiosco', template: 'kiosco', last_full_reset_at: clock.now.toISOString() },
     ]);
     expect(await tenantManager.getTenantName('demo-kiosco')).toBe('Kiosco Demo');
-    const sales = tenantManager.getTenantDb('demo-kiosco').prepare('SELECT COUNT(*) AS n FROM sales').get() as { n: number };
+    const sales = await tenantManager.forTenant('demo-kiosco').selectFrom('sales').select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow();
     expect(sales.n).toBeGreaterThan(0);
     expect(await service.isDemoTenant('demo-kiosco')).toBe(true);
     expect(await service.templateOf('demo-kiosco')).toBe('kiosco');

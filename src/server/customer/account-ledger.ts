@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
+import { inChunks } from '../db/pg/sql-helpers.ts';
 import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 
 export type LedgerMovement = {
@@ -73,6 +74,49 @@ export async function postToBalance(
     .execute();
 
   return { movementId, amount: updated.amount, previousBalance: roundMoney(balanceAfter - updated.amount), balanceAfter };
+}
+
+/**
+ * Una serie de movimientos de un cliente, de una vez (las semillas): bloquea al cliente, encadena
+ * los saldos en orden y escribe el extracto en un insert y el saldo final en un `UPDATE`. El
+ * resultado es el de llamar a `postToBalance` por cada uno. `false` si el cliente no existe.
+ */
+export async function postSeriesToBalance(
+  db: Kysely<TenantDatabase>,
+  customerId: string,
+  series: { movement: LedgerMovement; now: string }[],
+): Promise<boolean> {
+  if (!db.isTransaction) {
+    return await db.transaction().execute(async (trx) => await postSeriesToBalance(trx, customerId, series));
+  }
+  const customer = await db.selectFrom('customers').select('balance').where('id', '=', customerId).forUpdate().executeTakeFirst();
+  if (customer === undefined) {
+    return false;
+  }
+  const last = series.at(-1);
+  if (last === undefined) {
+    return true;
+  }
+  let balance = customer.balance ?? 0;
+  const rows = series.map(({ movement, now }) => {
+    const amount = roundMoney(movement.delta);
+    balance = roundMoney(balance + amount);
+    return {
+      id: `mov_${randomUUID()}`,
+      customer_id: customerId,
+      type: movement.type,
+      amount,
+      balance_after: balance,
+      description: movement.description,
+      sale_id: movement.saleId ?? null,
+      created_at: now,
+    };
+  });
+  for (const chunk of inChunks(rows)) {
+    await db.insertInto('account_movements').values(chunk).execute();
+  }
+  await db.updateTable('customers').set({ balance, updated_at: last.now }).where('id', '=', customerId).execute();
+  return true;
 }
 
 /**

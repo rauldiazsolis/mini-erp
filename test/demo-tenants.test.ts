@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import type { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,10 +13,6 @@ import {
 import { setupTestDb } from './helpers/test-db.ts';
 
 const pgDb = setupTestDb();
-
-function count(db: DatabaseSync, sql: string, ...params: string[]): number {
-  return (db.prepare(sql).get(...params) as { n: number }).n;
-}
 
 async function insertUser(id: string): Promise<void> {
   await pgDb()
@@ -41,12 +36,15 @@ describe('Templates de demo (#9)', () => {
   it('seedDemoSession siembra el catálogo del preset y los clientes demo, sin historial', async () => {
     const manager = new TenantManager(pgDb(), { inMemory: true });
     await manager.createTenant({ id: 'demo-a', slug: 'demo-a', name: 'Demo Almacen' });
-    const db = manager.getTenantDb('demo-a');
+    const db = manager.forTenant('demo-a');
     await seedDemoSession(db, 'almacen');
-    expect(count(db, 'SELECT COUNT(*) AS n FROM products WHERE sku = ?', 'ALM-001')).toBe(1);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM products WHERE sku LIKE ?', 'KIO-%')).toBe(0);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM customers')).toBe(DEMO_CUSTOMERS.length);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM sales')).toBe(0);
+    const skus = (await db.selectFrom('products').select('sku').execute()).map((p) => p.sku);
+    expect(skus.filter((sku) => sku === 'ALM-001')).toHaveLength(1);
+    expect(skus.filter((sku) => sku.startsWith('KIO-'))).toHaveLength(0);
+    // Cada producto, con su stock en la sucursal del comercio
+    expect(await db.selectFrom('stock').select('product_id').where('branch_id', '=', 'branch-central').execute()).toHaveLength(skus.length);
+    expect(await db.selectFrom('customers').select('id').execute()).toHaveLength(DEMO_CUSTOMERS.length);
+    expect(await db.selectFrom('sales').select('id').execute()).toHaveLength(0);
   });
 });
 

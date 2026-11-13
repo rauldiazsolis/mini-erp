@@ -1,7 +1,7 @@
-import type { Kysely } from 'kysely';
+import type { Insertable, Kysely } from 'kysely';
 import { isRealDay, pickDay } from '../../shared/argentina-day.ts';
 import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
-import { jsonValue } from '../db/pg/sql-helpers.ts';
+import { inChunks, jsonValue } from '../db/pg/sql-helpers.ts';
 
 /**
  * Escritura de ventas, cobranzas y movimientos de caja (#20): el payload completo y las columnas
@@ -62,31 +62,71 @@ function instant(iso: string): string {
   return new Date(iso).toISOString();
 }
 
+/** Un documento con su caja y el `created_at` de su fila: lo que reciben las escrituras en lote. */
+export type Stamped<T> = { record: T; origin: DocumentOrigin; receivedAt: string };
+
 /**
- * `receivedAt` es el `created_at` de la fila: el `createdAt` del evento o, sin él, el momento del push.
- * Devuelve el día de la venta (el que se cobra, #21). Reenviarla no le cambia la caja ni el equipo cobrado.
+ * La fila de una venta: el payload y sus columnas derivadas. `receivedAt` es el `created_at` de la
+ * fila: el `createdAt` del evento o, sin él, el momento del push.
  */
-export async function saveSale(db: Kysely<TenantDatabase>, sale: SaleRecord, origin: DocumentOrigin, receivedAt: string): Promise<string | null> {
+function saleRow(sale: SaleRecord, origin: DocumentOrigin, receivedAt: string): Insertable<TenantDatabase['sales']> {
   const ticketDate = numberedDay(sale.ticket);
-  const day = pickDay(ticketDate, [sale.createdAt, receivedAt]);
+  return {
+    id: sale.id,
+    payload: jsonValue(sale),
+    device_id: origin.deviceId,
+    branch: origin.branch,
+    point_of_sale: origin.pointOfSale,
+    total: sale.total,
+    voids_sale_id: sale.voidsSaleId ?? null,
+    created_at: instant(receivedAt),
+    day: pickDay(ticketDate, [sale.createdAt, receivedAt]),
+    customer_id: sale.customerId ?? null,
+    ticket_date: ticketDate,
+    ticket_number: numberedNumber(sale.ticket),
+    register_id: origin.registerId ?? null,
+    charge_device: origin.chargeDevice ?? null,
+  };
+}
+
+function customerPaymentRow(
+  payment: CustomerPaymentRecord,
+  origin: DocumentOrigin,
+  receivedAt: string,
+): Insertable<TenantDatabase['customer_payments']> {
+  const receiptDate = numberedDay(payment.receipt);
+  return {
+    id: payment.id,
+    customer_id: payment.customerId,
+    payload: jsonValue(payment),
+    device_id: origin.deviceId,
+    branch: origin.branch,
+    point_of_sale: origin.pointOfSale,
+    voids_payment_id: payment.voidsPaymentId ?? null,
+    created_at: instant(receivedAt),
+    day: pickDay(receiptDate, [payment.createdAt, receivedAt]),
+    receipt_date: receiptDate,
+    receipt_number: numberedNumber(payment.receipt),
+  };
+}
+
+function cashMovementRow(movement: CashMovementRecord, origin: DocumentOrigin, receivedAt: string): Insertable<TenantDatabase['cash_movements']> {
+  return {
+    id: movement.id,
+    payload: jsonValue(movement),
+    device_id: origin.deviceId,
+    branch: origin.branch,
+    point_of_sale: origin.pointOfSale,
+    created_at: instant(receivedAt),
+    day: pickDay(undefined, [movement.createdAt, receivedAt]),
+  };
+}
+
+/** Reenviar una venta no le cambia la caja ni el equipo cobrado. */
+async function upsertSales(db: Kysely<TenantDatabase>, rows: Insertable<TenantDatabase['sales']>[]): Promise<void> {
   await db
     .insertInto('sales')
-    .values({
-      id: sale.id,
-      payload: jsonValue(sale),
-      device_id: origin.deviceId,
-      branch: origin.branch,
-      point_of_sale: origin.pointOfSale,
-      total: sale.total,
-      voids_sale_id: sale.voidsSaleId ?? null,
-      created_at: instant(receivedAt),
-      day,
-      customer_id: sale.customerId ?? null,
-      ticket_date: ticketDate,
-      ticket_number: numberedNumber(sale.ticket),
-      register_id: origin.registerId ?? null,
-      charge_device: origin.chargeDevice ?? null,
-    })
+    .values(rows)
     .onConflict((oc) =>
       oc.column('id').doUpdateSet((eb) => ({
         payload: eb.ref('excluded.payload'),
@@ -99,7 +139,23 @@ export async function saveSale(db: Kysely<TenantDatabase>, sale: SaleRecord, ori
       })),
     )
     .execute();
-  return day;
+}
+
+/** Devuelve el día de la venta (el que se cobra, #21). */
+export async function saveSale(db: Kysely<TenantDatabase>, sale: SaleRecord, origin: DocumentOrigin, receivedAt: string): Promise<string | null> {
+  const row = saleRow(sale, origin, receivedAt);
+  await upsertSales(db, [row]);
+  return row.day ?? null;
+}
+
+/**
+ * Muchas ventas de una vez (las semillas): las mismas filas que `saveSale`, en inserts de varias
+ * filas. Los ids no se repiten dentro de la lista.
+ */
+export async function saveSales(db: Kysely<TenantDatabase>, sales: Stamped<SaleRecord>[]): Promise<void> {
+  for (const chunk of inChunks(sales)) {
+    await upsertSales(db, chunk.map((s) => saleRow(s.record, s.origin, s.receivedAt)));
+  }
 }
 
 /** Una cobranza nunca se reescribe: devuelve `false` si ya estaba. */
@@ -109,26 +165,34 @@ export async function saveCustomerPayment(
   origin: DocumentOrigin,
   receivedAt: string,
 ): Promise<boolean> {
-  const receiptDate = numberedDay(payment.receipt);
   const inserted = await db
     .insertInto('customer_payments')
-    .values({
-      id: payment.id,
-      customer_id: payment.customerId,
-      payload: jsonValue(payment),
-      device_id: origin.deviceId,
-      branch: origin.branch,
-      point_of_sale: origin.pointOfSale,
-      voids_payment_id: payment.voidsPaymentId ?? null,
-      created_at: instant(receivedAt),
-      day: pickDay(receiptDate, [payment.createdAt, receivedAt]),
-      receipt_date: receiptDate,
-      receipt_number: numberedNumber(payment.receipt),
-    })
+    .values(customerPaymentRow(payment, origin, receivedAt))
     .onConflict((oc) => oc.column('id').doNothing())
     .returning('id')
     .executeTakeFirst();
   return inserted !== undefined;
+}
+
+/** Muchas cobranzas de una vez (las semillas); las que ya estaban no se tocan. */
+export async function saveCustomerPayments(db: Kysely<TenantDatabase>, payments: Stamped<CustomerPaymentRecord>[]): Promise<void> {
+  for (const chunk of inChunks(payments)) {
+    await db
+      .insertInto('customer_payments')
+      .values(chunk.map((p) => customerPaymentRow(p.record, p.origin, p.receivedAt)))
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute();
+  }
+}
+
+async function upsertCashMovements(db: Kysely<TenantDatabase>, rows: Insertable<TenantDatabase['cash_movements']>[]): Promise<void> {
+  await db
+    .insertInto('cash_movements')
+    .values(rows)
+    .onConflict((oc) =>
+      oc.column('id').doUpdateSet((eb) => ({ payload: eb.ref('excluded.payload'), day: eb.ref('excluded.day') })),
+    )
+    .execute();
 }
 
 export async function saveCashMovement(
@@ -137,19 +201,12 @@ export async function saveCashMovement(
   origin: DocumentOrigin,
   receivedAt: string,
 ): Promise<void> {
-  await db
-    .insertInto('cash_movements')
-    .values({
-      id: movement.id,
-      payload: jsonValue(movement),
-      device_id: origin.deviceId,
-      branch: origin.branch,
-      point_of_sale: origin.pointOfSale,
-      created_at: instant(receivedAt),
-      day: pickDay(undefined, [movement.createdAt, receivedAt]),
-    })
-    .onConflict((oc) =>
-      oc.column('id').doUpdateSet((eb) => ({ payload: eb.ref('excluded.payload'), day: eb.ref('excluded.day') })),
-    )
-    .execute();
+  await upsertCashMovements(db, [cashMovementRow(movement, origin, receivedAt)]);
+}
+
+/** Muchos movimientos de caja de una vez (las semillas). Los ids no se repiten dentro de la lista. */
+export async function saveCashMovements(db: Kysely<TenantDatabase>, movements: Stamped<CashMovementRecord>[]): Promise<void> {
+  for (const chunk of inChunks(movements)) {
+    await upsertCashMovements(db, chunk.map((m) => cashMovementRow(m.record, m.origin, m.receivedAt)));
+  }
 }

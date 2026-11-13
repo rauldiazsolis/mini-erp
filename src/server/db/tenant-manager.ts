@@ -18,12 +18,6 @@ export type TenantRecord = {
   created_at: string;
 };
 
-export type ConsolidatedStockItem = {
-  productId: string;
-  quantity: number;
-  updatedAt: string;
-};
-
 export type CreateTenantParams = {
   id: string;
   slug: string;
@@ -185,19 +179,18 @@ export class TenantManager {
     const now = options.now ?? new Date().toISOString();
     await createTenantSchema(this.database.root, tenantId);
     try {
+      // Transitorio: el archivo SQLite del comercio sigue naciendo con él, vacío (lo esperan el backup
+      // y `runMigrations`); ya no recibe ni la sucursal ni la semilla. Se va al cerrar la fase 4.
+      this.getTenantDb(tenantId);
+      // La sucursal por defecto y la semilla, juntas
       await this.forTenant(tenantId)
-        .insertInto('branches')
-        .values({ id: DEFAULT_BRANCH_ID, name: 'Sucursal Central', code: 'CENTRAL', created_at: now })
-        .execute();
-
-      // SQLite, hasta cerrar la fase 4
-      const tenantDb = this.getTenantDb(tenantId);
-      tenantDb
-        .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
-        .run(DEFAULT_BRANCH_ID, 'Sucursal Central', 'CENTRAL', now);
-      if (options.seedDemoData === true) {
-        await seedDemoTenant(tenantDb, DEFAULT_BRANCH_ID);
-      }
+        .transaction()
+        .execute(async (trx) => {
+          await trx.insertInto('branches').values({ id: DEFAULT_BRANCH_ID, name: 'Sucursal Central', code: 'CENTRAL', created_at: now }).execute();
+          if (options.seedDemoData === true) {
+            await seedDemoTenant(trx, DEFAULT_BRANCH_ID);
+          }
+        });
     } catch (err: unknown) {
       await dropTenantSchema(this.database.root, tenantId);
       throw err;
@@ -229,20 +222,6 @@ export class TenantManager {
         rmSync(path, { force: true });
       }
     }
-  }
-
-  async getConsolidatedStock(tenantDb: DatabaseSync): Promise<ConsolidatedStockItem[]> {
-    const rows = tenantDb
-      .prepare(
-        'SELECT product_id, SUM(quantity) as quantity, MAX(updated_at) as updated_at FROM stock GROUP BY product_id',
-      )
-      .all() as { product_id: string; quantity: number | null; updated_at: string }[];
-
-    return rows.map((r) => ({
-      productId: r.product_id,
-      quantity: r.quantity ?? 0,
-      updatedAt: r.updated_at,
-    }));
   }
 
   closeAll(): void {
