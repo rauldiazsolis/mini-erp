@@ -1,7 +1,8 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 5 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
-migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
+Fecha: 2026-11-11. Estado: **terminada** (2026-11-13, las seis fases; ver "Estado"), en la 0.18.0.
+Reemplaza la spec de migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es
+de SQLite.
 
 ## Objetivo
 
@@ -221,6 +222,33 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
   - **Para la fase 6**: `deploy/README.md` todavía describe `pre-migracion/`, los `.sqlite` y su
     restauración desde el backup; `provision.sh` crea `/var/lib/mini-erp` (hoy solo el home de
     `minierp`). El issue #77 (`busy_timeout` de SQLite) queda sin objeto al llegar a `main`.
+    (Hecho en la fase 6.)
+
+- **Fase 6, hecha** (2026-11-13): la infraestructura. Lo decidido, en "Decidido en la fase 6" (abajo).
+  - **Backup** (`src/server/backup/pg-backup.ts`, `scripts/backup.ts`, `test/backup.test.ts` con
+    restauración real): `pg_dump -Fc` de `DATABASE_URL` a `BACKUP_DIR`, un
+    `minierp-AAAA-MM-DDTHH-MM-SSZ.dump` (UTC) por corrida, escrito a `.tmp` y renombrado. Un
+    `--exclude-schema` por cada comercio de `system.demo_tenants`, con el nombre exacto entre comillas
+    (nunca por prefijo). Retención de 7 días por la fecha del nombre (y los `.tmp` de más de 24 h),
+    solo después de un dump bueno. La contraseña de la URL, si hay, va por `PGPASSWORD`.
+  - **`provision.sh`**: PostgreSQL 16 de apt con el cluster en el disco adicional `/mnt/pgdata`
+    (aborta si no está montado, con las instrucciones; aborta si el cluster de apt tiene bases o si
+    el disco trae un cluster que la instancia no conoce), locale `C.UTF-8`, `conf.d/mini-erp.conf`
+    (`shared_buffers=64MB`, `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=20`,
+    `effective_cache_size=192MB`, `random_page_cost=1.1`, `listen_addresses=''`), drop-in
+    `RequiresMountsFor`, swap de 1 GB con `swappiness` 10, rol `minierp` por `peer` sin contraseña,
+    base `minierp` (`template0`, `C` / `C.UTF-8`) con `unaccent` (creada por `minierp`), sudoers de
+    `deploy` con el backup, `deploy` en `systemd-journal` y `DATABASE_URL` agregada a un
+    `/etc/mini-erp/env` existente.
+  - **`deploy.sh`**: la copia previa (`systemctl start mini-erp-backup.service`) antes de activar; si
+    falla, no activa. Si la nueva falla y la anterior tampoco arranca, dice qué dump restaurar.
+  - **Units**: `mini-erp.service` y `mini-erp-backup.service` con `Requires`/`After` de
+    `postgresql.service`; el servicio, sin `ReadWritePaths`; el backup, con `UMask=0077` y escritura
+    solo en la carpeta de backups.
+  - **Documentación**: `deploy/README.md` (el disco, la provisión, las migraciones con la copia
+    previa, los backups, la restauración y el paso de producción), `README.md`, `AGENTS.md`
+    definitivo y `docs/historia.md`. La versión pasa a la **0.18.0** y con ella se congela la línea
+    de base v1 de cada esquema.
 
 ## Decidido en la fase 4 (2026-11-12)
 
@@ -306,7 +334,30 @@ Además:
    - Las escrituras sueltas del admin anónimo durante el reinicio no se cubren: son de a una fila y la
      ventana es de milisegundos.
 
-## Para decidir en las fases que siguen
+## Decidido en la fase 6 (2026-11-13)
+
+1. **`DATABASE_URL` con el usuario explícito**: `postgres://minierp@/minierp?host=/var/run/postgresql`.
+   Por el socket con `peer`, sin contraseña (`/etc/mini-erp/env` sigue sin secretos); el usuario va
+   en la URL porque `pg` no lo toma del sistema si falta `$USER`, como en un servicio de systemd.
+2. **La copia previa se saltea en la transición**: si la versión activa es anterior a PostgreSQL
+   (no tiene `src/server/backup/pg-backup.ts`) no hay nada que copiar, y su backup es de SQLite;
+   tampoco en el primer deploy. En los demás, si la copia falla, la versión nueva no se activa.
+3. **Demos vacías tras restaurar**: el dump no trae los esquemas de las demos pero sí sus filas de
+   `system.demo_tenants`. Una base restaurada arranca con los comercios demo vacíos; se resuelve
+   antes de arrancar con `UPDATE system.demo_tenants SET last_full_reset_at = '2000-01-01T00:00:00.000Z'`
+   (el barrido del arranque hace el reinicio total) o después, con el reinicio total desde
+   Plataforma → Demos. No se respaldan las demos: se vuelven a sembrar.
+4. **`BACKUP_DIR` por omisión `backups`** (relativa al directorio actual), como en desarrollo; en
+   producción, `/var/lib/mini-erp-backups` desde `/etc/mini-erp/env`.
+5. **`ReadWritePaths`**: `mini-erp.service` ya no escribe archivos (`ProtectSystem=strict` sin
+   `ReadWritePaths`); solo el backup escribe, en su carpeta. Por eso volver a la versión de SQLite en
+   la transición pide un drop-in con `ReadWritePaths=/var/lib/mini-erp /var/lib/mini-erp-backups`
+   (`deploy/README.md`, "Volver a SQLite durante la transición").
+6. **`unaccent` la crea `minierp`**, no `postgres`: es "trusted" y `minierp` es dueño de la base.
+   Así es su dueño y un `pg_restore --clean` como `minierp` la puede borrar y volver a crear (con
+   la extensión de `postgres`, falla con "must be owner of extension unaccent").
+
+## Para decidir después
 
 1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.

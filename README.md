@@ -103,7 +103,7 @@ Connector API en `/connector`. Todo va a la base de `DATABASE_URL`, que el arran
 Fuera de producción, el arranque siembra datos de desarrollo si no existen y los lista en la consola:
 usuarios con la contraseña `admin123` (`root@local.test`, `soporte@local.test`, `dueno-a@local.test`
 y otros), un comercio por rubro con 30 días de ventas y cajas con key fija (`mpos_dev_demo_key_12345`
-es la Caja 1 del Kiosco). Para sembrar de nuevo, se borran la carpeta de datos y la base (`dropdb minierp` y otra vez `createdb`). Con
+es la Caja 1 del Kiosco). Para sembrar de nuevo, se borra la base (`dropdb minierp` y otra vez el `createdb`). Con
 `NODE_ENV=production` no se crea nada de eso; el `root` se crea una vez con
 `node scripts/create-root.ts` (pide email, nombre y una contraseña de al menos 8 caracteres).
 
@@ -129,7 +129,8 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` (hasta que pase a `pg_dump`, sale con error) |
+| `DATABASE_URL` | (obligatoria) | La base de PostgreSQL (`postgres://usuario:clave@host:5432/base`). En producción, por el socket local y sin contraseña: `postgres://minierp@/minierp?host=/var/run/postgresql` |
+| `BACKUP_DIR` | `backups` | Carpeta de los backups de `node scripts/backup.ts` |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |
 | `DEMO_SESSIONS` | `on` | `off` apaga `POST /connector/demo-sessions` (404) y los comercios demo |
@@ -145,8 +146,12 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 
 Publicado en **https://mini.contax.ar** (AWS Lightsail detrás de Caddy; `mini.contax.com.ar`
 redirige ahí). Cada tag `v*` corre el CI entero y despliega por SSH, con migraciones en modo
-mantenimiento y vuelta a la versión anterior si la nueva no responde. Backups: snapshots diarios de
-Lightsail y una copia nocturna de las bases reales. La guía de operación está en
+mantenimiento y vuelta a la versión anterior si la nueva no responde. PostgreSQL 16 corre en la
+misma instancia, con los datos en un disco aparte.
+
+Backups: snapshots diarios de Lightsail y `node scripts/backup.ts`, un `pg_dump -Fc` de toda la base
+salvo los comercios demo, cada noche y antes de cada deploy (si esa copia falla, la versión nueva no
+se activa), con 7 días de retención. La guía de operación, con la restauración, está en
 [`deploy/README.md`](./deploy/README.md).
 
 ## Documentación

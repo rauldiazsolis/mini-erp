@@ -39,7 +39,7 @@ type UserIds = Record<DevUserKey, string>;
 /**
  * Datos de desarrollo (#21): usuarios de cada rol, un comercio por rubro con un estado de créditos
  * distinto y un par de demos. Idempotente: lo que ya existe no se toca; una demo vencida se vuelve
- * a crear. Para sembrar de nuevo, se borran la carpeta de datos de desarrollo y la base de `DATABASE_URL`.
+ * a crear. Para sembrar de nuevo, se borra la base de `DATABASE_URL` y se vuelve a crear.
  */
 export async function ensureDevData(deps: Deps): Promise<DevInfo> {
   const ids = await ensureUsers(deps);
