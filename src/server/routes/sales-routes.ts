@@ -5,10 +5,11 @@ import { requirePermission } from '../middleware/permission-middleware.ts';
 import { salesQueryServiceDef } from '../di/container.ts';
 import type { SalesQueryService } from '../sales/sales-query-service.ts';
 import { DomainError, sendError } from '../errors.ts';
-import { DAY_PATTERN } from '../../shared/argentina-day.ts';
+import { isRealDay } from '../../shared/argentina-day.ts';
 import { routeParam } from '../http/route-param.ts';
 
-const day = z.string().regex(DAY_PATTERN, 'La fecha tiene que ser AAAA-MM-DD');
+// Un día que existe: `2026-02-31` no entra en una columna `date`
+const day = z.string().refine(isRealDay, 'La fecha tiene que ser AAAA-MM-DD');
 const optionalText = z.string().optional();
 const base = { from: day, to: day, branch: optionalText, pointOfSale: optionalText };
 const paging = {

@@ -1,21 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
+import { sql } from 'kysely';
+import { argentinaDay as argentinaDaySql } from '../src/server/db/pg/sql-helpers.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 import {
   argentinaDay, argentinaHour, argentinaToday, shiftDay, daysBetween, pickDay,
 } from '../src/shared/argentina-day.ts';
 
-describe('día argentino (#20)', () => {
-  const db = new DatabaseSync(':memory:');
+const db = setupTestDb();
 
+describe('día argentino (#20)', () => {
   it.each([
     ['2026-10-02T02:59:59.999Z', '2026-10-01'],
     ['2026-10-02T03:00:00.000Z', '2026-10-02'],
     ['2026-10-02T12:00:00.000Z', '2026-10-02'],
     ['2026-10-01T23:30:00-03:00', '2026-10-01'],
     ['2026-01-01T01:00:00.000Z', '2025-12-31'],
-  ])('%s → %s, igual que date(x, "-3 hours") de SQLite', (iso, day) => {
+  ])('%s → %s, igual que argentinaDay() en PostgreSQL', async (iso, day) => {
     expect(argentinaDay(iso)).toBe(day);
-    expect(db.prepare("SELECT date(?, '-3 hours') AS d").get(iso)).toEqual({ d: day });
+    const { rows } = await sql<{ d: string }>`SELECT ${argentinaDaySql(sql<string>`${iso}::timestamptz`)} AS d`.execute(db().root);
+    expect(rows).toEqual([{ d: day }]);
   });
 
   it('un instante inválido no tiene día', () => {

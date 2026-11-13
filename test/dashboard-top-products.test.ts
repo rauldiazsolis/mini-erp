@@ -1,28 +1,39 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
 import { initTenantDb } from '../src/server/db/tenant-db.ts';
+import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { DashboardService } from '../src/server/dashboard/dashboard-service.ts';
 import { lineTotal, saleLineSchema } from '../src/server/dashboard/sale-lines.ts';
 import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
 import { argentinaToday } from '../src/shared/argentina-day.ts';
+import { setupTestDb } from './helpers/test-db.ts';
 
-function insertProduct(db: DatabaseSync, id: string, name: string, price: number): void {
+const pgDb = setupTestDb();
+
+async function insertProduct(db: Kysely<TenantDatabase>, id: string, name: string, price: number): Promise<void> {
   const now = new Date().toISOString();
-  db.prepare('INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(
-    id,
-    `SKU-${id}`,
-    name,
-    price,
-    now,
-    now,
-  );
+  await db.insertInto('products').values({ id, sku: `SKU-${id}`, name, price, created_at: now, updated_at: now }).execute();
 }
 
-function insertSale(db: DatabaseSync, id: string, payload: string, total: number): void {
-  db.prepare(
-    `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at, day)
-     VALUES (?, ?, 'pos_1', 'CENTRAL', 'Caja 1', ?, NULL, ?, ?)`,
-  ).run(id, payload, total, new Date().toISOString(), argentinaToday(new Date()));
+/** `payload` es lo que queda en la columna `jsonb`: un objeto o, para el caso roto, cualquier otra cosa. */
+async function insertSale(db: Kysely<TenantDatabase>, id: string, payload: unknown, total: number): Promise<void> {
+  await db
+    .insertInto('sales')
+    .values({
+      id,
+      payload: jsonValue(payload),
+      device_id: 'pos_1',
+      branch: 'CENTRAL',
+      point_of_sale: 'Caja 1',
+      total,
+      voids_sale_id: null,
+      created_at: new Date().toISOString(),
+      day: argentinaToday(new Date()),
+    })
+    .execute();
 }
 
 describe('Total de línea como el POS (#15)', () => {
@@ -39,21 +50,21 @@ describe('Total de línea como el POS (#15)', () => {
 });
 
 describe('Ranking de más vendidos con ventas del POS (#15)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
 
-  beforeEach(() => {
-    db = new DatabaseSync(':memory:');
-    initTenantDb(db);
-    insertProduct(db, 'p1', 'Alfajor Triple Dulce de Leche', 950);
-    insertProduct(db, 'p2', 'Gaseosa 500 ml', 1000);
+  beforeEach(async () => {
+    await new TenantManager(pgDb(), { inMemory: true }).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
+    db = pgDb().forTenant('kiosco');
+    await insertProduct(db, 'p1', 'Alfajor Triple Dulce de Leche', 950);
+    await insertProduct(db, 'p2', 'Gaseosa 500 ml', 1000);
   });
 
   it('nombres del catálogo, importes con descuento, freeform agrupadas y productos borrados', async () => {
     const createdAt = new Date().toISOString();
-    insertSale(
+    await insertSale(
       db,
       's1',
-      JSON.stringify({
+      {
         id: 's1',
         status: 'closed',
         total: 3150,
@@ -65,13 +76,13 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
           { kind: 'freeform', description: 'Varios ', qty: 1, unitPrice: 500, discount: { type: 'amount', value: 100 } },
           { name: 'línea inventada', lineTotal: 99999 },
         ],
-      }),
+      },
       3150,
     );
-    insertSale(
+    await insertSale(
       db,
       's2',
-      JSON.stringify({
+      {
         id: 's2',
         status: 'closed',
         total: 500,
@@ -81,23 +92,24 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
           { kind: 'freeform', description: '  VARIOS', qty: 1, unitPrice: 300 },
           { kind: 'product', productId: 'p-borrado', qty: 1, unitPrice: 200 },
         ],
-      }),
+      },
       500,
     );
-    insertSale(
+    await insertSale(
       db,
       's3',
-      JSON.stringify({
+      {
         id: 's3',
         status: 'closed',
         total: -900,
         createdAt,
         payments: [{ method: 'cash', amount: -900 }],
         lines: [{ kind: 'product', productId: 'p2', qty: -1, unitPrice: 1000, discount: { type: 'percentage', value: 10 } }],
-      }),
+      },
       -900,
     );
-    insertSale(db, 's4', '{no es json', 0);
+    // Un payload que no es un objeto de venta (en `jsonb` no entra un JSON roto): se saltea
+    await insertSale(db, 's4', '{no es json', 0);
 
     const { topProducts } = await new DashboardService(db).getSummary({ period: 'today' });
 
@@ -124,8 +136,13 @@ describe('Ranking de más vendidos con ventas del POS (#15)', () => {
   });
 
   it('el historial simulado de las demos usa líneas y medios de pago del contrato', async () => {
-    insertProduct(db, 'p3', 'Yerba 1 kg', 3200);
+    // El generador es de las semillas, que todavía escriben SQLite
+    const db = new DatabaseSync(':memory:');
+    initTenantDb(db);
     const now = new Date().toISOString();
+    for (const [id, name, price] of [['p1', 'Alfajor Triple Dulce de Leche', 950], ['p2', 'Gaseosa 500 ml', 1000], ['p3', 'Yerba 1 kg', 3200]] as const) {
+      db.prepare('INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, `SKU-${id}`, name, price, now, now);
+    }
     db.prepare("INSERT INTO branches (id, name, code, created_at) VALUES ('b1', 'Central', 'CENTRAL', ?)").run(now);
     // Los clientes a los que el generador les vende (cuenta corriente y consumidor final)
     for (const [id, name] of [['cust-juan', 'Juan'], ['cust-cf', 'Consumidor Final']] as const) {

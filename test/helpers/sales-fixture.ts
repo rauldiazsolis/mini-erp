@@ -1,6 +1,7 @@
 import request from 'supertest';
 import type { Express } from 'express';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../../src/server/db/pg/tenant-schema.ts';
 
 export const D1 = '2026-10-01';
 export const D2 = '2026-10-02';
@@ -22,12 +23,10 @@ const sale = (id: string, createdAt: string, day: string, number: number, rest: 
  * - D1, Caja 2: s3 (medio desconocido 300, línea libre y un producto borrado).
  * - D2, Caja 1: s4 (anulación de s1), s5 (devolución −200 en efectivo), cp2 (anulación de cp1).
  */
-export async function seedSalesFixture(app: Express, token: string, tenantId: string, tenantDb: DatabaseSync): Promise<void> {
+export async function seedSalesFixture(app: Express, token: string, tenantId: string, tenantDb: Kysely<TenantDatabase>): Promise<void> {
   // El producto va directo a la base: el detalle del ticket busca su nombre por id
   const at = `${D1}T09:00:00.000Z`;
-  tenantDb
-    .prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p1', 'ALF-1', 'Alfajor', 500, ?, ?)")
-    .run(at, at);
+  await tenantDb.insertInto('products').values({ id: 'p1', sku: 'ALF-1', name: 'Alfajor', price: 500, created_at: at, updated_at: at }).execute();
   const key = await request(app)
     .post(`/api/tenants/${tenantId}/pos-registers`)
     .set('Authorization', `Bearer ${token}`)

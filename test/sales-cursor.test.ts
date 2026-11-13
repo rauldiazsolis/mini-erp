@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import type { DatabaseSync } from 'node:sqlite';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { createApp } from '../src/server/app.ts';
-import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.sqlite.ts';
+import { saveCashMovement, saveCustomerPayment, saveSale } from '../src/server/sales/records.ts';
 import type { ListResult } from '../src/shared/sales-types.ts';
 import { D1, D2, seedSalesFixture } from './helpers/sales-fixture.ts';
 import { setupTestDb } from './helpers/test-db.ts';
@@ -17,7 +18,7 @@ const pgDb = setupTestDb();
 describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
   let app: ReturnType<typeof createApp>['app'];
   let token: string;
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
   const tenantId = 'kiosco';
   const origin = { deviceId: 'dev-1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 
@@ -29,7 +30,7 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
     token = owner.token;
     await tenantManager.createTenant({ id: tenantId, slug: tenantId, name: 'Kiosco', ownerUserId: owner.user.id });
     await bundle.billing.grantSignupBonus(tenantId, owner.user.id);
-    db = tenantManager.getTenantDb(tenantId);
+    db = pgDb().forTenant(tenantId);
     await seedSalesFixture(app, token, tenantId, db);
   });
 
@@ -74,6 +75,18 @@ describe('Ventas, cobranzas y movimientos por cursor (#87)', () => {
     await saveCashMovement(db, { id: 'm4', direction: 'in', amount: 1, createdAt: `${D2}T22:00:00.000Z` }, origin, `${D2}T22:00:00.000Z`);
     const next = await list('cash-movements', `&pageSize=2&after=${encodeURIComponent(movements.nextCursor ?? '')}`);
     expect(ids(next)).toEqual(['m1']);
+  });
+
+  it.each([
+    ['un día que no existe', ['2026-02-31', `${D1}T10:00:00.000Z`, 's1']],
+    ['un instante ilegible', [D1, 'ayer', 's1']],
+    ['algo que no es texto', [D1, `${D1}T10:00:00.000Z`, 5]],
+  ])('un cursor con %s da 400, no un error de la base', async (_caso, parts) => {
+    const after = Buffer.from(JSON.stringify(parts)).toString('base64url');
+    const res = await request(app)
+      .get(`/api/tenants/${tenantId}/sales?from=${D1}&to=${D2}&after=${after}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
   });
 
   it('un cursor que no se entiende da 400', async () => {

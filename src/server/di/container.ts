@@ -200,11 +200,11 @@ export const customerServiceDef = fn.scoped((c) => new CustomerService(c.use(ten
 export const bulkServiceDef = fn.scoped((c) => new BulkService(c.use(legacyTenantSqliteDef)));
 export const importExportServiceDef = fn.scoped((c) => new ImportExportService(c.use(legacyTenantSqliteDef)));
 export const importServiceDef = fn.scoped((c) => new ImportService(c.use(legacyTenantSqliteDef)));
-export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(legacyTenantSqliteDef), c.use(clockDef)));
+export const dashboardSummaryServiceDef = fn.scoped((c) => new DashboardService(c.use(tenantDbDef), c.use(clockDef)));
 export const dashboardServiceDef = dashboardSummaryServiceDef;
 export const connectorServiceDef = fn.scoped((c) => new ConnectorService(c.use(tenantDbDef)));
 export const discrepancyServiceDef = fn.scoped((c) => new DiscrepancyService(c.use(tenantDbDef)));
-export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(legacyTenantSqliteDef)));
+export const salesQueryServiceDef = fn.scoped((c) => new SalesQueryService(c.use(tenantDbDef)));
 
 // --- FÁBRICAS DE CONTENEDOR Y SCOPES ---
 

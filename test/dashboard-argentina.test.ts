@@ -1,26 +1,35 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
+import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { DashboardService } from '../src/server/dashboard/dashboard-service.ts';
-import { saveSale } from '../src/server/sales/records.sqlite.ts';
+import { saveSale } from '../src/server/sales/records.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const caja = { deviceId: 'dev', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
 // 22:30 del 1/10 en Argentina; en UTC ya es el 2/10
 const now = new Date('2026-10-02T01:30:00.000Z');
 
-async function sale(db: DatabaseSync, id: string, createdAt: string, total: number, lines: unknown[], extra: Record<string, unknown> = {}): Promise<void> {
+async function sale(db: Kysely<TenantDatabase>, id: string, createdAt: string, total: number, lines: unknown[], extra: Record<string, unknown> = {}): Promise<void> {
   await saveSale(db, { id, status: 'closed', createdAt, total, lines, payments: [{ method: 'cash', amount: total }], ...extra }, caja, createdAt);
 }
 
 describe('dashboard con día argentino y anulaciones como el POS (#20)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
 
   beforeEach(async () => {
-    db = new DatabaseSync(':memory:');
-    initTenantDb(db);
+    await new TenantManager(pgDb(), { inMemory: true }).createTenant({ id: 'kiosco', slug: 'kiosco', name: 'Kiosco' });
+    db = pgDb().forTenant('kiosco');
     const at = now.toISOString();
-    db.prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p1', 'S1', 'Alfajor', 1000, ?, ?)").run(at, at);
-    db.prepare("INSERT INTO products (id, sku, name, price, created_at, updated_at) VALUES ('p2', 'S2', 'Gaseosa', 500, ?, ?)").run(at, at);
+    await db
+      .insertInto('products')
+      .values([
+        { id: 'p1', sku: 'S1', name: 'Alfajor', price: 1000, created_at: at, updated_at: at },
+        { id: 'p2', sku: 'S2', name: 'Gaseosa', price: 500, created_at: at, updated_at: at },
+      ])
+      .execute();
     // Ayer: c, anulada hoy por d
     await sale(db, 'c', '2026-09-30T15:00:00.000Z', 2000, [{ kind: 'product', productId: 'p1', qty: 2, unitPrice: 1000 }]);
     // Hoy (argentino): d anula c a las 19:00; a a las 20:00; b a las 21:30 (en UTC, 2/10)

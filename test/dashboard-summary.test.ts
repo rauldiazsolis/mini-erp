@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/server/app.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
-import { generateHistoricalDemoActivity } from '../src/server/seeds/demo-activity-generator.ts';
+import { jsonValue } from '../src/server/db/pg/sql-helpers.ts';
+import { saveSale } from '../src/server/sales/records.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
 const db = setupTestDb();
@@ -53,12 +54,46 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
       slug: 'kiosco-dash-test',
       name: 'Kiosco Dashboard Test',
       ownerUserId: registerRes.user.id,
-      seedDemoData: true,
     });
 
-    // Sembrar actividad histórica dinámica en la base del tenant
-    const tenantDb = tenantManager.getTenantDb(tenantId);
-    await generateHistoricalDemoActivity(tenantDb, 'branch-central');
+    // Catálogo y ventas de los últimos días en PostgreSQL (la semilla y su generador todavía escriben
+    // SQLite): fechas relativas a ahora, en la caja de CENTRAL
+    const tenantDb = db().forTenant(tenantId);
+    const nowIso = new Date().toISOString();
+    await tenantDb
+      .insertInto('products')
+      .values([
+        { id: 'p-alfajor', sku: 'ALF', name: 'Alfajor', price: 1000, tracks_stock: true, created_at: nowIso, updated_at: nowIso },
+        { id: 'p-gaseosa', sku: 'GAS', name: 'Gaseosa', price: 1500, tracks_stock: true, created_at: nowIso, updated_at: nowIso },
+      ])
+      .execute();
+    await tenantDb
+      .insertInto('stock')
+      .values([
+        { product_id: 'p-alfajor', branch_id: 'branch-central', quantity: 3, updated_at: nowIso },
+        { product_id: 'p-gaseosa', branch_id: 'branch-central', quantity: 40, updated_at: nowIso },
+      ])
+      .execute();
+    const caja = { deviceId: 'pos_caja_1', branch: 'CENTRAL', pointOfSale: 'Caja 1' };
+    for (const daysAgo of [0, 1, 2, 3]) {
+      const createdAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+      await saveSale(
+        tenantDb,
+        {
+          id: `venta-${String(daysAgo)}`,
+          status: 'closed',
+          createdAt,
+          total: 3500,
+          lines: [
+            { kind: 'product', productId: 'p-alfajor', qty: 2, unitPrice: 1000 },
+            { kind: 'product', productId: 'p-gaseosa', qty: 1, unitPrice: 1500 },
+          ],
+          payments: [{ method: 'cash', amount: 3500 }],
+        },
+        caja,
+        createdAt,
+      );
+    }
   });
 
   afterEach(() => {
@@ -140,15 +175,21 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   });
 
   it('la sucursal es su código, también para las alertas de stock (#59)', async () => {
-    const tenantDb = tenantManager.getTenantDb(tenantId);
+    const tenantDb = db().forTenant(tenantId);
     const now = new Date().toISOString();
-    const central = tenantDb.prepare("SELECT id FROM branches WHERE code = 'CENTRAL'").get() as { id: string };
-    tenantDb.prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)').run('branch-norte', 'Sucursal Norte', 'NORTE', now);
-    tenantDb
-      .prepare('INSERT INTO products (id, sku, name, price, category, tracks_stock, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
-      .run('p-solo-norte', 'SOLO-NORTE', 'Solo en Norte', 100, 'General', now, now);
-    tenantDb.prepare('INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)').run('p-solo-norte', central.id, 0, now);
-    tenantDb.prepare('INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)').run('p-solo-norte', 'branch-norte', 50, now);
+    const central = await tenantDb.selectFrom('branches').select('id').where('code', '=', 'CENTRAL').executeTakeFirstOrThrow();
+    await tenantDb.insertInto('branches').values({ id: 'branch-norte', name: 'Sucursal Norte', code: 'NORTE', created_at: now }).execute();
+    await tenantDb
+      .insertInto('products')
+      .values({ id: 'p-solo-norte', sku: 'SOLO-NORTE', name: 'Solo en Norte', price: 100, category: 'General', tracks_stock: true, created_at: now, updated_at: now })
+      .execute();
+    await tenantDb
+      .insertInto('stock')
+      .values([
+        { product_id: 'p-solo-norte', branch_id: central.id, quantity: 0, updated_at: now },
+        { product_id: 'p-solo-norte', branch_id: 'branch-norte', quantity: 50, updated_at: now },
+      ])
+      .execute();
 
     const alerted = async (query: string): Promise<boolean> => {
       const res = await request(app).get(`/api/tenants/${tenantId}/dashboard/summary?period=week${query}`).set('Authorization', `Bearer ${adminToken}`);
@@ -163,27 +204,27 @@ describe('Dashboard Summary API & Analytics (Etapa 3.2)', () => {
   });
 
   it('excluye ventas anuladas de los totales y del ranking de más vendidos', async () => {
-    const tenantDb = tenantManager.getTenantDb(tenantId);
+    const tenantDb = db().forTenant(tenantId);
     const nowIso = new Date().toISOString();
+    const base = { device_id: 'dev1', branch: 'CENTRAL', point_of_sale: 'Caja 1', total: 50000, created_at: nowIso };
 
-    // Insertar venta original
-    tenantDb.prepare(
-      `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at)
-       VALUES ('sale-original-to-void', ?, 'dev1', 'CENTRAL', 'Caja 1', 50000, NULL, ?)`
-    ).run(
-      JSON.stringify({
-        id: 'sale-original-to-void',
-        total: 50000,
-        lines: [{ productId: 'prod_test_void', name: 'Super Producto', qty: 10, unitPrice: 5000, lineTotal: 50000 }],
-      }),
-      nowIso
-    );
-
-    // Insertar anulación
-    tenantDb.prepare(
-      `INSERT INTO sales (id, payload, device_id, branch, point_of_sale, total, voids_sale_id, created_at)
-       VALUES ('sale-void-action', ?, 'dev1', 'CENTRAL', 'Caja 1', 50000, 'sale-original-to-void', ?)`
-    ).run(JSON.stringify({ id: 'sale-void-action' }), nowIso);
+    // Insertar venta original y su anulación
+    await tenantDb
+      .insertInto('sales')
+      .values([
+        {
+          ...base,
+          id: 'sale-original-to-void',
+          payload: jsonValue({
+            id: 'sale-original-to-void',
+            total: 50000,
+            lines: [{ productId: 'prod_test_void', name: 'Super Producto', qty: 10, unitPrice: 5000, lineTotal: 50000 }],
+          }),
+          voids_sale_id: null,
+        },
+        { ...base, id: 'sale-void-action', payload: jsonValue({ id: 'sale-void-action' }), voids_sale_id: 'sale-original-to-void' },
+      ])
+      .execute();
 
     const res = await request(app)
       .get(`/api/tenants/${tenantId}/dashboard/summary?period=today`)
