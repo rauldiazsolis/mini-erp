@@ -39,7 +39,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
     apiKey = (key.body as { rawKey: string }).rawKey;
   });
 
-  const db = (): DatabaseSync => tenantManager.getTenantDb(tenantId);
+  const db = () => pgDb().forTenant(tenantId);
   const push = (lotId: string, events: unknown[]) =>
     request(app)
       .post('/connector/sync/push')
@@ -63,9 +63,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
   it('el push guarda la caja de la key y a qué equipo se cobra (#21)', async () => {
     await pushWith('l-a', 'dev-1', [venta('ev-a', 'va', '2026-10-01T13:00:00.000Z')]);
     await pushWith('l-b', 'dev-2', [venta('ev-b', 'vb', '2026-10-01T14:00:00.000Z')]);
-    const rows = db().prepare('SELECT id, register_id, charge_device FROM sales ORDER BY id').all() as {
-      id: string; register_id: string | null; charge_device: string | null;
-    }[];
+    const rows = await db().selectFrom('sales').select(['id', 'register_id', 'charge_device']).orderBy('id').execute();
     expect(rows[0]).toMatchObject({ id: 'va', charge_device: '' });
     expect(rows[0]?.register_id).toMatch(/^reg_/);
     expect(rows[1]).toMatchObject({ id: 'vb', charge_device: 'dev-2', register_id: rows[0]?.register_id });
@@ -74,7 +72,7 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
   it('reenviar una venta no le cambia la caja ni el equipo cobrado (#21)', async () => {
     await pushWith('l-a', 'dev-1', [venta('ev-a', 'va', '2026-10-01T13:00:00.000Z')]);
     await pushWith('l-b', 'dev-2', [venta('ev-a2', 'va', '2026-10-01T13:00:00.000Z')]);
-    expect(db().prepare('SELECT charge_device FROM sales').get()).toEqual({ charge_device: '' });
+    expect(await db().selectFrom('sales').select('charge_device').execute()).toEqual([{ charge_device: '' }]);
   });
 
   it('el push completa día, cliente y números', async () => {
@@ -93,13 +91,13 @@ describe('escritura de ventas, cobranzas y movimientos con columnas (#20)', () =
         movement: { id: 'm1', direction: 'in', amount: 10, concept: 'Fondo', source: 'manual', createdAt: '2026-10-02T02:00:00.000Z' },
       },
     ]);
-    expect(db().prepare('SELECT day, customer_id, ticket_date, ticket_number FROM sales').get()).toEqual({
-      day: '2026-10-01', customer_id: 'c1', ticket_date: '2026-10-01', ticket_number: 7,
-    });
-    expect(db().prepare('SELECT day, receipt_date, receipt_number FROM customer_payments').get()).toEqual({
-      day: '2026-10-01', receipt_date: '2026-10-01', receipt_number: 2,
-    });
-    expect(db().prepare('SELECT day FROM cash_movements').get()).toEqual({ day: '2026-10-01' });
+    expect(await db().selectFrom('sales').select(['day', 'customer_id', 'ticket_date', 'ticket_number']).execute()).toEqual([
+      { day: '2026-10-01', customer_id: 'c1', ticket_date: '2026-10-01', ticket_number: 7 },
+    ]);
+    expect(await db().selectFrom('customer_payments').select(['day', 'receipt_date', 'receipt_number']).execute()).toEqual([
+      { day: '2026-10-01', receipt_date: '2026-10-01', receipt_number: 2 },
+    ]);
+    expect(await db().selectFrom('cash_movements').select('day').execute()).toEqual([{ day: '2026-10-01' }]);
   });
 
   it('la cobranza del admin se guarda con la forma del contrato', async () => {

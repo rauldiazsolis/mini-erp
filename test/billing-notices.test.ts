@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import { initTenantDb } from '../src/server/db/tenant-db.ts';
+import type { Kysely } from 'kysely';
+import { createTenantSchema } from '../src/server/db/pg/migrations/migrate.ts';
+import type { TenantDatabase } from '../src/server/db/pg/tenant-schema.ts';
 import { noticesFor } from '../src/server/notices/notice-service.ts';
 import { formatDayShort, formatPesos } from '../src/server/billing/money-text.ts';
 import type { BillingSummary } from '../src/shared/credits-types.ts';
+import { setupTestDb } from './helpers/test-db.ts';
+
+const pgDb = setupTestDb();
 
 const base: BillingSummary = {
   billable: true,
@@ -19,11 +23,11 @@ const base: BillingSummary = {
 };
 
 describe('avisos de créditos y de caja en el pull (#21)', () => {
-  let db: DatabaseSync;
+  let db: Kysely<TenantDatabase>;
 
-  beforeEach(() => {
-    db = new DatabaseSync(':memory:');
-    initTenantDb(db);
+  beforeEach(async () => {
+    await createTenantSchema(pgDb().root, 'kiosco');
+    db = pgDb().forTenant('kiosco');
   });
 
   it('textos fijos del servidor: pesos y DD/MM', () => {

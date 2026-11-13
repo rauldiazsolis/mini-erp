@@ -1,5 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
-import { listOpenDiscrepancies } from '../discrepancy/discrepancies.sqlite.ts';
+import type { Kysely } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { listOpenDiscrepancies } from '../discrepancy/discrepancies.ts';
 import { formatDayShort, formatPesos } from '../billing/money-text.ts';
 import type { BillingSummary } from '../../shared/credits-types.ts';
 import type { RegisterNoticeState } from '../../shared/register-types.ts';
@@ -23,7 +24,7 @@ export type NoticeContext = {
  * La lista vigente y completa de avisos de un equipo (#2), calculada en el momento: un aviso
  * desaparece cuando su causa se resuelve. Créditos y caja (#21) y las discrepancias abiertas que generó.
  */
-export async function noticesFor(db: DatabaseSync, ctx: NoticeContext): Promise<BackendNotice[]> {
+export async function noticesFor(db: Kysely<TenantDatabase>, ctx: NoticeContext): Promise<BackendNotice[]> {
   const notices: BackendNotice[] = [];
   const credits = creditsNotice(ctx.billing);
   if (credits !== undefined) notices.push(credits);

@@ -71,7 +71,7 @@ describe('restricción del admin por deuda (#21)', () => {
       .set('Idempotency-Key', 'l1')
       .send({ deviceId: 'dev-1', events: [{ id: 'e1', type: 'sale', createdAt: '2026-10-25T13:00:00.000Z', origin: { branch: 'CENTRAL', pointOfSale: 'Caja 1' }, sale: { id: 's1', total: 100, payments: [{ method: 'cash', amount: 100 }] } }] });
     expect(push.status).toBe(200);
-    expect(tenantManager.getTenantDb(tenantId).prepare('SELECT COUNT(*) AS n FROM sales').get()).toEqual({ n: 1 });
+    expect(await tenantManager.forTenant(tenantId).selectFrom('sales').select('id').execute()).toEqual([{ id: 's1' }]);
     const pull = await request(app)
       .post('/connector/sync/pull')
       .set('Authorization', `Bearer ${apiKey}`)

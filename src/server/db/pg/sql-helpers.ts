@@ -1,4 +1,4 @@
-import { sql, type Expression, type RawBuilder } from 'kysely';
+import { sql, type Expression, type RawBuilder, type Transaction } from 'kysely';
 
 /**
  * Un valor para una columna `jsonb`. `pg` convierte un array de JavaScript en un array de
@@ -65,4 +65,35 @@ const FOREIGN_KEY_VIOLATION = '23503';
 /** Si el error es de clave foránea (borrar un cliente que tiene cuenta corriente): el servicio lo traduce. */
 export function isForeignKeyViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === FOREIGN_KEY_VIOLATION;
+}
+
+/** Los códigos de PostgreSQL de un error pasajero: un deadlock o un fallo de serialización. */
+const TRANSIENT_ERRORS: ReadonlySet<unknown> = new Set(['40P01', '40001']);
+
+/**
+ * Si el error es pasajero (la base eligió esta transacción para romper un deadlock): reintentar la
+ * operación entera anda. No es un dato malo, así que nunca se guarda como un rechazo definitivo.
+ */
+export function isTransientError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && TRANSIENT_ERRORS.has(err.code);
+}
+
+/**
+ * Corre `work` dentro de un `SAVEPOINT` de la transacción. Si tira un error (también uno de
+ * PostgreSQL, que sin savepoint deja abortada la transacción entera), lo hecho por `work` se deshace
+ * solo, la transacción sigue sirviendo y el error sube a quien llama, que decide qué hacer con él.
+ */
+export async function inSavepoint<DB, T>(trx: Transaction<DB>, name: string, work: () => Promise<T>): Promise<T> {
+  const savepoint = sql.id(name);
+  await sql`SAVEPOINT ${savepoint}`.execute(trx);
+  let result: T;
+  try {
+    result = await work();
+  } catch (err: unknown) {
+    await sql`ROLLBACK TO SAVEPOINT ${savepoint}`.execute(trx);
+    await sql`RELEASE SAVEPOINT ${savepoint}`.execute(trx);
+    throw err;
+  }
+  await sql`RELEASE SAVEPOINT ${savepoint}`.execute(trx);
+  return result;
 }

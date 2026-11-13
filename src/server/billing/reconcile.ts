@@ -1,3 +1,4 @@
+import { sql } from 'kysely';
 import type { TenantManager } from '../db/tenant-manager.ts';
 import type { BillingService } from './billing-service.ts';
 
@@ -10,16 +11,31 @@ type Deps = { tenantManager: TenantManager; billing: BillingService };
 export async function reconcileCharges(deps: Deps): Promise<number> {
   let created = 0;
   for (const id of await deps.billing.billableTenantIds()) {
-    const groups = deps.tenantManager
-      .getTenantDb(id)
-      .prepare(
-        `SELECT register_id, COALESCE(charge_device, '') AS device, group_concat(DISTINCT day) AS days
-         FROM sales WHERE register_id IS NOT NULL AND voids_sale_id IS NULL AND day IS NOT NULL
-         GROUP BY register_id, COALESCE(charge_device, '')`,
-      )
-      .all() as { register_id: string; device: string; days: string }[];
-    for (const g of groups) {
-      created += await deps.billing.charge({ tenantId: id, registerId: g.register_id, chargeDevice: g.device, days: g.days.split(',') });
+    // Las combinaciones distintas de caja, equipo y día (`date`, se lee `YYYY-MM-DD`); los días se agrupan acá
+    const rows = await deps.tenantManager
+      .forTenant(id)
+      .selectFrom('sales')
+      .select((eb) => ['register_id', eb.fn.coalesce('charge_device', sql.lit('')).as('device'), 'day'])
+      .distinct()
+      .where('register_id', 'is not', null)
+      .where('voids_sale_id', 'is', null)
+      .where('day', 'is not', null)
+      .orderBy('register_id')
+      .orderBy('device')
+      .orderBy('day')
+      .execute();
+    const groups = new Map<string, { registerId: string; device: string; days: string[] }>();
+    for (const row of rows) {
+      if (row.register_id === null || row.day === null) {
+        continue;
+      }
+      const key = JSON.stringify([row.register_id, row.device]);
+      const group = groups.get(key) ?? { registerId: row.register_id, device: row.device, days: [] };
+      group.days.push(row.day);
+      groups.set(key, group);
+    }
+    for (const g of groups.values()) {
+      created += await deps.billing.charge({ tenantId: id, registerId: g.registerId, chargeDevice: g.device, days: g.days });
     }
   }
   return created;
