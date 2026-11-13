@@ -12,7 +12,7 @@ const db = setupTestDb();
 const HOUR = 60 * 60 * 1000;
 
 function setup(overrides: Partial<DemoConfig> = {}) {
-  const tenantManager = new TenantManager(db().system, { inMemory: true });
+  const tenantManager = new TenantManager(db());
   const apiKeyService = new ApiKeyService(db().system);
   const clock = { now: new Date('2026-10-05T15:00:00.000Z') };
   const service = new DemoSessionService({
@@ -66,7 +66,7 @@ describe('DemoSessionService (#24)', () => {
       { tenant_id: 'demo-kiosco', template: 'kiosco', last_full_reset_at: clock.now.toISOString() },
     ]);
     expect(await tenantManager.getTenantName('demo-kiosco')).toBe('Kiosco Demo');
-    const sales = tenantManager.getTenantDb('demo-kiosco').prepare('SELECT COUNT(*) AS n FROM sales').get() as { n: number };
+    const sales = await tenantManager.forTenant('demo-kiosco').selectFrom('sales').select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow();
     expect(sales.n).toBeGreaterThan(0);
     expect(await service.isDemoTenant('demo-kiosco')).toBe(true);
     expect(await service.templateOf('demo-kiosco')).toBe('kiosco');

@@ -17,7 +17,7 @@ describe('invitaciones por link (#19)', () => {
 
   beforeEach(async () => {
     clock = new Date('2026-10-01T10:00:00Z');
-    bundle = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }), now: () => clock });
+    bundle = createApp({ database: db(), tenantManager: new TenantManager(db()), now: () => clock });
     app = bundle.app;
     const body = await createOwnerAccount(bundle, { name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana' });
     owner = body.token;

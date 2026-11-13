@@ -27,7 +27,7 @@ describe('suspender comercios (#23)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date('2026-10-05T15:00:00.000Z') });
     app = bundle.app;
     await bundle.authService.ensureRoot({ email: 'root@x.com', password: 'password123', name: 'Root' });

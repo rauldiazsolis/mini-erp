@@ -1,6 +1,6 @@
 # De SQLite a PostgreSQL con Kysely
 
-Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 3 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
+Fecha: 2026-11-11. Estado: **aprobada**; en curso (fases 1 a 4 hechas) (ver "Estado"). Reemplaza, cuando termine, la spec de
 migraciones `2026-10-02-migraciones-mantenimiento-design.md` en todo lo que es de SQLite.
 
 ## Objetivo
@@ -165,25 +165,114 @@ commit, **sin PR**, se sube y se borra la rama de la sesión (local y remota).
     rol local no es superusuario).
   - **Para la fase 4**: `gift_credits` no tiene FK a `tenants` en la línea de base (el alta la borra a
     mano al compensar); se puede agregar con `ON DELETE CASCADE` mientras la v1 no esté congelada.
+    (Hecho en la fase 4.)
+
+- **Fase 4, hecha** (2026-11-13): los datos de cada comercio están en su esquema `tenant_<id>`;
+  ningún servicio, semilla ni ruta lee o escribe un `.sqlite`. Lo decidido, en "Decidido en la fase
+  4" (abajo).
+  - **Comercio**: `tenantDbDef` es `unbound<Kysely<TenantDatabase>>`, enlazado solo por
+    `createTenantScope(root, tenantId)` con `Database.forTenant`. `TenantManager` recibe solo la
+    `Database` (sin caché, `getTenantDb` ni archivos) y da `forTenant(id)` a los servicios de sistema
+    (demos, reconciliación, semillas). Los middlewares ya no ponen una base en el pedido.
+  - **Funciones compartidas que escriben varias tablas** reciben `db` y, si no es una transacción
+    (`db.isTransaction`), abren la suya: `writeStock`, `postToBalance`, `applyPendingFor`,
+    `applyPreset`, los `save*` de `records.ts`. Así el push, la importación y las semillas les pasan
+    su `trx`.
+  - **Sumas en SQL**: el stock (fila bloqueada con `FOR UPDATE`, `quantity + delta`) y el saldo
+    (`coalesce(balance, 0) + round(delta, 2) RETURNING`), así el kardex y el extracto cuadran con
+    escrituras simultáneas. Estados que se pisan (reservas, discrepancias) con `UPDATE` condicional.
+  - **El push**: el lote se toma con `INSERT … ON CONFLICT DO NOTHING RETURNING` (un pedido repetido
+    o simultáneo devuelve el estado guardado sin repetir efectos), se aplica **de a un lote por
+    comercio** (la fila de la primera sucursal, `FOR NO KEY UPDATE`: dos lotes que tocan los mismos
+    clientes en otro orden no se traban) y cada evento va en `inSavepoint` (`sql-helpers.ts`; en
+    Kysely 0.29 `savepoint()` solo existe en `ControlledTransaction`). Un error pasajero
+    (`isTransientError`: deadlock, serialización) no queda como aviso del evento: tumba el lote y el
+    POS lo reintenta. Un `stock-movement` reenviado en otro lote ya no vuelve a sumar (bug de
+    SQLite). Las reservas bloquean al cliente: dos pedidos a la vez no aprueban más que el límite.
+  - **La importación** corre en una transacción; la vista previa la deshace con un error centinela y
+    cada fila que escribe va en su savepoint (un choque de unicidad es error de esa fila).
+  - **`seq`** también en `stock_movements` (el kardex se lista por inserción). `sales`,
+    `customer_payments` y `cash_movements` desempatan por `id` (el cursor es `[day, created_at, id]`).
+  - **Ojo con `sql.table()`/`sql.ref()`**: en una sentencia cruda **raíz** (`sql\`…\`.execute(db)`)
+    no reciben el esquema de `withSchema`; solo dentro de un query builder. Toda consulta de comercio
+    arranca de `selectFrom`/`insertInto`/`updateTable`/`deleteFrom`.
+  - **Lo de SQLite que queda** (se va en la fase 5): las migraciones de `db/migrations/`, el worker,
+    `db/tenant-db.ts` y sus tests (que arman sus `.sqlite` con `openTenantDb`), y `runMigrations` en
+    el arranque, que ya no encuentra bases. El **backup** sigue copiando `.sqlite` (ya no hay): hasta
+    el `pg_dump` de la fase 6 no respalda nada de los comercios; no se publica antes. Guardián en
+    `test/pg-guards.test.ts`: fuera de eso, nadie abre SQLite.
+  - **Tests y e2e**: todos sobre PostgreSQL (`db().forTenant(id)`); el e2e lee las ventas y precios
+    del comercio con `e2e/system-db.ts` (`salesOf`, `productPrice`).
+
+## Decidido en la fase 4 (2026-11-12)
+
+Lo que quedaba "para decidir", resuelto antes de migrar los comercios.
+
+1. **Fechas imposibles e instantes ilegibles: se validan en la frontera, como el resto del evento.**
+   En `push-events.ts`, `ticket.date` y `receipt.date` tienen que ser un día que existe
+   (`z.iso.date()`: `2026-02-31` no pasa) y todo `createdAt` (el del sobre, el de la venta, la
+   cobranza y el movimiento de caja), un instante ISO 8601 con zona (`z.iso.datetime({ offset: true })`,
+   el `date-time` del contrato). Un evento que no cumple queda como `issue` del lote con su
+   `eventId`, igual que uno con el total mal: no se guarda nada suyo y el resto del lote se aplica.
+   No se adivina una fecha: el día de una venta decide el cargo de uso y el resumen de caja.
+   Un instante se escribe siempre normalizado (`toISOString()`), y lo que igual se le escape a la
+   validación (un año fuera de rango) lo ataja el savepoint del evento.
+2. **Redondeo en comercio: depende de quién manda el número.**
+   - **Push del POS: nunca se rechaza por decimales.** Un total del POS es coma flotante
+     (`0.1 + 0.2`), así que exigir 2 decimales rechazaría ventas buenas. La columna redondea al
+     centavo (`sales.total`, el importe de un movimiento de cuenta corriente) y el `payload` guarda
+     lo que mandó el POS, sin tocar. El saldo se suma en SQL sobre `numeric`: ya no acumula error
+     de coma flotante. Las cantidades (stock y kardex) se redondean a 4 decimales.
+   - **Admin: se valida.** Precio, límite de crédito, margen, cobranza y ajuste de cuenta corriente
+     entran con a lo sumo 2 decimales (`hasAtMostTwoDecimals` de `src/shared/money.ts`); con más,
+     `400` "Importe inválido". Los negativos y el cero siguen valiendo donde valían.
+   - **Importación: la fila con error.** Un precio, un límite, un margen o un saldo inicial con más
+     de 2 decimales da el error en esa fila (se ve en la vista previa) y el resto se importa.
+3. **FK que cambian comportamiento.**
+   - **`stock.product_id` queda sin FK**, igual que el kardex: el push de stock de un producto que
+     el comercio no tiene se guarda (el push nunca rechaza) y, cuando el producto aparece, su stock
+     ya está bien. Borrar un producto (`hard`) borra su stock a mano, en la misma transacción; el
+     kardex queda. `stock.branch_id` conserva su FK.
+   - **Un cliente con cuenta corriente no se borra.** `account_movements` y `account_holds` pasan
+     de `ON DELETE CASCADE` a sin acción: el borrado `hard` de un cliente con movimientos o
+     reservas da `409` ("tiene movimientos: archivalo") en vez de llevarse el libro. El admin solo
+     archiva; el reinicio parcial de demos ya borraba solo clientes sin movimientos.
+4. **`\u0000` en un lote: se quita al entrar.** PostgreSQL no lo admite ni en `text` ni en `jsonb`.
+   El push limpia el lote entero (`stripNul`, en claves y valores) antes de guardarlo y de aplicar
+   cada evento; `jsonValue()` hace lo mismo con todo lo que va a `jsonb`. Un carácter nulo nunca es
+   un dato: no vale perder una venta por él.
+5. **Slugs largos: `slugify` corta en 48 caracteres** (sin dejar un guion al final). El esquema
+   admite 56 (`tenant_` más el id entran en los 63 bytes de un identificador): quedan 8 para el
+   `-2`, `-3` que desambigua `TenantManager`.
+6. **`gift_credits.tenant_id` tiene FK a `tenants` con `ON DELETE CASCADE`** (línea de base de
+   sistema, todavía sin congelar): al compensar un alta, el bono se va con el comercio.
+
+Además:
+
+- **El día argentino en SQL** es `argentinaDay(expr)` (`db/pg/sql-helpers.ts`):
+  `((x - interval '3 hours') AT TIME ZONE 'UTC')::date`, UTC−3 fijo como en
+  `src/shared/argentina-day.ts`, sin depender de la zona de la sesión ni de `tzdata`.
+- **`TenantManager` recibe la `Database`**: crea el esquema (`createTenantSchema`), pone la sucursal
+  por defecto y, si eso falla, lo borra (`dropTenantSchema`). Un servicio de sistema que necesita
+  los datos de un comercio (demos, reconciliación, semillas) los pide con
+  `TenantManager.forTenant(id)`, que es `Database.forTenant`.
+- **El arranque migra todo PostgreSQL** (`migrateAll`: `system` y el esquema de cada comercio).
+- **El reinicio total de una demo** vacía las tablas del manifiesto (`TENANT_TABLES`) con un
+  `DELETE` por tabla (las referenciadas, `branches` y `customers`, al final), en la misma
+  transacción que vuelve a sembrar. No es `TRUNCATE`: una sentencia cruda no recibe el esquema de
+  `withSchema`, son pocos cientos de filas y un `DELETE` no bloquea los pulls mientras tanto. Las
+  columnas `seq` no se reinician (solo desempatan).
+- **Las semillas escriben por lotes**: un insert de varias filas por tabla (`inChunks`, de a 500),
+  una transacción por comercio, y el stock y el saldo finales calculados en memoria. Las filas
+  salen de los mismos módulos que el push (`saveSales` y compañía en `records.ts`,
+  `postSeriesToBalance` en `account-ledger.ts`, `setStockMany` en `write-stock.ts`).
 
 ## Para decidir en las fases que siguen
 
-1. **Fechas imposibles e instantes ilegibles** (fase 4): hoy `2026-02-31` pasa la validación del
-   push y un `createdAt` es texto libre; PostgreSQL los rechaza y el evento quedaría como `issue`.
-   Hay que validar la fecha en `push-events.ts` o decidir qué se guarda.
-2. **Redondeo de `numeric(14,2)`** (fases 3 y 4): un total o un precio con más de 2 decimales se
-   redondea en la columna y puede diferir del `payload`. **Decidido para sistema** (2026-11-12, fase
-   3): el dinero de sistema nunca se redondea en silencio. Lo que calcula el cobro (precio por caja y
-   día, reparto, bono, deuda) ya es en pesos enteros (`allocation.ts` y `billing_settings` exigen
-   enteros). Lo que entra de afuera (pago, bono y devolución de plataforma, planilla de cobranzas) se
-   valida en la frontera con a lo sumo 2 decimales (`moneyAmount` en `src/shared/money.ts`): con más,
-   "Importe inválido" (`400`, o la fila con error en la planilla). Así lo guardado es siempre lo que
-   se validó. Para comercio (precios y totales del POS) se decide en la fase 4.
-3. **FK que cambian comportamiento** (fase 4): el push de stock de un producto desconocido viola
-   `stock.product_id`; borrar un producto o un cliente ahora arrastra su stock o su cuenta corriente.
-4. **`\u0000` en un lote** (fase 4): `jsonb` no lo admite y `push_lots.events` se guarda fuera de
-   los savepoints; hay que limpiarlo o un evento así tumba el push entero.
-5. **Slugs largos** (fase 4): el id de un comercio sale del nombre sin tope y el esquema admite 56
-   caracteres; el alta tiene que cortar el slug.
-6. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
+1. **Atomicidad nueva**: con una sola base, el push (lote, cargo y embudo) y el alta podrían ser una
    transacción. No se cambia en esta migración; issue aparte.
+2. **Reinicio total de una demo contra un push simultáneo**: con SQLite era sincrónico. Ahora un
+   push que confirma justo después del reinicio puede dejar filas en el comercio recién sembrado (la
+   key del visitante se revoca después, fuera de la transacción), o un deadlock hace fallar el
+   reinicio (el barrido lo reintenta a los 15 minutos; el manual da 500). La ventana es chica; se
+   puede cerrar tomando en el reinicio el mismo candado de lote que el push.

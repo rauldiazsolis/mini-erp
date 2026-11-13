@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { CatalogService } from '../catalog/catalog-service.ts';
+import { fitsMoneyColumn } from '../../shared/money.ts';
+import type { CatalogService } from '../catalog/catalog-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { catalogServiceDef } from '../di/container.ts';
@@ -17,12 +18,21 @@ const updateBranchSchema = z.object({
   code: z.string().min(1).optional(),
 });
 
+/**
+ * El precio que carga el admin: cero o más, con a lo sumo 2 decimales (lo que entra en
+ * `numeric(14,2)`). Nunca se redondea en silencio.
+ */
+const productPrice = z
+  .number()
+  .nonnegative('El precio no puede ser negativo')
+  .refine(fitsMoneyColumn, 'Importe inválido');
+
 const createProductSchema = z.object({
   id: z.string().optional(),
   sku: z.string().min(1, 'El SKU es requerido'),
   barcodes: z.array(z.string()).default([]),
   name: z.string().min(1, 'El nombre del producto es requerido'),
-  price: z.number().nonnegative('El precio no puede ser negativo'),
+  price: productPrice,
   taxRate: z.number().min(0).max(1).default(0.21),
   category: z.string().default('General'),
   tracksStock: z.boolean().default(true),
@@ -33,7 +43,7 @@ const updateProductSchema = z.object({
   sku: z.string().min(1).optional(),
   barcodes: z.array(z.string()).optional(),
   name: z.string().min(1).optional(),
-  price: z.number().nonnegative('El precio no puede ser negativo').optional(),
+  price: productPrice.optional(),
   taxRate: z.number().min(0).max(1).optional(),
   category: z.string().optional(),
   tracksStock: z.boolean().optional(),
@@ -46,13 +56,10 @@ const deleteProductSchema = z.object({
 });
 
 function getCatalogService(req: AuthenticatedAdminRequest): CatalogService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(catalogServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new CatalogService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(catalogServiceDef);
 }
 
 export function createCatalogRoutes(): Router {

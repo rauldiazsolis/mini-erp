@@ -16,7 +16,7 @@ describe('invitaciones de soporte (#23)', () => {
 
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => now });
     app = bundle.app;
     authService = bundle.authService;

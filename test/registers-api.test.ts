@@ -15,7 +15,7 @@ describe('rutas de cajas del POS (#21)', () => {
   const tenantId = 'kiosco-cajas';
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const owner = await bundle.authService.createUser({ email: 'owner@x.com', password: 'password123', name: 'Owner' });

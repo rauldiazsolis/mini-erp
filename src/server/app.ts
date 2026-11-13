@@ -131,11 +131,11 @@ export function createApp(deps?: AppDependencies): {
   const contactLimit = createRateLimit({ limit: limits.contactPerHour, windowMs: 60 * 60 * 1000, now, body: 'api' });
   const beaconLimit = createRateLimit({ limit: limits.beaconPerHour, windowMs: 60 * 60 * 1000, now, body: 'api', silent: true });
 
-  const requireAdmin = createAdminAuthMiddleware(authService, tenantManager);
+  const requireAdmin = createAdminAuthMiddleware(authService);
   // La cadena del comercio acepta también la sesión anónima de una demo (#24); el resto, solo usuarios
   const portal = rootContainer.use(portalServiceDef);
-  const requireTenantSession = createAdminAuthMiddleware(authService, tenantManager, portal);
-  const requirePos = createPosAuthMiddleware(apiKeyService, tenantManager, rootContainer, async (key) => {
+  const requireTenantSession = createAdminAuthMiddleware(authService, portal);
+  const requirePos = createPosAuthMiddleware(apiKeyService, rootContainer, async (key) => {
     await demoSessions.touchRegister(key.registerId);
   });
 
@@ -148,7 +148,7 @@ export function createApp(deps?: AppDependencies): {
     res.status(200).json({ status: 'ok', service: 'mini-erp', version: APP_VERSION });
   });
 
-  const requireTenantContext = createTenantContextMiddleware(rootContainer.use(systemKyselyDef), membershipService, tenantManager, rootContainer);
+  const requireTenantContext = createTenantContextMiddleware(rootContainer.use(systemKyselyDef), membershipService, rootContainer);
 
   // Rutas del Admin
   app.use('/api/auth', createAuthRoutes(authService, requireAdmin, authLimit, auditLog));

@@ -13,14 +13,9 @@ const numberedSchema = z.object({ date: z.string().regex(DAY_PATTERN), number: z
 const paymentSchema = z.object({ method: z.string(), amount: z.number(), reference: z.string().optional() });
 const countSchema = z.object({ expected: z.number(), counted: z.number() });
 
-function parseRecord(payload: string): Record<string, unknown> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(payload);
-  } catch {
-    return {};
-  }
-  const parsed = recordSchema.safeParse(raw);
+/** El payload (`jsonb`, ya parseado) como objeto; lo que no es un objeto, vacío. */
+function parseRecord(payload: unknown): Record<string, unknown> {
+  const parsed = recordSchema.safeParse(payload);
   return parsed.success ? parsed.data : {};
 }
 
@@ -45,7 +40,7 @@ function payments(value: unknown): PaymentLine[] {
 
 export type StoredSale = { createdAt?: string; ticket?: Numbered; payments: PaymentLine[]; lines: SaleLine[]; voidReason?: string };
 
-export function readSale(payload: string): StoredSale {
+export function readSale(payload: unknown): StoredSale {
   const raw = parseRecord(payload);
   const createdAt = text(raw['createdAt']);
   const ticket = numbered(raw['ticket']);
@@ -61,7 +56,7 @@ export function readSale(payload: string): StoredSale {
 
 export type StoredCustomerPayment = { createdAt?: string; receipt?: Numbered; payments: PaymentLine[] };
 
-export function readCustomerPayment(payload: string): StoredCustomerPayment {
+export function readCustomerPayment(payload: unknown): StoredCustomerPayment {
   const raw = parseRecord(payload);
   const createdAt = text(raw['createdAt']);
   const receipt = numbered(raw['receipt']);
@@ -82,7 +77,7 @@ export type StoredCashMovement = {
   count?: { expected: number; counted: number };
 };
 
-export function readCashMovement(payload: string): StoredCashMovement {
+export function readCashMovement(payload: unknown): StoredCashMovement {
   const raw = parseRecord(payload);
   const createdAt = text(raw['createdAt']);
   const description = text(raw['description']);

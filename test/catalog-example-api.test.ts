@@ -12,7 +12,7 @@ describe('catálogo de ejemplo del rubro (#22)', () => {
   let token: string;
 
   beforeEach(async () => {
-    const tenants = new TenantManager(db().system, { inMemory: true });
+    const tenants = new TenantManager(db());
     app = createApp({ database: db(), tenantManager: tenants }).app;
     const res = await request(app).post('/api/alta').send({
       name: 'Marta',

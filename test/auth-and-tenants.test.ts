@@ -12,7 +12,7 @@ describe('Auth & Multitenancy (Etapa 1.3)', () => {
   let authService: ReturnType<typeof createApp>['authService'];
 
   beforeEach(() => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db());
 
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;

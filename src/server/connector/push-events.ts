@@ -7,20 +7,33 @@ import { z } from '../../shared/zod.ts';
  * evolución del contrato. Un evento inválido es un `LotIssue` del lote, nunca un error del request.
  */
 
-export type LotIssue = { message: string; eventId?: string };
+/** Un aviso del lote; así se guarda en `push_lots.issues` (`jsonb`) y así se valida al leerlo. */
+export const lotIssuesSchema = z.array(z.object({ message: z.string(), eventId: z.string().optional() }));
+
+export type LotIssue = z.infer<typeof lotIssuesSchema>[number];
+
+/**
+ * Un instante ISO 8601 con zona (el `date-time` del contrato; el POS manda `toISOString()`). Se
+ * valida en la frontera: una fecha ilegible deja al evento como aviso, no se adivina (el día de una
+ * venta decide el cargo de uso y el resumen de caja).
+ */
+const instantSchema = z.iso.datetime({ offset: true, error: 'tiene que ser una fecha y hora ISO 8601 con zona' });
+
+/** Un día que existe (`2026-02-31` no pasa). */
+const daySchema = z.iso.date({ error: 'tiene que ser un día que exista, como AAAA-MM-DD' });
 
 /** Sobre común. Un POS anterior puede mandar un evento sin `origin` ni `createdAt`. */
 const envelopeSchema = z.looseObject({
   id: z.string().min(1),
   type: z.string().min(1),
-  createdAt: z.string().optional(),
+  createdAt: instantSchema.optional(),
   origin: z.looseObject({ branch: z.string().optional(), pointOfSale: z.string().optional() }).optional(),
 });
 
 const paymentSchema = z.looseObject({ method: z.string(), amount: z.number(), reference: z.string().optional() });
 
 /** Número de ticket (4.1.0) o de recibo (4.2.0) en su día. */
-const numberedSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), number: z.number().int().min(1) });
+const numberedSchema = z.object({ date: daySchema, number: z.number().int().min(1) });
 
 /** Venta: total, cliente, anulación, pagos, el número de ticket (4.1.0) y su `createdAt` (el día, #20). */
 const saleSchema = z.looseObject({
@@ -30,7 +43,7 @@ const saleSchema = z.looseObject({
   voidsSaleId: z.string().optional(),
   payments: z.array(paymentSchema),
   ticket: numberedSchema.optional(),
-  createdAt: z.string().optional(),
+  createdAt: instantSchema.optional(),
 });
 
 const stockMovementSchema = z.looseObject({
@@ -54,7 +67,7 @@ const customerSchema = z.looseObject({
 });
 
 /** Movimiento de caja: el mini-erp lo guarda completo; necesita el id y su `createdAt` (el día, #20). */
-const cashMovementSchema = z.looseObject({ id: z.string().min(1), createdAt: z.string().optional() });
+const cashMovementSchema = z.looseObject({ id: z.string().min(1), createdAt: instantSchema.optional() });
 
 /** Cobranza; con `voidsPaymentId`, la anulación de otra (4.3.0). El recibo y `createdAt` dan su día (#20). */
 const customerPaymentSchema = z.looseObject({
@@ -63,7 +76,7 @@ const customerPaymentSchema = z.looseObject({
   total: z.number(),
   voidsPaymentId: z.string().min(1).optional(),
   receipt: numberedSchema.optional(),
-  createdAt: z.string().optional(),
+  createdAt: instantSchema.optional(),
 });
 
 const pushEventSchema = z.discriminatedUnion('type', [

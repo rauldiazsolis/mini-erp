@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { z } from '../../shared/zod.ts';
-import { ImportExportService } from '../io/import-export-service.ts';
+import type { ImportExportService } from '../io/import-export-service.ts';
 import type { AuthenticatedAdminRequest } from '../middleware/auth-middleware.ts';
 import { requirePermission } from '../middleware/permission-middleware.ts';
 import { importExportServiceDef, importServiceDef } from '../di/container.ts';
@@ -28,13 +28,10 @@ function toMapping(raw: Record<string, string | null>): ImportMapping {
 }
 
 function getImportExportService(req: AuthenticatedAdminRequest): ImportExportService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(importExportServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Scope del comercio no inicializado en la petición');
   }
-  if (req.activeTenantDb !== undefined) {
-    return new ImportExportService(req.activeTenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado en la petición');
+  return req.tenantScope.use(importExportServiceDef);
 }
 
 /** La carga del embudo (#25): la primera vez que un comercio real carga algo, nunca en un comercio demo. */
@@ -102,7 +99,7 @@ export function createIoRoutes(tenants: TenantManager, funnel: FunnelService): R
     }
     try {
       const service = req.tenantScope?.use(importServiceDef);
-      if (service === undefined) throw new Error('Tenant Scope no inicializado en la petición');
+      if (service === undefined) throw new Error('Scope del comercio no inicializado en la petición');
       const { csv, mapping, dryRun } = parsed.data;
       const result = await service.run(entity, { csv, dryRun, mapping: mapping === undefined ? undefined : toMapping(mapping) });
       if (!dryRun && result.totals.create + result.totals.update > 0) await recordLoad(funnel, req.activeTenantId, `import-${entity}`);

@@ -10,7 +10,7 @@ const db = setupTestDb();
 function makeApp() {
   const clock = { now: new Date('2026-09-30T12:00:00.000Z') };
   const { app } = createApp({ database: db(),
-    tenantManager: new TenantManager(db().system, { inMemory: true }),
+    tenantManager: new TenantManager(db()),
     demoConfig: { enabled: true, ttlHours: 24, maxActive: 200, resetHour: 4 },
     rateLimits: { demoPerHour: 10, authPer15Min: 20, contactPerHour: 5, beaconPerHour: 60 },
     now: () => clock.now,

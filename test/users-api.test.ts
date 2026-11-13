@@ -20,7 +20,7 @@ describe('usuarios del comercio (#19)', () => {
   const ids: Record<'owner' | 'admin' | 'member', string> = { owner: '', admin: '', member: '' };
 
   beforeEach(async () => {
-    const bundle = createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }) });
+    const bundle = createApp({ database: db(), tenantManager: new TenantManager(db()) });
     app = bundle.app;
     const alta = await createOwnerAccount(bundle, { name: 'Ana', email: 'ana@k.com', password: 'clave-ana-1', businessName: 'Kiosco Ana' });
     t.owner = alta.token;

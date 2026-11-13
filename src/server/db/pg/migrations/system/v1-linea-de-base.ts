@@ -275,7 +275,7 @@ CREATE UNIQUE INDEX idx_paid_movements_ref ON paid_movements (payment_ref) WHERE
 
 CREATE TABLE gift_credits (
   id text PRIMARY KEY,
-  tenant_id text NOT NULL,
+  tenant_id text NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
   amount numeric(14,2) NOT NULL,
   expires_at timestamptz NOT NULL,
   origin text NOT NULL,

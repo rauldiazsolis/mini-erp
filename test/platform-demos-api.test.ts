@@ -29,7 +29,7 @@ describe('demos en la plataforma (#24)', () => {
   let clock: Date;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+    const tenantManager = new TenantManager(pgDb());
     clock = new Date('2026-10-05T15:00:00.000Z');
     bundle = createApp({ database: pgDb(),
       tenantManager,
@@ -65,8 +65,14 @@ describe('demos en la plataforma (#24)', () => {
       ['almacen', 'Almacén Demo', 1, 1],
       ['ferreteria', 'Ferretería Demo', 0, 0],
     ]);
-    const db = bundle.tenantManager.getTenantDb('demo-kiosco');
-    const today = db.prepare("SELECT COUNT(*) AS n FROM sales WHERE day = '2026-10-05' AND voids_sale_id IS NULL").get() as { n: number };
+    const today = await bundle.tenantManager
+      .forTenant('demo-kiosco')
+      .selectFrom('sales')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('day', '=', '2026-10-05')
+      .where('voids_sale_id', 'is', null)
+      .executeTakeFirstOrThrow();
+    expect(today.n).toBeGreaterThan(0);
     expect(rows[0]?.salesToday).toBe(today.n);
     expect(rows[0]?.lastFullResetAt).toBe(clock.toISOString());
     expect(rows[0]?.lastPartialResetAt).toBeNull();

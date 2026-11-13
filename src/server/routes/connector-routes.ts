@@ -1,10 +1,11 @@
 import { Router, type Request, type RequestHandler, type Response, type NextFunction } from 'express';
 import { z } from '../../shared/zod.ts';
 import type { AuthenticatedPosRequest } from '../middleware/auth-middleware.ts';
-import { ConnectorService } from '../connector/connector-service.ts';
+import type { ConnectorService } from '../connector/connector-service.ts';
 import { summarizeForLog } from '../connector/push-events.ts';
 import { connectorServiceDef } from '../di/container.ts';
 import { posLog } from '../middleware/logger.ts';
+import { stripNul } from '../db/pg/sql-helpers.ts';
 import type { DemoSessionService } from '../demo/demo-session-service.ts';
 import type { PortalService } from '../portal/portal-service.ts';
 import { DEFAULT_DEMO_TEMPLATE, DEMO_TEMPLATES, isDemoTemplate } from '../seeds/index.ts';
@@ -25,13 +26,10 @@ export type ConnectorDeps = {
 };
 
 function getConnectorService(req: AuthenticatedPosRequest): ConnectorService {
-  if (req.tenantScope !== undefined) {
-    return req.tenantScope.use(connectorServiceDef);
+  if (req.tenantScope === undefined) {
+    throw new Error('Falta el scope del comercio en el pedido del POS');
   }
-  if (req.posContext?.tenantDb !== undefined) {
-    return new ConnectorService(req.posContext.tenantDb);
-  }
-  throw new Error('Tenant DB o Scope no inicializado para POS');
+  return req.tenantScope.use(connectorServiceDef);
 }
 
 function checkContractVersion(req: Request, res: Response, next: NextFunction): void {
@@ -139,7 +137,9 @@ export function createConnectorRoutes(
       return;
     }
 
-    const parseResult = pushBatchSchema.safeParse(req.body);
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = pushBatchSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
@@ -194,7 +194,9 @@ export function createConnectorRoutes(
 
   // POST /sync/pull
   router.post('/sync/pull', async (req: AuthenticatedPosRequest, res: Response) => {
-    const parseResult = pullBatchSchema.safeParse(req.body);
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = pullBatchSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;
@@ -243,7 +245,9 @@ export function createConnectorRoutes(
       return;
     }
 
-    const parseResult = accountHoldSchema.safeParse(req.body);
+    // Sin caracteres nulos: PostgreSQL no los admite y nunca son un dato
+    const body: unknown = req.body;
+    const parseResult = accountHoldSchema.safeParse(stripNul(body));
     if (!parseResult.success) {
       res.status(400).json({ error: parseResult.error.issues[0]?.message ?? 'Payload inválido' });
       return;

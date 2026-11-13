@@ -14,7 +14,7 @@ describe('listados del panel de plataforma (#23)', () => {
   let otherOwnerId: string;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     let tick = 0;
     // Cada lectura del reloj avanza un segundo: el orden por fecha es el de creación
     const bundle = createApp({ database: db(), tenantManager, now: () => new Date(Date.parse('2026-10-05T15:00:00.000Z') + 1000 * tick++) });

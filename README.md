@@ -10,7 +10,8 @@
 ![Node](https://img.shields.io/badge/Node-24-5fa04e?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-003b57?logo=sqlite&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?logo=postgresql&logoColor=white)
+![Kysely](https://img.shields.io/badge/Kysely-0.29-2e7d32)
 ![Preact](https://img.shields.io/badge/Preact-signals-673ab8?logo=preact&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06b6d4?logo=tailwindcss&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-10-f69220?logo=pnpm&logoColor=white)
@@ -27,7 +28,7 @@ real.
 
 ## Qué hace
 
-- **Comercios aislados**: una base SQLite por comercio, con roles (dueño, admin, empleado) e
+- **Comercios aislados**: un esquema de PostgreSQL por comercio, con roles (dueño, admin, empleado) e
   invitaciones por link.
 - **Catálogo, stock y clientes**: grillas con edición en línea, stock por sucursal con kardex,
   cuentas corrientes, cobranzas e importación desde CSV (el Excel en castellano también).
@@ -52,7 +53,7 @@ flowchart LR
     C --> SV["Servicios por request<br/>(Hardwired)"]
     API --> SV
     SV --> SYS[("PostgreSQL · system<br/>usuarios, comercios,<br/>cajas, cobro")]
-    SV --> TEN[("tenants/&lt;id&gt;.sqlite<br/>catálogo, stock, clientes,<br/>ventas")]
+    SV --> TEN[("PostgreSQL · tenant_&lt;id&gt;<br/>catálogo, stock, clientes,<br/>ventas")]
   end
 ```
 
@@ -79,8 +80,8 @@ el contrato **4.6.0** con las capacidades `customer-payment-void`, `demo-session
 
 ## Levantarlo
 
-Requiere Node 24, pnpm 10 y PostgreSQL 16 (la persistencia está migrando de SQLite a PostgreSQL:
-el sistema ya está en PostgreSQL y los comercios, todavía en SQLite). El servidor no arranca sin
+Requiere Node 24, pnpm 10 y PostgreSQL 16 (la persistencia migró de SQLite a PostgreSQL: el sistema
+y cada comercio están en PostgreSQL; quedan restos de SQLite que se van antes de publicar). El servidor no arranca sin
 `DATABASE_URL`; los tests usan su propio servidor (ver "Verificación" en `AGENTS.md`).
 
 ```bash
@@ -129,7 +130,7 @@ En desarrollo, "Probar la demo" abre una copia local del POS publicado que el mi
 |---|---|---|
 | `NODE_ENV` | (vacío) | `production`: sirve el cliente compilado, abre el POS publicado y no siembra datos de desarrollo |
 | `PORT` | `4100` | Puerto del servidor |
-| `DATA_DIR` | `data` | Carpeta de las bases de SQLite de los comercios (`tenants/`) |
+| `DATA_DIR` | `data` | Carpeta de datos locales (hasta que se vaya SQLite, sus bases viejas de comercio) |
 | `BACKUP_DIR` | `backups` | Carpeta de los backups de los comercios de `node scripts/backup.ts` (se guardan 7 días) |
 | `PUBLIC_URL` | origen del request | URL pública del mini-erp, para los links que arma detrás de un proxy |
 | `VITE_POS_URL` (al compilar) | `https://pos.contax.ar` | Origen del POS que abre el landing en producción (le suma el canal `/v4/`). En el deploy sale de la variable `POS_URL` del environment `production` |

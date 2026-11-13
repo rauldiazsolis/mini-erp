@@ -21,7 +21,7 @@ describe('alta atómica (#19)', () => {
   let billing: BillingService;
 
   beforeEach(() => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     billing = bundle.billing;
@@ -49,8 +49,7 @@ describe('alta atómica (#19)', () => {
     expect((me.body as { tenants: { tenantId: string; role: string }[] }).tenants).toEqual([
       expect.objectContaining({ tenantId: 'kiosco-marta', role: 'owner' }),
     ]);
-    const products = tenantManager.getTenantDb('kiosco-marta').prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number };
-    expect(products.n).toBe(0);
+    expect(await db().forTenant('kiosco-marta').selectFrom('products').select('id').execute()).toEqual([]);
     expect(await db().system.selectFrom('tenants').select('business_type').where('id', '=', 'kiosco-marta').executeTakeFirst()).toEqual({ business_type: 'kiosco' });
     expect(await db().system.selectFrom('users').select('whatsapp').where('email', '=', 'marta@kiosco.com').executeTakeFirst()).toEqual({ whatsapp: '5491155551234' });
     expect(await db().system.selectFrom('audit_log').select('id').where('action', '=', 'tenant.created').execute()).toHaveLength(1);

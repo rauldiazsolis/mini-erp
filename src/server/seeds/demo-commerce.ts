@@ -1,4 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { Insertable, Kysely } from 'kysely';
+import { jsonValue } from '../db/pg/sql-helpers.ts';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import type { SeedProduct } from './types.ts';
 import { KIOSCO_PRODUCTS } from './kiosco.ts';
 import { ALMACEN_PRODUCTS } from './almacen.ts';
@@ -36,25 +38,28 @@ export function demoSeedProducts(template: DemoTemplate): (SeedProduct & { id: s
 /**
  * Siembra un comercio demo vacío (#24): sucursal, catálogo del rubro con ids deterministas, clientes
  * demo y `DEMO_HISTORY_DAYS` días de historial hasta `now` de dos cajas de la casa (sin caja de mini:
- * no cobran). Es la "foto inicial" del reinicio total. No abre transacción.
+ * no cobran). Es la "foto inicial" del reinicio total. Por lotes y en una transacción: la de quien
+ * llama si `db` ya es una (el reinicio total), o una nueva.
  */
-export async function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate, now: Date): Promise<void> {
-  const at = now.toISOString();
-  db.prepare('INSERT OR IGNORE INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)').run(
-    DEMO_BRANCH_ID,
-    'Sucursal Central',
-    DEMO_BRANCH_CODE,
-    at,
-  );
-  const product = db.prepare(
-    `INSERT INTO products (id, sku, barcodes, name, price, tax_rate, category, tracks_stock, blocked_reason, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)`,
-  );
-  const stock = db.prepare('INSERT INTO stock (product_id, branch_id, quantity, updated_at) VALUES (?, ?, ?, ?)');
-  for (const p of demoSeedProducts(template)) {
-    product.run(p.id, p.sku, JSON.stringify(p.barcodes), p.name, p.price, p.taxRate ?? 0.21, p.category, at, at);
-    stock.run(p.id, DEMO_BRANCH_ID, p.stock, at);
+export async function seedDemoCommerce(db: Kysely<TenantDatabase>, template: DemoTemplate, now: Date): Promise<void> {
+  if (!db.isTransaction) {
+    await db.transaction().execute(async (trx) => {
+      await seedDemoCommerce(trx, template, now);
+    });
+    return;
   }
+  const at = now.toISOString();
+  await db
+    .insertInto('branches')
+    .values({ id: DEMO_BRANCH_ID, name: 'Sucursal Central', code: DEMO_BRANCH_CODE, created_at: at })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+  const products = demoSeedProducts(template);
+  await db.insertInto('products').values(products.map((p) => demoProductRow(p, at))).execute();
+  await db
+    .insertInto('stock')
+    .values(products.map((p) => ({ product_id: p.id, branch_id: DEMO_BRANCH_ID, quantity: p.stock, updated_at: at })))
+    .execute();
   await insertDemoCustomers(db, at);
   for (const [index, pointOfSale] of ['Caja 1', 'Caja 2'].entries()) {
     await generateHistoricalDemoActivity(db, DEMO_BRANCH_ID, now, {
@@ -63,4 +68,21 @@ export async function seedDemoCommerce(db: DatabaseSync, template: DemoTemplate,
       origin: { deviceId: `pos_casa_${String(index + 1)}`, branch: DEMO_BRANCH_CODE, pointOfSale },
     });
   }
+}
+
+/** La fila de un producto de la semilla, como nace y como lo deja el reinicio parcial. */
+export function demoProductRow(p: SeedProduct & { id: string }, at: string): Insertable<TenantDatabase['products']> {
+  return {
+    id: p.id,
+    sku: p.sku,
+    barcodes: jsonValue(p.barcodes),
+    name: p.name,
+    price: p.price,
+    tax_rate: p.taxRate ?? 0.21,
+    category: p.category,
+    tracks_stock: true,
+    blocked_reason: null,
+    created_at: at,
+    updated_at: at,
+  };
 }

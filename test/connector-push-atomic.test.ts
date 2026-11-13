@@ -16,7 +16,7 @@ describe('push transaccional (#2)', () => {
   const tenantId = 'kiosco';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const { token, user } = await bundle.authService.createUser({ email: 'o@k.com', password: 'password123', name: 'O' });
@@ -30,8 +30,15 @@ describe('push transaccional (#2)', () => {
     apiKey = (key.body as { rawKey: string }).rawKey;
   });
 
-  const count = (sql: string): number =>
-    (tenantManager.getTenantDb(tenantId).prepare(sql).get() as { n: number }).n;
+  const tenantDb = () => db().forTenant(tenantId);
+
+  async function count(table: 'sales' | 'customers' | 'stock_movements' | 'push_lots', id?: string): Promise<number> {
+    let query = tenantDb().selectFrom(table).select((eb) => eb.fn.countAll<number>().as('n'));
+    if (id !== undefined) {
+      query = query.where('id', '=', id);
+    }
+    return (await query.executeTakeFirstOrThrow()).n;
+  }
 
   function push(lotId: string, events: unknown[]) {
     return request(app)
@@ -44,8 +51,8 @@ describe('push transaccional (#2)', () => {
 
   const lote = [
     { id: 'e1', type: 'sale', createdAt: at, origin, sale: { id: 'v1', total: 100, payments: [{ method: 'cash', amount: 100 }] } },
-    // Producto inexistente: la clave foránea de stock_movements tira un error
-    { id: 'e2', type: 'stock-movement', createdAt: at, origin, movement: { id: 'm1', productId: 'no-existe', delta: -1, reason: 'sale' } },
+    // Un total que no entra en la columna: PostgreSQL tira un error, que sin savepoint abortaría el lote entero
+    { id: 'e2', type: 'sale', createdAt: at, origin, sale: { id: 'v-enorme', total: 1e15, payments: [{ method: 'cash', amount: 1e15 }] } },
     { id: 'e3', type: 'customer', createdAt: at, origin, customer: { id: 'c1', name: 'Ana' } },
   ];
 
@@ -60,11 +67,11 @@ describe('push transaccional (#2)', () => {
     const lot = (pull.body as { lots: Record<string, { status: string; issues?: { message: string; eventId?: string }[] }> }).lots['lote-1'];
     expect(lot?.status).toBe('issues');
     expect(lot?.issues?.map((i) => i.eventId)).toEqual(['e2']);
-    expect(lot?.issues?.[0]?.message).toMatch(/^No se pudo aplicar: .*FOREIGN KEY/);
+    expect(lot?.issues?.[0]?.message).toMatch(/^No se pudo aplicar: .*numeric/);
 
-    expect(count("SELECT COUNT(*) AS n FROM sales WHERE id = 'v1'")).toBe(1);
-    expect(count("SELECT COUNT(*) AS n FROM customers WHERE id = 'c1'")).toBe(1);
-    expect(count("SELECT COUNT(*) AS n FROM stock_movements WHERE id = 'm1'")).toBe(0);
+    expect(await count('sales', 'v1')).toBe(1);
+    expect(await count('customers', 'c1')).toBe(1);
+    expect(await count('sales', 'v-enorme')).toBe(0);
   });
 
   it('un lote con eventos inválidos de cada tipo, un no-objeto y un tipo desconocido responde 200 y aplica lo válido', async () => {
@@ -98,14 +105,28 @@ describe('push transaccional (#2)', () => {
     expect(lot?.status).toBe('issues');
     expect(lot?.issues?.map((i) => i.eventId)).toEqual(['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', undefined]);
 
-    const stored = tenantManager.getTenantDb(tenantId).prepare("SELECT payload FROM sales WHERE id = 'v9'").get() as { payload: string } | undefined;
-    expect(JSON.parse(stored?.payload ?? '{}')).toMatchObject({ futuro: { x: 1 } });
+    const stored = await tenantDb().selectFrom('sales').select('payload').where('id', '=', 'v9').executeTakeFirst();
+    expect(stored?.payload).toMatchObject({ futuro: { x: 1 } });
+  });
+
+  it('un carácter nulo en el lote (un texto, el deviceId) no tumba el push: se quita y el lote se aplica', async () => {
+    const res = await request(app)
+      .post('/connector/sync/push')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('X-POS-Contract-Version', '4.4.0')
+      .set('Idempotency-Key', 'lote-nul')
+      .send({ deviceId: 'dev\u0000-1', events: [{ id: 'e1', type: 'customer', createdAt: at, origin, customer: { id: 'c1', name: 'An\u0000a' } }] });
+    expect(res.status).toBe(200);
+
+    expect(await tenantDb().selectFrom('customers').select(['id', 'name']).execute()).toEqual([{ id: 'c1', name: 'Ana' }]);
+    expect(await tenantDb().selectFrom('push_lots').select(['id', 'status', 'device_id']).execute()).toEqual([{ id: 'lote-nul', status: 'ok', device_id: 'dev-1' }]);
   });
 
   it('repetir el lote no duplica nada', async () => {
     await push('lote-1', lote);
     await push('lote-1', lote);
-    expect(count('SELECT COUNT(*) AS n FROM sales')).toBe(1);
-    expect(count("SELECT COUNT(*) AS n FROM push_lots WHERE id = 'lote-1' AND status = 'issues'")).toBe(1);
+    expect(await count('sales')).toBe(1);
+    const lots = await tenantDb().selectFrom('push_lots').select(['id', 'status']).execute();
+    expect(lots).toEqual([{ id: 'lote-1', status: 'issues' }]);
   });
 });

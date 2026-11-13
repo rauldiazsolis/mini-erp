@@ -28,7 +28,7 @@ describe('API de Créditos del comercio (#21)', () => {
   const at = new Date('2026-10-05T15:00:00.000Z');
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => at });
     app = bundle.app;
     billing = bundle.billing;

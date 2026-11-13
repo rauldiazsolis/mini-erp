@@ -39,7 +39,7 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
   const tenantId = 'kiosco-central';
 
   beforeEach(async () => {
-    tenantManager = new TenantManager(db().system, { inMemory: true });
+    tenantManager = new TenantManager(db());
     const created = createApp({ database: db(), tenantManager });
     app = created.app;
 
@@ -345,6 +345,175 @@ describe('Catálogo, Precios y Sucursales (Etapa 2.1)', () => {
 
       expect(catRes.status).toBe(200);
       expect(catRes.body).toEqual(['Bebidas', 'Limpieza']);
+    });
+  });
+
+  describe('Importes del admin (PostgreSQL, fase 4)', () => {
+    it('rechaza un precio con más de 2 decimales al crear', async () => {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'DEC-001', name: 'Con tres decimales', price: 10.125 });
+
+      expect(res.status).toBe(400);
+      expect((res.body as unknown as { error?: string }).error).toBe('Importe inválido');
+
+      const list = await request(app).get(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`);
+      expect(list.body).toHaveLength(0);
+    });
+
+    it('rechaza un precio con más de 2 decimales al editar y deja el anterior', async () => {
+      const created = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'DEC-002', name: 'Con dos decimales', price: 10.15 });
+      expect(created.status).toBe(201);
+      const prodId = (created.body as unknown as ProductItem).id;
+
+      const res = await request(app)
+        .put(`/api/tenants/${tenantId}/products/${prodId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ price: 10.155 });
+      expect(res.status).toBe(400);
+      expect((res.body as unknown as { error?: string }).error).toBe('Importe inválido');
+
+      const after = await request(app).get(`/api/tenants/${tenantId}/products/${prodId}`).set('Authorization', `Bearer ${adminToken}`);
+      expect((after.body as unknown as ProductItem).price).toBe(10.15);
+    });
+
+    it('el precio cero sigue valiendo, al crear y al editar', async () => {
+      const created = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'DEC-003', name: 'Gratis', price: 0 });
+      expect(created.status).toBe(201);
+      const product = created.body as unknown as ProductItem;
+      expect(product.price).toBe(0);
+
+      const updated = await request(app)
+        .put(`/api/tenants/${tenantId}/products/${product.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ price: 0 });
+      expect(updated.status).toBe(200);
+      expect((updated.body as unknown as ProductItem).price).toBe(0);
+    });
+  });
+
+  describe('Datos en PostgreSQL (fase 4)', () => {
+    it('crear un producto que controla stock deja su stock en 0 en cada sucursal, y una sucursal nueva también', async () => {
+      const created = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'STK-001', name: 'Con stock', price: 100 });
+      const sinStock = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'STK-002', name: 'Sin stock', price: 100, tracksStock: false });
+      const prodId = (created.body as unknown as ProductItem).id;
+      expect((sinStock.body as unknown as ProductItem).tracksStock).toBe(false);
+
+      const branch = await request(app)
+        .post(`/api/tenants/${tenantId}/branches`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'Sucursal Norte', code: 'NORTE' });
+      const branchId = (branch.body as unknown as BranchItem).id;
+
+      const stock = await db()
+        .forTenant(tenantId)
+        .selectFrom('stock')
+        .select(['product_id', 'branch_id', 'quantity'])
+        .orderBy('branch_id')
+        .execute();
+      expect(stock).toEqual(
+        [
+          { product_id: prodId, branch_id: 'branch-central', quantity: 0 },
+          { product_id: prodId, branch_id: branchId, quantity: 0 },
+        ].sort((a, b) => (a.branch_id < b.branch_id ? -1 : 1)),
+      );
+    });
+
+    it('el borrado definitivo borra el producto y su stock, y deja el kardex', async () => {
+      const created = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'DEL-001', name: 'Para borrar', price: 100 });
+      const otro = await request(app)
+        .post(`/api/tenants/${tenantId}/products`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'DEL-002', name: 'Se queda', price: 100 });
+      const prodId = (created.body as unknown as ProductItem).id;
+      const otroId = (otro.body as unknown as ProductItem).id;
+
+      const tenantDb = db().forTenant(tenantId);
+      await tenantDb
+        .insertInto('stock_movements')
+        .values({
+          id: 'mov-1',
+          product_id: prodId,
+          branch_id: 'branch-central',
+          delta: 5,
+          reason: 'inventory_count',
+          created_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const deleteRes = await request(app)
+        .delete(`/api/tenants/${tenantId}/products/${prodId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ hard: true });
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body).toEqual({ deleted: true });
+
+      const getRes = await request(app).get(`/api/tenants/${tenantId}/products/${prodId}`).set('Authorization', `Bearer ${adminToken}`);
+      expect(getRes.status).toBe(404);
+
+      const stock = await tenantDb.selectFrom('stock').select(['product_id']).execute();
+      expect(stock).toEqual([{ product_id: otroId }]);
+      const kardex = await tenantDb.selectFrom('stock_movements').select(['id', 'product_id']).execute();
+      expect(kardex).toEqual([{ id: 'mov-1', product_id: prodId }]);
+    });
+
+    it('borrar un producto que no existe da 400', async () => {
+      const res = await request(app)
+        .delete(`/api/tenants/${tenantId}/products/no-existe`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ hard: true });
+      expect(res.status).toBe(400);
+      expect((res.body as unknown as { error?: string }).error).toMatch(/no encontrado/);
+    });
+
+    it('rechaza cambiar el SKU o el código de sucursal a uno que ya existe', async () => {
+      await request(app).post(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`).send({ sku: 'UNI-1', name: 'Uno', price: 1 });
+      const dos = await request(app).post(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`).send({ sku: 'UNI-2', name: 'Dos', price: 1 });
+      const skuRes = await request(app)
+        .put(`/api/tenants/${tenantId}/products/${(dos.body as unknown as ProductItem).id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ sku: 'UNI-1' });
+      expect(skuRes.status).toBe(400);
+      expect((skuRes.body as unknown as { error?: string }).error).toBe("Ya existe un producto con el SKU 'UNI-1'");
+
+      const norte = await request(app).post(`/api/tenants/${tenantId}/branches`).set('Authorization', `Bearer ${adminToken}`).send({ name: 'Norte', code: 'NORTE' });
+      const codeRes = await request(app)
+        .put(`/api/tenants/${tenantId}/branches/${(norte.body as unknown as BranchItem).id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ code: 'CENTRAL' });
+      expect(codeRes.status).toBe(400);
+      expect((codeRes.body as unknown as { error?: string }).error).toBe("Ya existe una sucursal con el código 'CENTRAL'");
+    });
+
+    it('lista por nombre y, con el mismo nombre, en orden de alta; busca sin distinguir mayúsculas ni tildes', async () => {
+      for (const [sku, name] of [['O-3', 'Café'], ['O-1', 'Azúcar'], ['O-2', 'Café']] as const) {
+        await request(app).post(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`).send({ sku, name, price: 1 });
+        await new Promise((r) => setTimeout(r, 3));
+      }
+      const list = await request(app).get(`/api/tenants/${tenantId}/products`).set('Authorization', `Bearer ${adminToken}`);
+      expect((list.body as unknown as ProductItem[]).map((p) => p.sku)).toEqual(['O-1', 'O-3', 'O-2']);
+
+      const page = await request(app).get(`/api/tenants/${tenantId}/products?limit=1&offset=1`).set('Authorization', `Bearer ${adminToken}`);
+      expect((page.body as unknown as ProductItem[]).map((p) => p.sku)).toEqual(['O-3']);
+
+      const search = await request(app).get(`/api/tenants/${tenantId}/products?search=AZUCAR`).set('Authorization', `Bearer ${adminToken}`);
+      expect((search.body as unknown as ProductItem[]).map((p) => p.sku)).toEqual(['O-1']);
     });
   });
 

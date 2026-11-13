@@ -1,7 +1,11 @@
-import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import type { Kysely, Selectable } from 'kysely';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
+import { isForeignKeyViolation, isUniqueViolation, searchable, searchPattern } from '../db/pg/sql-helpers.ts';
 import { applyPendingFor } from '../discrepancy/discrepancies.ts';
+import { DomainError } from '../errors.ts';
 import { saveCustomerPayment } from '../sales/records.ts';
+import { postToBalance, roundMoney } from './account-ledger.ts';
 
 export type CustomerRecord = {
   id: string;
@@ -99,186 +103,162 @@ export type AccountMovementRecord = {
   createdAt: string;
 };
 
-interface RawCustomerRow {
-  id: string;
-  name: string;
-  document: string | null;
-  phone: string | null;
-  credit_limit: number | null;
-  margin: number | null;
-  balance: number | null;
-  unrestricted: number;
-  blocked_reason: string | null;
-  created_at: string;
-  updated_at: string;
+const CUSTOMER_COLUMNS = [
+  'id', 'name', 'document', 'phone', 'credit_limit', 'margin', 'balance', 'unrestricted', 'blocked_reason', 'created_at', 'updated_at',
+] as const;
+
+type CustomerRow = Pick<Selectable<TenantDatabase['customers']>, (typeof CUSTOMER_COLUMNS)[number]>;
+
+function notFound(customerId: string): DomainError {
+  return new DomainError(404, `Cliente '${customerId}' no encontrado`);
 }
 
-interface RawMovementRow {
-  id: string;
-  customer_id: string;
-  type: string;
-  amount: number;
-  balance_after: number;
-  description: string | null;
-  sale_id: string | null;
-  created_at: string;
+/** Un instante de un filtro, como lo compara `timestamptz`. Un día solo (`2026-10-01`) es su medianoche UTC. */
+function filterInstant(value: string): string {
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    throw new DomainError(400, 'Fecha inválida');
+  }
+  return new Date(ms).toISOString();
 }
 
 export class CustomerService {
-  private db: DatabaseSync;
+  private db: Kysely<TenantDatabase>;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: Kysely<TenantDatabase>) {
     this.db = db;
   }
 
   // --- CRUD CLIENTES ---
 
   async listCustomers(filter?: CustomerFilter): Promise<CustomerRecord[]> {
-    let sql = 'SELECT * FROM customers WHERE 1=1';
-    const params: (string | number)[] = [];
+    let query = this.db.selectFrom('customers').select(CUSTOMER_COLUMNS);
 
     if (filter?.debtorsOnly === true) {
-      sql += ' AND balance > 0';
+      query = query.where('balance', '>', 0);
     }
 
     if (filter?.blocked !== undefined) {
-      if (filter.blocked) {
-        sql += ' AND blocked_reason IS NOT NULL';
-      } else {
-        sql += ' AND blocked_reason IS NULL';
-      }
+      query = query.where('blocked_reason', filter.blocked ? 'is not' : 'is', null);
     }
 
     if (filter?.search !== undefined && filter.search.trim() !== '') {
-      const term = `%${filter.search.trim()}%`;
-      sql += ' AND (name LIKE ? OR document LIKE ? OR phone LIKE ?)';
-      params.push(term, term, term);
+      const pattern = searchPattern(filter.search.trim());
+      query = query.where((eb) =>
+        eb.or([
+          eb(searchable(eb.ref('name')), 'like', pattern),
+          eb(searchable(eb.ref('document')), 'like', pattern),
+          eb(searchable(eb.ref('phone')), 'like', pattern),
+        ]),
+      );
     }
 
-    sql += ' ORDER BY name ASC';
+    // Con id de desempate: dos clientes con el mismo nombre salen siempre en el mismo orden
+    query = query.orderBy('name').orderBy('id');
 
     if (filter?.limit !== undefined && filter.limit > 0) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
+      query = query.limit(filter.limit);
       if (filter.offset !== undefined && filter.offset > 0) {
-        sql += ' OFFSET ?';
-        params.push(filter.offset);
+        query = query.offset(filter.offset);
       }
     }
 
-    const rows = this.db.prepare(sql).all(...params) as unknown as RawCustomerRow[];
+    const rows = await query.execute();
     return rows.map((r) => this.mapCustomerRow(r));
   }
 
-  async getCustomer(id: string): Promise<CustomerRecord | undefined> {
-    const row = this.db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as unknown as RawCustomerRow | undefined;
-    if (!row) return undefined;
-    return this.mapCustomerRow(row);
+  async getCustomer(id: string, db: Kysely<TenantDatabase> = this.db): Promise<CustomerRecord | undefined> {
+    const row = await db.selectFrom('customers').select(CUSTOMER_COLUMNS).where('id', '=', id).executeTakeFirst();
+    return row === undefined ? undefined : this.mapCustomerRow(row);
   }
 
   async createCustomer(data: CreateCustomerInput): Promise<CustomerRecord> {
     const id = data.id ?? `cust_${randomUUID()}`;
     const now = new Date().toISOString();
-    const creditLimit = data.creditLimit ?? 0;
-    const margin = data.margin ?? 0;
-    const unrestricted = data.unrestricted === true ? 1 : 0;
     const initialBalance = data.initialBalance ?? 0;
-    const blockedReason = data.blockedReason ?? null;
 
-    this.db
-      .prepare(
-        `INSERT INTO customers (id, name, document, phone, credit_limit, margin, balance, unrestricted, blocked_reason, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        data.name,
-        data.document ?? null,
-        data.phone ?? null,
-        creditLimit,
-        margin,
-        initialBalance,
-        unrestricted,
-        blockedReason,
-        now,
-        now,
-      );
+    try {
+      return await this.db.transaction().execute(async (trx) => {
+        await trx
+          .insertInto('customers')
+          .values({
+            id,
+            name: data.name,
+            document: data.document ?? null,
+            phone: data.phone ?? null,
+            credit_limit: data.creditLimit ?? 0,
+            margin: data.margin ?? 0,
+            balance: 0,
+            unrestricted: data.unrestricted === true,
+            blocked_reason: data.blockedReason ?? null,
+            created_at: now,
+            updated_at: now,
+          })
+          .execute();
 
-    if (initialBalance !== 0) {
-      const movId = `mov_${randomUUID()}`;
-      this.db
-        .prepare(
-          `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-        )
-        .run(movId, id, 'adjustment', initialBalance, initialBalance, 'Saldo inicial registrado', now);
+        // El saldo inicial pasa por el libro, como cualquier otro movimiento
+        if (initialBalance !== 0) {
+          await postToBalance(trx, id, { type: 'adjustment', delta: initialBalance, description: 'Saldo inicial registrado' }, now);
+        }
+
+        // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
+        await applyPendingFor(trx, id, now);
+
+        const created = await this.getCustomer(id, trx);
+        if (created === undefined) {
+          throw new Error(`No se encontró el cliente recién creado (${id})`);
+        }
+        return created;
+      });
+    } catch (err: unknown) {
+      if (isUniqueViolation(err)) {
+        throw new DomainError(409, 'Ya existe un cliente con ese id');
+      }
+      throw err;
     }
-
-    // Lo que una caja le vendió o cobró antes de que existiera queda aplicado (#2)
-    await applyPendingFor(this.db, id, now);
-
-    const created = await this.getCustomer(id);
-    if (created === undefined) {
-      throw new Error(`No se encontró el cliente recién creado (${id})`);
-    }
-    return created;
   }
 
   async updateCustomer(id: string, data: UpdateCustomerInput): Promise<CustomerRecord | undefined> {
-    const current = await this.getCustomer(id);
-    if (!current) return undefined;
-
-    const now = new Date().toISOString();
-    const name = data.name ?? current.name;
-    const document = data.document !== undefined ? data.document : current.document;
-    const phone = data.phone !== undefined ? data.phone : current.phone;
-    const creditLimit = data.creditLimit !== undefined ? data.creditLimit : current.creditLimit;
-    const margin = data.margin !== undefined ? data.margin : current.margin;
-    const unrestricted = data.unrestricted !== undefined ? (data.unrestricted ? 1 : 0) : (current.unrestricted ? 1 : 0);
-    const blockedReason = data.blockedReason !== undefined ? data.blockedReason : current.blockedReason;
-
-    this.db
-      .prepare(
-        `UPDATE customers
-         SET name = ?, document = ?, phone = ?, credit_limit = ?, margin = ?, unrestricted = ?, blocked_reason = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .run(name, document, phone, creditLimit, margin, unrestricted, blockedReason, now, id);
-
-    return {
-      id,
-      name,
-      document,
-      phone,
-      creditLimit,
-      margin,
-      balance: current.balance,
-      availableCredit: unrestricted === 1 ? null : Math.max(0, creditLimit + margin - current.balance),
-      unrestricted: unrestricted === 1,
-      isDebtor: current.balance > 0,
-      blockedReason,
-      createdAt: current.createdAt,
-      updatedAt: now,
-    };
+    const row = await this.db
+      .updateTable('customers')
+      .set({
+        ...(data.name === undefined ? {} : { name: data.name }),
+        ...(data.document === undefined ? {} : { document: data.document }),
+        ...(data.phone === undefined ? {} : { phone: data.phone }),
+        ...(data.creditLimit === undefined ? {} : { credit_limit: data.creditLimit }),
+        ...(data.margin === undefined ? {} : { margin: data.margin }),
+        ...(data.unrestricted === undefined ? {} : { unrestricted: data.unrestricted }),
+        ...(data.blockedReason === undefined ? {} : { blocked_reason: data.blockedReason }),
+        updated_at: new Date().toISOString(),
+      })
+      .where('id', '=', id)
+      .returning(CUSTOMER_COLUMNS)
+      .executeTakeFirst();
+    return row === undefined ? undefined : this.mapCustomerRow(row);
   }
 
   async deleteCustomer(id: string, options?: { hard?: boolean | undefined; blockedReason?: string | undefined }): Promise<CustomerRecord | { deleted: boolean }> {
-    const current = await this.getCustomer(id);
-    if (!current) {
-      const err = new Error(`Cliente '${id}' no encontrado`);
-      (err as unknown as { statusCode: number }).statusCode = 404;
-      throw err;
-    }
-
     if (options?.hard === true) {
-      this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+      // Sin leer antes: la FK de la cuenta corriente y de las reservas es la que decide (spec, fase 4)
+      let deleted: { id: string } | undefined;
+      try {
+        deleted = await this.db.deleteFrom('customers').where('id', '=', id).returning('id').executeTakeFirst();
+      } catch (err: unknown) {
+        if (isForeignKeyViolation(err)) {
+          throw new DomainError(409, 'El cliente tiene movimientos: archivalo');
+        }
+        throw err;
+      }
+      if (deleted === undefined) {
+        throw notFound(id);
+      }
       return { deleted: true };
     }
 
     const reason = options?.blockedReason ?? 'Archivado por administración';
     const updated = await this.updateCustomer(id, { blockedReason: reason });
     if (!updated) {
-      throw new Error(`No se pudo actualizar el cliente '${id}'`);
+      throw notFound(id);
     }
     return updated;
   }
@@ -286,161 +266,129 @@ export class CustomerService {
   // --- COBRANZAS Y PAGOS ---
 
   async registerPayment(customerId: string, input: RegisterPaymentInput): Promise<PaymentResult> {
-    const customer = await this.getCustomer(customerId);
-    if (!customer) {
-      const err = new Error(`Cliente '${customerId}' no encontrado`);
-      (err as unknown as { statusCode: number }).statusCode = 404;
-      throw err;
-    }
-
     if (input.amount <= 0) {
-      throw new Error('El monto del pago debe ser mayor a cero');
+      throw new DomainError(400, 'El monto del pago debe ser mayor a cero');
     }
 
     const now = new Date().toISOString();
-    const previousBalance = customer.balance;
-    const newBalance = previousBalance - input.amount;
-    const movId = `mov_${randomUUID()}`;
     const paymentId = `pay_${randomUUID()}`;
     const description = input.description ?? (input.reference ? `Cobranza ref. ${input.reference}` : 'Cobranza manual');
 
-    // 1. Asiento en cuenta corriente (amount negativo para reducir deuda)
-    this.db
-      .prepare(
-        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-      )
-      .run(movId, customerId, 'payment', -input.amount, newBalance, description, now);
+    return await this.db.transaction().execute(async (trx) => {
+      // 1. Asiento en cuenta corriente (negativo: baja la deuda) y saldo, juntos
+      const posted = await postToBalance(trx, customerId, { type: 'payment', delta: -input.amount, description }, now);
+      if (posted === undefined) {
+        throw notFound(customerId);
+      }
 
-    // 2. Registro formal en customer_payments, con la forma del contrato (#20)
-    await saveCustomerPayment(
-      this.db,
-      {
-        id: paymentId,
+      // 2. Registro formal en customer_payments, con la forma del contrato (#20)
+      await saveCustomerPayment(
+        trx,
+        {
+          id: paymentId,
+          customerId,
+          payments: [
+            {
+              method: input.method ?? 'cash',
+              amount: input.amount,
+              ...(input.reference === undefined ? {} : { reference: input.reference }),
+            },
+          ],
+          total: input.amount,
+          createdAt: now,
+        },
+        { deviceId: 'admin_panel', branch: 'ADMIN', pointOfSale: 'Oficina' },
+        now,
+      );
+
+      return {
         customerId,
-        payments: [
-          {
-            method: input.method ?? 'cash',
-            amount: input.amount,
-            ...(input.reference === undefined ? {} : { reference: input.reference }),
-          },
-        ],
-        total: input.amount,
-        createdAt: now,
-      },
-      { deviceId: 'admin_panel', branch: 'ADMIN', pointOfSale: 'Oficina' },
-      now,
-    );
-
-    // 3. Actualizar saldo del cliente y updated_at
-    this.db
-      .prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?')
-      .run(newBalance, now, customerId);
-
-    return {
-      customerId,
-      previousBalance,
-      amount: input.amount,
-      newBalance,
-      movementId: movId,
-      updatedAt: now,
-    };
+        previousBalance: posted.previousBalance,
+        amount: input.amount,
+        newBalance: posted.balanceAfter,
+        movementId: posted.movementId,
+        updatedAt: now,
+      };
+    });
   }
 
   // --- AJUSTES TRANSPARENTES DE SALDO ---
 
   async adjustBalance(customerId: string, input: AdjustBalanceInput): Promise<AdjustBalanceResult> {
-    const customer = await this.getCustomer(customerId);
-    if (!customer) {
-      const err = new Error(`Cliente '${customerId}' no encontrado`);
-      (err as unknown as { statusCode: number }).statusCode = 404;
-      throw err;
-    }
-
     if (input.amount < 0) {
-      throw new Error('El monto no puede ser negativo');
+      throw new DomainError(400, 'El monto no puede ser negativo');
     }
 
     if (!input.reason || input.reason.trim() === '') {
-      throw new Error('El motivo del ajuste es obligatorio para auditoría contable');
-    }
-
-    const previousBalance = customer.balance;
-    let delta: number;
-    let newBalance: number;
-
-    if (input.type === 'credit') {
-      delta = -input.amount;
-      newBalance = previousBalance + delta;
-    } else if (input.type === 'debit') {
-      delta = input.amount;
-      newBalance = previousBalance + delta;
-    } else {
-      // type === 'set'
-      newBalance = input.amount;
-      delta = newBalance - previousBalance;
+      throw new DomainError(400, 'El motivo del ajuste es obligatorio para auditoría contable');
     }
 
     const now = new Date().toISOString();
-    const movId = `mov_${randomUUID()}`;
+    const description = input.reason.trim();
 
-    // 1. Asiento en cuenta corriente
-    this.db
-      .prepare(
-        `INSERT INTO account_movements (id, customer_id, type, amount, balance_after, description, sale_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-      )
-      .run(movId, customerId, 'adjustment', delta, newBalance, input.reason.trim(), now);
+    return await this.db.transaction().execute(async (trx) => {
+      let delta: number;
+      if (input.type === 'credit') {
+        delta = -input.amount;
+      } else if (input.type === 'debit') {
+        delta = input.amount;
+      } else {
+        // 'set': la diferencia contra el saldo de ahora, con la fila bloqueada hasta el commit
+        const current = await trx.selectFrom('customers').select('balance').where('id', '=', customerId).forUpdate().executeTakeFirst();
+        if (current === undefined) {
+          throw notFound(customerId);
+        }
+        delta = roundMoney(input.amount - (current.balance ?? 0));
+      }
 
-    // 2. Actualizar saldo deudor del cliente y timestamp
-    this.db
-      .prepare('UPDATE customers SET balance = ?, updated_at = ? WHERE id = ?')
-      .run(newBalance, now, customerId);
+      const posted = await postToBalance(trx, customerId, { type: 'adjustment', delta, description }, now);
+      if (posted === undefined) {
+        throw notFound(customerId);
+      }
 
-    return {
-      customerId,
-      previousBalance,
-      delta,
-      newBalance,
-      movementId: movId,
-      updatedAt: now,
-    };
+      return {
+        customerId,
+        previousBalance: posted.previousBalance,
+        delta: posted.amount,
+        newBalance: posted.balanceAfter,
+        movementId: posted.movementId,
+        updatedAt: now,
+      };
+    });
   }
 
   // --- EXTRACTO DE CUENTA CORRIENTE ---
 
   async listMovements(customerId: string, filter?: MovementFilter): Promise<AccountMovementRecord[]> {
-    let sql = 'SELECT * FROM account_movements WHERE customer_id = ?';
-    const params: (string | number)[] = [customerId];
+    let query = this.db
+      .selectFrom('account_movements')
+      .select(['id', 'customer_id', 'type', 'amount', 'balance_after', 'description', 'sale_id', 'created_at'])
+      .where('customer_id', '=', customerId);
 
     if (filter?.type !== undefined && filter.type.trim() !== '') {
-      sql += ' AND type = ?';
-      params.push(filter.type.trim());
+      query = query.where('type', '=', filter.type.trim());
     }
 
     if (filter?.from !== undefined && filter.from.trim() !== '') {
-      sql += ' AND created_at >= ?';
-      params.push(filter.from.trim());
+      query = query.where('created_at', '>=', filterInstant(filter.from.trim()));
     }
 
     if (filter?.to !== undefined && filter.to.trim() !== '') {
-      sql += ' AND created_at <= ?';
-      params.push(filter.to.trim());
+      query = query.where('created_at', '<=', filterInstant(filter.to.trim()));
     }
 
-    // Con id de desempate: el extracto se pide por tramos (#87) y el orden tiene que ser estable
-    sql += ' ORDER BY created_at DESC, id DESC';
+    // Con `seq` de desempate: el extracto se pide por tramos (#87) y, entre movimientos del mismo
+    // instante, el último que se escribió sale primero
+    query = query.orderBy('created_at', 'desc').orderBy('seq', 'desc');
 
     if (filter?.limit !== undefined && filter.limit > 0) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
+      query = query.limit(filter.limit);
       if (filter.offset !== undefined && filter.offset > 0) {
-        sql += ' OFFSET ?';
-        params.push(filter.offset);
+        query = query.offset(filter.offset);
       }
     }
 
-    const rows = this.db.prepare(sql).all(...params) as unknown as RawMovementRow[];
+    const rows = await query.execute();
 
     return rows.map((r) => ({
       id: r.id,
@@ -454,11 +402,10 @@ export class CustomerService {
     }));
   }
 
-  private mapCustomerRow(r: RawCustomerRow): CustomerRecord {
+  private mapCustomerRow(r: CustomerRow): CustomerRecord {
     const creditLimit = r.credit_limit ?? 0;
     const margin = r.margin ?? 0;
     const balance = r.balance ?? 0;
-    const unrestricted = r.unrestricted === 1;
 
     return {
       id: r.id,
@@ -468,8 +415,8 @@ export class CustomerService {
       creditLimit,
       margin,
       balance,
-      availableCredit: unrestricted ? null : Math.max(0, creditLimit + margin - balance),
-      unrestricted,
+      availableCredit: r.unrestricted ? null : Math.max(0, creditLimit + margin - balance),
+      unrestricted: r.unrestricted,
       isDebtor: balance > 0,
       blockedReason: r.blocked_reason,
       createdAt: r.created_at,

@@ -1,9 +1,8 @@
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
+import type { Database } from './pg/database.ts';
+import { createTenantSchema, dropTenantSchema } from './pg/migrations/migrate.ts';
 import type { SystemDatabase } from './pg/system-schema.ts';
-import { initTenantDb, openTenantDb } from './tenant-db.ts';
+import type { TenantDatabase } from './pg/tenant-schema.ts';
 import { seedDemoTenant } from '../seeds/index.ts';
 import { isBusinessType, type BusinessType } from '../../shared/business-type.ts';
 
@@ -13,12 +12,6 @@ export type TenantRecord = {
   name: string;
   status: 'active' | 'maintenance' | 'suspended';
   created_at: string;
-};
-
-export type ConsolidatedStockItem = {
-  productId: string;
-  quantity: number;
-  updatedAt: string;
 };
 
 export type CreateTenantParams = {
@@ -32,42 +25,27 @@ export type CreateTenantParams = {
   businessType?: BusinessType | undefined;
 };
 
+export const DEFAULT_BRANCH_ID = 'branch-central';
+
 /**
- * Los comercios: sus filas de sistema (`tenants`, la membresía del owner) en PostgreSQL y la base de
- * cada uno, todavía en SQLite (un `.sqlite` por comercio o en memoria, para los tests).
+ * Los comercios: sus filas de sistema (`tenants`, la membresía del owner) y el esquema de cada uno
+ * (`tenant_<id>`), en PostgreSQL.
  */
 export class TenantManager {
+  private database: Database;
   private db: Kysely<SystemDatabase>;
-  private cache = new Map<string, DatabaseSync>();
-  private baseDir: string;
-  private inMemory: boolean;
 
-  constructor(
-    db: Kysely<SystemDatabase>,
-    options?: { baseDir?: string; inMemory?: boolean },
-  ) {
-    this.db = db;
-    this.baseDir = options?.baseDir ?? join(process.cwd(), 'data', 'tenants');
-    this.inMemory = options?.inMemory ?? false;
+  constructor(database: Database) {
+    this.database = database;
+    this.db = database.system;
   }
 
-  getTenantDb(tenantId: string): DatabaseSync {
-    const existing = this.cache.get(tenantId);
-    if (existing !== undefined) {
-      return existing;
-    }
-
-    let db: DatabaseSync;
-    if (this.inMemory) {
-      db = new DatabaseSync(':memory:');
-      initTenantDb(db);
-    } else {
-      const filePath = join(this.baseDir, `${tenantId}.sqlite`);
-      db = openTenantDb(filePath);
-    }
-
-    this.cache.set(tenantId, db);
-    return db;
+  /**
+   * Los datos de un comercio, acotados a su esquema: para los servicios de sistema que los necesitan
+   * (demos, reconciliación, semillas). Un pedido los recibe de su scope (`tenantDbDef`).
+   */
+  forTenant(tenantId: string): Kysely<TenantDatabase> {
+    return this.database.forTenant(tenantId);
   }
 
   async tenantExists(id: string, db: Kysely<SystemDatabase> = this.db): Promise<boolean> {
@@ -105,14 +83,19 @@ export class TenantManager {
   /** Crea el comercio entero: sus filas de sistema (en su transacción) y después su base. */
   async createTenant(params: CreateTenantParams): Promise<TenantRecord> {
     const record = await this.db.transaction().execute(async (trx) => await this.createTenantRecord(params, trx));
-    // La base del comercio sigue en SQLite: no hay transacción común con la de sistema
-    await this.initTenantStorage(record.id, { seedDemoData: params.seedDemoData === true, now: record.created_at });
+    // El esquema del comercio se crea fuera de la transacción (una migración puede no ser transaccional)
+    try {
+      await this.initTenantStorage(record.id, { seedDemoData: params.seedDemoData === true, now: record.created_at });
+    } catch (err: unknown) {
+      await this.deleteTenant(record.id);
+      throw err;
+    }
     return record;
   }
 
   /**
    * Las filas de sistema de un comercio nuevo (`tenants` y la membresía del owner), con el executor
-   * de quien llama: el alta lo hace dentro de su transacción y crea la base después
+   * de quien llama: el alta lo hace dentro de su transacción y crea el esquema después
    * (`initTenantStorage`), compensando con `deleteTenant` si falla.
    */
   async createTenantRecord(params: CreateTenantParams, db: Kysely<SystemDatabase> = this.db): Promise<TenantRecord> {
@@ -154,67 +137,37 @@ export class TenantManager {
     };
   }
 
-  /** La base de un comercio recién creado (todavía SQLite): la sucursal por defecto y, si se pide, la semilla. */
+  /**
+   * El esquema de un comercio recién creado (`createTenantSchema`, fuera de cualquier transacción),
+   * con la sucursal por defecto y, si se pide, la semilla. Si algo falla después de crear el esquema,
+   * lo borra; las filas de sistema las deshace quien llama (`deleteTenant`).
+   */
   async initTenantStorage(tenantId: string, options: { seedDemoData?: boolean; now?: string } = {}): Promise<void> {
-    const tenantDb = this.getTenantDb(tenantId);
-    const defaultBranchId = 'branch-central';
-    tenantDb
-      .prepare('INSERT INTO branches (id, name, code, created_at) VALUES (?, ?, ?, ?)')
-      .run(defaultBranchId, 'Sucursal Central', 'CENTRAL', options.now ?? new Date().toISOString());
-
-    if (options.seedDemoData === true) {
-      await seedDemoTenant(tenantDb, defaultBranchId);
+    const now = options.now ?? new Date().toISOString();
+    await createTenantSchema(this.database.root, tenantId);
+    try {
+      // La sucursal por defecto y la semilla, juntas
+      await this.forTenant(tenantId)
+        .transaction()
+        .execute(async (trx) => {
+          await trx.insertInto('branches').values({ id: DEFAULT_BRANCH_ID, name: 'Sucursal Central', code: 'CENTRAL', created_at: now }).execute();
+          if (options.seedDemoData === true) {
+            await seedDemoTenant(trx, DEFAULT_BRANCH_ID);
+          }
+        });
+    } catch (err: unknown) {
+      await dropTenantSchema(this.database.root, tenantId);
+      throw err;
     }
   }
 
   /**
-   * Borra un comercio entero: cierra su base, borra su fila de sistema y su archivo. Lo usa el alta
-   * para deshacer un comercio a medio crear. Sus cajas (con sus equipos), keys, membresías,
-   * invitaciones, suspensiones y pedidos de ayuda se van con la fila (`ON DELETE CASCADE`).
+   * Borra un comercio entero: su fila de sistema y su esquema. Lo usa el alta para deshacer un
+   * comercio a medio crear. Sus cajas (con sus equipos), keys, membresías, invitaciones,
+   * suspensiones, pedidos de ayuda y bonos se van con la fila (`ON DELETE CASCADE`).
    */
   async deleteTenant(id: string): Promise<void> {
-    const db = this.cache.get(id);
-    if (db !== undefined) {
-      try {
-        db.close();
-      } catch {
-        // Ignorar si ya estaba cerrada
-      }
-      this.cache.delete(id);
-    }
-
     await this.db.deleteFrom('tenants').where('id', '=', id).execute();
-
-    if (!this.inMemory) {
-      const file = join(this.baseDir, `${id}.sqlite`);
-      for (const path of [file, `${file}-wal`, `${file}-shm`]) {
-        rmSync(path, { force: true });
-      }
-    }
-  }
-
-  async getConsolidatedStock(tenantDb: DatabaseSync): Promise<ConsolidatedStockItem[]> {
-    const rows = tenantDb
-      .prepare(
-        'SELECT product_id, SUM(quantity) as quantity, MAX(updated_at) as updated_at FROM stock GROUP BY product_id',
-      )
-      .all() as { product_id: string; quantity: number | null; updated_at: string }[];
-
-    return rows.map((r) => ({
-      productId: r.product_id,
-      quantity: r.quantity ?? 0,
-      updatedAt: r.updated_at,
-    }));
-  }
-
-  closeAll(): void {
-    for (const db of this.cache.values()) {
-      try {
-        db.close();
-      } catch {
-        // Ignorar si ya estaba cerrada
-      }
-    }
-    this.cache.clear();
+    await dropTenantSchema(this.database.root, id);
   }
 }

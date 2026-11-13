@@ -1,33 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { E2E_DATA_DIR, E2E_PORT } from '../playwright.config.ts';
-import { querySystem } from './system-db.ts';
+import { E2E_PORT } from '../playwright.config.ts';
+import { querySystem, salesOf } from './system-db.ts';
 
 /**
  * Demo y alta de punta a punta (#9), con el POS publicado (copia local, mismo JS) contra este
  * mini-erp: landing → demo → venta → /ALTA → alta → el POS vuelve al comercio nuevo.
  */
-
-function query<T>(file: string, sql: string, ...params: string[]): T[] {
-  // timeout: si el servidor está escribiendo un lote, espera en lugar de fallar con "database is locked"
-  const db = new DatabaseSync(join(E2E_DATA_DIR, file), { readOnly: true, timeout: 5000 });
-  try {
-    return db.prepare(sql).all(...params) as T[];
-  } finally {
-    db.close();
-  }
-}
-
-function salesOf(tenantId: string, pointOfSale?: string): number {
-  const file = `tenants/${tenantId}.sqlite`;
-  const rows =
-    pointOfSale === undefined
-      ? query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales')
-      : query<{ n: number }>(file, 'SELECT COUNT(*) AS n FROM sales WHERE point_of_sale = ?', pointOfSale);
-  return rows[0]?.n ?? 0;
-}
 
 async function sellOneAndSync(page: Page, search: string): Promise<void> {
   const commandBar = page.getByLabel('Barra de comandos');
@@ -108,10 +87,10 @@ test('landing → demo → venta → /ALTA → alta → el POS vuelve conectado 
   const newTenant = alta?.tenant_id ?? '';
   expect(newTenant).not.toBe('');
   expect(newTenant).not.toBe(demoTenant);
-  expect(salesOf(newTenant)).toBe(0); // la venta de práctica no pasa al comercio nuevo
+  expect(await salesOf(newTenant)).toBe(0); // la venta de práctica no pasa al comercio nuevo
 
   // Una venta real llega al comercio nuevo; la demo sigue con la suya
   await sellOneAndSync(page, 'alfajor');
   await expect.poll(() => salesOf(newTenant)).toBe(1);
-  expect(salesOf(demoTenant, demoPos)).toBe(1);
+  expect(await salesOf(demoTenant, demoPos)).toBe(1);
 });

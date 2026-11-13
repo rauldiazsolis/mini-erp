@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { setupTestDb } from './helpers/test-db.ts';
 
@@ -12,13 +12,9 @@ describe('TenantManager', () => {
   let manager: TenantManager;
 
   beforeEach(() => {
-    // Lo de sistema en PostgreSQL; la base de cada comercio, en memoria
-    manager = new TenantManager(db().system, { inMemory: true });
+    manager = new TenantManager(db());
   });
 
-  afterEach(() => {
-    manager.closeAll();
-  });
 
   it('crea un nuevo tenant con sucursal por defecto y datos seed iniciales', async () => {
     await insertUser('user-1', 'owner@example.com', 'Owner');
@@ -44,16 +40,23 @@ describe('TenantManager', () => {
     expect(membership).toEqual({ role: 'owner', status: 'active' });
 
     // Verificar en tenantDb
-    const tenantDb = manager.getTenantDb('tenant-kiosco');
-    const branches = tenantDb.prepare('SELECT * FROM branches').all() as { code: string; name: string }[];
+    const tenantDb = manager.forTenant('tenant-kiosco');
+    const branches = await tenantDb.selectFrom('branches').select(['code', 'name']).execute();
     expect(branches.length).toBe(1);
     expect(branches[0]?.code).toBe('CENTRAL');
 
-    const products = tenantDb.prepare('SELECT COUNT(*) as count FROM products').get() as { count: number };
+    const products = await tenantDb.selectFrom('products').select((eb) => eb.fn.countAll<number>().as('count')).executeTakeFirstOrThrow();
     expect(products.count).toBeGreaterThan(0);
 
-    const customers = tenantDb.prepare('SELECT COUNT(*) as count FROM customers').get() as { count: number };
+    const customers = await tenantDb.selectFrom('customers').select((eb) => eb.fn.countAll<number>().as('count')).executeTakeFirstOrThrow();
     expect(customers.count).toBeGreaterThan(0);
+
+    // La semilla trae su historial y el stock de cada producto en la sucursal por defecto
+    const sales = await tenantDb.selectFrom('sales').select((eb) => eb.fn.countAll<number>().as('count')).executeTakeFirstOrThrow();
+    expect(sales.count).toBeGreaterThan(0);
+    const stock = await tenantDb.selectFrom('stock').select(['product_id', 'branch_id', 'quantity']).execute();
+    expect(stock.length).toBe(products.count);
+    expect(stock.every((s) => s.branch_id === 'branch-central' && typeof s.quantity === 'number')).toBe(true);
   });
 
   it('el owner que crea el comercio es su titular; sin owner (una demo), no hay titular (#21)', async () => {
@@ -65,25 +68,6 @@ describe('TenantManager', () => {
       { id: 'con-titular', holder_user_id: 'user-9' },
       { id: 'sin-titular', holder_user_id: null },
     ]);
-  });
-
-  it('permite consultar stock consolidado por producto', async () => {
-    await insertUser('user-stock', 'stock@example.com', 'Stock Owner');
-
-    await manager.createTenant({
-      id: 'tenant-stock-test',
-      slug: 'stock-test',
-      name: 'Stock Test',
-      ownerUserId: 'user-stock',
-      seedDemoData: true,
-    });
-
-    const tenantDb = manager.getTenantDb('tenant-stock-test');
-    const stockItems = await manager.getConsolidatedStock(tenantDb);
-
-    expect(stockItems.length).toBeGreaterThan(0);
-    expect(typeof stockItems[0]?.productId).toBe('string');
-    expect(typeof stockItems[0]?.quantity).toBe('number');
   });
 
   it('desambigua silenciosamente el slug agregando -2, -3 sólo si ya existe uno anterior', async () => {

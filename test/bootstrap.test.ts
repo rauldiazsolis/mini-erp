@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/server/app.ts';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
 import { bootstrap } from '../src/server/bootstrap.ts';
@@ -11,7 +10,7 @@ import { setupTestDb } from './helpers/test-db.ts';
 const pgDb = setupTestDb();
 
 async function boot(env: NodeJS.ProcessEnv) {
-  const tenantManager = new TenantManager(pgDb().system, { inMemory: true });
+  const tenantManager = new TenantManager(pgDb());
   const bundle = createApp({ database: pgDb(), tenantManager });
   const run = async () => {
     const result = await bootstrap({ env, bundle });
@@ -22,8 +21,6 @@ async function boot(env: NodeJS.ProcessEnv) {
   };
   return { result: await run(), run, tenantManager, bundle };
 }
-
-const n = (db: DatabaseSync, sql: string, ...params: string[]): number => (db.prepare(sql).get(...params) as { n: number }).n;
 
 type Counted = 'users' | 'tenants' | 'memberships' | 'tenant_api_keys' | 'gift_credits' | 'charges' | 'paid_movements' | 'demo_sessions' | 'demo_tenants';
 const pgCount = async (table: Counted): Promise<number> =>
@@ -146,12 +143,13 @@ describe('seed de desarrollo (#21)', () => {
   it('las ventas sembradas son de su caja y cada caja tiene un cargo por día con ventas', async () => {
     const { tenantManager } = await boot({});
     for (const t of DEV_TENANTS) {
-      const db = tenantManager.getTenantDb(t.id);
-      expect(n(db, 'SELECT COUNT(*) AS n FROM sales WHERE register_id IS NULL')).toBe(0);
-      const salesDays = db
-        .prepare("SELECT register_id || '|' || day AS k FROM sales WHERE voids_sale_id IS NULL GROUP BY register_id, day ORDER BY k")
-        .all()
-        .map((r) => (r as { k: string }).k);
+      const db = tenantManager.forTenant(t.id);
+      expect(await db.selectFrom('sales').select('id').where('register_id', 'is', null).execute()).toEqual([]);
+      const salesDays = (
+        await db.selectFrom('sales').select(['register_id', 'day']).where('voids_sale_id', 'is', null).groupBy(['register_id', 'day']).execute()
+      )
+        .map((r) => `${String(r.register_id)}|${String(r.day)}`)
+        .sort();
       const chargeDays = (
         await pgDb().system.selectFrom('charges').select(['register_id', 'day']).where('tenant_id', '=', t.id).execute()
       )
@@ -224,10 +222,27 @@ describe('seed de desarrollo (#21)', () => {
   });
 
   it('arrancar otra vez no duplica nada', async () => {
-    const { run } = await boot({});
+    const { run, tenantManager } = await boot({});
+    /** Lo de cada comercio (de desarrollo y demo): cuántas filas hay en cada tabla sembrada. */
+    const tenantCounts = async (): Promise<Record<string, number[]>> => {
+      const out: Record<string, number[]> = {};
+      for (const id of [...DEV_TENANTS.map((t) => t.id), 'demo-kiosco', 'demo-almacen', 'demo-ferreteria']) {
+        const db = tenantManager.forTenant(id);
+        const tables = ['branches', 'products', 'stock', 'stock_movements', 'customers', 'account_movements', 'sales', 'cash_movements', 'customer_payments'] as const;
+        const counted: number[] = [];
+        for (const table of tables) {
+          counted.push((await db.selectFrom(table).select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow()).n);
+        }
+        out[id] = counted;
+      }
+      return out;
+    };
     const before = await counts();
+    const tenantsBefore = await tenantCounts();
+    expect(tenantsBefore[kiosco.id]?.every((count) => count > 0)).toBe(true);
     await run();
     expect(await counts()).toEqual(before);
+    expect(await tenantCounts()).toEqual(tenantsBefore);
   });
 
   it('devuelve los usuarios y las keys para el log del arranque', async () => {

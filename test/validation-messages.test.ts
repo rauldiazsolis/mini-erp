@@ -18,7 +18,7 @@ describe('textos de validación de /api (#6)', () => {
   let root: string;
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const o = await bundle.authService.createUser({ email: 'o@x.com', password: 'clave-segura', name: 'Owner' });

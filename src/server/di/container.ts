@@ -1,10 +1,8 @@
 import { container, unbound, fn, type Container, type IContainer } from 'hardwired';
-import { DatabaseSync } from 'node:sqlite';
 import type { Kysely } from 'kysely';
 import { createDatabase, databaseUrl, type Database } from '../db/pg/database.ts';
 import type { SystemDatabase } from '../db/pg/system-schema.ts';
-import { dataDir } from '../db/data-dir.ts';
-import { join } from 'node:path';
+import type { TenantDatabase } from '../db/pg/tenant-schema.ts';
 import { TenantManager } from '../db/tenant-manager.ts';
 import { AuthService } from '../auth/auth-service.ts';
 import { ApiKeyService } from '../tenant/api-key-service.ts';
@@ -51,16 +49,17 @@ export const databaseDef = fn.singleton<Database>(() => createDatabase({ connect
 export const systemKyselyDef = fn.singleton((c): Kysely<SystemDatabase> => c.use(databaseDef).system);
 
 /**
- * Definición no enlazada para la base de datos SQLite del tenant (scoped).
- * Si se intenta resolver en el contenedor raíz sin un scope por tenant, arroja un error explicativo
- * impidiendo cualquier fuga de aislamiento (tenant leakage).
+ * Los datos del comercio del pedido: su Kysely ya acotado a su esquema (`Database.forTenant`).
+ * No está enlazada: resolverla en el contenedor raíz, sin un scope por comercio, falla a propósito,
+ * para que no haya fugas entre comercios. Solo `createTenantScope` la enlaza.
  */
-export const tenantDbDef = unbound<DatabaseSync>('tenantDb');
+export const tenantDbDef = unbound<Kysely<TenantDatabase>>('tenantDb');
+
 
 // --- DEFINICIONES SINGLETON DE APLICACIÓN ---
 
 export const tenantManagerDef = fn.singleton(
-  (c) => new TenantManager(c.use(systemKyselyDef), { baseDir: join(dataDir(), 'tenants') }),
+  (c) => new TenantManager(c.use(databaseDef)),
 );
 export const apiKeyServiceDef = fn.singleton((c) => new ApiKeyService(c.use(systemKyselyDef)));
 
@@ -235,9 +234,10 @@ export function createRootContainer(deps?: ContainerDependencies): Container {
 }
 
 /**
- * Genera un scope acotado al ciclo de vida de la request vinculando la base de datos del tenant activo.
+ * El scope de un pedido: enlaza los datos del comercio activo. Es el único lugar que lo hace.
  */
-export function createTenantScope(root: Container, tenantDb: DatabaseSync): IContainer {
+export function createTenantScope(root: Container, tenantId: string): IContainer {
+  const tenantDb = root.use(databaseDef).forTenant(tenantId);
   return root.scope((s) => {
     s.bind(tenantDbDef).toValue(tenantDb);
   });

@@ -19,7 +19,7 @@ describe('pedidos de ayuda (#23, M7b)', () => {
 
   beforeEach(async () => {
     now = new Date('2026-10-05T15:00:00.000Z');
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager, now: () => now });
     app = bundle.app;
     const auth = bundle.authService;

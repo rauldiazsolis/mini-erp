@@ -41,12 +41,16 @@ describe('reglas de persistencia (AGENTS.md, "Persistencia")', () => {
     expect(filesMatching(/system\.sqlite|system-db\.ts|migrations\/system\.ts|\bopenSystemDb\b|\bsystemDbDef\b/)).toEqual([]);
   });
 
-  it('solo abren bases de SQLite los comercios, sus migraciones y el backup', () => {
+  it('los datos de los comercios no están en SQLite: solo sus migraciones viejas y el backup abren un .sqlite', () => {
+    // Las migraciones de SQLite, su worker y el backup quedan hasta las fases 5 y 6
     expect(filesMatching(/new DatabaseSync\(/)).toEqual([
       'src/server/backup/backup.ts',
       'src/server/db/migrations/run-migrations.ts',
       'src/server/db/tenant-db.ts',
-      'src/server/db/tenant-manager.ts',
+    ]);
+    expect(filesMatching(/from 'node:sqlite'/).filter((file) => !file.startsWith('src/server/db/migrations/'))).toEqual([
+      'src/server/backup/backup.ts',
+      'src/server/db/tenant-db.ts',
     ]);
   });
 });

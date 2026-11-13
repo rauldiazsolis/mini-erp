@@ -77,7 +77,7 @@ describe('permisos de la plataforma (#23)', () => {
   let tokens: { support: string; owner: string };
 
   beforeEach(async () => {
-    const tenantManager = new TenantManager(db().system, { inMemory: true });
+    const tenantManager = new TenantManager(db());
     const bundle = createApp({ database: db(), tenantManager });
     app = bundle.app;
     const support = await bundle.authService.createUser({ email: 'soporte@x.com', password: 'password123', name: 'Soporte' });

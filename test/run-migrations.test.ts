@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { TenantManager } from '../src/server/db/tenant-manager.ts';
+import { openTenantDb } from '../src/server/db/tenant-db.ts';
 import { readVersion } from '../src/server/db/migrations/migrate.ts';
 import { TENANT_SCHEMA } from '../src/server/db/migrations/tenant.ts';
 import { currentVersion, type Schema } from '../src/server/db/migrations/types.ts';
@@ -33,19 +34,23 @@ function schemasDePrueba(tenantUp?: (db: DatabaseSync) => void): { tenant: Schem
   };
 }
 
-/** Un directorio de datos con el código de hoy: comercios al día y una demo, sin `system.sqlite`. */
+/**
+ * Un directorio de datos con bases de comercio de SQLite al día (las que migra `runMigrations` hasta
+ * la fase 5) y una demo, sin `system.sqlite`. Los comercios ya no nacen con un `.sqlite`: el test lo
+ * arma con `openTenantDb`.
+ */
 async function sembrar(ids: string[] = ['kiosco-real']): Promise<string> {
   root = mkdtempSync(join(tmpdir(), 'mini-erp-migr-'));
   const dataDir = join(root, 'data');
-  const tenants = new TenantManager(pgDb().system, { baseDir: join(dataDir, 'tenants') });
-  for (const id of ids) {
+  const tenants = new TenantManager(pgDb());
+  for (const id of [...ids, 'demo-abc']) {
     await tenants.createTenant({ id, slug: id, name: id });
+    openTenantDb(join(dataDir, 'tenants', `${id}.sqlite`)).close();
   }
-  await tenants.createTenant({ id: 'demo-abc', slug: 'demo-abc', name: 'Demo' });
   const at = new Date().toISOString();
-  const kiosco = tenants.getTenantDb(ids[0] ?? 'kiosco-real');
+  const kiosco = openTenantDb(join(dataDir, 'tenants', `${ids[0] ?? 'kiosco-real'}.sqlite`));
   kiosco.prepare('INSERT INTO products (id, sku, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('p1', 'SKU1', 'Yerba', at, at);
-  tenants.closeAll();
+  kiosco.close();
   return dataDir;
 }
 

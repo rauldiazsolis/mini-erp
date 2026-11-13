@@ -7,7 +7,7 @@ import { setupTestDb } from './helpers/test-db.ts';
 const db = setupTestDb();
 
 function makeApp() {
-  return createApp({ database: db(), tenantManager: new TenantManager(db().system, { inMemory: true }) }).app;
+  return createApp({ database: db(), tenantManager: new TenantManager(db()) }).app;
 }
 
 function preflight(app: ReturnType<typeof makeApp>) {
