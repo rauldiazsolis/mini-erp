@@ -56,7 +56,7 @@ export class PlatformQueryService {
 
   async listTenants(q?: string): Promise<PlatformTenantItem[]> {
     const text = q?.trim() ?? '';
-    let query = await this.tenantQuery();
+    let query = this.tenantQuery();
     if (text !== '') {
       query = query.where((eb) => eb.or([eb(searchable(eb.ref('t.name')), 'like', searchPattern(text)), eb(searchable(eb.ref('t.slug')), 'like', searchPattern(text))]));
     }
@@ -67,7 +67,7 @@ export class PlatformQueryService {
   }
 
   async tenantDetail(tenantId: string): Promise<PlatformTenantDetail> {
-    const row = await (await this.tenantQuery()).where('t.id', '=', tenantId).executeTakeFirst();
+    const row = await this.tenantQuery().where('t.id', '=', tenantId).executeTakeFirst();
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return {
       tenant: await this.toItem(row),
@@ -80,7 +80,7 @@ export class PlatformQueryService {
 
   /** El id del comercio con ese slug (sin demos), o 404. */
   async tenantIdBySlug(slug: string): Promise<string> {
-    const row = await (await this.tenantQuery()).where('t.slug', '=', slug).executeTakeFirst();
+    const row = await this.tenantQuery().where('t.slug', '=', slug).executeTakeFirst();
     if (row === undefined) throw new DomainError(404, 'Comercio no encontrado');
     return row.id;
   }
@@ -145,7 +145,7 @@ export class PlatformQueryService {
   }
 
   /** Los comercios con su titular y sus miembros activos, sin los demo. */
-  private async tenantQuery() {
+  private tenantQuery() {
     return this.db
       .selectFrom('tenants as t')
       .leftJoin('users as h', 'h.id', 't.holder_user_id')
