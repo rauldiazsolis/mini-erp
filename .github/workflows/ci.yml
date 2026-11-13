@@ -31,6 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # pg_dump y pg_restore (test/backup.test.ts) del mismo major que el servidor, como en producción
+      # (postgresql-client-16): el runner trae los de PostgreSQL 17, que escriben
+      # `SET transaction_timeout`, y un servidor 16 no lo conoce. /usr/bin/pg_dump es el wrapper de
+      # Debian, que elige el major más nuevo instalado: por eso va su carpeta primero en el PATH.
+      - name: Cliente de PostgreSQL 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+
       - uses: pnpm/action-setup@v5
 
       - uses: actions/setup-node@v7
