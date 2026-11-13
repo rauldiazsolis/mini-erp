@@ -1,5 +1,7 @@
 [Unit]
-Description=Backup nocturno del mini-erp
+Description=Backup del mini-erp (pg_dump; nocturno y antes de cada deploy)
+Requires=postgresql.service
+After=postgresql.service
 
 [Service]
 Type=oneshot
@@ -7,4 +9,11 @@ User=minierp
 Group=minierp
 WorkingDirectory=/opt/mini-erp/current
 EnvironmentFile=/etc/mini-erp/env
+# Corre pg_dump por el PATH: /usr/bin/pg_dump (postgresql-client-16), en el PATH por omisión de systemd
 ExecStart=/usr/bin/node scripts/backup.ts
+# Los dumps tienen hashes de contraseñas: solo los lee minierp
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/mini-erp-backups
