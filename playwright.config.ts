@@ -5,7 +5,6 @@ import { defineConfig, devices } from '@playwright/test';
  * local del canal del POS publicado en /pos/<canal>/. El recorrido de la demo corre entero en el mismo origen.
  */
 export const E2E_PORT = 4110;
-export const E2E_DATA_DIR = 'test-results/e2e-data';
 
 export default defineConfig({
   testDir: './e2e',
@@ -26,7 +25,7 @@ export default defineConfig({
     // Todos los specs piden login, alta e invitaciones desde la misma IP: el límite de 20 cada 15
     // minutos (que prueba Vitest) los haría fallar según el orden de los workers (#81). Lo mismo con los
     // beacons y los contactos del embudo (#25)
-    env: { PORT: String(E2E_PORT), DATA_DIR: E2E_DATA_DIR, AUTH_RATE_LIMIT: '1000', BEACON_RATE_LIMIT: '1000', CONTACT_RATE_LIMIT: '1000' },
+    env: { PORT: String(E2E_PORT), AUTH_RATE_LIMIT: '1000', BEACON_RATE_LIMIT: '1000', CONTACT_RATE_LIMIT: '1000' },
     reuseExistingServer: false,
     timeout: 120_000,
   },

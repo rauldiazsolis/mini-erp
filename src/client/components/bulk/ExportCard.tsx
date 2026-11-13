@@ -14,7 +14,7 @@ export function ExportCard() {
             <span>📤 Exportación de Datos del Sistema</span>
           </h3>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Descarga copias completas de tu base de datos SQLite en formato CSV estándar (RFC 4180) o JSON
+            Descarga copias completas de los datos de tu comercio en formato CSV estándar (RFC 4180) o JSON
           </p>
         </div>
 

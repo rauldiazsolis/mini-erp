@@ -36,21 +36,19 @@ describe('reglas de persistencia (AGENTS.md, "Persistencia")', () => {
     expect(filesMatching(/search_path/i)).toEqual(['src/server/db/pg/migrations/migrate.ts', 'src/server/db/pg/migrations/types.ts']);
   });
 
-  it('lo de sistema no está en SQLite: nadie nombra system.sqlite ni el esquema viejo de sistema', () => {
-    // migrations/system.ts (SQLite) queda solo para sus tests, hasta la fase 5
-    expect(filesMatching(/system\.sqlite|system-db\.ts|migrations\/system\.ts|\bopenSystemDb\b|\bsystemDbDef\b/)).toEqual([]);
-  });
-
-  it('los datos de los comercios no están en SQLite: solo sus migraciones viejas y el backup abren un .sqlite', () => {
-    // Las migraciones de SQLite, su worker y el backup quedan hasta las fases 5 y 6
-    expect(filesMatching(/new DatabaseSync\(/)).toEqual([
-      'src/server/backup/backup.ts',
-      'src/server/db/migrations/run-migrations.ts',
-      'src/server/db/tenant-db.ts',
-    ]);
-    expect(filesMatching(/from 'node:sqlite'/).filter((file) => !file.startsWith('src/server/db/migrations/'))).toEqual([
-      'src/server/backup/backup.ts',
-      'src/server/db/tenant-db.ts',
-    ]);
+  it('nada usa SQLite (fase 5): nadie importa el SQLite de Node en src, scripts, test ni e2e', () => {
+    const ROOT = join(import.meta.dirname, '..');
+    const all = ['src', 'scripts', 'test', 'e2e'].flatMap((dir) =>
+      readdirSync(join(ROOT, dir), { recursive: true, encoding: 'utf8' })
+        .filter((file) => /\.tsx?$/.test(file))
+        .map((file) => join(ROOT, dir, file)),
+    );
+    // El patrón se arma por partes: escrito entero, este mismo archivo lo cumpliría
+    const sqlite = new RegExp(`${['node', 'sqlite'].join(':')}|\\b${['Database', 'Sync'].join('')}\\b`);
+    const offenders = all
+      .filter((file) => sqlite.test(readFileSync(file, 'utf8')))
+      .map((file) => relative(ROOT, file).replaceAll('\\', '/'))
+      .sort();
+    expect(offenders).toEqual([]);
   });
 });

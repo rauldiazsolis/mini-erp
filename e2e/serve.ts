@@ -1,19 +1,10 @@
-import { rmSync } from 'node:fs';
 import pg from 'pg';
-import { dataDir } from '../src/server/db/data-dir.ts';
 import { e2eDatabaseUrl } from './system-db.ts';
 
 /**
- * Servidor del e2e: arranca siempre de bases vacías (la de `DATA_DIR` y la de PostgreSQL
- * `minierp_e2e`, nunca las de desarrollo) y levanta el mini-erp en modo desarrollo, que sirve la
- * copia local del POS.
+ * Servidor del e2e: arranca siempre de una base vacía (la de PostgreSQL `minierp_e2e`, nunca la de
+ * desarrollo) y levanta el mini-erp en modo desarrollo, que sirve la copia local del POS.
  */
-const dir = dataDir();
-if (dir === 'data') {
-  throw new Error('El e2e necesita su propia DATA_DIR: no borro la base de desarrollo');
-}
-rmSync(dir, { recursive: true, force: true });
-
 const dbUrl = e2eDatabaseUrl();
 const dbName = decodeURIComponent(dbUrl.pathname.slice(1));
 if (!/^minierp_e2e\w*$/.test(dbName)) {
